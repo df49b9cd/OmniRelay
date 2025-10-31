@@ -75,10 +75,10 @@ public static class PolymerErrorAdapter
 
         if (error.Cause is OperationCanceledException)
         {
-            return YarpcStatusCode.Cancelled;
+            return PolymerStatusCode.Cancelled;
         }
 
-        return YarpcStatusCode.Unknown;
+        return PolymerStatusCode.Unknown;
     }
 
     public static Error WithStatusMetadata(Error error, PolymerStatusCode code) =>
