@@ -4,29 +4,21 @@ using System.Threading.Tasks;
 using Grpc.AspNetCore.Server.Model;
 using Grpc.Core;
 using Polymer.Core;
+using Polymer.Core.Transport;
 using Polymer.Dispatcher;
 using Polymer.Errors;
 
 namespace Polymer.Transport.Grpc;
 
-internal sealed class GrpcDispatcherServiceMethodProvider : IServiceMethodProvider<GrpcDispatcherService>
+internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher dispatcher) : IServiceMethodProvider<GrpcDispatcherService>
 {
-    private readonly Dispatcher.Dispatcher _dispatcher;
-
-    public GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher dispatcher)
-    {
-        _dispatcher = dispatcher;
-    }
+    private readonly Dispatcher.Dispatcher _dispatcher = dispatcher;
 
     public void OnServiceMethodDiscovery(ServiceMethodProviderContext<GrpcDispatcherService> context)
     {
-        var unaryProcedures = _dispatcher.ListProcedures().OfType<UnaryProcedureSpec>().ToArray();
-        if (unaryProcedures.Length == 0)
-        {
-            return;
-        }
+        var procedures = _dispatcher.ListProcedures();
 
-        foreach (var spec in unaryProcedures)
+        foreach (var spec in procedures.OfType<UnaryProcedureSpec>())
         {
             var method = new Method<byte[], byte[]>(
                 MethodType.Unary,
@@ -37,7 +29,7 @@ internal sealed class GrpcDispatcherServiceMethodProvider : IServiceMethodProvid
 
             UnaryServerMethod<GrpcDispatcherService, byte[], byte[]> handler = async (_, request, callContext) =>
             {
-                var metadata = callContext.RequestHeaders ?? new Metadata();
+                var metadata = callContext.RequestHeaders ?? [];
                 var encoding = metadata.GetValue(GrpcTransportConstants.EncodingHeader);
 
                 var requestMeta = GrpcMetadataAdapter.BuildRequestMeta(
@@ -68,7 +60,51 @@ internal sealed class GrpcDispatcherServiceMethodProvider : IServiceMethodProvid
                 return response.Body.ToArray();
             };
 
-            context.AddUnaryMethod<byte[], byte[]>(method, new List<object>(), handler);
+            context.AddUnaryMethod<byte[], byte[]>(method, [], handler);
+        }
+
+        foreach (var spec in procedures.OfType<OnewayProcedureSpec>())
+        {
+            var method = new Method<byte[], byte[]>(
+                MethodType.Unary,
+                _dispatcher.ServiceName,
+                spec.Name,
+                GrpcMarshallerCache.ByteMarshaller,
+                GrpcMarshallerCache.ByteMarshaller);
+
+            UnaryServerMethod<GrpcDispatcherService, byte[], byte[]> handler = async (_, request, callContext) =>
+            {
+                var metadata = callContext.RequestHeaders ?? [];
+                var encoding = metadata.GetValue(GrpcTransportConstants.EncodingHeader);
+
+                var requestMeta = GrpcMetadataAdapter.BuildRequestMeta(
+                    _dispatcher.ServiceName,
+                    spec.Name,
+                    metadata,
+                    encoding);
+
+                var dispatcherRequest = new Request<ReadOnlyMemory<byte>>(requestMeta, request);
+                var result = await _dispatcher.InvokeOnewayAsync(spec.Name, dispatcherRequest, callContext.CancellationToken)
+                    .ConfigureAwait(false);
+
+                if (result.IsFailure)
+                {
+                    var exception = PolymerErrors.FromError(result.Error!, GrpcTransportConstants.TransportName);
+                    var status = GrpcStatusMapper.ToStatus(exception.StatusCode, exception.Message);
+                    var trailers = GrpcMetadataAdapter.CreateErrorTrailers(exception.Error);
+                    throw new RpcException(status, trailers);
+                }
+
+                var headers = GrpcMetadataAdapter.CreateResponseHeaders(result.Value.Meta);
+                if (headers.Count > 0)
+                {
+                    await callContext.WriteResponseHeadersAsync(headers).ConfigureAwait(false);
+                }
+
+                return Array.Empty<byte>();
+            };
+
+            context.AddUnaryMethod<byte[], byte[]>(method, [], handler);
         }
     }
 }

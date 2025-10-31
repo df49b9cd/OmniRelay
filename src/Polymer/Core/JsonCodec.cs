@@ -7,17 +7,11 @@ using static Hugo.Go;
 
 namespace Polymer.Core;
 
-public sealed class JsonCodec<TRequest, TResponse> : ICodec<TRequest, TResponse>
+public sealed class JsonCodec<TRequest, TResponse>(JsonSerializerOptions? options = null, string encoding = "json") : ICodec<TRequest, TResponse>
 {
-    private readonly JsonSerializerOptions _options;
+    private readonly JsonSerializerOptions _options = options ?? CreateDefaultOptions();
 
-    public JsonCodec(JsonSerializerOptions? options = null, string encoding = "json")
-    {
-        _options = options ?? CreateDefaultOptions();
-        Encoding = encoding;
-    }
-
-    public string Encoding { get; }
+    public string Encoding { get; } = encoding;
 
     public Result<byte[]> EncodeRequest(TRequest value, RequestMeta meta)
     {

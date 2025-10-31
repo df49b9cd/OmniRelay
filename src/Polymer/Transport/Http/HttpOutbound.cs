@@ -16,18 +16,11 @@ using static Hugo.Go;
 
 namespace Polymer.Transport.Http;
 
-public sealed class HttpOutbound : IUnaryOutbound, IOnewayOutbound
+public sealed class HttpOutbound(HttpClient httpClient, Uri requestUri, bool disposeClient = false) : IUnaryOutbound, IOnewayOutbound
 {
-    private readonly HttpClient _httpClient;
-    private readonly Uri _requestUri;
-    private readonly bool _disposeClient;
-
-    public HttpOutbound(HttpClient httpClient, Uri requestUri, bool disposeClient = false)
-    {
-        _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
-        _requestUri = requestUri ?? throw new ArgumentNullException(nameof(requestUri));
-        _disposeClient = disposeClient;
-    }
+    private readonly HttpClient _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+    private readonly Uri _requestUri = requestUri ?? throw new ArgumentNullException(nameof(requestUri));
+    private readonly bool _disposeClient = disposeClient;
 
     public ValueTask StartAsync(CancellationToken cancellationToken = default) =>
         ValueTask.CompletedTask;

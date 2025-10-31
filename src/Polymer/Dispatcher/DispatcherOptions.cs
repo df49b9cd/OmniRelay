@@ -8,8 +8,8 @@ namespace Polymer.Dispatcher;
 
 public sealed class DispatcherOptions
 {
-    private readonly List<DispatcherLifecycleComponent> _componentDescriptors = new();
-    private readonly List<DispatcherLifecycleComponent> _uniqueComponents = new();
+    private readonly List<DispatcherLifecycleComponent> _componentDescriptors = [];
+    private readonly List<DispatcherLifecycleComponent> _uniqueComponents = [];
     private readonly HashSet<ILifecycle> _uniqueComponentSet = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<string, OutboundCollectionBuilder> _outboundBuilders =
         new(StringComparer.OrdinalIgnoreCase);
@@ -26,12 +26,12 @@ public sealed class DispatcherOptions
 
     public string ServiceName { get; }
 
-    public IList<IUnaryInboundMiddleware> UnaryInboundMiddleware { get; } = new List<IUnaryInboundMiddleware>();
-    public IList<IOnewayInboundMiddleware> OnewayInboundMiddleware { get; } = new List<IOnewayInboundMiddleware>();
-    public IList<IStreamInboundMiddleware> StreamInboundMiddleware { get; } = new List<IStreamInboundMiddleware>();
-    public IList<IUnaryOutboundMiddleware> UnaryOutboundMiddleware { get; } = new List<IUnaryOutboundMiddleware>();
-    public IList<IOnewayOutboundMiddleware> OnewayOutboundMiddleware { get; } = new List<IOnewayOutboundMiddleware>();
-    public IList<IStreamOutboundMiddleware> StreamOutboundMiddleware { get; } = new List<IStreamOutboundMiddleware>();
+    public IList<IUnaryInboundMiddleware> UnaryInboundMiddleware { get; } = [];
+    public IList<IOnewayInboundMiddleware> OnewayInboundMiddleware { get; } = [];
+    public IList<IStreamInboundMiddleware> StreamInboundMiddleware { get; } = [];
+    public IList<IUnaryOutboundMiddleware> UnaryOutboundMiddleware { get; } = [];
+    public IList<IOnewayOutboundMiddleware> OnewayOutboundMiddleware { get; } = [];
+    public IList<IStreamOutboundMiddleware> StreamOutboundMiddleware { get; } = [];
 
     internal IReadOnlyList<DispatcherLifecycleComponent> ComponentDescriptors => _componentDescriptors;
     internal IReadOnlyList<DispatcherLifecycleComponent> UniqueComponents => _uniqueComponents;
@@ -128,17 +128,12 @@ public sealed class DispatcherOptions
 
     internal sealed record DispatcherLifecycleComponent(string Name, ILifecycle Lifecycle);
 
-    internal sealed class OutboundCollectionBuilder
+    internal sealed class OutboundCollectionBuilder(string service)
     {
-        private readonly string _service;
+        private readonly string _service = service;
         private readonly Dictionary<string, IUnaryOutbound> _unary = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, IOnewayOutbound> _oneway = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, IStreamOutbound> _stream = new(StringComparer.OrdinalIgnoreCase);
-
-        public OutboundCollectionBuilder(string service)
-        {
-            _service = service;
-        }
 
         public void AddUnary(string? key, IUnaryOutbound outbound)
         {

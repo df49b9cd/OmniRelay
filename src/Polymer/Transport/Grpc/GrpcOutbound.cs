@@ -14,7 +14,7 @@ using static Hugo.Go;
 
 namespace Polymer.Transport.Grpc;
 
-public sealed class GrpcOutbound : IUnaryOutbound
+public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound
 {
     private readonly Uri _address;
     private readonly string _remoteService;
@@ -83,17 +83,7 @@ public sealed class GrpcOutbound : IUnaryOutbound
             var headers = await call.ResponseHeadersAsync.ConfigureAwait(false);
             var trailers = call.GetTrailers();
 
-            var combinedHeaders = headers
-                .Concat(trailers)
-                .Where(entry => !entry.IsBinary)
-                .Select(entry => new KeyValuePair<string, string>(entry.Key, entry.Value));
-
-            var encoding = headers.GetValue(GrpcTransportConstants.EncodingTrailer) ?? trailers.GetValue(GrpcTransportConstants.EncodingTrailer);
-
-            var responseMeta = new ResponseMeta(
-                encoding: encoding,
-                transport: GrpcTransportConstants.TransportName,
-                headers: combinedHeaders);
+            var responseMeta = GrpcMetadataAdapter.CreateResponseMeta(headers, trailers);
 
             return Ok(Response<ReadOnlyMemory<byte>>.Create(response, responseMeta));
         }
@@ -118,5 +108,48 @@ public sealed class GrpcOutbound : IUnaryOutbound
             procedure,
             GrpcMarshallerCache.ByteMarshaller,
             GrpcMarshallerCache.ByteMarshaller);
+    }
+
+    async ValueTask<Result<OnewayAck>> IOnewayOutbound.CallAsync(
+        IRequest<ReadOnlyMemory<byte>> request,
+        CancellationToken cancellationToken)
+    {
+        if (_callInvoker is null)
+        {
+            throw new InvalidOperationException("gRPC outbound has not been started.");
+        }
+
+        if (string.IsNullOrEmpty(request.Meta.Procedure))
+        {
+            return Err<OnewayAck>(
+                PolymerErrorAdapter.FromStatus(PolymerStatusCode.InvalidArgument, "Procedure metadata is required for gRPC calls.", transport: GrpcTransportConstants.TransportName));
+        }
+
+        var method = _methodCache.GetOrAdd(request.Meta.Procedure, CreateMethod);
+        var metadata = GrpcMetadataAdapter.CreateRequestMetadata(request.Meta);
+        var callOptions = new CallOptions(metadata, cancellationToken: cancellationToken);
+
+        try
+        {
+            var call = _callInvoker.AsyncUnaryCall(method, null, callOptions, request.Body.ToArray());
+            await call.ResponseAsync.ConfigureAwait(false);
+
+            var headers = await call.ResponseHeadersAsync.ConfigureAwait(false);
+            var trailers = call.GetTrailers();
+            var responseMeta = GrpcMetadataAdapter.CreateResponseMeta(headers, trailers);
+
+            return Ok(OnewayAck.Ack(responseMeta));
+        }
+        catch (RpcException rpcEx)
+        {
+            var status = GrpcStatusMapper.FromStatus(rpcEx.Status);
+            var message = string.IsNullOrWhiteSpace(rpcEx.Status.Detail) ? rpcEx.Status.StatusCode.ToString() : rpcEx.Status.Detail;
+            var error = PolymerErrorAdapter.FromStatus(status, message, transport: GrpcTransportConstants.TransportName);
+            return Err<OnewayAck>(error);
+        }
+        catch (Exception ex)
+        {
+            return PolymerErrors.ToResult<OnewayAck>(ex, transport: GrpcTransportConstants.TransportName);
+        }
     }
 }

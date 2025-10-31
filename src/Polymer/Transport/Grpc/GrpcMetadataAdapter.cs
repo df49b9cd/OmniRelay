@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Collections.Generic;
+using System.Linq;
 using Grpc.Core;
 using Hugo;
 using Polymer.Core;
@@ -102,6 +104,28 @@ internal static class GrpcMetadataAdapter
         }
 
         return headers;
+    }
+
+    public static ResponseMeta CreateResponseMeta(
+        Metadata? headers,
+        Metadata? trailers,
+        string transport = GrpcTransportConstants.TransportName)
+    {
+        headers ??= [];
+        trailers ??= [];
+
+        var combined = headers
+            .Concat(trailers)
+            .Where(entry => !entry.IsBinary)
+            .Select(entry => new KeyValuePair<string, string>(entry.Key, entry.Value));
+
+        var encoding = headers.GetValue(GrpcTransportConstants.EncodingTrailer)
+            ?? trailers.GetValue(GrpcTransportConstants.EncodingTrailer);
+
+        return new ResponseMeta(
+            encoding: encoding,
+            transport: transport,
+            headers: combined);
     }
 
     public static Metadata CreateErrorTrailers(Error error)

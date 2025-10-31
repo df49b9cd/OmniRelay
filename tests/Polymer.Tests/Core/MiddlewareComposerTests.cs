@@ -58,16 +58,10 @@ public class MiddlewareComposerTests
         Assert.Same(terminal, composed);
     }
 
-    private sealed class TrackingUnaryOutboundMiddleware : IUnaryOutboundMiddleware
+    private sealed class TrackingUnaryOutboundMiddleware(string name, List<string> transcript) : IUnaryOutboundMiddleware
     {
-        private readonly string _name;
-        private readonly List<string> _transcript;
-
-        public TrackingUnaryOutboundMiddleware(string name, List<string> transcript)
-        {
-            _name = name;
-            _transcript = transcript;
-        }
+        private readonly string _name = name;
+        private readonly List<string> _transcript = transcript;
 
         public async ValueTask<Result<Response<ReadOnlyMemory<byte>>>> InvokeAsync(
             IRequest<ReadOnlyMemory<byte>> request,

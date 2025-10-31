@@ -6,10 +6,8 @@ Comprehensive backlog to track remaining work required to reach feature parity w
 
 - ~~**HTTP Oneway Completion (Phase 3)**~~ *(completed)*
 
-- ~~**HTTP Streaming & Advanced Features**~~ *(completed: SSE / chunked server streaming support)*
-
 - **gRPC Oneway & Streaming (Phase 4)**
-  - Implement unary->oneway adaptation (e.g., map to empty responses) or adopt proper gRPC oneway semantics (which YARPC models via unary with ack).
+  - ~~Implement unary->oneway adaptation (e.g., map to empty responses) or adopt proper gRPC oneway semantics (which YARPC models via unary with ack).~~
   - Server streaming: expose dispatcher `InvokeServerStreamAsync`, bridging to `IAsyncStreamReader`/`IServerStreamWriter` via codecs and middleware.
   - Client & bidi streaming support with backpressure propagation and metadata handling.
   - Expand inbound provider to register streaming methods; update outbound to leverage `AsyncServerStreamingCall`, `AsyncClientStreamingCall`, and `DuplexStreamingCall`.
