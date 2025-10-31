@@ -142,9 +142,9 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
 
         var request = new Request<ReadOnlyMemory<byte>>(meta, buffer);
 
-        if (dispatcher.TryGetProcedure(procedure, ProcedureKind.Oneway, out _))
+        if (dispatcher.TryGetProcedure(procedure!, ProcedureKind.Oneway, out _))
         {
-            var onewayResult = await dispatcher.InvokeOnewayAsync(procedure, request, context.RequestAborted).ConfigureAwait(false);
+            var onewayResult = await dispatcher.InvokeOnewayAsync(procedure!, request, context.RequestAborted).ConfigureAwait(false);
             if (onewayResult.IsFailure)
             {
                 var error = onewayResult.Error!;
@@ -162,7 +162,7 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
             return;
         }
 
-        var result = await dispatcher.InvokeUnaryAsync(procedure, request, context.RequestAborted).ConfigureAwait(false);
+        var result = await dispatcher.InvokeUnaryAsync(procedure!, request, context.RequestAborted).ConfigureAwait(false);
 
         if (result.IsFailure)
         {

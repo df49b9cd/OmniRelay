@@ -89,6 +89,9 @@ public sealed class Dispatcher
     public bool TryGetProcedure(string name, ProcedureKind kind, out ProcedureSpec spec) =>
         _procedures.TryGet(_serviceName, name, kind, out spec);
 
+    public IReadOnlyCollection<ProcedureSpec> ListProcedures() =>
+        _procedures.Snapshot();
+
     public ValueTask<Result<Response<ReadOnlyMemory<byte>>>> InvokeUnaryAsync(
         string procedure,
         IRequest<ReadOnlyMemory<byte>> request,
