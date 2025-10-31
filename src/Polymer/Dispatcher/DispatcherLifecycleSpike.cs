@@ -3,9 +3,10 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using Hugo;
 using static Hugo.Go;
 
-namespace YarpcDotNet.Core.Dispatcher;
+namespace Polymer.Dispatcher;
 
 public static class DispatcherLifecycleSpike
 {

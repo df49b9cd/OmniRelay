@@ -4,9 +4,9 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
-using YarpcDotNet.Core.Dispatcher;
+using Polymer.Dispatcher;
 
-namespace YarpcDotNet.Core.Tests.Dispatcher;
+namespace Polymer.Tests.Dispatcher;
 
 public class DispatcherLifecycleSpikeTests
 {

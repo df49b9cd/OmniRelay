@@ -1,6 +1,6 @@
-namespace YarpcDotNet.Core.Errors;
+namespace Polymer.Errors;
 
-public enum YarpcStatusCode
+public enum PolymerStatusCode
 {
     Unknown = 0,
     Cancelled = 1,

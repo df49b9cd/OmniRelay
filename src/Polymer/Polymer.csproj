@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <AssemblyName>YarpcDotNet.Core</AssemblyName>
-    <RootNamespace>YarpcDotNet.Core</RootNamespace>
+    <AssemblyName>Polymer</AssemblyName>
+    <RootNamespace>Polymer</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>

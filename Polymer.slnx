@@ -1,8 +1,8 @@
 <Solution>
   <Folder Name="/src/">
-    <Project Path="src/YarpcDotNet.Core/YarpcDotNet.Core.csproj" />
+    <Project Path="src/Polymer/Polymer.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/YarpcDotNet.Core.Tests/YarpcDotNet.Core.Tests.csproj" />
+    <Project Path="tests/Polymer.Tests/Polymer.Tests.csproj" />
   </Folder>
 </Solution>

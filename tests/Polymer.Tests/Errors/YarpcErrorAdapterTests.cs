@@ -1,32 +1,32 @@
 using System.Collections.Generic;
 using Hugo;
 using Xunit;
-using YarpcDotNet.Core.Errors;
+using Polymer.Errors;
 
-namespace YarpcDotNet.Core.Tests.Errors;
+namespace Polymer.Tests.Errors;
 
-public class YarpcErrorAdapterTests
+public class PolymerErrorAdapterTests
 {
     [Fact]
     public void FromStatus_AttachesMetadata()
     {
-        var error = YarpcErrorAdapter.FromStatus(
-            YarpcStatusCode.PermissionDenied,
+        var error = PolymerErrorAdapter.FromStatus(
+            PolymerStatusCode.PermissionDenied,
             "denied",
             transport: "grpc");
 
         Assert.Equal("permission-denied", error.Code);
-        Assert.True(error.TryGetMetadata("yarpc.status", out string? status));
-        Assert.Equal(nameof(YarpcStatusCode.PermissionDenied), status);
-        Assert.True(error.TryGetMetadata("yarpc.transport", out string? transport));
+        Assert.True(error.TryGetMetadata("polymer.status", out string? status));
+        Assert.Equal(nameof(PolymerStatusCode.PermissionDenied), status);
+        Assert.True(error.TryGetMetadata("polymer.transport", out string? transport));
         Assert.Equal("grpc", transport);
     }
 
     [Fact]
     public void FromStatus_MergesAdditionalMetadata()
     {
-        var error = YarpcErrorAdapter.FromStatus(
-            YarpcStatusCode.ResourceExhausted,
+        var error = PolymerErrorAdapter.FromStatus(
+            PolymerStatusCode.ResourceExhausted,
             "busy",
             metadata: new Dictionary<string, object?>
             {
@@ -44,11 +44,11 @@ public class YarpcErrorAdapterTests
     public void ToStatus_UsesMetadataPriority()
     {
         var error = Error.From("denied")
-            .WithMetadata("yarpc.status", nameof(YarpcStatusCode.Unavailable));
+            .WithMetadata("polymer.status", nameof(PolymerStatusCode.Unavailable));
 
-        var status = YarpcErrorAdapter.ToStatus(error);
+        var status = PolymerErrorAdapter.ToStatus(error);
 
-        Assert.Equal(YarpcStatusCode.Unavailable, status);
+        Assert.Equal(PolymerStatusCode.Unavailable, status);
     }
 
     [Fact]
@@ -56,9 +56,9 @@ public class YarpcErrorAdapterTests
     {
         var error = Error.From("internal failure", "internal");
 
-        var status = YarpcErrorAdapter.ToStatus(error);
+        var status = PolymerErrorAdapter.ToStatus(error);
 
-        Assert.Equal(YarpcStatusCode.Internal, status);
+        Assert.Equal(PolymerStatusCode.Internal, status);
     }
 
     [Fact]
@@ -66,8 +66,8 @@ public class YarpcErrorAdapterTests
     {
         var error = Error.From("cancelled").WithCause(new OperationCanceledException());
 
-        var status = YarpcErrorAdapter.ToStatus(error);
+        var status = PolymerErrorAdapter.ToStatus(error);
 
-        Assert.Equal(YarpcStatusCode.Cancelled, status);
+        Assert.Equal(PolymerStatusCode.Cancelled, status);
     }
 }

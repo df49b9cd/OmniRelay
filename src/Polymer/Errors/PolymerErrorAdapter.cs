@@ -3,33 +3,33 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using Hugo;
 
-namespace YarpcDotNet.Core.Errors;
+namespace Polymer.Errors;
 
-public static class YarpcErrorAdapter
+public static class PolymerErrorAdapter
 {
-    private const string StatusMetadataKey = "yarpc.status";
-    private const string TransportMetadataKey = "yarpc.transport";
-    private static readonly ImmutableDictionary<YarpcStatusCode, string> StatusCodeNames = new[]
+    private const string StatusMetadataKey = "polymer.status";
+    private const string TransportMetadataKey = "polymer.transport";
+    private static readonly ImmutableDictionary<PolymerStatusCode, string> StatusCodeNames = new[]
     {
-        (YarpcStatusCode.Unknown, "unknown"),
-        (YarpcStatusCode.Cancelled, "cancelled"),
-        (YarpcStatusCode.InvalidArgument, "invalid-argument"),
-        (YarpcStatusCode.DeadlineExceeded, "deadline-exceeded"),
-        (YarpcStatusCode.NotFound, "not-found"),
-        (YarpcStatusCode.AlreadyExists, "already-exists"),
-        (YarpcStatusCode.PermissionDenied, "permission-denied"),
-        (YarpcStatusCode.ResourceExhausted, "resource-exhausted"),
-        (YarpcStatusCode.FailedPrecondition, "failed-precondition"),
-        (YarpcStatusCode.Aborted, "aborted"),
-        (YarpcStatusCode.OutOfRange, "out-of-range"),
-        (YarpcStatusCode.Unimplemented, "unimplemented"),
-        (YarpcStatusCode.Internal, "internal"),
-        (YarpcStatusCode.Unavailable, "unavailable"),
-        (YarpcStatusCode.DataLoss, "data-loss")
+        (PolymerStatusCode.Unknown, "unknown"),
+        (PolymerStatusCode.Cancelled, "cancelled"),
+        (PolymerStatusCode.InvalidArgument, "invalid-argument"),
+        (PolymerStatusCode.DeadlineExceeded, "deadline-exceeded"),
+        (PolymerStatusCode.NotFound, "not-found"),
+        (PolymerStatusCode.AlreadyExists, "already-exists"),
+        (PolymerStatusCode.PermissionDenied, "permission-denied"),
+        (PolymerStatusCode.ResourceExhausted, "resource-exhausted"),
+        (PolymerStatusCode.FailedPrecondition, "failed-precondition"),
+        (PolymerStatusCode.Aborted, "aborted"),
+        (PolymerStatusCode.OutOfRange, "out-of-range"),
+        (PolymerStatusCode.Unimplemented, "unimplemented"),
+        (PolymerStatusCode.Internal, "internal"),
+        (PolymerStatusCode.Unavailable, "unavailable"),
+        (PolymerStatusCode.DataLoss, "data-loss")
     }.ToImmutableDictionary(tuple => tuple.Item1, tuple => tuple.Item2);
 
     public static Error FromStatus(
-        YarpcStatusCode code,
+        PolymerStatusCode code,
         string message,
         string? transport = null,
         Error? inner = null,
@@ -54,10 +54,10 @@ public static class YarpcErrorAdapter
         return error;
     }
 
-    public static YarpcStatusCode ToStatus(Error error)
+    public static PolymerStatusCode ToStatus(Error error)
     {
         if (error.TryGetMetadata(StatusMetadataKey, out string? value) &&
-            Enum.TryParse<YarpcStatusCode>(value, out var parsed))
+            Enum.TryParse<PolymerStatusCode>(value, out var parsed))
         {
             return parsed;
         }
@@ -81,6 +81,6 @@ public static class YarpcErrorAdapter
         return YarpcStatusCode.Unknown;
     }
 
-    public static Error WithStatusMetadata(Error error, YarpcStatusCode code) =>
+    public static Error WithStatusMetadata(Error error, PolymerStatusCode code) =>
         error.WithCode(StatusCodeNames[code]).WithMetadata(StatusMetadataKey, code.ToString());
 }
