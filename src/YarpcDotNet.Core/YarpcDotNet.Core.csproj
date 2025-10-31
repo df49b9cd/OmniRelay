@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>YarpcDotNet.Core</AssemblyName>
+    <RootNamespace>YarpcDotNet.Core</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Hugo" Version="1.4.2" />
+  </ItemGroup>
+  
+</Project>

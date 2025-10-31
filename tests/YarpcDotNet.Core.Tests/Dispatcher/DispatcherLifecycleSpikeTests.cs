@@ -1,0 +1,61 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Xunit;
+using YarpcDotNet.Core.Dispatcher;
+
+namespace YarpcDotNet.Core.Tests.Dispatcher;
+
+public class DispatcherLifecycleSpikeTests
+{
+    [Fact]
+    public async Task RunAsync_CoordinatesStartAndStopSequences()
+    {
+        var startSteps = new List<Func<CancellationToken, Task>>
+        {
+            async ct => await Task.Delay(50, ct),
+            async ct => await Task.Delay(10, ct)
+        };
+
+        var stopSteps = new List<Func<CancellationToken, Task>>
+        {
+            async ct => await Task.Delay(5, ct),
+            async ct => await Task.Delay(15, ct)
+        };
+
+        var (started, stopped) = await DispatcherLifecycleSpike.RunAsync(
+            startSteps,
+            stopSteps,
+            CancellationToken.None);
+
+        Assert.Equal(startSteps.Count, started.Count);
+        Assert.All(Enumerable.Range(0, startSteps.Count), index =>
+            Assert.Contains($"start:{index}", started));
+
+        Assert.Equal(stopSteps.Count, stopped.Count);
+        Assert.Equal(new[] { "stop:0", "stop:1" }, stopped);
+    }
+
+    [Fact]
+    public async Task RunAsync_PropagatesCancellation()
+    {
+        var startSteps = new List<Func<CancellationToken, Task>>
+        {
+            async ct =>
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+            }
+        };
+
+        var stopSteps = new List<Func<CancellationToken, Task>>();
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
+
+        await Assert.ThrowsAsync<TaskCanceledException>(async () =>
+        {
+            await DispatcherLifecycleSpike.RunAsync(startSteps, stopSteps, cts.Token);
+        });
+    }
+}
