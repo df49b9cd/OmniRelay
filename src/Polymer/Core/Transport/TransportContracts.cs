@@ -35,6 +35,15 @@ public delegate ValueTask<Result<Response<ReadOnlyMemory<byte>>>> ClientStreamIn
     ClientStreamRequestContext context,
     CancellationToken cancellationToken);
 
+public interface IClientStreamTransportCall : IAsyncDisposable
+{
+    RequestMeta RequestMeta { get; }
+    ResponseMeta ResponseMeta { get; }
+    Task<Result<Response<ReadOnlyMemory<byte>>>> Response { get; }
+    ValueTask WriteAsync(ReadOnlyMemory<byte> payload, CancellationToken cancellationToken = default);
+    ValueTask CompleteAsync(CancellationToken cancellationToken = default);
+}
+
 public interface IUnaryOutbound : ILifecycle
 {
     ValueTask<Result<Response<ReadOnlyMemory<byte>>>> CallAsync(
@@ -76,5 +85,12 @@ public interface IStreamInbound
     ValueTask<Result<IStreamCall>> HandleAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         StreamCallOptions options,
+        CancellationToken cancellationToken = default);
+}
+
+public interface IClientStreamOutbound : ILifecycle
+{
+    ValueTask<Result<IClientStreamTransportCall>> CallAsync(
+        RequestMeta requestMeta,
         CancellationToken cancellationToken = default);
 }

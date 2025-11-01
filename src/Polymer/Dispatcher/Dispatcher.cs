@@ -316,7 +316,8 @@ public sealed class Dispatcher
                     collection.Service,
                     collection.Unary.Count,
                     collection.Oneway.Count,
-                    collection.Stream.Count))
+                    collection.Stream.Count,
+                    collection.ClientStream.Count))
             .ToImmutableArray();
 
         var middleware = new MiddlewareSummary(

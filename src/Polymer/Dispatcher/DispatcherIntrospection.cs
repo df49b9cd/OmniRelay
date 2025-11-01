@@ -14,7 +14,7 @@ public sealed record ProcedureDescriptor(string Name, ProcedureKind Kind, string
 
 public sealed record LifecycleComponentDescriptor(string Name, string ComponentType);
 
-public sealed record OutboundSummary(string Service, int UnaryCount, int OnewayCount, int StreamCount);
+public sealed record OutboundSummary(string Service, int UnaryCount, int OnewayCount, int StreamCount, int ClientStreamCount);
 
 public sealed record MiddlewareSummary(
     ImmutableArray<string> InboundUnary,

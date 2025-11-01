@@ -12,7 +12,7 @@ using static Hugo.Go;
 
 namespace Polymer.Transport.Grpc;
 
-public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbound
+public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbound, IClientStreamOutbound
 {
     private readonly Uri _address;
     private readonly string _remoteService;
@@ -195,10 +195,8 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         }
     }
 
-    public ValueTask<Result<GrpcClientStreamingCall<TRequest, TResponse>>> CreateClientStreamAsync<TRequest, TResponse>(
+    public ValueTask<Result<IClientStreamTransportCall>> CallAsync(
         RequestMeta requestMeta,
-        ICodec<TRequest, TResponse> codec,
-        WriteOptions? writeOptions = null,
         CancellationToken cancellationToken = default)
     {
         if (_callInvoker is null)
@@ -211,14 +209,9 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
             throw new ArgumentNullException(nameof(requestMeta));
         }
 
-        if (codec is null)
-        {
-            throw new ArgumentNullException(nameof(codec));
-        }
-
         if (string.IsNullOrEmpty(requestMeta.Procedure))
         {
-            return ValueTask.FromResult(Err<GrpcClientStreamingCall<TRequest, TResponse>>(
+            return ValueTask.FromResult(Err<IClientStreamTransportCall>(
                 PolymerErrorAdapter.FromStatus(
                     PolymerStatusCode.InvalidArgument,
                     "Procedure metadata is required for gRPC client streaming calls.",
@@ -232,19 +225,19 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         try
         {
             var call = _callInvoker.AsyncClientStreamingCall(method, null, callOptions);
-            var streamingCall = new GrpcClientStreamingCall<TRequest, TResponse>(requestMeta, codec, call, writeOptions);
-            return ValueTask.FromResult(Ok(streamingCall));
+            var streamingCall = new GrpcClientStreamTransportCall(requestMeta, call, null);
+            return ValueTask.FromResult(Ok((IClientStreamTransportCall)streamingCall));
         }
         catch (RpcException rpcEx)
         {
             var status = GrpcStatusMapper.FromStatus(rpcEx.Status);
             var message = string.IsNullOrWhiteSpace(rpcEx.Status.Detail) ? rpcEx.Status.StatusCode.ToString() : rpcEx.Status.Detail;
             var error = PolymerErrorAdapter.FromStatus(status, message, transport: GrpcTransportConstants.TransportName);
-            return ValueTask.FromResult(Err<GrpcClientStreamingCall<TRequest, TResponse>>(error));
+            return ValueTask.FromResult(Err<IClientStreamTransportCall>(error));
         }
         catch (Exception ex)
         {
-            return ValueTask.FromResult(PolymerErrors.ToResult<GrpcClientStreamingCall<TRequest, TResponse>>(ex, transport: GrpcTransportConstants.TransportName));
+            return ValueTask.FromResult(PolymerErrors.ToResult<IClientStreamTransportCall>(ex, transport: GrpcTransportConstants.TransportName));
         }
     }
 

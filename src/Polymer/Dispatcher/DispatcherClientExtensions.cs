@@ -82,4 +82,29 @@ public static class DispatcherClientExtensions
 
         return new StreamClient<TRequest, TResponse>(outbound, codec, configuration.StreamMiddleware);
     }
+
+    public static ClientStreamClient<TRequest, TResponse> CreateClientStreamClient<TRequest, TResponse>(
+        this Dispatcher dispatcher,
+        string service,
+        ICodec<TRequest, TResponse> codec,
+        string? outboundKey = null)
+    {
+        if (dispatcher is null)
+        {
+            throw new ArgumentNullException(nameof(dispatcher));
+        }
+
+        if (codec is null)
+        {
+            throw new ArgumentNullException(nameof(codec));
+        }
+
+        var configuration = dispatcher.ClientConfig(service);
+        if (!configuration.TryGetClientStream(outboundKey, out var outbound) || outbound is null)
+        {
+            throw new KeyNotFoundException($"No client stream outbound registered for service '{service}' with key '{outboundKey ?? OutboundCollection.DefaultKey}'.");
+        }
+
+        return new ClientStreamClient<TRequest, TResponse>(outbound, codec);
+    }
 }

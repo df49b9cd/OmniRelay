@@ -30,6 +30,7 @@ public sealed class ClientConfiguration
     public IReadOnlyDictionary<string, IUnaryOutbound> Unary => _outbounds.Unary;
     public IReadOnlyDictionary<string, IOnewayOutbound> Oneway => _outbounds.Oneway;
     public IReadOnlyDictionary<string, IStreamOutbound> Stream => _outbounds.Stream;
+    public IReadOnlyDictionary<string, IClientStreamOutbound> ClientStream => _outbounds.ClientStream;
 
     public IReadOnlyList<IUnaryOutboundMiddleware> UnaryMiddleware => _unaryMiddleware;
     public IReadOnlyList<IOnewayOutboundMiddleware> OnewayMiddleware => _onewayMiddleware;
@@ -41,6 +42,8 @@ public sealed class ClientConfiguration
 
     public IStreamOutbound? ResolveStream(string? key = null) => _outbounds.ResolveStream(key);
 
+    public IClientStreamOutbound? ResolveClientStream(string? key = null) => _outbounds.ResolveClientStream(key);
+
     public bool TryGetUnary(string? key, out IUnaryOutbound? outbound) =>
         _outbounds.TryGetUnary(key, out outbound);
 
@@ -49,4 +52,7 @@ public sealed class ClientConfiguration
 
     public bool TryGetStream(string? key, out IStreamOutbound? outbound) =>
         _outbounds.TryGetStream(key, out outbound);
+
+    public bool TryGetClientStream(string? key, out IClientStreamOutbound? outbound) =>
+        _outbounds.TryGetClientStream(key, out outbound);
 }

@@ -4,7 +4,6 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Grpc.Core;
-using Grpc.Net.Client;
 using Polymer.Core;
 using Polymer.Core.Transport;
 using Polymer.Dispatcher;
@@ -110,6 +109,9 @@ public class GrpcTransportTests
         var grpcInbound = new GrpcInbound([address.ToString()]);
         options.AddLifecycle("grpc-inbound", grpcInbound);
 
+        var grpcOutbound = new GrpcOutbound(address, "stream");
+        options.AddClientStreamOutbound("stream", null, grpcOutbound);
+
         var dispatcher = new Polymer.Dispatcher.Dispatcher(options);
         var codec = new JsonCodec<AggregateChunk, AggregateResponse>(encoding: "application/json");
 
@@ -151,8 +153,7 @@ public class GrpcTransportTests
         await dispatcher.StartAsync(ct);
         await Task.Delay(100, ct);
 
-        var outbound = new GrpcOutbound(address, "stream");
-        await outbound.StartAsync(ct);
+        var client = dispatcher.CreateClientStreamClient<AggregateChunk, AggregateResponse>("stream", codec);
 
         var requestMeta = new RequestMeta(
             service: "stream",
@@ -160,22 +161,18 @@ public class GrpcTransportTests
             encoding: codec.Encoding,
             transport: "grpc");
 
-        var callResult = await outbound.CreateClientStreamAsync(requestMeta, codec, cancellationToken: ct);
-        Assert.True(callResult.IsSuccess, callResult.Error?.Message);
+        await using var stream = await client.StartAsync(requestMeta, ct);
 
-        await using var call = callResult.Value;
+        await stream.WriteAsync(new AggregateChunk(Amount: 2), ct);
+        await stream.WriteAsync(new AggregateChunk(Amount: 5), ct);
+        await stream.CompleteAsync(ct);
 
-        await call.WriteAsync(new AggregateChunk(Amount: 2), ct);
-        await call.WriteAsync(new AggregateChunk(Amount: 5), ct);
-        await call.CompleteAsync(ct);
-
-        var response = await call.Response;
+        var response = await stream.Response;
 
         Assert.Equal(7, response.Body.TotalAmount);
-        Assert.Equal(codec.Encoding, call.ResponseMeta.Encoding);
+        Assert.Equal(codec.Encoding, stream.ResponseMeta.Encoding);
 
         await dispatcher.StopAsync(ct);
-        await outbound.StopAsync(ct);
     }
 
     [Fact]
