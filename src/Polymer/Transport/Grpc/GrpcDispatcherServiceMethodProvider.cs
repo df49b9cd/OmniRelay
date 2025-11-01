@@ -106,5 +106,57 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
 
             context.AddUnaryMethod<byte[], byte[]>(method, [], handler);
         }
+
+        foreach (var spec in procedures.OfType<StreamProcedureSpec>())
+        {
+            var method = new Method<byte[], byte[]>(
+                MethodType.ServerStreaming,
+                _dispatcher.ServiceName,
+                spec.Name,
+                GrpcMarshallerCache.ByteMarshaller,
+                GrpcMarshallerCache.ByteMarshaller);
+
+            ServerStreamingServerMethod<GrpcDispatcherService, byte[], byte[]> handler = async (_, request, responseStream, callContext) =>
+            {
+                var metadata = callContext.RequestHeaders ?? [];
+                var encoding = metadata.GetValue(GrpcTransportConstants.EncodingHeader);
+
+                var requestMeta = GrpcMetadataAdapter.BuildRequestMeta(
+                    _dispatcher.ServiceName,
+                    spec.Name,
+                    metadata,
+                    encoding);
+
+                var dispatcherRequest = new Request<ReadOnlyMemory<byte>>(requestMeta, request);
+                var streamResult = await _dispatcher.InvokeStreamAsync(
+                    spec.Name,
+                    dispatcherRequest,
+                    new StreamCallOptions(StreamDirection.Server),
+                    callContext.CancellationToken).ConfigureAwait(false);
+
+                if (streamResult.IsFailure)
+                {
+                    var exception = PolymerErrors.FromError(streamResult.Error!, GrpcTransportConstants.TransportName);
+                    var status = GrpcStatusMapper.ToStatus(exception.StatusCode, exception.Message);
+                    var trailers = GrpcMetadataAdapter.CreateErrorTrailers(exception.Error);
+                    throw new RpcException(status, trailers);
+                }
+
+                await using var streamCall = streamResult.Value;
+
+                var headers = GrpcMetadataAdapter.CreateResponseHeaders(streamCall.ResponseMeta);
+                if (headers.Count > 0)
+                {
+                    await callContext.WriteResponseHeadersAsync(headers).ConfigureAwait(false);
+                }
+
+                await foreach (var payload in streamCall.Responses.ReadAllAsync(callContext.CancellationToken).ConfigureAwait(false))
+                {
+                    await responseStream.WriteAsync(payload.ToArray()).ConfigureAwait(false);
+                }
+            };
+
+            context.AddServerStreamingMethod<byte[], byte[]>(method, [], handler);
+        }
     }
 }

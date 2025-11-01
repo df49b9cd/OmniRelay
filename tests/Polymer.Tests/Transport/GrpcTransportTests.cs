@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Polymer.Core;
 using Polymer.Core.Transport;
@@ -15,6 +17,85 @@ public class GrpcTransportTests
     static GrpcTransportTests()
     {
         AppContext.SetSwitch("System.Net.Http.SocketsHttpHandler.Http2UnencryptedSupport", true);
+    }
+
+    [Fact]
+    public async Task ServerStreaming_OverGrpcTransport()
+    {
+        var port = TestPortAllocator.GetRandomPort();
+        var address = new Uri($"http://127.0.0.1:{port}");
+
+        var options = new DispatcherOptions("stream");
+        var grpcInbound = new GrpcInbound([address.ToString()]);
+        options.AddLifecycle("grpc-inbound", grpcInbound);
+
+        var grpcOutbound = new GrpcOutbound(address, "stream");
+        options.AddStreamOutbound("stream", null, grpcOutbound);
+
+        var dispatcher = new Polymer.Dispatcher.Dispatcher(options);
+        var codec = new JsonCodec<EchoRequest, EchoResponse>(new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+        dispatcher.Register(new StreamProcedureSpec(
+            "stream",
+            "stream::events",
+            (request, callOptions, cancellationToken) =>
+            {
+                var decode = codec.DecodeRequest(request.Body, request.Meta);
+                if (decode.IsFailure)
+                {
+                    return ValueTask.FromResult(Err<IStreamCall>(decode.Error!));
+                }
+
+                var streamCall = GrpcServerStreamCall.Create(request.Meta, new ResponseMeta(encoding: "application/json"));
+
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        for (var i = 0; i < 3; i++)
+                        {
+                            var response = new EchoResponse { Message = $"event-{i}" };
+                            var encode = codec.EncodeResponse(response, streamCall.ResponseMeta);
+                            if (encode.IsFailure)
+                            {
+                                await streamCall.CompleteAsync(encode.Error!).ConfigureAwait(false);
+                                return;
+                            }
+
+                            await streamCall.WriteAsync(encode.Value, cancellationToken).ConfigureAwait(false);
+                            await Task.Delay(20, cancellationToken).ConfigureAwait(false);
+                        }
+                    }
+                    finally
+                    {
+                        await streamCall.CompleteAsync().ConfigureAwait(false);
+                    }
+                }, cancellationToken);
+
+                return ValueTask.FromResult(Ok<IStreamCall>(streamCall));
+            }));
+
+        var ct = TestContext.Current.CancellationToken;
+        await dispatcher.StartAsync(ct);
+        await Task.Delay(100, ct);
+
+        var client = dispatcher.CreateStreamClient<EchoRequest, EchoResponse>("stream", codec);
+        var requestMeta = new RequestMeta(
+            service: "stream",
+            procedure: "stream::events",
+            encoding: "application/json",
+            transport: "grpc");
+        var request = new Request<EchoRequest>(requestMeta, new EchoRequest("seed"));
+
+        var responses = new List<string>();
+        await foreach (var response in client.CallAsync(request, new StreamCallOptions(StreamDirection.Server), ct))
+        {
+            responses.Add(response.Body.Message);
+        }
+
+        Assert.Equal(new[] { "event-0", "event-1", "event-2" }, responses);
+
+        await dispatcher.StopAsync(ct);
     }
 
     [Fact]

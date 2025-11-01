@@ -1,7 +1,5 @@
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Grpc.Core;
@@ -14,14 +12,15 @@ using static Hugo.Go;
 
 namespace Polymer.Transport.Grpc;
 
-public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound
+public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbound
 {
     private readonly Uri _address;
     private readonly string _remoteService;
     private readonly GrpcChannelOptions _channelOptions;
     private GrpcChannel? _channel;
     private CallInvoker? _callInvoker;
-    private readonly ConcurrentDictionary<string, Method<byte[], byte[]>> _methodCache = new();
+    private readonly ConcurrentDictionary<string, Method<byte[], byte[]>> _unaryMethods = new();
+    private readonly ConcurrentDictionary<string, Method<byte[], byte[]>> _serverStreamMethods = new();
 
     public GrpcOutbound(Uri address, string remoteService, GrpcChannelOptions? channelOptions = null)
     {
@@ -45,15 +44,14 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound
         return ValueTask.CompletedTask;
     }
 
-    public async ValueTask StopAsync(CancellationToken cancellationToken = default)
+    public ValueTask StopAsync(CancellationToken cancellationToken = default)
     {
-        if (_channel is not null)
-        {
-            _channel.Dispose();
-            _channel = null;
-            _callInvoker = null;
-            _methodCache.Clear();
-        }
+        _channel?.Dispose();
+        _channel = null;
+        _callInvoker = null;
+        _unaryMethods.Clear();
+        _serverStreamMethods.Clear();
+        return ValueTask.CompletedTask;
     }
 
     public async ValueTask<Result<Response<ReadOnlyMemory<byte>>>> CallAsync(
@@ -71,7 +69,7 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound
                 PolymerErrorAdapter.FromStatus(PolymerStatusCode.InvalidArgument, "Procedure metadata is required for gRPC calls.", transport: GrpcTransportConstants.TransportName));
         }
 
-        var method = _methodCache.GetOrAdd(request.Meta.Procedure, CreateMethod);
+        var method = _unaryMethods.GetOrAdd(request.Meta.Procedure, CreateUnaryMethod);
         var metadata = GrpcMetadataAdapter.CreateRequestMetadata(request.Meta);
         var callOptions = new CallOptions(metadata, cancellationToken: cancellationToken);
 
@@ -82,8 +80,7 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound
 
             var headers = await call.ResponseHeadersAsync.ConfigureAwait(false);
             var trailers = call.GetTrailers();
-
-            var responseMeta = GrpcMetadataAdapter.CreateResponseMeta(headers, trailers);
+            var responseMeta = GrpcMetadataAdapter.CreateResponseMeta(headers, trailers, GrpcTransportConstants.TransportName);
 
             return Ok(Response<ReadOnlyMemory<byte>>.Create(response, responseMeta));
         }
@@ -98,16 +95,6 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound
         {
             return PolymerErrors.ToResult<Response<ReadOnlyMemory<byte>>>(ex, transport: GrpcTransportConstants.TransportName);
         }
-    }
-
-    private Method<byte[], byte[]> CreateMethod(string procedure)
-    {
-        return new Method<byte[], byte[]>(
-            MethodType.Unary,
-            _remoteService,
-            procedure,
-            GrpcMarshallerCache.ByteMarshaller,
-            GrpcMarshallerCache.ByteMarshaller);
     }
 
     async ValueTask<Result<OnewayAck>> IOnewayOutbound.CallAsync(
@@ -125,7 +112,7 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound
                 PolymerErrorAdapter.FromStatus(PolymerStatusCode.InvalidArgument, "Procedure metadata is required for gRPC calls.", transport: GrpcTransportConstants.TransportName));
         }
 
-        var method = _methodCache.GetOrAdd(request.Meta.Procedure, CreateMethod);
+        var method = _unaryMethods.GetOrAdd(request.Meta.Procedure, CreateUnaryMethod);
         var metadata = GrpcMetadataAdapter.CreateRequestMetadata(request.Meta);
         var callOptions = new CallOptions(metadata, cancellationToken: cancellationToken);
 
@@ -136,7 +123,7 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound
 
             var headers = await call.ResponseHeadersAsync.ConfigureAwait(false);
             var trailers = call.GetTrailers();
-            var responseMeta = GrpcMetadataAdapter.CreateResponseMeta(headers, trailers);
+            var responseMeta = GrpcMetadataAdapter.CreateResponseMeta(headers, trailers, GrpcTransportConstants.TransportName);
 
             return Ok(OnewayAck.Ack(responseMeta));
         }
@@ -152,4 +139,73 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound
             return PolymerErrors.ToResult<OnewayAck>(ex, transport: GrpcTransportConstants.TransportName);
         }
     }
+
+    public async ValueTask<Result<IStreamCall>> CallAsync(
+        IRequest<ReadOnlyMemory<byte>> request,
+        StreamCallOptions options,
+        CancellationToken cancellationToken = default)
+    {
+        if (_callInvoker is null)
+        {
+            throw new InvalidOperationException("gRPC outbound has not been started.");
+        }
+
+        if (options.Direction != StreamDirection.Server)
+        {
+            return Err<IStreamCall>(PolymerErrorAdapter.FromStatus(
+                PolymerStatusCode.Unimplemented,
+                "Only server streaming is currently supported over gRPC.",
+                transport: GrpcTransportConstants.TransportName));
+        }
+
+        if (string.IsNullOrEmpty(request.Meta.Procedure))
+        {
+            return Err<IStreamCall>(
+                PolymerErrorAdapter.FromStatus(PolymerStatusCode.InvalidArgument, "Procedure metadata is required for gRPC streaming calls.", transport: GrpcTransportConstants.TransportName));
+        }
+
+        var method = _serverStreamMethods.GetOrAdd(request.Meta.Procedure, CreateServerStreamingMethod);
+        var metadata = GrpcMetadataAdapter.CreateRequestMetadata(request.Meta);
+        var callOptions = new CallOptions(metadata, cancellationToken: cancellationToken);
+
+        try
+        {
+            var call = _callInvoker.AsyncServerStreamingCall(method, null, callOptions, request.Body.ToArray());
+            var streamCallResult = await GrpcClientStreamCall.CreateAsync(request.Meta, call, cancellationToken).ConfigureAwait(false);
+            if (streamCallResult.IsFailure)
+            {
+                call.Dispose();
+                return Err<IStreamCall>(streamCallResult.Error!);
+            }
+
+            return Ok((IStreamCall)streamCallResult.Value);
+        }
+        catch (RpcException rpcEx)
+        {
+            var status = GrpcStatusMapper.FromStatus(rpcEx.Status);
+            var message = string.IsNullOrWhiteSpace(rpcEx.Status.Detail) ? rpcEx.Status.StatusCode.ToString() : rpcEx.Status.Detail;
+            var error = PolymerErrorAdapter.FromStatus(status, message, transport: GrpcTransportConstants.TransportName);
+            return Err<IStreamCall>(error);
+        }
+        catch (Exception ex)
+        {
+            return PolymerErrors.ToResult<IStreamCall>(ex, transport: GrpcTransportConstants.TransportName);
+        }
+    }
+
+    private Method<byte[], byte[]> CreateUnaryMethod(string procedure) =>
+        new(
+            MethodType.Unary,
+            _remoteService,
+            procedure,
+            GrpcMarshallerCache.ByteMarshaller,
+            GrpcMarshallerCache.ByteMarshaller);
+
+    private Method<byte[], byte[]> CreateServerStreamingMethod(string procedure) =>
+        new(
+            MethodType.ServerStreaming,
+            _remoteService,
+            procedure,
+            GrpcMarshallerCache.ByteMarshaller,
+            GrpcMarshallerCache.ByteMarshaller);
 }
