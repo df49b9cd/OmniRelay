@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -112,6 +111,7 @@ public class GrpcTransportTests
         options.AddLifecycle("grpc-inbound", grpcInbound);
 
         var dispatcher = new Polymer.Dispatcher.Dispatcher(options);
+        var codec = new JsonCodec<AggregateChunk, AggregateResponse>(encoding: "application/json");
 
         dispatcher.Register(new ClientStreamProcedureSpec(
             "stream",
@@ -125,12 +125,25 @@ public class GrpcTransportTests
                 {
                     while (reader.TryRead(out var payload))
                     {
-                        totalBytes += payload.Length;
+                        var decodeResult = codec.DecodeRequest(payload, context.Meta);
+                        if (decodeResult.IsFailure)
+                        {
+                            return Err<Response<ReadOnlyMemory<byte>>>(decodeResult.Error!);
+                        }
+
+                        totalBytes += decodeResult.Value.Amount;
                     }
                 }
 
-                var responseMeta = new ResponseMeta(encoding: "application/octet-stream");
-                var response = Response<ReadOnlyMemory<byte>>.Create(BitConverter.GetBytes(totalBytes), responseMeta);
+                var aggregateResponse = new AggregateResponse(totalBytes);
+                var responseMeta = new ResponseMeta(encoding: codec.Encoding);
+                var encodeResponse = codec.EncodeResponse(aggregateResponse, responseMeta);
+                if (encodeResponse.IsFailure)
+                {
+                    return Err<Response<ReadOnlyMemory<byte>>>(encodeResponse.Error!);
+                }
+
+                var response = Response<ReadOnlyMemory<byte>>.Create(encodeResponse.Value, responseMeta);
                 return Ok(response);
             }));
 
@@ -138,41 +151,31 @@ public class GrpcTransportTests
         await dispatcher.StartAsync(ct);
         await Task.Delay(100, ct);
 
-        using var channel = GrpcChannel.ForAddress(address);
-        var invoker = channel.CreateCallInvoker();
-        var byteMarshaller = Marshallers.Create(
-            (byte[] value) => value ?? Array.Empty<byte>(),
-            payload => payload ?? Array.Empty<byte>());
-        var method = new Method<byte[], byte[]>(
-            MethodType.ClientStreaming,
-            "stream",
-            "stream::aggregate",
-            byteMarshaller,
-            byteMarshaller);
+        var outbound = new GrpcOutbound(address, "stream");
+        await outbound.StartAsync(ct);
 
-        var metadata = new Metadata
-        {
-            { "rpc-encoding", "application/octet-stream" }
-        };
+        var requestMeta = new RequestMeta(
+            service: "stream",
+            procedure: "stream::aggregate",
+            encoding: codec.Encoding,
+            transport: "grpc");
 
-        var call = invoker.AsyncClientStreamingCall(method, null, new CallOptions(metadata, cancellationToken: ct));
+        var callResult = await outbound.CreateClientStreamAsync(requestMeta, codec, cancellationToken: ct);
+        Assert.True(callResult.IsSuccess, callResult.Error?.Message);
 
-        await call.RequestStream.WriteAsync(new byte[] { 0x01, 0x02 });
-        await call.RequestStream.WriteAsync(new byte[] { 0x03 });
-        await call.RequestStream.CompleteAsync();
+        await using var call = callResult.Value;
 
-        var responsePayload = await call.ResponseAsync;
-        var count = BitConverter.ToInt32(responsePayload, 0);
+        await call.WriteAsync(new AggregateChunk(Amount: 2), ct);
+        await call.WriteAsync(new AggregateChunk(Amount: 5), ct);
+        await call.CompleteAsync(ct);
 
-        Assert.Equal(3, count);
+        var response = await call.Response;
 
-        var responseHeaders = await call.ResponseHeadersAsync;
-        Assert.Equal(
-            "application/octet-stream",
-            responseHeaders.FirstOrDefault(entry =>
-                !entry.IsBinary && string.Equals(entry.Key, "polymer-encoding", StringComparison.OrdinalIgnoreCase))?.Value);
+        Assert.Equal(7, response.Body.TotalAmount);
+        Assert.Equal(codec.Encoding, call.ResponseMeta.Encoding);
 
         await dispatcher.StopAsync(ct);
+        await outbound.StopAsync(ct);
     }
 
     [Fact]
@@ -293,4 +296,8 @@ public class GrpcTransportTests
     {
         public string Message { get; init; } = string.Empty;
     }
+
+    private sealed record AggregateChunk(int Amount);
+
+    private sealed record AggregateResponse(int TotalAmount);
 }

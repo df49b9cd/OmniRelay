@@ -21,6 +21,7 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
     private CallInvoker? _callInvoker;
     private readonly ConcurrentDictionary<string, Method<byte[], byte[]>> _unaryMethods = new();
     private readonly ConcurrentDictionary<string, Method<byte[], byte[]>> _serverStreamMethods = new();
+    private readonly ConcurrentDictionary<string, Method<byte[], byte[]>> _clientStreamMethods = new();
 
     public GrpcOutbound(Uri address, string remoteService, GrpcChannelOptions? channelOptions = null)
     {
@@ -51,6 +52,7 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         _callInvoker = null;
         _unaryMethods.Clear();
         _serverStreamMethods.Clear();
+        _clientStreamMethods.Clear();
         return ValueTask.CompletedTask;
     }
 
@@ -193,6 +195,59 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         }
     }
 
+    public ValueTask<Result<GrpcClientStreamingCall<TRequest, TResponse>>> CreateClientStreamAsync<TRequest, TResponse>(
+        RequestMeta requestMeta,
+        ICodec<TRequest, TResponse> codec,
+        WriteOptions? writeOptions = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (_callInvoker is null)
+        {
+            throw new InvalidOperationException("gRPC outbound has not been started.");
+        }
+
+        if (requestMeta is null)
+        {
+            throw new ArgumentNullException(nameof(requestMeta));
+        }
+
+        if (codec is null)
+        {
+            throw new ArgumentNullException(nameof(codec));
+        }
+
+        if (string.IsNullOrEmpty(requestMeta.Procedure))
+        {
+            return ValueTask.FromResult(Err<GrpcClientStreamingCall<TRequest, TResponse>>(
+                PolymerErrorAdapter.FromStatus(
+                    PolymerStatusCode.InvalidArgument,
+                    "Procedure metadata is required for gRPC client streaming calls.",
+                    transport: GrpcTransportConstants.TransportName)));
+        }
+
+        var method = _clientStreamMethods.GetOrAdd(requestMeta.Procedure, CreateClientStreamingMethod);
+        var metadata = GrpcMetadataAdapter.CreateRequestMetadata(requestMeta);
+        var callOptions = new CallOptions(metadata, cancellationToken: cancellationToken);
+
+        try
+        {
+            var call = _callInvoker.AsyncClientStreamingCall(method, null, callOptions);
+            var streamingCall = new GrpcClientStreamingCall<TRequest, TResponse>(requestMeta, codec, call, writeOptions);
+            return ValueTask.FromResult(Ok(streamingCall));
+        }
+        catch (RpcException rpcEx)
+        {
+            var status = GrpcStatusMapper.FromStatus(rpcEx.Status);
+            var message = string.IsNullOrWhiteSpace(rpcEx.Status.Detail) ? rpcEx.Status.StatusCode.ToString() : rpcEx.Status.Detail;
+            var error = PolymerErrorAdapter.FromStatus(status, message, transport: GrpcTransportConstants.TransportName);
+            return ValueTask.FromResult(Err<GrpcClientStreamingCall<TRequest, TResponse>>(error));
+        }
+        catch (Exception ex)
+        {
+            return ValueTask.FromResult(PolymerErrors.ToResult<GrpcClientStreamingCall<TRequest, TResponse>>(ex, transport: GrpcTransportConstants.TransportName));
+        }
+    }
+
     private Method<byte[], byte[]> CreateUnaryMethod(string procedure) =>
         new(
             MethodType.Unary,
@@ -204,6 +259,14 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
     private Method<byte[], byte[]> CreateServerStreamingMethod(string procedure) =>
         new(
             MethodType.ServerStreaming,
+            _remoteService,
+            procedure,
+            GrpcMarshallerCache.ByteMarshaller,
+            GrpcMarshallerCache.ByteMarshaller);
+
+    private Method<byte[], byte[]> CreateClientStreamingMethod(string procedure) =>
+        new(
+            MethodType.ClientStreaming,
             _remoteService,
             procedure,
             GrpcMarshallerCache.ByteMarshaller,

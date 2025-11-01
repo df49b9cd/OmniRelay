@@ -20,10 +20,10 @@ Comprehensive backlog tracking the remaining work needed to reach feature parity
   - **Client streaming (request stream → unary response)**
     - ~~Extend dispatcher with `InvokeClientStreamAsync` returning a writable request channel and providing a mechanism to deliver the unary response once completed.~~ *(completed)*
     - ~~Modify gRPC inbound provider to bridge `IAsyncStreamReader<byte[]>` into the dispatcher channel, honoring cancellation, deadlines, and backpressure (await `WaitToReadAsync` before `ReadAsync`).~~ *(completed)*
-    - Enhance `GrpcOutbound` with `AsyncClientStreamingCall`, providing a client-streaming facade that:
-      - Encodes request chunks via the configured codec.
-      - Pushes frames respecting `WriteOptions`/backpressure (await write completions, apply cancellation).
-      - Receives unary response + metadata, decoding into `Response<T>`.
+    - ~~Enhance `GrpcOutbound` with `AsyncClientStreamingCall`, providing a client-streaming facade that:~~ *(completed)*
+      - ~~Encodes request chunks via the configured codec.~~
+      - ~~Pushes frames respecting `WriteOptions`/backpressure (await write completions, apply cancellation).~~
+      - ~~Receives unary response + metadata, decoding into `Response<T>`.~~
     - Expand `StreamClient<TReq,TRes>` (or new client type) to expose a high-level API (async writer + awaited response).
     - Add middleware hooks for outbound/inbound client streams (typed context containing channels).
     - Tests:
