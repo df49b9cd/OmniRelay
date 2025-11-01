@@ -164,4 +164,30 @@ public static class MiddlewareComposer
 
         return next;
     }
+
+    public static ClientStreamInboundDelegate ComposeClientStreamInbound(
+        IReadOnlyList<IClientStreamInboundMiddleware>? middleware,
+        ClientStreamInboundDelegate terminal)
+    {
+        if (terminal is null)
+        {
+            throw new ArgumentNullException(nameof(terminal));
+        }
+
+        if (middleware is null || middleware.Count == 0)
+        {
+            return terminal;
+        }
+
+        var next = terminal;
+
+        for (var index = middleware.Count - 1; index >= 0; index--)
+        {
+            var middlewareInstance = middleware[index];
+            var capturedNext = next;
+            next = (context, cancellationToken) => middlewareInstance.InvokeAsync(context, cancellationToken, capturedNext);
+        }
+
+        return next;
+    }
 }

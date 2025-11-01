@@ -55,3 +55,11 @@ public interface IStreamInboundMiddleware
         CancellationToken cancellationToken,
         StreamInboundDelegate next);
 }
+
+public interface IClientStreamInboundMiddleware
+{
+    ValueTask<Result<Response<ReadOnlyMemory<byte>>>> InvokeAsync(
+        ClientStreamRequestContext context,
+        CancellationToken cancellationToken,
+        ClientStreamInboundDelegate next);
+}

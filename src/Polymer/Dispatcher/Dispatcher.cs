@@ -23,6 +23,7 @@ public sealed class Dispatcher
     private readonly ImmutableArray<IUnaryInboundMiddleware> _inboundUnaryMiddleware;
     private readonly ImmutableArray<IOnewayInboundMiddleware> _inboundOnewayMiddleware;
     private readonly ImmutableArray<IStreamInboundMiddleware> _inboundStreamMiddleware;
+    private readonly ImmutableArray<IClientStreamInboundMiddleware> _inboundClientStreamMiddleware;
     private readonly ImmutableArray<IUnaryOutboundMiddleware> _outboundUnaryMiddleware;
     private readonly ImmutableArray<IOnewayOutboundMiddleware> _outboundOnewayMiddleware;
     private readonly ImmutableArray<IStreamOutboundMiddleware> _outboundStreamMiddleware;
@@ -44,6 +45,7 @@ public sealed class Dispatcher
         _inboundUnaryMiddleware = [.. options.UnaryInboundMiddleware];
         _inboundOnewayMiddleware = [.. options.OnewayInboundMiddleware];
         _inboundStreamMiddleware = [.. options.StreamInboundMiddleware];
+        _inboundClientStreamMiddleware = [.. options.ClientStreamInboundMiddleware];
         _outboundUnaryMiddleware = [.. options.UnaryOutboundMiddleware];
         _outboundOnewayMiddleware = [.. options.OnewayOutboundMiddleware];
         _outboundStreamMiddleware = [.. options.StreamOutboundMiddleware];
@@ -67,6 +69,7 @@ public sealed class Dispatcher
     public IReadOnlyList<IUnaryInboundMiddleware> UnaryInboundMiddleware => _inboundUnaryMiddleware;
     public IReadOnlyList<IOnewayInboundMiddleware> OnewayInboundMiddleware => _inboundOnewayMiddleware;
     public IReadOnlyList<IStreamInboundMiddleware> StreamInboundMiddleware => _inboundStreamMiddleware;
+    public IReadOnlyList<IClientStreamInboundMiddleware> ClientStreamInboundMiddleware => _inboundClientStreamMiddleware;
     public IReadOnlyList<IUnaryOutboundMiddleware> UnaryOutboundMiddleware => _outboundUnaryMiddleware;
     public IReadOnlyList<IOnewayOutboundMiddleware> OnewayOutboundMiddleware => _outboundOnewayMiddleware;
     public IReadOnlyList<IStreamOutboundMiddleware> StreamOutboundMiddleware => _outboundStreamMiddleware;
@@ -183,6 +186,43 @@ public sealed class Dispatcher
         return pipeline(request, options, cancellationToken);
     }
 
+    public ValueTask<Result<ClientStreamCall>> InvokeClientStreamAsync(
+        string procedure,
+        RequestMeta requestMeta,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(procedure))
+        {
+            return ValueTask.FromResult(Err<ClientStreamCall>(PolymerErrorAdapter.FromStatus(
+                PolymerStatusCode.InvalidArgument,
+                "Procedure name is required for client streaming calls.")));
+        }
+
+        if (requestMeta is null)
+        {
+            throw new ArgumentNullException(nameof(requestMeta));
+        }
+
+        if (!_procedures.TryGet(_serviceName, procedure, ProcedureKind.ClientStream, out var spec) ||
+            spec is not ClientStreamProcedureSpec clientStreamSpec)
+        {
+            return ValueTask.FromResult(Err<ClientStreamCall>(PolymerErrorAdapter.FromStatus(
+                PolymerStatusCode.Unimplemented,
+                $"Client stream procedure '{procedure}' is not registered for service '{_serviceName}'.",
+                transport: requestMeta.Transport ?? "unknown")));
+        }
+
+        var call = ClientStreamCall.Create(requestMeta);
+        var context = new ClientStreamRequestContext(call.RequestMeta, call.Reader);
+
+        var middleware = CombineMiddleware(_inboundClientStreamMiddleware, clientStreamSpec.Middleware);
+        var pipeline = MiddlewareComposer.ComposeClientStreamInbound(middleware, clientStreamSpec.Handler);
+
+        _ = ProcessClientStreamAsync(call, context, pipeline, cancellationToken);
+
+        return ValueTask.FromResult(Ok(call));
+    }
+
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         BeginStart();
@@ -283,6 +323,7 @@ public sealed class Dispatcher
             [.. _inboundUnaryMiddleware.Select(static m => m.GetType().FullName ?? m.GetType().Name)],
             [.. _inboundOnewayMiddleware.Select(static m => m.GetType().FullName ?? m.GetType().Name)],
             [.. _inboundStreamMiddleware.Select(static m => m.GetType().FullName ?? m.GetType().Name)],
+            [.. _inboundClientStreamMiddleware.Select(static m => m.GetType().FullName ?? m.GetType().Name)],
             [.. _outboundUnaryMiddleware.Select(static m => m.GetType().FullName ?? m.GetType().Name)],
             [.. _outboundOnewayMiddleware.Select(static m => m.GetType().FullName ?? m.GetType().Name)],
             [.. _outboundStreamMiddleware.Select(static m => m.GetType().FullName ?? m.GetType().Name)]);
@@ -294,6 +335,25 @@ public sealed class Dispatcher
             components,
             outbounds,
             middleware);
+    }
+
+    private async Task ProcessClientStreamAsync(
+        ClientStreamCall call,
+        ClientStreamRequestContext context,
+        ClientStreamInboundDelegate pipeline,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await pipeline(context, cancellationToken).ConfigureAwait(false);
+            call.TryComplete(result);
+        }
+        catch (Exception ex)
+        {
+            var transport = call.RequestMeta.Transport ?? "unknown";
+            var failure = PolymerErrors.ToResult<Response<ReadOnlyMemory<byte>>>(ex, transport);
+            call.TryComplete(failure);
+        }
     }
 
     private void BeginStart()

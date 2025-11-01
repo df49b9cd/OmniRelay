@@ -20,6 +20,7 @@ public sealed record MiddlewareSummary(
     ImmutableArray<string> InboundUnary,
     ImmutableArray<string> InboundOneway,
     ImmutableArray<string> InboundStream,
+    ImmutableArray<string> InboundClientStream,
     ImmutableArray<string> OutboundUnary,
     ImmutableArray<string> OutboundOneway,
     ImmutableArray<string> OutboundStream);

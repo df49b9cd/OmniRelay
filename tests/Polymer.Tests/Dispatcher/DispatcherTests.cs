@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Threading.Channels;
 using Hugo;
 using Polymer.Core;
 using Polymer.Core.Middleware;
@@ -94,6 +95,60 @@ public class DispatcherTests
     }
 
     [Fact]
+    public async Task InvokeClientStreamAsync_ProcessesRequestAndCompletesResponse()
+    {
+        var dispatcher = new Polymer.Dispatcher.Dispatcher(new DispatcherOptions("keyvalue"));
+
+        dispatcher.Register(new ClientStreamProcedureSpec(
+            "keyvalue",
+            "aggregate",
+            async (context, cancellationToken) =>
+            {
+                var totalBytes = 0;
+                await foreach (var payload in context.Requests.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    totalBytes += payload.Length;
+                }
+
+                var responseMeta = new ResponseMeta(encoding: "application/octet-stream");
+                var response = Response<ReadOnlyMemory<byte>>.Create(BitConverter.GetBytes(totalBytes), responseMeta);
+                return Ok(response);
+            }));
+
+        var requestMeta = new RequestMeta(service: "keyvalue", procedure: "aggregate", transport: "test");
+        var ct = TestContext.Current.CancellationToken;
+        var result = await dispatcher.InvokeClientStreamAsync("aggregate", requestMeta, ct);
+
+        Assert.True(result.IsSuccess);
+
+        await using var call = result.Value;
+
+        await call.Requests.WriteAsync(new byte[] { 0x01, 0x02 }, ct);
+        await call.Requests.WriteAsync(new byte[] { 0x03 }, ct);
+        await call.CompleteWriterAsync(cancellationToken: ct);
+
+        var responseResult = await call.Response;
+
+        Assert.True(responseResult.IsSuccess);
+        Assert.Equal("application/octet-stream", call.ResponseMeta.Encoding);
+        var count = BitConverter.ToInt32(responseResult.Value.Body.Span);
+        Assert.Equal(3, count);
+    }
+
+    [Fact]
+    public async Task InvokeClientStreamAsync_WhenProcedureMissingReturnsError()
+    {
+        var dispatcher = new Polymer.Dispatcher.Dispatcher(new DispatcherOptions("keyvalue"));
+        var requestMeta = new RequestMeta(service: "keyvalue", procedure: "missing", transport: "test");
+        var ct = TestContext.Current.CancellationToken;
+
+        var result = await dispatcher.InvokeClientStreamAsync("missing", requestMeta, ct);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(PolymerStatusCode.Unimplemented, PolymerErrorAdapter.ToStatus(result.Error!));
+    }
+
+    [Fact]
     public async Task Introspect_ReportsCurrentState()
     {
         var lifecycle = new StubLifecycle();
@@ -111,6 +166,7 @@ public class DispatcherTests
         Assert.Equal(DispatcherStatus.Created, beforeStart.Status);
         Assert.Single(beforeStart.Procedures);
         Assert.Equal("get", beforeStart.Procedures[0].Name);
+        Assert.Empty(beforeStart.Middleware.InboundClientStream);
 
         var ct = TestContext.Current.CancellationToken;
         await dispatcher.StartAsync(ct);
@@ -122,11 +178,13 @@ public class DispatcherTests
         Assert.Contains(snapshot.Components, static component => component.Name == "test");
         Assert.Contains(snapshot.Middleware.InboundUnary, static typeName => typeName.Contains(nameof(PassthroughUnaryInboundMiddleware), StringComparison.Ordinal));
         Assert.Contains(snapshot.Middleware.OutboundUnary, static typeName => typeName.Contains(nameof(PassthroughUnaryOutboundMiddleware), StringComparison.Ordinal));
+        Assert.Empty(snapshot.Middleware.InboundClientStream);
 
         await dispatcher.StopAsync(ct);
 
         var afterStop = dispatcher.Introspect();
         Assert.Equal(DispatcherStatus.Stopped, afterStop.Status);
+        Assert.Empty(afterStop.Middleware.InboundClientStream);
     }
 
     private static UnaryProcedureSpec CreateUnaryProcedure(string service, string procedure) =>

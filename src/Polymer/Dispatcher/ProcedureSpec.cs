@@ -80,3 +80,21 @@ public sealed record StreamProcedureSpec : ProcedureSpec
     public StreamInboundDelegate Handler { get; }
     public IReadOnlyList<IStreamInboundMiddleware> Middleware { get; }
 }
+
+public sealed record ClientStreamProcedureSpec : ProcedureSpec
+{
+    public ClientStreamProcedureSpec(
+        string service,
+        string name,
+        ClientStreamInboundDelegate handler,
+        string? encoding = null,
+        IReadOnlyList<IClientStreamInboundMiddleware>? middleware = null)
+        : base(service, name, ProcedureKind.ClientStream, encoding)
+    {
+        Handler = handler ?? throw new ArgumentNullException(nameof(handler));
+        Middleware = middleware ?? Array.Empty<IClientStreamInboundMiddleware>();
+    }
+
+    public ClientStreamInboundDelegate Handler { get; }
+    public IReadOnlyList<IClientStreamInboundMiddleware> Middleware { get; }
+}

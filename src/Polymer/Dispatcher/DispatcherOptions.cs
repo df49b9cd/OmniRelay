@@ -29,6 +29,7 @@ public sealed class DispatcherOptions
     public IList<IUnaryInboundMiddleware> UnaryInboundMiddleware { get; } = [];
     public IList<IOnewayInboundMiddleware> OnewayInboundMiddleware { get; } = [];
     public IList<IStreamInboundMiddleware> StreamInboundMiddleware { get; } = [];
+    public IList<IClientStreamInboundMiddleware> ClientStreamInboundMiddleware { get; } = [];
     public IList<IUnaryOutboundMiddleware> UnaryOutboundMiddleware { get; } = [];
     public IList<IOnewayOutboundMiddleware> OnewayOutboundMiddleware { get; } = [];
     public IList<IStreamOutboundMiddleware> StreamOutboundMiddleware { get; } = [];

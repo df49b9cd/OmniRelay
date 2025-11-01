@@ -31,6 +31,10 @@ public delegate ValueTask<Result<IStreamCall>> StreamInboundDelegate(
     StreamCallOptions options,
     CancellationToken cancellationToken);
 
+public delegate ValueTask<Result<Response<ReadOnlyMemory<byte>>>> ClientStreamInboundDelegate(
+    ClientStreamRequestContext context,
+    CancellationToken cancellationToken);
+
 public interface IUnaryOutbound : ILifecycle
 {
     ValueTask<Result<Response<ReadOnlyMemory<byte>>>> CallAsync(

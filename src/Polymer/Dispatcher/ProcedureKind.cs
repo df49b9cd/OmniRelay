@@ -4,5 +4,6 @@ public enum ProcedureKind
 {
     Unary = 0,
     Oneway = 1,
-    Stream = 2
+    Stream = 2,
+    ClientStream = 3
 }
