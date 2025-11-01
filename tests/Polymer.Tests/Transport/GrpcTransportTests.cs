@@ -1,8 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Grpc.Core;
+using Grpc.Net.Client;
 using Polymer.Core;
 using Polymer.Core.Transport;
 using Polymer.Dispatcher;
@@ -94,6 +97,80 @@ public class GrpcTransportTests
         }
 
         Assert.Equal(new[] { "event-0", "event-1", "event-2" }, responses);
+
+        await dispatcher.StopAsync(ct);
+    }
+
+    [Fact]
+    public async Task ClientStreaming_OverGrpcTransport()
+    {
+        var port = TestPortAllocator.GetRandomPort();
+        var address = new Uri($"http://127.0.0.1:{port}");
+
+        var options = new DispatcherOptions("stream");
+        var grpcInbound = new GrpcInbound([address.ToString()]);
+        options.AddLifecycle("grpc-inbound", grpcInbound);
+
+        var dispatcher = new Polymer.Dispatcher.Dispatcher(options);
+
+        dispatcher.Register(new ClientStreamProcedureSpec(
+            "stream",
+            "stream::aggregate",
+            async (context, cancellationToken) =>
+            {
+                var totalBytes = 0;
+                var reader = context.Requests;
+
+                while (await reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    while (reader.TryRead(out var payload))
+                    {
+                        totalBytes += payload.Length;
+                    }
+                }
+
+                var responseMeta = new ResponseMeta(encoding: "application/octet-stream");
+                var response = Response<ReadOnlyMemory<byte>>.Create(BitConverter.GetBytes(totalBytes), responseMeta);
+                return Ok(response);
+            }));
+
+        var ct = TestContext.Current.CancellationToken;
+        await dispatcher.StartAsync(ct);
+        await Task.Delay(100, ct);
+
+        using var channel = GrpcChannel.ForAddress(address);
+        var invoker = channel.CreateCallInvoker();
+        var byteMarshaller = Marshallers.Create(
+            (byte[] value) => value ?? Array.Empty<byte>(),
+            payload => payload ?? Array.Empty<byte>());
+        var method = new Method<byte[], byte[]>(
+            MethodType.ClientStreaming,
+            "stream",
+            "stream::aggregate",
+            byteMarshaller,
+            byteMarshaller);
+
+        var metadata = new Metadata
+        {
+            { "rpc-encoding", "application/octet-stream" }
+        };
+
+        var call = invoker.AsyncClientStreamingCall(method, null, new CallOptions(metadata, cancellationToken: ct));
+
+        await call.RequestStream.WriteAsync(new byte[] { 0x01, 0x02 });
+        await call.RequestStream.WriteAsync(new byte[] { 0x03 });
+        await call.RequestStream.CompleteAsync();
+
+        var responsePayload = await call.ResponseAsync;
+        var count = BitConverter.ToInt32(responsePayload, 0);
+
+        Assert.Equal(3, count);
+
+        var responseHeaders = await call.ResponseHeadersAsync;
+        Assert.Equal(
+            "application/octet-stream",
+            responseHeaders.FirstOrDefault(entry =>
+                !entry.IsBinary && string.Equals(entry.Key, "polymer-encoding", StringComparison.OrdinalIgnoreCase))?.Value);
 
         await dispatcher.StopAsync(ct);
     }

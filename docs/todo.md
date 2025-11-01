@@ -19,7 +19,7 @@ Comprehensive backlog tracking the remaining work needed to reach feature parity
     - ~~Add codec integration + SSE example tests~~
   - **Client streaming (request stream → unary response)**
     - ~~Extend dispatcher with `InvokeClientStreamAsync` returning a writable request channel and providing a mechanism to deliver the unary response once completed.~~ *(completed)*
-    - Modify gRPC inbound provider to bridge `IAsyncStreamReader<byte[]>` into the dispatcher channel, honoring cancellation, deadlines, and backpressure (await `WaitToReadAsync` before `ReadAsync`).
+    - ~~Modify gRPC inbound provider to bridge `IAsyncStreamReader<byte[]>` into the dispatcher channel, honoring cancellation, deadlines, and backpressure (await `WaitToReadAsync` before `ReadAsync`).~~ *(completed)*
     - Enhance `GrpcOutbound` with `AsyncClientStreamingCall`, providing a client-streaming facade that:
       - Encodes request chunks via the configured codec.
       - Pushes frames respecting `WriteOptions`/backpressure (await write completions, apply cancellation).
