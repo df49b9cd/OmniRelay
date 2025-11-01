@@ -26,11 +26,11 @@ Comprehensive backlog tracking the remaining work needed to reach feature parity
       - ~~Receives unary response + metadata, decoding into `Response<T>`.~~
     - ~~Expand `StreamClient<TReq,TRes>` (or new client type) to expose a high-level API (async writer + awaited response).~~ *(completed)*
     - ~~Add middleware hooks for outbound/inbound client streams (typed context containing channels).~~ *(completed)*
-    - Tests:
-      - Streaming success (multiple frames, aggregated response).
-      - Cancellation from client before completion.
-      - Deadline expiry, verifying status mapping.
-      - Large payload handling and chunked writes.
+    - ~~Tests:~~ *(completed)*
+      - ~~Streaming success (multiple frames, aggregated response).~~
+      - ~~Cancellation from client before completion.~~
+      - ~~Deadline expiry, verifying status mapping.~~
+      - ~~Large payload handling and chunked writes.~~
   - **Bidirectional streaming (request stream ↔ response stream)**
     - Introduce dispatcher duplex stream abstraction (read/write channels with completion signaling and error propagation).
     - Extend gRPC inbound to pipe client messages into dispatcher channel while writing outbound responses via `IServerStreamWriter<byte[]>`; ensure:

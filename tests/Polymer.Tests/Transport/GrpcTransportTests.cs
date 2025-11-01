@@ -8,6 +8,7 @@ using Polymer.Core;
 using Polymer.Core.Transport;
 using Polymer.Dispatcher;
 using Polymer.Transport.Grpc;
+using Polymer.Errors;
 using Xunit;
 using static Hugo.Go;
 
@@ -171,6 +172,175 @@ public class GrpcTransportTests
 
         Assert.Equal(7, response.Body.TotalAmount);
         Assert.Equal(codec.Encoding, stream.ResponseMeta.Encoding);
+
+        await dispatcher.StopAsync(ct);
+    }
+
+    [Fact]
+    public async Task ClientStreaming_CancellationFromClient()
+    {
+        var port = TestPortAllocator.GetRandomPort();
+        var address = new Uri($"http://127.0.0.1:{port}");
+
+        var options = new DispatcherOptions("stream");
+        var grpcInbound = new GrpcInbound([address.ToString()]);
+        options.AddLifecycle("grpc-inbound", grpcInbound);
+
+        var grpcOutbound = new GrpcOutbound(address, "stream");
+        options.AddClientStreamOutbound("stream", null, grpcOutbound);
+
+        var dispatcher = new Polymer.Dispatcher.Dispatcher(options);
+        var codec = new JsonCodec<AggregateChunk, AggregateResponse>(encoding: "application/json");
+        dispatcher.Register(new ClientStreamProcedureSpec(
+            "stream",
+            "stream::aggregate",
+            async (context, cancellationToken) =>
+            {
+                await foreach (var _ in context.Requests.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    // Simply drain until cancellation.
+                }
+
+                return Err<Response<ReadOnlyMemory<byte>>>(PolymerErrorAdapter.FromStatus(
+                    PolymerStatusCode.Cancelled,
+                    "cancelled"));
+            }));
+
+        var cts = new CancellationTokenSource();
+        var ct = TestContext.Current.CancellationToken;
+        await dispatcher.StartAsync(ct);
+        await Task.Delay(100, ct);
+
+        var client = dispatcher.CreateClientStreamClient<AggregateChunk, AggregateResponse>("stream", codec);
+        var requestMeta = new RequestMeta(service: "stream", procedure: "stream::aggregate", encoding: codec.Encoding, transport: "grpc");
+
+        await using var stream = await client.StartAsync(requestMeta, ct);
+
+        cts.Cancel();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(async () =>
+        {
+            await stream.WriteAsync(new AggregateChunk(Amount: 1), cts.Token);
+        });
+
+        await dispatcher.StopAsync(ct);
+    }
+
+    [Fact]
+    public async Task ClientStreaming_DeadlineExceededMapsStatus()
+    {
+        var port = TestPortAllocator.GetRandomPort();
+        var address = new Uri($"http://127.0.0.1:{port}");
+
+        var options = new DispatcherOptions("stream");
+        var grpcInbound = new GrpcInbound([address.ToString()]);
+        options.AddLifecycle("grpc-inbound", grpcInbound);
+
+        var grpcOutbound = new GrpcOutbound(address, "stream");
+        options.AddClientStreamOutbound("stream", null, grpcOutbound);
+
+        var dispatcher = new Polymer.Dispatcher.Dispatcher(options);
+        var codec = new JsonCodec<AggregateChunk, AggregateResponse>(encoding: "application/json");
+
+        dispatcher.Register(new ClientStreamProcedureSpec(
+            "stream",
+            "stream::deadline",
+            async (context, cancellationToken) =>
+            {
+                Assert.True(context.Meta.Deadline.HasValue);
+                await foreach (var _ in context.Requests.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+                {
+                }
+
+                return Err<Response<ReadOnlyMemory<byte>>>(PolymerErrorAdapter.FromStatus(
+                    PolymerStatusCode.DeadlineExceeded,
+                    "deadline exceeded"));
+            }));
+
+        var ct = TestContext.Current.CancellationToken;
+        await dispatcher.StartAsync(ct);
+        await Task.Delay(100, ct);
+
+        var client = dispatcher.CreateClientStreamClient<AggregateChunk, AggregateResponse>("stream", codec);
+        var requestMeta = new RequestMeta(
+            service: "stream",
+            procedure: "stream::deadline",
+            encoding: codec.Encoding,
+            transport: "grpc",
+            deadline: DateTimeOffset.UtcNow.AddMilliseconds(200));
+
+        await using var stream = await client.StartAsync(requestMeta, ct);
+        await stream.CompleteAsync(ct);
+
+        var exception = await Assert.ThrowsAsync<PolymerException>(async () => await stream.Response);
+        Assert.Equal(PolymerStatusCode.DeadlineExceeded, exception.StatusCode);
+
+        await dispatcher.StopAsync(ct);
+    }
+
+    [Fact]
+    public async Task ClientStreaming_LargePayloadChunks()
+    {
+        var port = TestPortAllocator.GetRandomPort();
+        var address = new Uri($"http://127.0.0.1:{port}");
+
+        var options = new DispatcherOptions("stream");
+        var grpcInbound = new GrpcInbound([address.ToString()]);
+        options.AddLifecycle("grpc-inbound", grpcInbound);
+
+        var grpcOutbound = new GrpcOutbound(address, "stream");
+        options.AddClientStreamOutbound("stream", null, grpcOutbound);
+
+        var dispatcher = new Polymer.Dispatcher.Dispatcher(options);
+        var codec = new JsonCodec<AggregateChunk, AggregateResponse>(encoding: "application/json");
+
+        dispatcher.Register(new ClientStreamProcedureSpec(
+            "stream",
+            "stream::huge",
+            async (context, cancellationToken) =>
+            {
+                var total = 0;
+                await foreach (var payload in context.Requests.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    var decode = codec.DecodeRequest(payload, context.Meta);
+                    if (decode.IsFailure)
+                    {
+                        return Err<Response<ReadOnlyMemory<byte>>>(decode.Error!);
+                    }
+
+                    total += decode.Value.Amount;
+                }
+
+                var response = new AggregateResponse(total);
+                var responseMeta = new ResponseMeta(encoding: codec.Encoding);
+                var encode = codec.EncodeResponse(response, responseMeta);
+                if (encode.IsFailure)
+                {
+                    return Err<Response<ReadOnlyMemory<byte>>>(encode.Error!);
+                }
+
+                return Ok(Response<ReadOnlyMemory<byte>>.Create(encode.Value, responseMeta));
+            }));
+
+        var ct = TestContext.Current.CancellationToken;
+        await dispatcher.StartAsync(ct);
+        await Task.Delay(100, ct);
+
+        var client = dispatcher.CreateClientStreamClient<AggregateChunk, AggregateResponse>("stream", codec);
+        var requestMeta = new RequestMeta(service: "stream", procedure: "stream::huge", encoding: codec.Encoding, transport: "grpc");
+
+        await using var stream = await client.StartAsync(requestMeta, ct);
+
+        const int chunkCount = 1_000;
+        for (var i = 0; i < chunkCount; i++)
+        {
+            await stream.WriteAsync(new AggregateChunk(1), ct);
+        }
+
+        await stream.CompleteAsync(ct);
+
+        var response = await stream.Response;
+        Assert.Equal(chunkCount, response.Body.TotalAmount);
 
         await dispatcher.StopAsync(ct);
     }
