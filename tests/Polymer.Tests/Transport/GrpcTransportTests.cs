@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Grpc.Core;
+using Grpc.Core.Interceptors;
 using Grpc.Net.Client;
 using Polymer.Core;
 using Polymer.Core.Transport;
@@ -554,6 +555,82 @@ public class GrpcTransportTests
             var exception = await Assert.ThrowsAsync<PolymerException>(async () => await stream.Response);
             Assert.Equal(PolymerStatusCode.Unavailable, exception.StatusCode);
             Assert.Contains("service unavailable", exception.Message, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            await dispatcher.StopAsync(ct);
+        }
+    }
+
+    [Fact(Timeout = 30_000)]
+    public async Task Unary_InterceptorsExecute()
+    {
+        var port = TestPortAllocator.GetRandomPort();
+        var address = new Uri($"http://127.0.0.1:{port}");
+
+        var clientInterceptor = new RecordingClientInterceptor();
+
+        var clientRuntimeOptions = new GrpcClientRuntimeOptions
+        {
+            Interceptors = new[] { clientInterceptor }
+        };
+
+        var dispatcherOptions = new DispatcherOptions("intercept");
+        var grpcInbound = new GrpcInbound([address.ToString()]);
+        dispatcherOptions.AddLifecycle("grpc-inbound", grpcInbound);
+
+        var grpcOutbound = new GrpcOutbound(address, "intercept", clientRuntimeOptions: clientRuntimeOptions);
+        dispatcherOptions.AddUnaryOutbound("intercept", null, grpcOutbound);
+
+        var dispatcher = new Polymer.Dispatcher.Dispatcher(dispatcherOptions);
+        var codec = new JsonCodec<EchoRequest, EchoResponse>(new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        var observedClientHeader = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        dispatcher.Register(new UnaryProcedureSpec(
+            "intercept",
+            "intercept::echo",
+            (request, cancellationToken) =>
+            {
+                if (request.Meta.Headers.TryGetValue("x-client-interceptor", out var headerValue))
+                {
+                    observedClientHeader.TrySetResult(headerValue);
+                }
+                else
+                {
+                    observedClientHeader.TrySetResult(string.Empty);
+                }
+
+                var responsePayload = new EchoResponse { Message = request.Body.Length.ToString() };
+                var responseMeta = new ResponseMeta(encoding: "application/json");
+                var encode = codec.EncodeResponse(responsePayload, responseMeta);
+                if (encode.IsFailure)
+                {
+                    return ValueTask.FromResult(Err<Response<ReadOnlyMemory<byte>>>(encode.Error!));
+                }
+
+                var response = Response<ReadOnlyMemory<byte>>.Create(encode.Value, responseMeta);
+                return ValueTask.FromResult(Ok(response));
+            }));
+
+        var ct = TestContext.Current.CancellationToken;
+        await dispatcher.StartAsync(ct);
+        await WaitForGrpcReadyAsync(address, ct);
+
+        try
+        {
+            var client = dispatcher.CreateUnaryClient<EchoRequest, EchoResponse>("intercept", codec);
+            var requestMeta = new RequestMeta(
+                service: "intercept",
+                procedure: "intercept::echo",
+                encoding: "application/json",
+                transport: "grpc");
+
+            var request = new Request<EchoRequest>(requestMeta, new EchoRequest("payload"));
+            var response = await client.CallAsync(request, ct);
+
+            Assert.True(response.IsSuccess, response.Error?.Message);
+            Assert.Equal("true", (await observedClientHeader.Task).ToLowerInvariant());
+            Assert.Equal(1, clientInterceptor.UnaryCallCount);
         }
         finally
         {
@@ -1663,4 +1740,27 @@ public class GrpcTransportTests
     private sealed record AggregateResponse(int TotalAmount);
 
     private sealed record ChatMessage(string Message);
+
+    private sealed class RecordingClientInterceptor : Interceptor
+    {
+        private int _unaryCount;
+
+        public int UnaryCallCount => Volatile.Read(ref _unaryCount);
+
+        public override AsyncUnaryCall<TResponse> AsyncUnaryCall<TRequest, TResponse>(
+            TRequest request,
+            ClientInterceptorContext<TRequest, TResponse> context,
+            AsyncUnaryCallContinuation<TRequest, TResponse> continuation)
+        {
+            Interlocked.Increment(ref _unaryCount);
+
+            var headers = context.Options.Headers ?? new Metadata();
+            headers.Add("x-client-interceptor", "true");
+
+            var options = context.Options.WithHeaders(headers);
+            var newContext = new ClientInterceptorContext<TRequest, TResponse>(context.Method, context.Host, options);
+            return continuation(request, newContext);
+        }
+    }
+
 }

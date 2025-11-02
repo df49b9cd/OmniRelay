@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Net.Http;
+using Grpc.Core.Interceptors;
 
 namespace Polymer.Transport.Grpc;
 
@@ -14,6 +16,8 @@ public sealed record GrpcClientRuntimeOptions
     public TimeSpan? KeepAlivePingTimeout { get; init; }
 
     public HttpKeepAlivePingPolicy? KeepAlivePingPolicy { get; init; }
+
+    public IReadOnlyList<Interceptor> Interceptors { get; init; } = Array.Empty<Interceptor>();
 }
 
 public sealed record GrpcServerRuntimeOptions

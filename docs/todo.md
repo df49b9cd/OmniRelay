@@ -59,11 +59,12 @@ Comprehensive backlog tracking the remaining work needed to reach feature parity
       - Assert response trailers carry `polymer-encoding`, status, and error metadata for success & failure cases.
       - Verify `GrpcStatusMapper` mappings for all canonical codes surfaced by unary and streaming transports.
       - Exercise streaming edge conditions: server-initiated cancellation/error for server and client streams, partial writes, and mid-stream failures.
+      - Add regression coverage once upstream enables forcing request/response compression so we can validate advertised `grpc-accept-encoding` behavior.
       - Compression negotiation coverage: advertise supported compressors (`grpc-accept-encoding`) and verify request/response compression once upstream exposes the necessary hooks.
 
     - Peer management & load balancing: GrpcOutbound binds to a single _address and opens one GrpcChannel with no peer chooser, retention, or backoff logic (src/Polymer/Transport/Grpc/GrpcOutbound.cs (lines 17-45)). YARPC-Go’s gRPC transport fronts multiple peers with choosers, dial-time backoff, and per-peer lifecycle management, so we currently lack parity on resiliency and multi-host routing.
 
-    - Observability & middleware: Both outbound and inbound paths jump straight from Polymer requests to gRPC calls without any interceptor chain, tracing, or metrics hooks (src/Polymer/Transport/Grpc/GrpcOutbound.cs (lines 61-99), src/Polymer/Transport/Grpc/GrpcDispatcherServiceMethodProvider.cs (lines 33-64)). YARPC-Go runs all gRPC traffic through pluggable unary/stream interceptors for logging, OpenTracing spans, and counters, which we do not support yet.
+    - Observability & middleware: We now expose interceptor hooks via `GrpcClientRuntimeOptions.Interceptors` and `GrpcServerRuntimeOptions.Interceptors`, but still lack built-in logging/metrics middleware comparable to YARPC-Go’s stacks.
 
     - ~~Security & connection tuning: The inbound config only forces HTTP/2 listeners and never exposes TLS, keepalive, or max message size knobs (src/Polymer/Transport/Grpc/GrpcInbound.cs (lines 60-71)); the outbound constructor similarly only tweaks the HTTP handler (src/Polymer/Transport/Grpc/GrpcOutbound.cs (lines 27-39)). YARPC-Go ships options for server/client TLS credentials, keepalive params, compressors, and header size limits, so our transport is missing that flexibility.~~ *(completed via `GrpcServerTlsOptions`, `GrpcClientTlsOptions`, runtime keepalive/message-size options, and `GrpcCompressionOptions`; request/response compression pipeline remains to be validated.)*
     

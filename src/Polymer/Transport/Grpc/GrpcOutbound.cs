@@ -11,6 +11,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Grpc.Core;
 using Grpc.Net.Client;
+using Grpc.Core.Interceptors;
 using Hugo;
 using Polymer.Core;
 using Polymer.Core.Transport;
@@ -136,8 +137,15 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         foreach (var address in _addresses)
         {
             var channel = GrpcChannel.ForAddress(address, _channelOptions);
+            var callInvoker = channel.CreateCallInvoker();
+
+            if (_clientRuntimeOptions is { Interceptors.Count: > 0 } runtimeOptions)
+            {
+                callInvoker = callInvoker.Intercept(runtimeOptions.Interceptors.ToArray());
+            }
+
             _channels[address] = channel;
-            _callInvokers[address] = channel.CreateCallInvoker();
+            _callInvokers[address] = callInvoker;
         }
 
         _started = true;
