@@ -85,6 +85,8 @@ public class HttpTransportTests
         public string Message { get; init; } = string.Empty;
     }
 
+    private sealed record ChatMessage(string Message);
+
     [Fact]
     public async Task OnewayRoundtrip_SucceedsWithAck()
     {
@@ -209,6 +211,95 @@ public class HttpTransportTests
         }
 
         Assert.Equal(new[] { "event-0", "event-1", "event-2" }, events);
+
+        await dispatcher.StopAsync(ct);
+    }
+
+    [Fact]
+    public async Task DuplexStreaming_OverHttpWebSocket()
+    {
+        var port = TestPortAllocator.GetRandomPort();
+        var baseAddress = new Uri($"http://127.0.0.1:{port}/");
+
+        var options = new DispatcherOptions("chat");
+        var httpInbound = new HttpInbound([baseAddress.ToString()]);
+        options.AddLifecycle("http-inbound", httpInbound);
+
+        var httpDuplexOutbound = new HttpDuplexOutbound(baseAddress);
+        options.AddDuplexOutbound("chat", null, httpDuplexOutbound);
+
+        var dispatcher = new Polymer.Dispatcher.Dispatcher(options);
+        var codec = new JsonCodec<ChatMessage, ChatMessage>(new JsonSerializerOptions { PropertyNameCaseInsensitive = true }, encoding: "application/json");
+
+        dispatcher.Register(new DuplexProcedureSpec(
+            "chat",
+            "chat::echo",
+            (request, cancellationToken) =>
+            {
+                var call = DuplexStreamCall.Create(request.Meta, new ResponseMeta(encoding: "application/json"));
+                call.SetResponseMeta(new ResponseMeta(encoding: "application/json", transport: "http"));
+
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await foreach (var payload in call.RequestReader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+                        {
+                                var decode = codec.DecodeRequest(payload, request.Meta);
+                            if (decode.IsFailure)
+                            {
+                                await call.CompleteResponsesAsync(decode.Error!, cancellationToken).ConfigureAwait(false);
+                                return;
+                            }
+
+                            var message = decode.Value;
+                            var responsePayload = codec.EncodeResponse(message, call.ResponseMeta);
+                            if (responsePayload.IsFailure)
+                            {
+                                await call.CompleteResponsesAsync(responsePayload.Error!, cancellationToken).ConfigureAwait(false);
+                                return;
+                            }
+
+                            await call.ResponseWriter.WriteAsync(responsePayload.Value, cancellationToken).ConfigureAwait(false);
+                        }
+
+                        await call.CompleteResponsesAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        await call.CompleteResponsesAsync(PolymerErrorAdapter.FromStatus(
+                            PolymerStatusCode.Cancelled,
+                            "cancelled",
+                            transport: "http"), CancellationToken.None).ConfigureAwait(false);
+                    }
+                }, cancellationToken);
+
+                return ValueTask.FromResult(Ok((IDuplexStreamCall)call));
+            }));
+
+        var ct = TestContext.Current.CancellationToken;
+        await dispatcher.StartAsync(ct);
+
+        var client = dispatcher.CreateDuplexStreamClient<ChatMessage, ChatMessage>("chat", codec);
+        var requestMeta = new RequestMeta(
+            service: "chat",
+            procedure: "chat::echo",
+            encoding: "application/json",
+            transport: "http");
+
+        await using var session = await client.StartAsync(requestMeta, ct);
+
+        await session.WriteAsync(new ChatMessage("hello"), ct);
+        await session.WriteAsync(new ChatMessage("world"), ct);
+        await session.CompleteRequestsAsync(cancellationToken: ct);
+
+        var messages = new System.Collections.Generic.List<string>();
+        await foreach (var response in session.ReadResponsesAsync(ct))
+        {
+            messages.Add(response.Body.Message);
+        }
+
+        Assert.Equal(new[] { "hello", "world" }, messages);
 
         await dispatcher.StopAsync(ct);
     }

@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Collections.Immutable;
 using System.Net.Mime;
+using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -80,6 +81,8 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
         builder.Services.AddSingleton(_dispatcher);
 
         var app = builder.Build();
+
+        app.UseWebSockets();
 
         _configureApp?.Invoke(app);
 
@@ -196,6 +199,12 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
         var dispatcher = _dispatcher!;
         var transport = "http";
 
+        if (context.WebSockets.IsWebSocketRequest)
+        {
+            await HandleDuplexAsync(context).ConfigureAwait(false);
+            return;
+        }
+
         if (!HttpMethods.IsGet(context.Request.Method))
         {
             context.Response.StatusCode = StatusCodes.Status405MethodNotAllowed;
@@ -276,6 +285,185 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
         }
     }
 
+    private async Task HandleDuplexAsync(HttpContext context)
+    {
+        System.IO.File.AppendAllText("/tmp/duplex.log", "HandleDuplexAsync" + Environment.NewLine);
+        var dispatcher = _dispatcher!;
+        const string transport = "http";
+
+        if (!context.WebSockets.IsWebSocketRequest)
+        {
+            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+            await WriteErrorAsync(context, "WebSocket upgrade required for duplex streaming.", PolymerStatusCode.InvalidArgument, transport).ConfigureAwait(false);
+            return;
+        }
+
+        if (!context.Request.Headers.TryGetValue(HttpTransportHeaders.Procedure, out var procedureValues) ||
+            StringValues.IsNullOrEmpty(procedureValues))
+        {
+            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+            await WriteErrorAsync(context, "rpc procedure header missing", PolymerStatusCode.InvalidArgument, transport).ConfigureAwait(false);
+            return;
+        }
+
+        var procedure = procedureValues![0];
+
+        var meta = BuildRequestMeta(
+            dispatcher.ServiceName,
+            procedure!,
+            encoding: context.Request.Headers.TryGetValue(HttpTransportHeaders.Encoding, out var encodingValues) && !StringValues.IsNullOrEmpty(encodingValues)
+                ? encodingValues![0]
+                : null,
+            headers: context.Request.Headers,
+            transport: transport,
+            cancellationToken: context.RequestAborted);
+
+        var dispatcherRequest = new Request<ReadOnlyMemory<byte>>(meta, ReadOnlyMemory<byte>.Empty);
+
+        var callResult = await dispatcher.InvokeDuplexAsync(procedure!, dispatcherRequest, context.RequestAborted).ConfigureAwait(false);
+        System.IO.File.AppendAllText("/tmp/duplex.log", $"callResult success={callResult.IsSuccess}" + Environment.NewLine);
+
+        if (callResult.IsFailure)
+        {
+            var error = callResult.Error!;
+            var exception = PolymerErrors.FromError(error, transport);
+            context.Response.StatusCode = HttpStatusMapper.ToStatusCode(exception.StatusCode);
+            await WriteErrorAsync(context, exception.Message, exception.StatusCode, transport, error).ConfigureAwait(false);
+            return;
+        }
+
+        var socket = await context.WebSockets.AcceptWebSocketAsync().ConfigureAwait(false);
+        context.Response.Headers[HttpTransportHeaders.Transport] = transport;
+
+        var call = callResult.Value;
+        var requestBuffer = new byte[32 * 1024];
+        var responseBuffer = new byte[32 * 1024];
+
+        try
+        {
+            System.IO.File.AppendAllText("/tmp/duplex.log", "starting pumps" + Environment.NewLine);
+            var requestPump = PumpRequestsAsync(socket, call, requestBuffer, context.RequestAborted);
+            var responsePump = PumpResponsesAsync(socket, call, responseBuffer, context.RequestAborted);
+
+            await Task.WhenAll(requestPump, responsePump).ConfigureAwait(false);
+        }
+        finally
+        {
+            await call.DisposeAsync().ConfigureAwait(false);
+
+            if (socket.State == WebSocketState.Open)
+            {
+                try
+                {
+                    await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "completed", CancellationToken.None).ConfigureAwait(false);
+                }
+                catch (WebSocketException)
+                {
+                    // ignore handshake failures during shutdown
+                }
+            }
+
+            socket.Dispose();
+        }
+
+        async Task PumpRequestsAsync(WebSocket webSocket, IDuplexStreamCall streamCall, byte[] tempBuffer, CancellationToken cancellationToken)
+        {
+            try
+            {
+                System.IO.File.AppendAllText("/tmp/duplex.log", "server pump start" + Environment.NewLine);
+                while (!cancellationToken.IsCancellationRequested)
+                {
+                    var frame = await HttpDuplexProtocol.ReceiveFrameAsync(webSocket, tempBuffer, cancellationToken).ConfigureAwait(false);
+                    System.IO.File.AppendAllText("/tmp/duplex.log", $"server frame type={frame.Type} message={frame.MessageType} len={frame.Payload.Length}" + Environment.NewLine);
+
+                    if (frame.MessageType == WebSocketMessageType.Close)
+                    {
+                        await streamCall.CompleteRequestsAsync(cancellationToken: CancellationToken.None).ConfigureAwait(false);
+                        return;
+                    }
+
+                    switch (frame.Type)
+                    {
+                        case HttpDuplexProtocol.FrameType.RequestData:
+                            await streamCall.RequestWriter.WriteAsync(frame.Payload.ToArray(), cancellationToken).ConfigureAwait(false);
+                            break;
+
+                        case HttpDuplexProtocol.FrameType.RequestComplete:
+                            await streamCall.CompleteRequestsAsync(cancellationToken: CancellationToken.None).ConfigureAwait(false);
+                            return;
+
+                        case HttpDuplexProtocol.FrameType.RequestError:
+                        {
+                            var error = HttpDuplexProtocol.ParseError(frame.Payload.Span, transport);
+                            await streamCall.CompleteRequestsAsync(error, CancellationToken.None).ConfigureAwait(false);
+                            await streamCall.CompleteResponsesAsync(error, CancellationToken.None).ConfigureAwait(false);
+                            return;
+                        }
+
+                        case HttpDuplexProtocol.FrameType.ResponseError:
+                        {
+                            var error = HttpDuplexProtocol.ParseError(frame.Payload.Span, transport);
+                            await streamCall.CompleteResponsesAsync(error, CancellationToken.None).ConfigureAwait(false);
+                            return;
+                        }
+
+                        case HttpDuplexProtocol.FrameType.ResponseComplete:
+                            await streamCall.CompleteResponsesAsync(cancellationToken: CancellationToken.None).ConfigureAwait(false);
+                            break;
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                var error = PolymerErrorAdapter.FromStatus(
+                    PolymerStatusCode.Cancelled,
+                    "The client cancelled the request.",
+                    transport: transport);
+                await streamCall.CompleteRequestsAsync(error, CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                var error = PolymerErrorAdapter.FromStatus(
+                    PolymerStatusCode.Internal,
+                    ex.Message ?? "An error occurred while reading the duplex request stream.",
+                    transport: transport,
+                    inner: Error.FromException(ex));
+                await streamCall.CompleteRequestsAsync(error, CancellationToken.None).ConfigureAwait(false);
+            }
+        }
+
+        async Task PumpResponsesAsync(WebSocket webSocket, IDuplexStreamCall streamCall, byte[] tempBuffer, CancellationToken cancellationToken)
+        {
+            try
+            {
+                await foreach (var payload in streamCall.ResponseReader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    await HttpDuplexProtocol.SendFrameAsync(webSocket, HttpDuplexProtocol.FrameType.ResponseData, payload, cancellationToken).ConfigureAwait(false);
+                }
+
+                await HttpDuplexProtocol.SendFrameAsync(webSocket, HttpDuplexProtocol.FrameType.ResponseComplete, CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                var error = PolymerErrorAdapter.FromStatus(
+                    PolymerStatusCode.Cancelled,
+                    "The client cancelled the response stream.",
+                    transport: transport);
+                await HttpDuplexProtocol.SendFrameAsync(webSocket, HttpDuplexProtocol.FrameType.ResponseError, HttpDuplexProtocol.CreateErrorPayload(error), CancellationToken.None).ConfigureAwait(false);
+                await streamCall.CompleteResponsesAsync(error, CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                var error = PolymerErrorAdapter.FromStatus(
+                    PolymerStatusCode.Internal,
+                    ex.Message ?? "An error occurred while writing the duplex response stream.",
+                    transport: transport,
+                    inner: Error.FromException(ex));
+                await HttpDuplexProtocol.SendFrameAsync(webSocket, HttpDuplexProtocol.FrameType.ResponseError, HttpDuplexProtocol.CreateErrorPayload(error), CancellationToken.None).ConfigureAwait(false);
+                await streamCall.CompleteResponsesAsync(error, CancellationToken.None).ConfigureAwait(false);
+            }
+        }
+    }
     private static RequestMeta BuildRequestMeta(
         string service,
         string procedure,
