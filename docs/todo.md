@@ -33,26 +33,26 @@ Comprehensive backlog tracking the remaining work needed to reach feature parity
       - ~~Large payload handling and chunked writes.~~
   - **Bidirectional streaming (request stream ↔ response stream)**
     - ~~Introduce dispatcher duplex stream abstraction (read/write channels with completion signaling and error propagation).~~ *(completed)*
-    - Extend gRPC inbound to pipe client messages into dispatcher channel while writing outbound responses via `IServerStreamWriter<byte[]>`; ensure:
-      - Concurrent read/write with cancellation tokens.
-      - Completed/error states propagate to both sides.
-      - Metadata headers/trailers reflect final status.
-    - Update outbound API to expose duplex stream client:
-      - Provide read/write channels or high-level enumerables.
-      - Encode/decode per-message using codecs.
-      - Manage backpressure (await writes, buffer limits).
+    - ~~Extend gRPC inbound to pipe client messages into dispatcher channel while writing outbound responses via `IServerStreamWriter<byte[]>`; ensure:~~ *(completed)*
+      - ~~Concurrent read/write with cancellation tokens.~~
+      - ~~Completed/error states propagate to both sides.~~
+      - ~~Metadata headers/trailers reflect final status.~~
+    - ~~Update outbound API to expose duplex stream client:~~ *(completed)*
+      - ~~Provide read/write channels or high-level enumerables.~~
+      - ~~Encode/decode per-message using codecs.~~
+      - ~~Manage backpressure (await writes, buffer limits).~~
     - Middleware:
-      - Ensure global + per-procedure middleware can observe both inbound/outbound flows.
+      - ~~Ensure global + per-procedure middleware can observe both inbound/outbound flows.~~ *(completed)*
       - Provide context objects for stream state (message count, completion reason).
     - Tests:
-      - Echo-style duplex (client sends N messages, server replies per message).
-      - Flow-control scenario (server slower than client).
-      - Cancellation initiated by server and by client.
-      - Metadata propagation (custom headers/trailers).
+      - ~~Add gRPC duplex integration coverage mirroring the HTTP echo scenario (currently only `HttpTransportTests.DuplexStreaming_OverHttpWebSocket` exercises this path).~~ *(completed via `GrpcTransportTests.DuplexStreaming_OverGrpcTransport`)
+      - ~~Automate gRPC flow-control scenario (server slower than client).~~ *(completed via `GrpcTransportTests.DuplexStreaming_FlowControl_ServerSlow`)
+      - ~~Verify cancellation initiated by server and by client over gRPC.~~ *(completed via `GrpcTransportTests.DuplexStreaming_ServerCancellationPropagatesToClient` and `GrpcTransportTests.DuplexStreaming_ClientCancellationPropagatesToServer`)
+      - ~~Validate metadata propagation (custom headers/trailers) for gRPC duplex streams.~~ *(completed via `GrpcTransportTests.DuplexStreaming_PropagatesMetadata`)
   - **Shared streaming tasks**
-    - Update dispatcher introspection to list available stream procedures and status (unary, client, server, bidi).
+    - ~~Update dispatcher introspection to list available stream procedures and status (unary, client, server, bidi).~~ *(completed)*
     - Document public APIs (how to build client streaming/bidi handlers).
-    - Expand gRPC outbound/inbound error handling to surface canonical codes for streaming faults.
+    - ~~Expand gRPC outbound/inbound error handling to surface canonical codes for streaming faults.~~ *(completed)*
 
 - **Transport Middleware & Interceptors**
   - Design middleware interfaces for transport-specific hooks:

@@ -146,16 +146,57 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                 }
 
                 await using var streamCall = streamResult.Value;
+                var cancellationToken = callContext.CancellationToken;
+                var headersSent = false;
 
-                var headers = GrpcMetadataAdapter.CreateResponseHeaders(streamCall.ResponseMeta);
-                if (headers.Count > 0)
+                async Task EnsureHeadersAsync()
                 {
-                    await callContext.WriteResponseHeadersAsync(headers).ConfigureAwait(false);
+                    if (headersSent)
+                    {
+                        return;
+                    }
+
+                    var headers = GrpcMetadataAdapter.CreateResponseHeaders(streamCall.ResponseMeta);
+                    if (headers.Count > 0)
+                    {
+                        await callContext.WriteResponseHeadersAsync(headers).ConfigureAwait(false);
+                    }
+
+                    headersSent = true;
                 }
 
-                await foreach (var payload in streamCall.Responses.ReadAllAsync(callContext.CancellationToken).ConfigureAwait(false))
+                try
                 {
-                    await responseStream.WriteAsync(payload.ToArray()).ConfigureAwait(false);
+                    await foreach (var payload in streamCall.Responses.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+                    {
+                        await EnsureHeadersAsync().ConfigureAwait(false);
+                        cancellationToken.ThrowIfCancellationRequested();
+                        await responseStream.WriteAsync(payload.ToArray()).ConfigureAwait(false);
+                    }
+
+                    await EnsureHeadersAsync().ConfigureAwait(false);
+                    ApplySuccessTrailers(callContext, streamCall.ResponseMeta);
+                }
+                catch (OperationCanceledException)
+                {
+                    var error = PolymerErrorAdapter.FromStatus(
+                        PolymerStatusCode.Cancelled,
+                        "The client cancelled the request.",
+                        transport: GrpcTransportConstants.TransportName);
+                    await streamCall.CompleteAsync(error, cancellationToken).ConfigureAwait(false);
+
+                    var status = GrpcStatusMapper.ToStatus(PolymerStatusCode.Cancelled, "The client cancelled the request.");
+                    var trailers = GrpcMetadataAdapter.CreateErrorTrailers(error);
+                    throw new RpcException(status, trailers);
+                }
+                catch (Exception ex)
+                {
+                    var polymerException = PolymerErrors.FromException(ex, GrpcTransportConstants.TransportName);
+                    await streamCall.CompleteAsync(polymerException.Error, cancellationToken).ConfigureAwait(false);
+
+                    var status = GrpcStatusMapper.ToStatus(polymerException.StatusCode, polymerException.Message);
+                    var trailers = GrpcMetadataAdapter.CreateErrorTrailers(polymerException.Error);
+                    throw new RpcException(status, trailers);
                 }
             };
 
@@ -325,6 +366,7 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                     {
                         await foreach (var payload in requestStream.ReadAllAsync(cancellationToken).ConfigureAwait(false))
                         {
+                            cancellationToken.ThrowIfCancellationRequested();
                             await duplexCall.RequestWriter.WriteAsync(payload, cancellationToken).ConfigureAwait(false);
                         }
 
@@ -361,48 +403,101 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                 {
                     var headersSent = false;
 
+                    async Task EnsureHeadersAsync()
+                    {
+                        if (headersSent)
+                        {
+                            return;
+                        }
+
+                        var headers = GrpcMetadataAdapter.CreateResponseHeaders(duplexCall.ResponseMeta);
+                        if (headers.Count > 0)
+                        {
+                            await callContext.WriteResponseHeadersAsync(headers).ConfigureAwait(false);
+                        }
+
+                        headersSent = true;
+                    }
+
                     try
                     {
                         await foreach (var payload in duplexCall.ResponseReader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
                         {
-                            if (!headersSent)
-                            {
-                                var headers = GrpcMetadataAdapter.CreateResponseHeaders(duplexCall.ResponseMeta);
-                                if (headers.Count > 0)
-                                {
-                                    await callContext.WriteResponseHeadersAsync(headers).ConfigureAwait(false);
-                                }
-
-                                headersSent = true;
-                            }
-
+                            await EnsureHeadersAsync().ConfigureAwait(false);
+                            cancellationToken.ThrowIfCancellationRequested();
                             await responseStream.WriteAsync(payload.ToArray()).ConfigureAwait(false);
                         }
 
-                        if (!headersSent)
-                        {
-                            var headers = GrpcMetadataAdapter.CreateResponseHeaders(duplexCall.ResponseMeta);
-                            if (headers.Count > 0)
-                            {
-                                await callContext.WriteResponseHeadersAsync(headers).ConfigureAwait(false);
-                            }
-                        }
+                        await EnsureHeadersAsync().ConfigureAwait(false);
+                        ApplySuccessTrailers(callContext, duplexCall.ResponseMeta);
+                        await duplexCall.CompleteResponsesAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        var error = PolymerErrorAdapter.FromStatus(
+                            PolymerStatusCode.Cancelled,
+                            "The client cancelled the request.",
+                            transport: GrpcTransportConstants.TransportName);
+
+                        await duplexCall.CompleteResponsesAsync(error, cancellationToken).ConfigureAwait(false);
+
+                        var status = GrpcStatusMapper.ToStatus(PolymerStatusCode.Cancelled, "The client cancelled the request.");
+                        var trailers = GrpcMetadataAdapter.CreateErrorTrailers(error);
+                        throw new RpcException(status, trailers);
                     }
                     catch (Exception ex)
                     {
-                        var error = PolymerErrors.FromException(ex, GrpcTransportConstants.TransportName);
-                        var status = GrpcStatusMapper.ToStatus(error.StatusCode, error.Message);
-                        var trailers = GrpcMetadataAdapter.CreateErrorTrailers(error.Error);
+                        var polymerException = PolymerErrors.FromException(ex, GrpcTransportConstants.TransportName);
+                        await duplexCall.CompleteResponsesAsync(polymerException.Error, cancellationToken).ConfigureAwait(false);
+
+                        var status = GrpcStatusMapper.ToStatus(polymerException.StatusCode, polymerException.Message);
+                        var trailers = GrpcMetadataAdapter.CreateErrorTrailers(polymerException.Error);
                         throw new RpcException(status, trailers);
-                    }
-                    finally
-                    {
-                        await duplexCall.CompleteResponsesAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
                     }
                 }
             };
 
             context.AddDuplexStreamingMethod<byte[], byte[]>(method, [], handler);
         }
+    }
+
+    private static void ApplySuccessTrailers(ServerCallContext callContext, ResponseMeta responseMeta)
+    {
+        if (callContext is null)
+        {
+            throw new ArgumentNullException(nameof(callContext));
+        }
+
+        if (responseMeta is null)
+        {
+            return;
+        }
+
+        var responseTrailers = GrpcMetadataAdapter.CreateResponseHeaders(responseMeta);
+        if (responseTrailers.Count > 0)
+        {
+            foreach (var entry in responseTrailers)
+            {
+                callContext.ResponseTrailers.Add(entry);
+            }
+        }
+
+        if (!ContainsStatusTrailer(callContext.ResponseTrailers))
+        {
+            callContext.ResponseTrailers.Add(GrpcTransportConstants.StatusTrailer, StatusCode.OK.ToString());
+        }
+    }
+
+    private static bool ContainsStatusTrailer(Metadata metadata)
+    {
+        foreach (var entry in metadata)
+        {
+            if (string.Equals(entry.Key, GrpcTransportConstants.StatusTrailer, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
