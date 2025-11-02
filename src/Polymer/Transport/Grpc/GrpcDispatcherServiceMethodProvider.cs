@@ -14,9 +14,14 @@ using Polymer.Errors;
 
 namespace Polymer.Transport.Grpc;
 
-internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher dispatcher) : IServiceMethodProvider<GrpcDispatcherService>
+internal sealed class GrpcDispatcherServiceMethodProvider : IServiceMethodProvider<GrpcDispatcherService>
 {
-    private readonly Dispatcher.Dispatcher _dispatcher = dispatcher;
+    private readonly Dispatcher.Dispatcher _dispatcher;
+
+    public GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher dispatcher)
+    {
+        _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
+    }
 
     public void OnServiceMethodDiscovery(ServiceMethodProviderContext<GrpcDispatcherService> context)
     {

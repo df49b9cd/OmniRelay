@@ -26,6 +26,7 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
     private readonly GrpcChannelOptions _channelOptions;
     private readonly GrpcClientTlsOptions? _clientTlsOptions;
     private readonly GrpcClientRuntimeOptions? _clientRuntimeOptions;
+    private readonly GrpcCompressionOptions? _compressionOptions;
     private readonly IGrpcPeerChooser _peerChooser;
     private readonly ConcurrentDictionary<Uri, GrpcChannel> _channels = new();
     private readonly ConcurrentDictionary<Uri, CallInvoker> _callInvokers = new();
@@ -33,6 +34,7 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
     private readonly ConcurrentDictionary<string, Method<byte[], byte[]>> _serverStreamMethods = new();
     private readonly ConcurrentDictionary<string, Method<byte[], byte[]>> _clientStreamMethods = new();
     private readonly ConcurrentDictionary<string, Method<byte[], byte[]>> _duplexMethods = new();
+    private readonly HashSet<string>? _compressionAlgorithms;
     private volatile bool _started;
 
     public GrpcOutbound(
@@ -41,14 +43,16 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         GrpcChannelOptions? channelOptions = null,
         GrpcClientTlsOptions? clientTlsOptions = null,
         IGrpcPeerChooser? peerChooser = null,
-        GrpcClientRuntimeOptions? clientRuntimeOptions = null)
+        GrpcClientRuntimeOptions? clientRuntimeOptions = null,
+        GrpcCompressionOptions? compressionOptions = null)
         : this(
             new[] { address ?? throw new ArgumentNullException(nameof(address)) },
             remoteService,
             channelOptions,
             clientTlsOptions,
             peerChooser,
-            clientRuntimeOptions)
+            clientRuntimeOptions,
+            compressionOptions)
     {
     }
 
@@ -58,7 +62,8 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         GrpcChannelOptions? channelOptions = null,
         GrpcClientTlsOptions? clientTlsOptions = null,
         IGrpcPeerChooser? peerChooser = null,
-        GrpcClientRuntimeOptions? clientRuntimeOptions = null)
+        GrpcClientRuntimeOptions? clientRuntimeOptions = null,
+        GrpcCompressionOptions? compressionOptions = null)
     {
         if (addresses is null)
         {
@@ -80,6 +85,7 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
             : remoteService;
         _clientTlsOptions = clientTlsOptions;
         _clientRuntimeOptions = clientRuntimeOptions;
+        _compressionOptions = compressionOptions;
         _channelOptions = channelOptions ?? new GrpcChannelOptions
         {
             HttpHandler = new SocketsHttpHandler
@@ -88,6 +94,16 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
             }
         };
         _peerChooser = peerChooser ?? new RoundRobinGrpcPeerChooser();
+
+        if (_compressionOptions is { Providers.Count: > 0 })
+        {
+            var providers = _compressionOptions.Providers.ToList();
+            _compressionAlgorithms = new HashSet<string>(
+                providers.Select(provider => provider.EncodingName),
+                StringComparer.OrdinalIgnoreCase);
+
+            _channelOptions.CompressionProviders = providers;
+        }
 
         if (_clientRuntimeOptions is not null)
         {
@@ -473,9 +489,17 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
     {
         var metadata = GrpcMetadataAdapter.CreateRequestMetadata(meta);
         var deadline = ResolveDeadline(meta);
-        return deadline.HasValue
+        var callOptions = deadline.HasValue
             ? new CallOptions(metadata, deadline.Value, cancellationToken)
             : new CallOptions(metadata, cancellationToken: cancellationToken);
+
+        if (_compressionAlgorithms is { Count: > 0 } algorithms &&
+            metadata.GetValue(GrpcTransportConstants.GrpcAcceptEncodingHeader) is null)
+        {
+            metadata.Add(GrpcTransportConstants.GrpcAcceptEncodingHeader, string.Join(",", algorithms));
+        }
+
+        return callOptions;
     }
 
     private static DateTime? ResolveDeadline(RequestMeta meta)

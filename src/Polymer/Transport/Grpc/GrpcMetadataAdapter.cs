@@ -1,8 +1,7 @@
 using System;
-using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Globalization;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using Grpc.Core;
 using Hugo;
@@ -118,6 +117,11 @@ internal static class GrpcMetadataAdapter
 
         foreach (var header in meta.Headers)
         {
+            if (string.Equals(header.Key, GrpcTransportConstants.GrpcEncodingHeader, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
             ValidateMetadataValue(header.Key, header.Value);
             metadata.Add(header.Key.ToLowerInvariant(), header.Value);
         }

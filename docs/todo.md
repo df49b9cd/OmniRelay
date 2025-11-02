@@ -56,16 +56,21 @@ Comprehensive backlog tracking the remaining work needed to reach feature parity
     - **gRPC transport test gaps (parity audit)**
       - Cover duplex/bidirectional streaming happy path, cancellation, and flow-control scenarios.
       - Validate request/response metadata propagation (`rpc-*` headers, custom headers, TTL/deadline) across unary and streaming RPCs.
-  - Assert response trailers carry `polymer-encoding`, status, and error metadata for success & failure cases.
-  - Verify `GrpcStatusMapper` mappings for all canonical codes surfaced by unary and streaming transports.
-  - Exercise streaming edge conditions: server-initiated cancellation/error for server and client streams, partial writes, and mid-stream failures.
-  - **gRPC transport configuration parity**
-    - ~~Expose TLS options for inbound/outbound to mirror yarpc-go credentials knobs.~~ *(completed via `GrpcServerTlsOptions`/`GrpcClientTlsOptions`)*
-    - ~~Emit OpenTelemetry spans for all client/server RPC shapes.~~ *(completed via `GrpcTransportDiagnostics`)*
-    - ~~Support peer chooser + multi-address outbounds.~~ *(completed via `RoundRobinGrpcPeerChooser` integration)*
-    - ~~Validate metadata values and map TTL/deadlines to native gRPC deadlines.~~ *(completed)*
-    - ~~Provide keepalive and message size knobs for inbound/outbound.~~ *(completed via `GrpcClientRuntimeOptions`/`GrpcServerRuntimeOptions`)*
-    - Add compression negotiation (default compressor, per-call overrides).
+      - Assert response trailers carry `polymer-encoding`, status, and error metadata for success & failure cases.
+      - Verify `GrpcStatusMapper` mappings for all canonical codes surfaced by unary and streaming transports.
+      - Exercise streaming edge conditions: server-initiated cancellation/error for server and client streams, partial writes, and mid-stream failures.
+      - Compression negotiation coverage: advertise supported compressors (`grpc-accept-encoding`) and verify request/response compression once upstream exposes the necessary hooks.
+
+    - Peer management & load balancing: GrpcOutbound binds to a single _address and opens one GrpcChannel with no peer chooser, retention, or backoff logic (src/Polymer/Transport/Grpc/GrpcOutbound.cs (lines 17-45)). YARPC-Go’s gRPC transport fronts multiple peers with choosers, dial-time backoff, and per-peer lifecycle management, so we currently lack parity on resiliency and multi-host routing.
+
+    - Observability & middleware: Both outbound and inbound paths jump straight from Polymer requests to gRPC calls without any interceptor chain, tracing, or metrics hooks (src/Polymer/Transport/Grpc/GrpcOutbound.cs (lines 61-99), src/Polymer/Transport/Grpc/GrpcDispatcherServiceMethodProvider.cs (lines 33-64)). YARPC-Go runs all gRPC traffic through pluggable unary/stream interceptors for logging, OpenTracing spans, and counters, which we do not support yet.
+
+    - ~~Security & connection tuning: The inbound config only forces HTTP/2 listeners and never exposes TLS, keepalive, or max message size knobs (src/Polymer/Transport/Grpc/GrpcInbound.cs (lines 60-71)); the outbound constructor similarly only tweaks the HTTP handler (src/Polymer/Transport/Grpc/GrpcOutbound.cs (lines 27-39)). YARPC-Go ships options for server/client TLS credentials, keepalive params, compressors, and header size limits, so our transport is missing that flexibility.~~ *(completed via `GrpcServerTlsOptions`, `GrpcClientTlsOptions`, runtime keepalive/message-size options, and `GrpcCompressionOptions`; request/response compression pipeline remains to be validated.)*
+    
+    - Operational introspection: Our gRPC types implement only the Polymer transport interfaces (src/Polymer/Transport/Grpc/GrpcOutbound.cs (lines 15-25); src/Polymer/Transport/Grpc/GrpcInbound.cs (lines 17-42)) and expose no running-state, peer list, or metrics surfaces. YARPC-Go’s inbound/outbound implement introspection APIs and structured logging, so we lack comparable admin visibility.
+    
+    - Deadline/TTL enforcement & header hygiene: We serialize TTL/deadline information into metadata (src/Polymer/Transport/Grpc/GrpcMetadataAdapter.cs (lines 75-88)) but never convert it into gRPC deadlines in CallOptions, so the runtime won’t actually enforce them (src/Polymer/Transport/Grpc/GrpcOutbound.cs (lines 61-174)). YARPC-Go validates headers, propagates TTLs into contexts, and distinguishes application errors via metadata, which leaves us short on request semantics.
+
 
 - **Transport Middleware & Interceptors**
   - Design middleware interfaces for transport-specific hooks:

@@ -11,6 +11,8 @@ internal static class GrpcTransportConstants
     public const string RoutingDelegateHeader = "rpc-routing-delegate";
     public const string TtlHeader = "rpc-ttl-ms";
     public const string DeadlineHeader = "rpc-deadline";
+    public const string GrpcEncodingHeader = "grpc-encoding";
+    public const string GrpcAcceptEncodingHeader = "grpc-accept-encoding";
 
     public const string TransportName = "grpc";
 

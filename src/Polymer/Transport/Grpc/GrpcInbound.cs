@@ -24,13 +24,15 @@ public sealed class GrpcInbound : ILifecycle, IDispatcherAware
     private Dispatcher.Dispatcher? _dispatcher;
     private readonly GrpcServerTlsOptions? _serverTlsOptions;
     private readonly GrpcServerRuntimeOptions? _serverRuntimeOptions;
+    private readonly GrpcCompressionOptions? _compressionOptions;
 
     public GrpcInbound(
         IEnumerable<string> urls,
         Action<IServiceCollection>? configureServices = null,
         Action<WebApplication>? configureApp = null,
         GrpcServerTlsOptions? serverTlsOptions = null,
-        GrpcServerRuntimeOptions? serverRuntimeOptions = null)
+        GrpcServerRuntimeOptions? serverRuntimeOptions = null,
+        GrpcCompressionOptions? compressionOptions = null)
     {
         _urls = urls?.ToArray() ?? throw new ArgumentNullException(nameof(urls));
         if (_urls.Length == 0)
@@ -42,6 +44,7 @@ public sealed class GrpcInbound : ILifecycle, IDispatcherAware
         _configureApp = configureApp;
         _serverTlsOptions = serverTlsOptions;
         _serverRuntimeOptions = serverRuntimeOptions;
+        _compressionOptions = compressionOptions;
     }
 
     public IReadOnlyCollection<string> Urls =>
@@ -134,6 +137,25 @@ public sealed class GrpcInbound : ILifecycle, IDispatcherAware
                 if (runtimeOptions.MaxSendMessageSize is { } maxSend)
                 {
                     options.MaxSendMessageSize = maxSend;
+                }
+            }
+
+            if (_compressionOptions is { Providers.Count: > 0 } compressionOptions)
+            {
+                options.CompressionProviders.Clear();
+                foreach (var provider in compressionOptions.Providers)
+                {
+                    options.CompressionProviders.Add(provider);
+                }
+
+                if (!string.IsNullOrWhiteSpace(compressionOptions.DefaultAlgorithm))
+                {
+                    options.ResponseCompressionAlgorithm = compressionOptions.DefaultAlgorithm;
+                }
+
+                if (compressionOptions.DefaultCompressionLevel is { } compressionLevel)
+                {
+                    options.ResponseCompressionLevel = compressionLevel;
                 }
             }
         });

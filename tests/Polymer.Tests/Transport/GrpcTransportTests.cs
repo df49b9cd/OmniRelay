@@ -197,7 +197,8 @@ public class GrpcTransportTests
                 procedure: "stream::fails",
                 encoding: "application/json",
                 transport: "grpc");
-            var request = new Request<EchoRequest>(requestMeta, new EchoRequest("payload"));
+            var payload = new string('x', 4096);
+            var request = new Request<EchoRequest>(requestMeta, new EchoRequest(payload));
 
             var enumerator = client.CallAsync(request, new StreamCallOptions(StreamDirection.Server), ct)
                 .GetAsyncEnumerator(ct);
