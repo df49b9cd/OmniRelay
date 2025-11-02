@@ -138,6 +138,24 @@ public sealed class GrpcInbound : ILifecycle, IDispatcherAware
                 {
                     options.MaxSendMessageSize = maxSend;
                 }
+
+                if (runtimeOptions.EnableDetailedErrors is { } detailedErrors)
+                {
+                    options.EnableDetailedErrors = detailedErrors;
+                }
+
+                if (runtimeOptions.Interceptors is { Count: > 0 } interceptors)
+                {
+                    foreach (var interceptorType in interceptors)
+                    {
+                        if (interceptorType is null)
+                        {
+                            continue;
+                        }
+
+                        options.Interceptors.Add(interceptorType);
+                    }
+                }
             }
 
             if (_compressionOptions is { Providers.Count: > 0 } compressionOptions)

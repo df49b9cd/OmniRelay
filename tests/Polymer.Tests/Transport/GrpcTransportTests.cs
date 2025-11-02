@@ -14,6 +14,7 @@ using Polymer.Core.Transport;
 using Polymer.Dispatcher;
 using Polymer.Transport.Grpc;
 using Polymer.Errors;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 using static Hugo.Go;
 
@@ -563,7 +564,7 @@ public class GrpcTransportTests
     }
 
     [Fact(Timeout = 30_000)]
-    public async Task Unary_InterceptorsExecute()
+    public async Task Unary_ClientInterceptorExecutes()
     {
         var port = TestPortAllocator.GetRandomPort();
         var address = new Uri($"http://127.0.0.1:{port}");
@@ -631,6 +632,73 @@ public class GrpcTransportTests
             Assert.True(response.IsSuccess, response.Error?.Message);
             Assert.Equal("true", (await observedClientHeader.Task).ToLowerInvariant());
             Assert.Equal(1, clientInterceptor.UnaryCallCount);
+        }
+        finally
+        {
+            await dispatcher.StopAsync(ct);
+        }
+    }
+
+    [Fact(Timeout = 30_000)]
+    public async Task Unary_ServerInterceptorExecutes()
+    {
+        var port = TestPortAllocator.GetRandomPort();
+        var address = new Uri($"http://127.0.0.1:{port}");
+
+        var serverInterceptor = new RecordingServerInterceptor();
+        var serverRuntimeOptions = new GrpcServerRuntimeOptions
+        {
+            Interceptors = new[] { typeof(RecordingServerInterceptor) }
+        };
+
+        var dispatcherOptions = new DispatcherOptions("server-intercept");
+        var grpcInbound = new GrpcInbound(
+            [address.ToString()],
+            services => services.AddSingleton(serverInterceptor),
+            serverRuntimeOptions: serverRuntimeOptions);
+        dispatcherOptions.AddLifecycle("grpc-inbound", grpcInbound);
+
+        var grpcOutbound = new GrpcOutbound(address, "server-intercept");
+        dispatcherOptions.AddUnaryOutbound("server-intercept", null, grpcOutbound);
+
+        var dispatcher = new Polymer.Dispatcher.Dispatcher(dispatcherOptions);
+        var codec = new JsonCodec<EchoRequest, EchoResponse>(new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+        dispatcher.Register(new UnaryProcedureSpec(
+            "server-intercept",
+            "server-intercept::echo",
+            (request, cancellationToken) =>
+            {
+                var responsePayload = new EchoResponse { Message = request.Body.Length.ToString() };
+                var responseMeta = new ResponseMeta(encoding: "application/json");
+                var encode = codec.EncodeResponse(responsePayload, responseMeta);
+                if (encode.IsFailure)
+                {
+                    return ValueTask.FromResult(Err<Response<ReadOnlyMemory<byte>>>(encode.Error!));
+                }
+
+                var response = Response<ReadOnlyMemory<byte>>.Create(encode.Value, responseMeta);
+                return ValueTask.FromResult(Ok(response));
+            }));
+
+        var ct = TestContext.Current.CancellationToken;
+        await dispatcher.StartAsync(ct);
+        await WaitForGrpcReadyAsync(address, ct);
+
+        try
+        {
+            var client = dispatcher.CreateUnaryClient<EchoRequest, EchoResponse>("server-intercept", codec);
+            var requestMeta = new RequestMeta(
+                service: "server-intercept",
+                procedure: "server-intercept::echo",
+                encoding: "application/json",
+                transport: "grpc");
+            var request = new Request<EchoRequest>(requestMeta, new EchoRequest("payload"));
+
+            var response = await client.CallAsync(request, ct);
+
+            Assert.True(response.IsSuccess, response.Error?.Message);
+            Assert.Equal(1, serverInterceptor.UnaryCallCount);
         }
         finally
         {
@@ -1728,19 +1796,6 @@ public class GrpcTransportTests
         }
     }
 
-    private sealed record EchoRequest(string Message);
-
-    private sealed record EchoResponse
-    {
-        public string Message { get; init; } = string.Empty;
-    }
-
-    private sealed record AggregateChunk(int Amount);
-
-    private sealed record AggregateResponse(int TotalAmount);
-
-    private sealed record ChatMessage(string Message);
-
     private sealed class RecordingClientInterceptor : Interceptor
     {
         private int _unaryCount;
@@ -1763,4 +1818,32 @@ public class GrpcTransportTests
         }
     }
 
+    private sealed class RecordingServerInterceptor : Interceptor
+    {
+        private int _unaryCount;
+
+        public int UnaryCallCount => Volatile.Read(ref _unaryCount);
+
+        public override Task<TResponse> UnaryServerHandler<TRequest, TResponse>(
+            TRequest request,
+            ServerCallContext context,
+            UnaryServerMethod<TRequest, TResponse> continuation)
+        {
+            Interlocked.Increment(ref _unaryCount);
+            return continuation(request, context);
+        }
+    }
+
+    private sealed record EchoRequest(string Message);
+
+    private sealed record EchoResponse
+    {
+        public string Message { get; init; } = string.Empty;
+    }
+
+    private sealed record AggregateChunk(int Amount);
+
+    private sealed record AggregateResponse(int TotalAmount);
+
+    private sealed record ChatMessage(string Message);
 }

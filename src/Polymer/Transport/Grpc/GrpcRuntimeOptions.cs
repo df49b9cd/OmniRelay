@@ -29,4 +29,8 @@ public sealed record GrpcServerRuntimeOptions
     public TimeSpan? KeepAlivePingDelay { get; init; }
 
     public TimeSpan? KeepAlivePingTimeout { get; init; }
+
+    public bool? EnableDetailedErrors { get; init; }
+
+    public IReadOnlyList<Type> Interceptors { get; init; } = Array.Empty<Type>();
 }
