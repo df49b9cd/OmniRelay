@@ -25,7 +25,10 @@ public sealed class GrpcClientLoggingInterceptor : Interceptor
         var methodName = context.Method.FullName;
         var startTimestamp = Stopwatch.GetTimestamp();
 
-        _logger.LogInformation("Starting gRPC client unary call {Method}", methodName);
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            _logger.LogInformation("Starting gRPC client unary call {Method}", methodName);
+        }
 
         var call = continuation(request, context);
         var responseAsync = LogAsync(call.ResponseAsync, methodName, startTimestamp);
@@ -67,10 +70,13 @@ public sealed class GrpcClientLoggingInterceptor : Interceptor
             KeyValuePair.Create<string, object?>("rpc.method", methodName),
             KeyValuePair.Create<string, object?>("rpc.grpc.status_code", StatusCode.OK));
 
-        _logger.LogInformation(
-            "Completed gRPC client unary call {Method} in {Elapsed:F2} ms",
-            methodName,
-            elapsed);
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            _logger.LogInformation(
+                "Completed gRPC client unary call {Method} in {Elapsed:F2} ms",
+                methodName,
+                elapsed);
+        }
     }
 
     private void RecordFailure(string methodName, long startTimestamp, StatusCode statusCode, string? detail)
@@ -82,12 +88,15 @@ public sealed class GrpcClientLoggingInterceptor : Interceptor
             KeyValuePair.Create<string, object?>("rpc.method", methodName),
             KeyValuePair.Create<string, object?>("rpc.grpc.status_code", statusCode));
 
-        _logger.LogWarning(
-            "Failed gRPC client unary call {Method} in {Elapsed:F2} ms with status {Status}: {Detail}",
-            methodName,
-            elapsed,
-            statusCode,
-            detail);
+        if (_logger.IsEnabled(LogLevel.Warning))
+        {
+            _logger.LogWarning(
+                "Failed gRPC client unary call {Method} in {Elapsed:F2} ms with status {Status}: {Detail}",
+                methodName,
+                elapsed,
+                statusCode,
+                detail);
+        }
     }
 }
 
@@ -108,7 +117,10 @@ public sealed class GrpcServerLoggingInterceptor : Interceptor
         var methodName = context.Method;
         var startTimestamp = Stopwatch.GetTimestamp();
 
-        _logger.LogInformation("Handling gRPC server unary call {Method}", methodName);
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            _logger.LogInformation("Handling gRPC server unary call {Method}", methodName);
+        }
 
         try
         {
@@ -137,10 +149,13 @@ public sealed class GrpcServerLoggingInterceptor : Interceptor
             KeyValuePair.Create<string, object?>("rpc.method", methodName),
             KeyValuePair.Create<string, object?>("rpc.grpc.status_code", StatusCode.OK));
 
-        _logger.LogInformation(
-            "Completed gRPC server unary call {Method} in {Elapsed:F2} ms",
-            methodName,
-            elapsed);
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            _logger.LogInformation(
+                "Completed gRPC server unary call {Method} in {Elapsed:F2} ms",
+                methodName,
+                elapsed);
+        }
     }
 
     private void RecordFailure(string methodName, long startTimestamp, StatusCode statusCode, string? detail)
@@ -152,11 +167,14 @@ public sealed class GrpcServerLoggingInterceptor : Interceptor
             KeyValuePair.Create<string, object?>("rpc.method", methodName),
             KeyValuePair.Create<string, object?>("rpc.grpc.status_code", statusCode));
 
-        _logger.LogWarning(
-            "Failed gRPC server unary call {Method} in {Elapsed:F2} ms with status {Status}: {Detail}",
-            methodName,
-            elapsed,
-            statusCode,
-            detail);
+        if (_logger.IsEnabled(LogLevel.Warning))
+        {
+            _logger.LogWarning(
+                "Failed gRPC server unary call {Method} in {Elapsed:F2} ms with status {Status}: {Detail}",
+                methodName,
+                elapsed,
+                statusCode,
+                detail);
+        }
     }
 }
