@@ -27,7 +27,7 @@
 
 ## What YARPC Is
 
-**YARPC** is Uber’s RPC toolkit that cleanly separates concerns into **encodings**, **transports**, and **peer choosers**, allowing services to switch wire protocols and load‑balancing strategies without changing handler or call‑site code. It provides reference transports (HTTP/1.1, gRPC, TChannel) and encodings (raw, JSON, Thrift, Protobuf). A central **Dispatcher** wires inbounds, outbounds, routing, and middleware, and manages lifecycle.
+**YARPC** is Uber’s RPC toolkit that cleanly separates concerns into **encodings**, **transports**, and **peer choosers**, allowing services to switch wire protocols and load‑balancing strategies without changing handler or call-site code. It provides reference transports (HTTP/1.1, gRPC, TChannel) and encodings (raw, JSON, Thrift, Protobuf). Polymer focuses on HTTP/1.1 and gRPC parity; TChannel is acknowledged historically but intentionally out of scope for the current effort. A central **Dispatcher** wires inbounds, outbounds, routing, and middleware, and manages lifecycle.
 
 > **Status example:** latest release (at time of research): **v1.81.0** (Sep 15, 2025).
 
@@ -52,7 +52,7 @@
 
 ### 2) Transports & RPC Types
 
-* **Transports:** HTTP/1.1 and gRPC are first‑class; TChannel remains supported (unary).
+* **Transports:** HTTP/1.1 and gRPC are first-class; focus on these transports and peer management.
 
 * **RPC Types:**
 
@@ -114,7 +114,7 @@
 
 ### 10) Ecosystem Tools
 
-* **yab** CLI issues Thrift/Protobuf requests over TChannel/HTTP/gRPC; handy for local testing and benchmarks.
+* **yab** CLI issues Thrift/Protobuf requests over TChannel/HTTP/gRPC; handy for local testing and benchmarks (Polymer will concentrate on HTTP/gRPC compatibility).
 
 * * *
 
@@ -132,7 +132,7 @@ C# Port: Scope & Milestones
 
 **Deferred/Out of Scope (initially):**
 
-- TChannel transport (ecosystem support in .NET is minimal; revisit after HTTP/gRPC hardening).
+- Focus on HTTP/1.1 and gRPC transports; TChannel is out of scope for the parity effort.
 - Advanced peer discovery adapters (Consul/Eureka); plan to stub interfaces so they can be added by adopters.
 - Language-specific code generators beyond Protobuf (Thrift planned once MVP stabilizes).
 - Replacing Hugo primitives; the plan assumes Hugo remains the source for result, error, diagnostics, and concurrency helpers with thin YARPC adapters on top.
@@ -596,7 +596,6 @@ The sketch assumes helper extensions (`AddYarpcDispatcher`, `RegisterJsonUnary`,
 Risks & Tradeoffs
 -----------------
 
-* **TChannel in C#:** limited ecosystem; defer until HTTP/gRPC parity is complete.
 
 * **Wire‑level exactness:** pay attention to header names and metadata interop; validate with conformance tests.
 
