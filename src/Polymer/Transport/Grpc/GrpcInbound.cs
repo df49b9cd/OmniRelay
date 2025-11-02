@@ -8,6 +8,7 @@ using Grpc.AspNetCore.Server.Model;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.AspNetCore.Server.Kestrel.Https;
 using Microsoft.Extensions.DependencyInjection;
 using Polymer.Core.Transport;
 using Polymer.Dispatcher;
@@ -21,11 +22,13 @@ public sealed class GrpcInbound : ILifecycle, IDispatcherAware
     private readonly Action<WebApplication>? _configureApp;
     private WebApplication? _app;
     private Dispatcher.Dispatcher? _dispatcher;
+    private readonly GrpcServerTlsOptions? _serverTlsOptions;
 
     public GrpcInbound(
         IEnumerable<string> urls,
         Action<IServiceCollection>? configureServices = null,
-        Action<WebApplication>? configureApp = null)
+        Action<WebApplication>? configureApp = null,
+        GrpcServerTlsOptions? serverTlsOptions = null)
     {
         _urls = urls?.ToArray() ?? throw new ArgumentNullException(nameof(urls));
         if (_urls.Length == 0)
@@ -35,6 +38,7 @@ public sealed class GrpcInbound : ILifecycle, IDispatcherAware
 
         _configureServices = configureServices;
         _configureApp = configureApp;
+        _serverTlsOptions = serverTlsOptions;
     }
 
     public IReadOnlyCollection<string> Urls =>
@@ -68,6 +72,32 @@ public sealed class GrpcInbound : ILifecycle, IDispatcherAware
                 options.Listen(host, uri.Port, listenOptions =>
                 {
                     listenOptions.Protocols = HttpProtocols.Http2;
+                    if (_serverTlsOptions is { } tlsOptions)
+                    {
+                        var httpsOptions = new HttpsConnectionAdapterOptions
+                        {
+                            ServerCertificate = tlsOptions.Certificate,
+                            ClientCertificateMode = tlsOptions.ClientCertificateMode
+                        };
+
+                        if (tlsOptions.EnabledProtocols is { })
+                        {
+                            httpsOptions.SslProtocols = tlsOptions.EnabledProtocols.Value;
+                        }
+
+                        if (tlsOptions.CheckCertificateRevocation is { } checkRevocation)
+                        {
+                            httpsOptions.CheckCertificateRevocation = checkRevocation;
+                        }
+
+                        if (tlsOptions.ClientCertificateValidation is { } validator)
+                        {
+                            httpsOptions.ClientCertificateValidation = (certificate, chain, errors) =>
+                                validator(certificate, chain, errors);
+                        }
+
+                        listenOptions.UseHttps(httpsOptions);
+                    }
                 });
             }
         }).UseUrls(_urls);

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -35,6 +36,13 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                 var metadata = callContext.RequestHeaders ?? [];
                 var encoding = metadata.GetValue(GrpcTransportConstants.EncodingHeader);
 
+                using var activity = GrpcTransportDiagnostics.StartServerActivity(
+                    _dispatcher.ServiceName,
+                    spec.Name,
+                    metadata,
+                    callContext,
+                    "unary");
+
                 var requestMeta = GrpcMetadataAdapter.BuildRequestMeta(
                     _dispatcher.ServiceName,
                     spec.Name,
@@ -50,6 +58,7 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                     var exception = PolymerErrors.FromError(result.Error!, GrpcTransportConstants.TransportName);
                     var status = GrpcStatusMapper.ToStatus(exception.StatusCode, exception.Message);
                     var trailers = GrpcMetadataAdapter.CreateErrorTrailers(exception.Error);
+                    GrpcTransportDiagnostics.RecordException(activity, exception, status.StatusCode, exception.Message);
                     throw new RpcException(status, trailers);
                 }
 
@@ -60,6 +69,7 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                     await callContext.WriteResponseHeadersAsync(headers).ConfigureAwait(false);
                 }
 
+                GrpcTransportDiagnostics.SetStatus(activity, StatusCode.OK);
                 return response.Body.ToArray();
             };
 
@@ -80,6 +90,13 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                 var metadata = callContext.RequestHeaders ?? [];
                 var encoding = metadata.GetValue(GrpcTransportConstants.EncodingHeader);
 
+                using var activity = GrpcTransportDiagnostics.StartServerActivity(
+                    _dispatcher.ServiceName,
+                    spec.Name,
+                    metadata,
+                    callContext,
+                    "oneway");
+
                 var requestMeta = GrpcMetadataAdapter.BuildRequestMeta(
                     _dispatcher.ServiceName,
                     spec.Name,
@@ -95,6 +112,7 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                     var exception = PolymerErrors.FromError(result.Error!, GrpcTransportConstants.TransportName);
                     var status = GrpcStatusMapper.ToStatus(exception.StatusCode, exception.Message);
                     var trailers = GrpcMetadataAdapter.CreateErrorTrailers(exception.Error);
+                    GrpcTransportDiagnostics.RecordException(activity, exception, status.StatusCode, exception.Message);
                     throw new RpcException(status, trailers);
                 }
 
@@ -104,6 +122,7 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                     await callContext.WriteResponseHeadersAsync(headers).ConfigureAwait(false);
                 }
 
+                GrpcTransportDiagnostics.SetStatus(activity, StatusCode.OK);
                 return [];
             };
 
@@ -124,6 +143,13 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                 var metadata = callContext.RequestHeaders ?? [];
                 var encoding = metadata.GetValue(GrpcTransportConstants.EncodingHeader);
 
+                using var activity = GrpcTransportDiagnostics.StartServerActivity(
+                    _dispatcher.ServiceName,
+                    spec.Name,
+                    metadata,
+                    callContext,
+                    "server_stream");
+
                 var requestMeta = GrpcMetadataAdapter.BuildRequestMeta(
                     _dispatcher.ServiceName,
                     spec.Name,
@@ -142,7 +168,9 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                     var exception = PolymerErrors.FromError(streamResult.Error!, GrpcTransportConstants.TransportName);
                     var status = GrpcStatusMapper.ToStatus(exception.StatusCode, exception.Message);
                     var trailers = GrpcMetadataAdapter.CreateErrorTrailers(exception.Error);
-                    throw new RpcException(status, trailers);
+                    var rpcException = new RpcException(status, trailers);
+                    GrpcTransportDiagnostics.RecordException(activity, rpcException, status.StatusCode, status.Detail);
+                    throw rpcException;
                 }
 
                 await using var streamCall = streamResult.Value;
@@ -187,7 +215,9 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
 
                     var status = GrpcStatusMapper.ToStatus(PolymerStatusCode.Cancelled, "The client cancelled the request.");
                     var trailers = GrpcMetadataAdapter.CreateErrorTrailers(error);
-                    throw new RpcException(status, trailers);
+                    var rpcException = new RpcException(status, trailers);
+                    GrpcTransportDiagnostics.RecordException(activity, rpcException, status.StatusCode, status.Detail);
+                    throw rpcException;
                 }
                 catch (Exception ex)
                 {
@@ -196,8 +226,12 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
 
                     var status = GrpcStatusMapper.ToStatus(polymerException.StatusCode, polymerException.Message);
                     var trailers = GrpcMetadataAdapter.CreateErrorTrailers(polymerException.Error);
-                    throw new RpcException(status, trailers);
+                    var rpcException = new RpcException(status, trailers);
+                    GrpcTransportDiagnostics.RecordException(activity, rpcException, status.StatusCode, status.Detail);
+                    throw rpcException;
                 }
+
+                GrpcTransportDiagnostics.SetStatus(activity, StatusCode.OK);
             };
 
             context.AddServerStreamingMethod<byte[], byte[]>(method, [], handler);
@@ -216,6 +250,13 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
             {
                 var metadata = callContext.RequestHeaders ?? [];
                 var encoding = metadata.GetValue(GrpcTransportConstants.EncodingHeader);
+
+                using var activity = GrpcTransportDiagnostics.StartServerActivity(
+                    _dispatcher.ServiceName,
+                    spec.Name,
+                    metadata,
+                    callContext,
+                    "client_stream");
 
                 var requestMeta = GrpcMetadataAdapter.BuildRequestMeta(
                     _dispatcher.ServiceName,
@@ -239,7 +280,9 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                     var exception = PolymerErrors.FromError(callResult.Error!, GrpcTransportConstants.TransportName);
                     var status = GrpcStatusMapper.ToStatus(exception.StatusCode, exception.Message);
                     var trailers = GrpcMetadataAdapter.CreateErrorTrailers(exception.Error);
-                    throw new RpcException(status, trailers);
+                    var rpcException = new RpcException(status, trailers);
+                    GrpcTransportDiagnostics.RecordException(activity, rpcException, status.StatusCode, status.Detail);
+                    throw rpcException;
                 }
 
                 await using var clientStreamCall = callResult.Value;
@@ -266,6 +309,7 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                     var message = string.IsNullOrWhiteSpace(rpcEx.Status.Detail)
                         ? rpcEx.Status.StatusCode.ToString()
                         : rpcEx.Status.Detail;
+                    GrpcTransportDiagnostics.RecordException(activity, rpcEx, rpcEx.Status.StatusCode, message);
                     var error = PolymerErrorAdapter.FromStatus(status, message, transport: GrpcTransportConstants.TransportName);
                     await clientStreamCall.CompleteWriterAsync(error).ConfigureAwait(false);
                     throw;
@@ -277,7 +321,10 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                         "The client cancelled the request.",
                         transport: GrpcTransportConstants.TransportName);
                     await clientStreamCall.CompleteWriterAsync(error).ConfigureAwait(false);
-                    throw new RpcException(GrpcStatusMapper.ToStatus(PolymerStatusCode.Cancelled, "The client cancelled the request."));
+                    var status = GrpcStatusMapper.ToStatus(PolymerStatusCode.Cancelled, "The client cancelled the request.");
+                    var rpcException = new RpcException(status);
+                    GrpcTransportDiagnostics.RecordException(activity, rpcException, status.StatusCode, status.Detail);
+                    throw rpcException;
                 }
                 catch (Exception ex)
                 {
@@ -289,7 +336,10 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                         message,
                         transport: GrpcTransportConstants.TransportName);
                     await clientStreamCall.CompleteWriterAsync(error).ConfigureAwait(false);
-                    throw new RpcException(GrpcStatusMapper.ToStatus(PolymerStatusCode.Internal, message));
+                    var status = GrpcStatusMapper.ToStatus(PolymerStatusCode.Internal, message);
+                    var rpcException = new RpcException(status);
+                    GrpcTransportDiagnostics.RecordException(activity, rpcException, status.StatusCode, status.Detail);
+                    throw rpcException;
                 }
 
                 var responseResult = await clientStreamCall.Response.ConfigureAwait(false);
@@ -299,7 +349,9 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                     var exception = PolymerErrors.FromError(responseResult.Error!, GrpcTransportConstants.TransportName);
                     var status = GrpcStatusMapper.ToStatus(exception.StatusCode, exception.Message);
                     var trailers = GrpcMetadataAdapter.CreateErrorTrailers(exception.Error);
-                    throw new RpcException(status, trailers);
+                    var rpcException = new RpcException(status, trailers);
+                    GrpcTransportDiagnostics.RecordException(activity, rpcException, status.StatusCode, status.Detail);
+                    throw rpcException;
                 }
 
                 var response = responseResult.Value;
@@ -309,6 +361,7 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                     await callContext.WriteResponseHeadersAsync(headers).ConfigureAwait(false);
                 }
 
+                GrpcTransportDiagnostics.SetStatus(activity, StatusCode.OK);
                 return response.Body.ToArray();
             };
 
@@ -328,6 +381,14 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
             {
                 var metadata = callContext.RequestHeaders ?? [];
                 var encoding = metadata.GetValue(GrpcTransportConstants.EncodingHeader);
+
+                using var activity = GrpcTransportDiagnostics.StartServerActivity(
+                    _dispatcher.ServiceName,
+                    spec.Name,
+                    metadata,
+                    callContext,
+                    "bidi_stream");
+                var activityHasError = false;
 
                 var requestMeta = GrpcMetadataAdapter.BuildRequestMeta(
                     _dispatcher.ServiceName,
@@ -349,7 +410,10 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                     var exception = PolymerErrors.FromError(callResult.Error!, GrpcTransportConstants.TransportName);
                     var status = GrpcStatusMapper.ToStatus(exception.StatusCode, exception.Message);
                     var trailers = GrpcMetadataAdapter.CreateErrorTrailers(exception.Error);
-                    throw new RpcException(status, trailers);
+                    var rpcException = new RpcException(status, trailers);
+                    activityHasError = true;
+                    GrpcTransportDiagnostics.RecordException(activity, rpcException, status.StatusCode, status.Detail);
+                    throw rpcException;
                 }
 
                 await using var duplexCall = callResult.Value;
@@ -372,13 +436,15 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
 
                         await duplexCall.CompleteRequestsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
                     }
-                    catch (OperationCanceledException)
+                    catch (OperationCanceledException ex)
                     {
                         var error = PolymerErrorAdapter.FromStatus(
                             PolymerStatusCode.Cancelled,
                             "The client cancelled the request.",
                             transport: GrpcTransportConstants.TransportName);
                         await duplexCall.CompleteRequestsAsync(error, cancellationToken).ConfigureAwait(false);
+                        activityHasError = true;
+                        GrpcTransportDiagnostics.RecordException(activity, ex, StatusCode.Cancelled, ex.Message);
                     }
                     catch (RpcException rpcEx)
                     {
@@ -387,6 +453,8 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                             string.IsNullOrWhiteSpace(rpcEx.Status.Detail) ? rpcEx.Status.StatusCode.ToString() : rpcEx.Status.Detail,
                             transport: GrpcTransportConstants.TransportName);
                         await duplexCall.CompleteRequestsAsync(error, cancellationToken).ConfigureAwait(false);
+                        activityHasError = true;
+                        GrpcTransportDiagnostics.RecordException(activity, rpcEx, rpcEx.Status.StatusCode, rpcEx.Status.Detail);
                     }
                     catch (Exception ex)
                     {
@@ -396,6 +464,8 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                             transport: GrpcTransportConstants.TransportName,
                             inner: Error.FromException(ex));
                         await duplexCall.CompleteRequestsAsync(error, cancellationToken).ConfigureAwait(false);
+                        activityHasError = true;
+                        GrpcTransportDiagnostics.RecordException(activity, ex, StatusCode.Internal, ex.Message);
                     }
                 }
 
@@ -443,7 +513,10 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
 
                         var status = GrpcStatusMapper.ToStatus(PolymerStatusCode.Cancelled, "The client cancelled the request.");
                         var trailers = GrpcMetadataAdapter.CreateErrorTrailers(error);
-                        throw new RpcException(status, trailers);
+                        var rpcException = new RpcException(status, trailers);
+                        activityHasError = true;
+                        GrpcTransportDiagnostics.RecordException(activity, rpcException, status.StatusCode, status.Detail);
+                        throw rpcException;
                     }
                     catch (Exception ex)
                     {
@@ -452,8 +525,16 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
 
                         var status = GrpcStatusMapper.ToStatus(polymerException.StatusCode, polymerException.Message);
                         var trailers = GrpcMetadataAdapter.CreateErrorTrailers(polymerException.Error);
-                        throw new RpcException(status, trailers);
+                        var rpcException = new RpcException(status, trailers);
+                        activityHasError = true;
+                        GrpcTransportDiagnostics.RecordException(activity, rpcException, status.StatusCode, status.Detail);
+                        throw rpcException;
                     }
+                }
+
+                if (!activityHasError)
+                {
+                    GrpcTransportDiagnostics.SetStatus(activity, StatusCode.OK);
                 }
             };
 
