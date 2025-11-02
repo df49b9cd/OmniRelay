@@ -275,6 +275,25 @@ internal sealed class GrpcDispatcherServiceMethodProvider : IServiceMethodProvid
                     requestMeta = requestMeta with { Deadline = new DateTimeOffset(deadlineUtc) };
                 }
 
+                var metricTags = GrpcTransportMetrics.CreateBaseTags(requestMeta);
+                var startTimestamp = Stopwatch.GetTimestamp();
+                long requestCount = 0;
+                int metricsRecorded = 0;
+
+                void RecordServerClientStreamMetrics(StatusCode statusCode)
+                {
+                    if (Interlocked.Exchange(ref metricsRecorded, 1) == 1)
+                    {
+                        return;
+                    }
+
+                    var elapsed = Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds;
+                    var tags = GrpcTransportMetrics.AppendStatus(metricTags, statusCode);
+                    GrpcTransportMetrics.ServerClientStreamDuration.Record(elapsed, tags);
+                    GrpcTransportMetrics.ServerClientStreamRequestCount.Record(requestCount, tags);
+                    GrpcTransportMetrics.ServerClientStreamResponseCount.Record(1, tags);
+                }
+
                 var callResult = await _dispatcher.InvokeClientStreamAsync(
                     spec.Name,
                     requestMeta,
@@ -287,6 +306,7 @@ internal sealed class GrpcDispatcherServiceMethodProvider : IServiceMethodProvid
                     var trailers = GrpcMetadataAdapter.CreateErrorTrailers(exception.Error);
                     var rpcException = new RpcException(status, trailers);
                     GrpcTransportDiagnostics.RecordException(activity, rpcException, status.StatusCode, status.Detail);
+                    RecordServerClientStreamMetrics(status.StatusCode);
                     throw rpcException;
                 }
 
@@ -303,6 +323,8 @@ internal sealed class GrpcDispatcherServiceMethodProvider : IServiceMethodProvid
                             continue;
                         }
 
+                        Interlocked.Increment(ref requestCount);
+                        GrpcTransportMetrics.ServerClientStreamRequestMessages.Add(1, metricTags);
                         await clientStreamCall.Requests.WriteAsync(payload, cancellationToken).ConfigureAwait(false);
                     }
 
@@ -317,6 +339,7 @@ internal sealed class GrpcDispatcherServiceMethodProvider : IServiceMethodProvid
                     GrpcTransportDiagnostics.RecordException(activity, rpcEx, rpcEx.Status.StatusCode, message);
                     var error = PolymerErrorAdapter.FromStatus(status, message, transport: GrpcTransportConstants.TransportName);
                     await clientStreamCall.CompleteWriterAsync(error).ConfigureAwait(false);
+                    RecordServerClientStreamMetrics(rpcEx.Status.StatusCode);
                     throw;
                 }
                 catch (OperationCanceledException)
@@ -329,6 +352,7 @@ internal sealed class GrpcDispatcherServiceMethodProvider : IServiceMethodProvid
                     var status = GrpcStatusMapper.ToStatus(PolymerStatusCode.Cancelled, "The client cancelled the request.");
                     var rpcException = new RpcException(status);
                     GrpcTransportDiagnostics.RecordException(activity, rpcException, status.StatusCode, status.Detail);
+                    RecordServerClientStreamMetrics(status.StatusCode);
                     throw rpcException;
                 }
                 catch (Exception ex)
@@ -344,6 +368,7 @@ internal sealed class GrpcDispatcherServiceMethodProvider : IServiceMethodProvid
                     var status = GrpcStatusMapper.ToStatus(PolymerStatusCode.Internal, message);
                     var rpcException = new RpcException(status);
                     GrpcTransportDiagnostics.RecordException(activity, rpcException, status.StatusCode, status.Detail);
+                    RecordServerClientStreamMetrics(status.StatusCode);
                     throw rpcException;
                 }
 
@@ -356,16 +381,19 @@ internal sealed class GrpcDispatcherServiceMethodProvider : IServiceMethodProvid
                     var trailers = GrpcMetadataAdapter.CreateErrorTrailers(exception.Error);
                     var rpcException = new RpcException(status, trailers);
                     GrpcTransportDiagnostics.RecordException(activity, rpcException, status.StatusCode, status.Detail);
+                    RecordServerClientStreamMetrics(status.StatusCode);
                     throw rpcException;
                 }
 
                 var response = responseResult.Value;
+                GrpcTransportMetrics.ServerClientStreamResponseMessages.Add(1, metricTags);
                 var headers = GrpcMetadataAdapter.CreateResponseHeaders(response.Meta);
                 if (headers.Count > 0)
                 {
                     await callContext.WriteResponseHeadersAsync(headers).ConfigureAwait(false);
                 }
 
+                RecordServerClientStreamMetrics(StatusCode.OK);
                 GrpcTransportDiagnostics.SetStatus(activity, StatusCode.OK);
                 return response.Body.ToArray();
             };
@@ -407,6 +435,26 @@ internal sealed class GrpcDispatcherServiceMethodProvider : IServiceMethodProvid
                     requestMeta = requestMeta with { Deadline = new DateTimeOffset(deadlineUtc) };
                 }
 
+                var metricTags = GrpcTransportMetrics.CreateBaseTags(requestMeta);
+                var startTimestamp = Stopwatch.GetTimestamp();
+                long requestCount = 0;
+                long responseCount = 0;
+                int metricsRecorded = 0;
+
+                void RecordServerDuplexMetrics(StatusCode statusCode)
+                {
+                    if (Interlocked.Exchange(ref metricsRecorded, 1) == 1)
+                    {
+                        return;
+                    }
+
+                    var elapsed = Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds;
+                    var tags = GrpcTransportMetrics.AppendStatus(metricTags, statusCode);
+                    GrpcTransportMetrics.ServerDuplexDuration.Record(elapsed, tags);
+                    GrpcTransportMetrics.ServerDuplexRequestCount.Record(requestCount, tags);
+                    GrpcTransportMetrics.ServerDuplexResponseCount.Record(responseCount, tags);
+                }
+
                 var dispatcherRequest = new Request<ReadOnlyMemory<byte>>(requestMeta, ReadOnlyMemory<byte>.Empty);
                 var callResult = await _dispatcher.InvokeDuplexAsync(spec.Name, dispatcherRequest, callContext.CancellationToken).ConfigureAwait(false);
 
@@ -418,6 +466,7 @@ internal sealed class GrpcDispatcherServiceMethodProvider : IServiceMethodProvid
                     var rpcException = new RpcException(status, trailers);
                     activityHasError = true;
                     GrpcTransportDiagnostics.RecordException(activity, rpcException, status.StatusCode, status.Detail);
+                    RecordServerDuplexMetrics(status.StatusCode);
                     throw rpcException;
                 }
 
@@ -436,6 +485,8 @@ internal sealed class GrpcDispatcherServiceMethodProvider : IServiceMethodProvid
                         await foreach (var payload in requestStream.ReadAllAsync(cancellationToken).ConfigureAwait(false))
                         {
                             cancellationToken.ThrowIfCancellationRequested();
+                            Interlocked.Increment(ref requestCount);
+                            GrpcTransportMetrics.ServerDuplexRequestMessages.Add(1, metricTags);
                             await duplexCall.RequestWriter.WriteAsync(payload, cancellationToken).ConfigureAwait(false);
                         }
 
@@ -450,6 +501,7 @@ internal sealed class GrpcDispatcherServiceMethodProvider : IServiceMethodProvid
                         await duplexCall.CompleteRequestsAsync(error, cancellationToken).ConfigureAwait(false);
                         activityHasError = true;
                         GrpcTransportDiagnostics.RecordException(activity, ex, StatusCode.Cancelled, ex.Message);
+                        RecordServerDuplexMetrics(StatusCode.Cancelled);
                     }
                     catch (RpcException rpcEx)
                     {
@@ -460,6 +512,7 @@ internal sealed class GrpcDispatcherServiceMethodProvider : IServiceMethodProvid
                         await duplexCall.CompleteRequestsAsync(error, cancellationToken).ConfigureAwait(false);
                         activityHasError = true;
                         GrpcTransportDiagnostics.RecordException(activity, rpcEx, rpcEx.Status.StatusCode, rpcEx.Status.Detail);
+                        RecordServerDuplexMetrics(rpcEx.Status.StatusCode);
                     }
                     catch (Exception ex)
                     {
@@ -471,6 +524,7 @@ internal sealed class GrpcDispatcherServiceMethodProvider : IServiceMethodProvid
                         await duplexCall.CompleteRequestsAsync(error, cancellationToken).ConfigureAwait(false);
                         activityHasError = true;
                         GrpcTransportDiagnostics.RecordException(activity, ex, StatusCode.Internal, ex.Message);
+                        RecordServerDuplexMetrics(StatusCode.Internal);
                     }
                 }
 
@@ -500,12 +554,15 @@ internal sealed class GrpcDispatcherServiceMethodProvider : IServiceMethodProvid
                         {
                             await EnsureHeadersAsync().ConfigureAwait(false);
                             cancellationToken.ThrowIfCancellationRequested();
+                            Interlocked.Increment(ref responseCount);
+                            GrpcTransportMetrics.ServerDuplexResponseMessages.Add(1, metricTags);
                             await responseStream.WriteAsync(payload.ToArray()).ConfigureAwait(false);
                         }
 
                         await EnsureHeadersAsync().ConfigureAwait(false);
                         ApplySuccessTrailers(callContext, duplexCall.ResponseMeta);
                         await duplexCall.CompleteResponsesAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+                        RecordServerDuplexMetrics(StatusCode.OK);
                     }
                     catch (OperationCanceledException)
                     {
@@ -521,6 +578,7 @@ internal sealed class GrpcDispatcherServiceMethodProvider : IServiceMethodProvid
                         var rpcException = new RpcException(status, trailers);
                         activityHasError = true;
                         GrpcTransportDiagnostics.RecordException(activity, rpcException, status.StatusCode, status.Detail);
+                        RecordServerDuplexMetrics(status.StatusCode);
                         throw rpcException;
                     }
                     catch (Exception ex)
@@ -533,12 +591,14 @@ internal sealed class GrpcDispatcherServiceMethodProvider : IServiceMethodProvid
                         var rpcException = new RpcException(status, trailers);
                         activityHasError = true;
                         GrpcTransportDiagnostics.RecordException(activity, rpcException, status.StatusCode, status.Detail);
+                        RecordServerDuplexMetrics(status.StatusCode);
                         throw rpcException;
                     }
                 }
 
                 if (!activityHasError)
                 {
+                    RecordServerDuplexMetrics(StatusCode.OK);
                     GrpcTransportDiagnostics.SetStatus(activity, StatusCode.OK);
                 }
             };

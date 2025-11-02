@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -18,6 +19,11 @@ internal sealed class GrpcDuplexStreamTransportCall : IDuplexStreamCall
     private readonly CancellationTokenSource _cts;
     private readonly Task _requestPump;
     private readonly Task _responsePump;
+    private readonly KeyValuePair<string, object?>[] _baseTags;
+    private readonly long _startTimestamp = Stopwatch.GetTimestamp();
+    private long _requestCount;
+    private long _responseCount;
+    private int _metricsRecorded;
 
     private GrpcDuplexStreamTransportCall(
         RequestMeta requestMeta,
@@ -27,6 +33,7 @@ internal sealed class GrpcDuplexStreamTransportCall : IDuplexStreamCall
     {
         _call = call;
         _inner = DuplexStreamCall.Create(requestMeta, responseMeta);
+        _baseTags = GrpcTransportMetrics.CreateBaseTags(requestMeta);
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _requestPump = PumpRequestsAsync(_cts.Token);
         _responsePump = PumpResponsesAsync(_cts.Token);
@@ -91,6 +98,7 @@ internal sealed class GrpcDuplexStreamTransportCall : IDuplexStreamCall
             _call.Dispose();
             await _inner.DisposeAsync().ConfigureAwait(false);
             _cts.Dispose();
+            RecordCompletion(StatusCode.Cancelled);
         }
     }
 
@@ -100,6 +108,8 @@ internal sealed class GrpcDuplexStreamTransportCall : IDuplexStreamCall
         {
             await foreach (var payload in _inner.RequestReader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
             {
+                Interlocked.Increment(ref _requestCount);
+                GrpcTransportMetrics.ClientDuplexRequestMessages.Add(1, _baseTags);
                 await _call.RequestStream.WriteAsync(payload.ToArray()).ConfigureAwait(false);
             }
 
@@ -113,6 +123,7 @@ internal sealed class GrpcDuplexStreamTransportCall : IDuplexStreamCall
         {
             var error = MapRpcException(rpcEx);
             await _inner.CompleteResponsesAsync(error).ConfigureAwait(false);
+            RecordCompletion(rpcEx.Status.StatusCode);
         }
         catch (Exception ex)
         {
@@ -121,6 +132,7 @@ internal sealed class GrpcDuplexStreamTransportCall : IDuplexStreamCall
                 ex.Message ?? "An error occurred while sending request stream.",
                 transport: GrpcTransportConstants.TransportName,
                 inner: Error.FromException(ex))).ConfigureAwait(false);
+            RecordCompletion(StatusCode.Unknown);
         }
     }
 
@@ -130,17 +142,21 @@ internal sealed class GrpcDuplexStreamTransportCall : IDuplexStreamCall
         {
             await foreach (var payload in _call.ResponseStream.ReadAllAsync(cancellationToken).ConfigureAwait(false))
             {
+                Interlocked.Increment(ref _responseCount);
+                GrpcTransportMetrics.ClientDuplexResponseMessages.Add(1, _baseTags);
                 await _inner.ResponseWriter.WriteAsync(payload, cancellationToken).ConfigureAwait(false);
             }
 
             var trailers = _call.GetTrailers();
             _inner.SetResponseMeta(GrpcMetadataAdapter.CreateResponseMeta(null, trailers, GrpcTransportConstants.TransportName));
             await _inner.CompleteResponsesAsync().ConfigureAwait(false);
+            RecordCompletion(StatusCode.OK);
         }
         catch (RpcException rpcEx)
         {
             var error = MapRpcException(rpcEx);
             await _inner.CompleteResponsesAsync(error).ConfigureAwait(false);
+            RecordCompletion(rpcEx.Status.StatusCode);
         }
         catch (Exception ex)
         {
@@ -149,6 +165,7 @@ internal sealed class GrpcDuplexStreamTransportCall : IDuplexStreamCall
                 ex.Message ?? "An error occurred while reading response stream.",
                 transport: GrpcTransportConstants.TransportName,
                 inner: Error.FromException(ex))).ConfigureAwait(false);
+            RecordCompletion(StatusCode.Unknown);
         }
     }
 
@@ -159,5 +176,19 @@ internal sealed class GrpcDuplexStreamTransportCall : IDuplexStreamCall
             ? rpcException.Status.StatusCode.ToString()
             : rpcException.Status.Detail;
         return PolymerErrorAdapter.FromStatus(status, message, transport: GrpcTransportConstants.TransportName);
+    }
+
+    private void RecordCompletion(StatusCode statusCode)
+    {
+        if (Interlocked.Exchange(ref _metricsRecorded, 1) == 1)
+        {
+            return;
+        }
+
+        var elapsed = Stopwatch.GetElapsedTime(_startTimestamp).TotalMilliseconds;
+        var tags = GrpcTransportMetrics.AppendStatus(_baseTags, statusCode);
+        GrpcTransportMetrics.ClientDuplexDuration.Record(elapsed, tags);
+        GrpcTransportMetrics.ClientDuplexRequestCount.Record(_requestCount, tags);
+        GrpcTransportMetrics.ClientDuplexResponseCount.Record(_responseCount, tags);
     }
 }

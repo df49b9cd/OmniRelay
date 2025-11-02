@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -17,6 +18,10 @@ internal sealed class GrpcClientStreamCall : IStreamCall
     private readonly Channel<ReadOnlyMemory<byte>> _responses;
     private readonly Channel<ReadOnlyMemory<byte>> _requests;
     private readonly CancellationTokenSource _cts;
+    private readonly KeyValuePair<string, object?>[] _baseTags;
+    private readonly long _startTimestamp = Stopwatch.GetTimestamp();
+    private long _responseCount;
+    private int _metricsRecorded;
 
     private GrpcClientStreamCall(
         RequestMeta requestMeta,
@@ -27,6 +32,7 @@ internal sealed class GrpcClientStreamCall : IStreamCall
         RequestMeta = requestMeta;
         _call = call;
         ResponseMeta = responseMeta;
+        _baseTags = GrpcTransportMetrics.CreateBaseTags(requestMeta);
 
         _requests = Channel.CreateUnbounded<ReadOnlyMemory<byte>>();
         _requests.Writer.TryComplete();
@@ -88,6 +94,7 @@ internal sealed class GrpcClientStreamCall : IStreamCall
         _call.Dispose();
         _responses.Writer.TryComplete();
         _requests.Writer.TryComplete();
+        RecordCompletion(StatusCode.Cancelled);
     }
 
     private async Task PumpResponsesAsync(CancellationToken cancellationToken)
@@ -96,12 +103,15 @@ internal sealed class GrpcClientStreamCall : IStreamCall
         {
             await foreach (var payload in _call.ResponseStream.ReadAllAsync(cancellationToken).ConfigureAwait(false))
             {
+                Interlocked.Increment(ref _responseCount);
+                GrpcTransportMetrics.ClientServerStreamResponseMessages.Add(1, _baseTags);
                 await _responses.Writer.WriteAsync(payload, cancellationToken).ConfigureAwait(false);
             }
 
             var trailers = _call.GetTrailers();
             ResponseMeta = GrpcMetadataAdapter.CreateResponseMeta(null, trailers, GrpcTransportConstants.TransportName);
             _responses.Writer.TryComplete();
+            RecordCompletion(StatusCode.OK);
         }
         catch (RpcException rpcEx)
         {
@@ -109,10 +119,25 @@ internal sealed class GrpcClientStreamCall : IStreamCall
             var message = string.IsNullOrWhiteSpace(rpcEx.Status.Detail) ? rpcEx.Status.StatusCode.ToString() : rpcEx.Status.Detail;
             var error = PolymerErrorAdapter.FromStatus(status, message, transport: GrpcTransportConstants.TransportName);
             _responses.Writer.TryComplete(PolymerErrors.FromError(error, GrpcTransportConstants.TransportName));
+            RecordCompletion(rpcEx.Status.StatusCode);
         }
         catch (Exception ex)
         {
             _responses.Writer.TryComplete(ex);
+            RecordCompletion(StatusCode.Unknown);
         }
+    }
+
+    private void RecordCompletion(StatusCode statusCode)
+    {
+        if (Interlocked.Exchange(ref _metricsRecorded, 1) == 1)
+        {
+            return;
+        }
+
+        var elapsed = Stopwatch.GetElapsedTime(_startTimestamp).TotalMilliseconds;
+        var tags = GrpcTransportMetrics.AppendStatus(_baseTags, statusCode);
+        GrpcTransportMetrics.ClientServerStreamDuration.Record(elapsed, tags);
+        GrpcTransportMetrics.ClientServerStreamResponseCount.Record(_responseCount, tags);
     }
 }
