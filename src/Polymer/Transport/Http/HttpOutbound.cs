@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Net.Mime;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -92,9 +93,12 @@ public sealed class HttpOutbound(HttpClient httpClient, Uri requestUri, bool dis
         var httpRequest = new HttpRequestMessage(HttpMethod.Post, _requestUri);
         var content = new ByteArrayContent(request.Body.ToArray());
 
-        if (!string.IsNullOrEmpty(request.Meta.Encoding))
+        var encoding = request.Meta.Encoding;
+        var contentType = ResolveContentType(encoding);
+
+        if (!string.IsNullOrEmpty(contentType))
         {
-            content.Headers.ContentType = new MediaTypeHeaderValue(request.Meta.Encoding);
+            content.Headers.ContentType = new MediaTypeHeaderValue(contentType);
         }
 
         httpRequest.Content = content;
@@ -103,7 +107,7 @@ public sealed class HttpOutbound(HttpClient httpClient, Uri requestUri, bool dis
         httpRequest.Headers.Add(HttpTransportHeaders.Procedure, request.Meta.Procedure ?? string.Empty);
 
         if (!string.IsNullOrEmpty(request.Meta.Caller)) httpRequest.Headers.Add(HttpTransportHeaders.Caller, request.Meta.Caller);
-        if (!string.IsNullOrEmpty(request.Meta.Encoding)) httpRequest.Headers.Add(HttpTransportHeaders.Encoding, request.Meta.Encoding);
+        if (!string.IsNullOrEmpty(encoding)) httpRequest.Headers.Add(HttpTransportHeaders.Encoding, encoding);
         if (!string.IsNullOrEmpty(request.Meta.ShardKey)) httpRequest.Headers.Add(HttpTransportHeaders.ShardKey, request.Meta.ShardKey);
         if (!string.IsNullOrEmpty(request.Meta.RoutingKey)) httpRequest.Headers.Add(HttpTransportHeaders.RoutingKey, request.Meta.RoutingKey);
         if (!string.IsNullOrEmpty(request.Meta.RoutingDelegate)) httpRequest.Headers.Add(HttpTransportHeaders.RoutingDelegate, request.Meta.RoutingDelegate);
@@ -127,6 +131,18 @@ public sealed class HttpOutbound(HttpClient httpClient, Uri requestUri, bool dis
         }
 
         return httpRequest;
+    }
+
+    private static string? ResolveContentType(string? encoding)
+    {
+        if (string.IsNullOrEmpty(encoding))
+        {
+            return null;
+        }
+
+        return string.Equals(encoding, RawCodec.DefaultEncoding, StringComparison.OrdinalIgnoreCase)
+            ? MediaTypeNames.Application.Octet
+            : encoding;
     }
 
     private static ResponseMeta BuildResponseMeta(HttpResponseMessage response)

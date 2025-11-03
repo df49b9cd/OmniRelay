@@ -55,7 +55,7 @@ public sealed record UnaryProcedureSpec : ProcedureSpec
         : base(service, name, ProcedureKind.Unary, encoding, aliases)
     {
         Handler = handler ?? throw new ArgumentNullException(nameof(handler));
-        Middleware = middleware ?? Array.Empty<IUnaryInboundMiddleware>();
+        Middleware = middleware ?? [];
     }
 
     public UnaryInboundDelegate Handler { get; }
@@ -74,7 +74,7 @@ public sealed record OnewayProcedureSpec : ProcedureSpec
         : base(service, name, ProcedureKind.Oneway, encoding, aliases)
     {
         Handler = handler ?? throw new ArgumentNullException(nameof(handler));
-        Middleware = middleware ?? Array.Empty<IOnewayInboundMiddleware>();
+        Middleware = middleware ?? [];
     }
 
     public OnewayInboundDelegate Handler { get; }
@@ -94,7 +94,7 @@ public sealed record StreamProcedureSpec : ProcedureSpec
         : base(service, name, ProcedureKind.Stream, encoding, aliases)
     {
         Handler = handler ?? throw new ArgumentNullException(nameof(handler));
-        Middleware = middleware ?? Array.Empty<IStreamInboundMiddleware>();
+        Middleware = middleware ?? [];
         Metadata = metadata ?? StreamIntrospectionMetadata.Default;
     }
 
@@ -116,7 +116,7 @@ public sealed record ClientStreamProcedureSpec : ProcedureSpec
         : base(service, name, ProcedureKind.ClientStream, encoding, aliases)
     {
         Handler = handler ?? throw new ArgumentNullException(nameof(handler));
-        Middleware = middleware ?? Array.Empty<IClientStreamInboundMiddleware>();
+        Middleware = middleware ?? [];
         Metadata = metadata ?? ClientStreamIntrospectionMetadata.Default;
     }
 
@@ -138,7 +138,7 @@ public sealed record DuplexProcedureSpec : ProcedureSpec
         : base(service, name, ProcedureKind.Duplex, encoding, aliases)
     {
         Handler = handler ?? throw new ArgumentNullException(nameof(handler));
-        Middleware = middleware ?? Array.Empty<IDuplexInboundMiddleware>();
+        Middleware = middleware ?? [];
         Metadata = metadata ?? DuplexIntrospectionMetadata.Default;
     }
 

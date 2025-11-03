@@ -50,7 +50,7 @@ JsonCodec<JsonEchoRequest, JsonEchoResponse>? httpCodec = null;
 if (enableHttp)
 {
     var httpAddress = new Uri($"http://127.0.0.1:{httpPort}");
-    var httpInbound = new HttpInbound(new[] { httpAddress.ToString() });
+    var httpInbound = new HttpInbound([httpAddress.ToString()]);
     dispatcherOptions.AddLifecycle("http-inbound", httpInbound);
 
     var jsonOptions = new JsonSerializerOptions
@@ -64,7 +64,7 @@ if (enableHttp)
 if (grpcPort is { } gp)
 {
     var grpcAddress = new Uri($"http://127.0.0.1:{gp}");
-    var grpcInbound = new GrpcInbound(new[] { grpcAddress.ToString() });
+    var grpcInbound = new GrpcInbound([grpcAddress.ToString()]);
     dispatcherOptions.AddLifecycle("grpc-inbound", grpcInbound);
 }
 

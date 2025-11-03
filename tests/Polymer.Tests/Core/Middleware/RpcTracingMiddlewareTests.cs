@@ -34,10 +34,10 @@ public sealed class RpcTracingMiddlewareTests
             procedure: "echo::call",
             transport: "grpc",
             encoding: "application/json",
-            headers: new[]
-            {
+            headers:
+            [
                 new KeyValuePair<string, string>("traceparent", parentId)
-            });
+            ]);
 
         var request = new Request<ReadOnlyMemory<byte>>(meta, ReadOnlyMemory<byte>.Empty);
         var response = Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty, new ResponseMeta(encoding: "application/json"));

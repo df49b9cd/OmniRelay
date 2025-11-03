@@ -73,7 +73,7 @@ public sealed class TwoRandomPeerChooserTests
 
     private sealed class DeterministicRandom(params int[] sequence) : System.Random
     {
-        private readonly int[] _sequence = sequence.Length == 0 ? new[] { 0 } : sequence;
+        private readonly int[] _sequence = sequence.Length == 0 ? [0] : sequence;
         private int _index;
 
         public override int Next(int maxValue) => _sequence[_index++ % _sequence.Length] % maxValue;

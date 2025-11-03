@@ -81,7 +81,7 @@ public class DispatcherTests
                 var response = Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty);
                 return ValueTask.FromResult(Ok(response));
             },
-            aliases: new[] { "v1::user::*", "users::get" });
+            aliases: ["v1::user::*", "users::get"]);
 
         dispatcher.Register(spec);
 
@@ -174,7 +174,7 @@ public class DispatcherTests
                 ValueTask.FromResult(Err<IStreamCall>(PolymerErrorAdapter.FromStatus(PolymerStatusCode.Unimplemented, "stub"))),
             builder => builder
                 .WithEncoding("json")
-                .AddAliases(new[] { "events::watch" })
+                .AddAliases(["events::watch"])
                 .WithMetadata(metadata));
 
         Assert.True(dispatcher.TryGetProcedure("events::subscribe", ProcedureKind.Stream, out var spec));

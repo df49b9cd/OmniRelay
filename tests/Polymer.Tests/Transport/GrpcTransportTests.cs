@@ -48,7 +48,7 @@ public class GrpcTransportTests
     {
         var options = new GrpcCompressionOptions
         {
-            Providers = Array.Empty<ICompressionProvider>(),
+            Providers = [],
             DefaultAlgorithm = "gzip"
         };
 
@@ -61,7 +61,7 @@ public class GrpcTransportTests
         var provider = new DummyCompressionProvider("gzip");
         var compressionOptions = new GrpcCompressionOptions
         {
-            Providers = new[] { provider },
+            Providers = [provider],
             DefaultAlgorithm = provider.EncodingName
         };
 
@@ -71,7 +71,7 @@ public class GrpcTransportTests
         var createCallOptions = typeof(GrpcOutbound).GetMethod("CreateCallOptions", BindingFlags.Instance | BindingFlags.NonPublic)
             ?? throw new InvalidOperationException("Unable to locate CreateCallOptions method.");
 
-        var callOptions = (CallOptions)createCallOptions.Invoke(outbound, new object[] { requestMeta, CancellationToken.None })!;
+        var callOptions = (CallOptions)createCallOptions.Invoke(outbound, [requestMeta, CancellationToken.None])!;
         var headers = callOptions.Headers ?? new Metadata();
         var acceptEncoding = headers.GetValue(GrpcTransportConstants.GrpcAcceptEncodingHeader);
 
@@ -84,7 +84,7 @@ public class GrpcTransportTests
         var provider = new DummyCompressionProvider("gzip");
         var compressionOptions = new GrpcCompressionOptions
         {
-            Providers = new[] { provider },
+            Providers = [provider],
             DefaultAlgorithm = provider.EncodingName
         };
 
@@ -98,7 +98,7 @@ public class GrpcTransportTests
         var createCallOptions = typeof(GrpcOutbound).GetMethod("CreateCallOptions", BindingFlags.Instance | BindingFlags.NonPublic)
             ?? throw new InvalidOperationException("Unable to locate CreateCallOptions method.");
 
-        var callOptions = (CallOptions)createCallOptions.Invoke(outbound, new object[] { requestMeta, CancellationToken.None })!;
+        var callOptions = (CallOptions)createCallOptions.Invoke(outbound, [requestMeta, CancellationToken.None])!;
         var callHeaders = callOptions.Headers ?? new Metadata();
         var acceptEncoding = callHeaders.GetValue(GrpcTransportConstants.GrpcAcceptEncodingHeader);
 
@@ -304,7 +304,7 @@ public class GrpcTransportTests
         var address2 = new Uri($"http://127.0.0.1:{port2}");
 
         var options = new DispatcherOptions("echo");
-        var grpcInbound = new GrpcInbound(new[] { address1.ToString(), address2.ToString() });
+        var grpcInbound = new GrpcInbound([address1.ToString(), address2.ToString()]);
         options.AddLifecycle("grpc-inbound", grpcInbound);
 
         var dispatcher = new Polymer.Dispatcher.Dispatcher(options);
@@ -334,7 +334,7 @@ public class GrpcTransportTests
         await WaitForGrpcReadyAsync(address1, ct);
         await WaitForGrpcReadyAsync(address2, ct);
 
-        var outbound = new GrpcOutbound(new[] { address1, address2 }, "echo");
+        var outbound = new GrpcOutbound([address1, address2], "echo");
         await outbound.StartAsync(ct);
 
         try
@@ -384,7 +384,7 @@ public class GrpcTransportTests
         var failingAddress = new Uri($"http://127.0.0.1:{failingPort}");
 
         var options = new DispatcherOptions("echo");
-        var grpcInbound = new GrpcInbound(new[] { healthyAddress.ToString() });
+        var grpcInbound = new GrpcInbound([healthyAddress.ToString()]);
         options.AddLifecycle("grpc-inbound", grpcInbound);
 
         var dispatcher = new Polymer.Dispatcher.Dispatcher(options);
@@ -421,7 +421,7 @@ public class GrpcTransportTests
         };
 
         var outbound = new GrpcOutbound(
-            new[] { failingAddress, healthyAddress },
+            [failingAddress, healthyAddress],
             "echo",
             peerCircuitBreakerOptions: breakerOptions,
             peerChooser: peers => new RoundRobinPeerChooser(ImmutableArray.CreateRange(peers)));
@@ -837,7 +837,7 @@ public class GrpcTransportTests
 
         var clientRuntimeOptions = new GrpcClientRuntimeOptions
         {
-            Interceptors = new[] { clientInterceptor }
+            Interceptors = [clientInterceptor]
         };
 
         var dispatcherOptions = new DispatcherOptions("intercept");
@@ -912,7 +912,7 @@ public class GrpcTransportTests
         var serverInterceptor = new RecordingServerInterceptor();
         var serverRuntimeOptions = new GrpcServerRuntimeOptions
         {
-            Interceptors = new[] { typeof(RecordingServerInterceptor) }
+            Interceptors = [typeof(RecordingServerInterceptor)]
         };
 
         var dispatcherOptions = new DispatcherOptions("server-intercept");
@@ -1601,11 +1601,11 @@ public class GrpcTransportTests
                 routingDelegate: "delegate-1",
                 timeToLive: ttl,
                 deadline: deadline,
-                headers: new[]
-                {
+                headers:
+                [
                     new KeyValuePair<string, string>("x-trace-id", "trace-abc"),
                     new KeyValuePair<string, string>("x-feature", "beta")
-                });
+                ]);
 
             var request = new Request<EchoRequest>(requestMeta, new EchoRequest("payload"));
 
@@ -1716,10 +1716,10 @@ public class GrpcTransportTests
                 transport: "grpc",
                 timeToLive: TimeSpan.FromSeconds(10),
                 deadline: deadline,
-                headers: new[]
-                {
+                headers:
+                [
                     new KeyValuePair<string, string>("x-meta", "value")
-                });
+                ]);
 
             var request = new Request<EchoRequest>(requestMeta, new EchoRequest("ignored"));
 
@@ -1957,7 +1957,7 @@ public class GrpcTransportTests
             ?? throw new InvalidOperationException("Unable to locate FromStatus method.");
 
         var status = new Status(statusCode, "detail");
-        var result = (PolymerStatusCode)method.Invoke(null, new object[] { status })!;
+        var result = (PolymerStatusCode)method.Invoke(null, [status])!;
 
         Assert.Equal(expected, result);
     }
@@ -1971,7 +1971,7 @@ public class GrpcTransportTests
         var method = mapperType.GetMethod("ToStatus", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
             ?? throw new InvalidOperationException("Unable to locate ToStatus method.");
 
-        var status = (Status)method.Invoke(null, new object[] { polymerStatus, "detail" })!;
+        var status = (Status)method.Invoke(null, [polymerStatus, "detail"])!;
 
         Assert.Equal(expectedStatusCode, status.StatusCode);
     }
@@ -1983,7 +1983,7 @@ public class GrpcTransportTests
         var address = new Uri($"http://127.0.0.1:{port}");
 
         var options = new DispatcherOptions("echo");
-        var grpcInbound = new GrpcInbound(new[] { address.ToString() }, telemetryOptions: new GrpcTelemetryOptions { EnableServerLogging = false });
+        var grpcInbound = new GrpcInbound([address.ToString()], telemetryOptions: new GrpcTelemetryOptions { EnableServerLogging = false });
         options.AddLifecycle("grpc-inbound", grpcInbound);
 
         var dispatcher = new Polymer.Dispatcher.Dispatcher(options);
@@ -2083,7 +2083,7 @@ public class GrpcTransportTests
         listener.Start();
 
         var options = new DispatcherOptions("echo");
-        var grpcInbound = new GrpcInbound(new[] { address.ToString() }, telemetryOptions: new GrpcTelemetryOptions());
+        var grpcInbound = new GrpcInbound([address.ToString()], telemetryOptions: new GrpcTelemetryOptions());
         options.AddLifecycle("grpc-inbound", grpcInbound);
 
         var dispatcher = new Polymer.Dispatcher.Dispatcher(options);

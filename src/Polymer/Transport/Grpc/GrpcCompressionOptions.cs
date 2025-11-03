@@ -7,7 +7,7 @@ namespace Polymer.Transport.Grpc;
 
 public sealed record GrpcCompressionOptions
 {
-    public IReadOnlyList<ICompressionProvider> Providers { get; init; } = Array.Empty<ICompressionProvider>();
+    public IReadOnlyList<ICompressionProvider> Providers { get; init; } = [];
 
     public string? DefaultAlgorithm { get; init; }
 

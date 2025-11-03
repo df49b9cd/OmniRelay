@@ -245,7 +245,7 @@ namespace Polymer.Tests.Transport;
 //                     {
 //                         await foreach (var payload in call.RequestReader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
 //                         {
-//                                 var decode = codec.DecodeRequest(payload, request.Meta);
+//                             var decode = codec.DecodeRequest(payload, request.Meta);
 //                             if (decode.IsFailure)
 //                             {
 //                                 await call.CompleteResponsesAsync(decode.Error!, cancellationToken).ConfigureAwait(false);
@@ -300,6 +300,65 @@ namespace Polymer.Tests.Transport;
 //         }
 
 //         Assert.Equal(new[] { "hello", "world" }, messages);
+
+//         await dispatcher.StopAsync(ct);
+//     }
+
+//     [Fact]
+//     public async Task DuplexStreaming_ServerCancels_PropagatesToClient()
+//     {
+//         var port = TestPortAllocator.GetRandomPort();
+//         var baseAddress = new Uri($"http://127.0.0.1:{port}/");
+
+//         var options = new DispatcherOptions("chat");
+//         var httpInbound = new HttpInbound([baseAddress.ToString()]);
+//         options.AddLifecycle("http-inbound", httpInbound);
+
+//         var httpDuplexOutbound = new HttpDuplexOutbound(baseAddress);
+//         options.AddDuplexOutbound("chat", null, httpDuplexOutbound);
+
+//         var dispatcher = new Polymer.Dispatcher.Dispatcher(options);
+//         var codec = new JsonCodec<ChatMessage, ChatMessage>(new JsonSerializerOptions { PropertyNameCaseInsensitive = true }, encoding: "application/json");
+
+//         dispatcher.Register(new DuplexProcedureSpec(
+//             "chat",
+//             "chat::echo",
+//             (request, cancellationToken) =>
+//             {
+//                 var call = DuplexStreamCall.Create(request.Meta, new ResponseMeta(encoding: "application/json"));
+
+//                 _ = Task.Run(async () =>
+//                 {
+//                     await Task.Delay(TimeSpan.FromMilliseconds(20), cancellationToken).ConfigureAwait(false);
+//                     await call.CompleteResponsesAsync(PolymerErrorAdapter.FromStatus(
+//                         PolymerStatusCode.Cancelled,
+//                         "cancelled",
+//                         transport: "http"), cancellationToken).ConfigureAwait(false);
+//                 }, cancellationToken);
+
+//                 return ValueTask.FromResult(Ok((IDuplexStreamCall)call));
+//             }));
+
+//         var ct = TestContext.Current.CancellationToken;
+//         await dispatcher.StartAsync(ct);
+
+//         var client = dispatcher.CreateDuplexStreamClient<ChatMessage, ChatMessage>("chat", codec);
+//         var requestMeta = new RequestMeta(
+//             service: "chat",
+//             procedure: "chat::echo",
+//             transport: "http");
+
+//         await using var session = await client.StartAsync(requestMeta, ct);
+
+//         var ex = await Assert.ThrowsAsync<PolymerException>(async () =>
+//         {
+//             await foreach (var response in session.ReadResponsesAsync(ct))
+//             {
+//                 _ = response;
+//             }
+//         });
+
+//         Assert.Equal(PolymerStatusCode.Cancelled, ex.StatusCode);
 
 //         await dispatcher.StopAsync(ct);
 //     }

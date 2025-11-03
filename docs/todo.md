@@ -93,7 +93,7 @@ Comprehensive backlog tracking the remaining work needed to reach feature parity
 
 - **Raw/Binary Encoding**
   - ~~Create `RawCodec` (byte[] passthrough) with metadata enforcement.~~ *(implemented in `src/Polymer/Core/RawCodec.cs` with strict encoding checks and zero-copy reuse when possible.)*
-  - Ensure HTTP/gRPC transports propagate binary content-type headers correctly.
+  - ~~Ensure HTTP/gRPC transports propagate binary content-type headers correctly.~~ *(HTTP outbound now maps `raw` encoding to `application/octet-stream` and inbound normalizes ack/response headers; covered by `HttpDuplexTransportTests`.)*
   - ~~Add tests ensuring raw payloads bypass serialization.~~ *(covered by `tests/Polymer.Tests/Core/RawCodecTests.cs`, validating encode/decode pass-through and metadata enforcement.)*
 
 - **Protobuf Support**

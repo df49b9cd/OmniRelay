@@ -52,7 +52,7 @@ public sealed class GrpcInbound : ILifecycle, IDispatcherAware
     }
 
     public IReadOnlyCollection<string> Urls =>
-        _app?.Urls as IReadOnlyCollection<string> ?? Array.Empty<string>();
+        _app?.Urls as IReadOnlyCollection<string> ?? [];
 
     public void Bind(Dispatcher.Dispatcher dispatcher)
     {

@@ -17,7 +17,7 @@ public sealed record GrpcClientRuntimeOptions
 
     public HttpKeepAlivePingPolicy? KeepAlivePingPolicy { get; init; }
 
-    public IReadOnlyList<Interceptor> Interceptors { get; init; } = Array.Empty<Interceptor>();
+    public IReadOnlyList<Interceptor> Interceptors { get; init; } = [];
 }
 
 public sealed record GrpcServerRuntimeOptions
@@ -32,5 +32,5 @@ public sealed record GrpcServerRuntimeOptions
 
     public bool? EnableDetailedErrors { get; init; }
 
-    public IReadOnlyList<Type> Interceptors { get; init; } = Array.Empty<Type>();
+    public IReadOnlyList<Type> Interceptors { get; init; } = [];
 }

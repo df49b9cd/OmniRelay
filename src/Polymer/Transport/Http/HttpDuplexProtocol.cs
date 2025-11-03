@@ -1,9 +1,12 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Net.WebSockets;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Hugo;
+using Polymer.Core;
 using Polymer.Errors;
 
 namespace Polymer.Transport.Http;
@@ -15,6 +18,7 @@ internal static class HttpDuplexProtocol
         RequestData = 0x1,
         RequestComplete = 0x2,
         RequestError = 0x3,
+        ResponseHeaders = 0x10,
         ResponseData = 0x11,
         ResponseComplete = 0x12,
         ResponseError = 0x13
@@ -88,6 +92,62 @@ internal static class HttpDuplexProtocol
         return JsonSerializer.SerializeToUtf8Bytes(envelope, SerializerOptions);
     }
 
+    internal static ReadOnlyMemory<byte> SerializeResponseMeta(ResponseMeta meta)
+    {
+        ArgumentNullException.ThrowIfNull(meta);
+
+        var envelope = new ResponseMetaEnvelope
+        {
+            Encoding = meta.Encoding,
+            Transport = meta.Transport,
+            TtlMs = meta.Ttl?.TotalMilliseconds,
+            Headers = meta.Headers?.Count > 0
+                ? meta.Headers!.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase)
+                : null
+        };
+
+        return JsonSerializer.SerializeToUtf8Bytes(envelope, SerializerOptions);
+    }
+
+    internal static ResponseMeta DeserializeResponseMeta(ReadOnlySpan<byte> payload, string transport)
+    {
+        if (payload.IsEmpty)
+        {
+            return new ResponseMeta(transport: transport);
+        }
+
+        try
+        {
+            var envelope = JsonSerializer.Deserialize<ResponseMetaEnvelope>(payload, SerializerOptions);
+            if (envelope is null)
+            {
+                return new ResponseMeta(transport: transport);
+            }
+
+            TimeSpan? ttl = null;
+            if (envelope.TtlMs.HasValue)
+            {
+                ttl = TimeSpan.FromMilliseconds(envelope.TtlMs.Value);
+            }
+
+            IEnumerable<KeyValuePair<string, string>>? headers = null;
+            if (envelope.Headers is { Count: > 0 })
+            {
+                headers = envelope.Headers.Select(pair => new KeyValuePair<string, string>(pair.Key, pair.Value));
+            }
+
+            return new ResponseMeta(
+                encoding: envelope.Encoding,
+                transport: envelope.Transport ?? transport,
+                ttl: ttl,
+                headers: headers);
+        }
+        catch (JsonException)
+        {
+            return new ResponseMeta(transport: transport);
+        }
+    }
+
     internal static Error ParseError(ReadOnlySpan<byte> payload, string transport)
     {
         try
@@ -128,5 +188,13 @@ internal static class HttpDuplexProtocol
         public string? Status { get; set; }
         public string? Message { get; set; }
         public string? Code { get; set; }
+    }
+
+    private sealed class ResponseMetaEnvelope
+    {
+        public string? Encoding { get; set; }
+        public string? Transport { get; set; }
+        public double? TtlMs { get; set; }
+        public Dictionary<string, string>? Headers { get; set; }
     }
 }

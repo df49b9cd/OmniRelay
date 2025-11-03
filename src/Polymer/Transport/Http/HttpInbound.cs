@@ -53,7 +53,7 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
     }
 
     public IReadOnlyCollection<string> Urls =>
-        _app?.Urls as IReadOnlyCollection<string> ?? Array.Empty<string>();
+        _app?.Urls as IReadOnlyCollection<string> ?? [];
 
     public void Bind(Dispatcher.Dispatcher dispatcher)
     {
@@ -194,7 +194,18 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
 
             context.Response.StatusCode = StatusCodes.Status202Accepted;
             context.Response.Headers[HttpTransportHeaders.Transport] = transport;
-            foreach (var header in onewayResult.Value.Meta.Headers)
+
+            var ackMeta = onewayResult.Value.Meta;
+            var ackEncoding = ackMeta.Encoding ?? encoding;
+            context.Response.Headers[HttpTransportHeaders.Encoding] = ackEncoding ?? MediaTypeNames.Application.Octet;
+            if (!string.IsNullOrEmpty(ackEncoding))
+            {
+                context.Response.ContentType = string.Equals(ackEncoding, RawCodec.DefaultEncoding, StringComparison.OrdinalIgnoreCase)
+                    ? MediaTypeNames.Application.Octet
+                    : ackEncoding;
+            }
+
+            foreach (var header in ackMeta.Headers)
             {
                 context.Response.Headers[header.Key] = header.Value;
             }
@@ -213,8 +224,16 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
 
         var response = result.Value;
         context.Response.StatusCode = StatusCodes.Status200OK;
-        context.Response.Headers[HttpTransportHeaders.Encoding] = response.Meta.Encoding ?? encoding ?? MediaTypeNames.Application.Octet;
+        var responseEncoding = response.Meta.Encoding ?? encoding;
+        context.Response.Headers[HttpTransportHeaders.Encoding] = responseEncoding ?? MediaTypeNames.Application.Octet;
         context.Response.Headers[HttpTransportHeaders.Transport] = transport;
+
+        if (!string.IsNullOrEmpty(responseEncoding))
+        {
+            context.Response.ContentType = string.Equals(responseEncoding, RawCodec.DefaultEncoding, StringComparison.OrdinalIgnoreCase)
+                ? MediaTypeNames.Application.Octet
+                : responseEncoding;
+        }
 
         foreach (var header in response.Meta.Headers)
         {
@@ -320,7 +339,6 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
 
     private async Task HandleDuplexAsync(HttpContext context)
     {
-        System.IO.File.AppendAllText("/tmp/duplex.log", "HandleDuplexAsync" + Environment.NewLine);
         var dispatcher = _dispatcher!;
         const string transport = "http";
 
@@ -354,7 +372,6 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
         var dispatcherRequest = new Request<ReadOnlyMemory<byte>>(meta, ReadOnlyMemory<byte>.Empty);
 
         var callResult = await dispatcher.InvokeDuplexAsync(procedure!, dispatcherRequest, context.RequestAborted).ConfigureAwait(false);
-        System.IO.File.AppendAllText("/tmp/duplex.log", $"callResult success={callResult.IsSuccess}" + Environment.NewLine);
 
         if (callResult.IsFailure)
         {
@@ -374,7 +391,6 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
 
         try
         {
-            System.IO.File.AppendAllText("/tmp/duplex.log", "starting pumps" + Environment.NewLine);
             var requestPump = PumpRequestsAsync(socket, call, requestBuffer, context.RequestAborted);
             var responsePump = PumpResponsesAsync(socket, call, responseBuffer, context.RequestAborted);
 
@@ -403,11 +419,9 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
         {
             try
             {
-                System.IO.File.AppendAllText("/tmp/duplex.log", "server pump start" + Environment.NewLine);
                 while (!cancellationToken.IsCancellationRequested)
                 {
                     var frame = await HttpDuplexProtocol.ReceiveFrameAsync(webSocket, tempBuffer, cancellationToken).ConfigureAwait(false);
-                    System.IO.File.AppendAllText("/tmp/duplex.log", $"server frame type={frame.Type} message={frame.MessageType} len={frame.Payload.Length}" + Environment.NewLine);
 
                     if (frame.MessageType == WebSocketMessageType.Close)
                     {
@@ -474,7 +488,9 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
                     await HttpDuplexProtocol.SendFrameAsync(webSocket, HttpDuplexProtocol.FrameType.ResponseData, payload, cancellationToken).ConfigureAwait(false);
                 }
 
-                await HttpDuplexProtocol.SendFrameAsync(webSocket, HttpDuplexProtocol.FrameType.ResponseComplete, CancellationToken.None).ConfigureAwait(false);
+                var finalMeta = NormalizeResponseMeta(streamCall.ResponseMeta, transport);
+                var completePayload = HttpDuplexProtocol.SerializeResponseMeta(finalMeta);
+                await HttpDuplexProtocol.SendFrameAsync(webSocket, HttpDuplexProtocol.FrameType.ResponseComplete, completePayload, CancellationToken.None).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -497,6 +513,17 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
             }
         }
     }
+    private static ResponseMeta NormalizeResponseMeta(ResponseMeta? meta, string transport)
+    {
+        meta ??= new ResponseMeta();
+        var headers = meta.Headers is { Count: > 0 } ? meta.Headers : null;
+        return new ResponseMeta(
+            encoding: meta.Encoding,
+            transport: string.IsNullOrEmpty(meta.Transport) ? transport : meta.Transport,
+            ttl: meta.Ttl,
+            headers: headers);
+    }
+
     private static RequestMeta BuildRequestMeta(
         string service,
         string procedure,
@@ -579,4 +606,5 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
             return System.Text.Encoding.UTF8.GetBytes(eventFrame);
         }
     }
+
 }

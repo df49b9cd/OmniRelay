@@ -93,7 +93,7 @@ public class RawCodecTests
     public void DecodeResponse_MismatchedEncodingFails()
     {
         var codec = new RawCodec();
-        var payload = new ReadOnlyMemory<byte>(new byte[] { 1 });
+        var payload = new ReadOnlyMemory<byte>([1]);
         var meta = new ResponseMeta(encoding: "json");
 
         var result = codec.DecodeResponse(payload, meta);

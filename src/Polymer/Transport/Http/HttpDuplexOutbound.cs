@@ -42,8 +42,8 @@ public sealed class HttpDuplexOutbound(Uri baseAddress) : IDuplexOutbound, IOutb
             await socket.ConnectAsync(webSocketUri, cancellationToken).ConfigureAwait(false);
 
             var responseMeta = new ResponseMeta(transport: "http", encoding: request.Meta.Encoding);
-            var transportCall = HttpDuplexStreamTransportCall.Create(request.Meta, responseMeta, socket, cancellationToken);
-            return Ok(transportCall);
+            var transportCall = await HttpDuplexStreamTransportCall.CreateAsync(request.Meta, responseMeta, socket, cancellationToken).ConfigureAwait(false);
+            return transportCall;
         }
         catch (Exception ex)
         {

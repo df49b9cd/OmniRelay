@@ -1,5 +1,4 @@
 using System;
-using System.IO;
 using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Channels;
@@ -8,34 +7,62 @@ using Hugo;
 using Polymer.Core;
 using Polymer.Core.Transport;
 using Polymer.Errors;
+using static Hugo.Go;
 
 namespace Polymer.Transport.Http;
 
 internal sealed class HttpDuplexStreamTransportCall : IDuplexStreamCall
 {
+    private const int BufferSize = 32 * 1024;
+
     private readonly ClientWebSocket _socket;
     private readonly DuplexStreamCall _inner;
     private readonly CancellationTokenSource _cts;
-    private readonly Task _requestPump;
-    private readonly Task _responsePump;
+    private readonly string _transport;
+    private Task? _requestPump;
+    private Task? _responsePump;
 
-    private HttpDuplexStreamTransportCall(ClientWebSocket socket, DuplexStreamCall inner, CancellationToken cancellationToken)
+    private HttpDuplexStreamTransportCall(
+        ClientWebSocket socket,
+        DuplexStreamCall inner,
+        string transport,
+        CancellationToken cancellationToken)
     {
-        _socket = socket;
-        _inner = inner;
+        _socket = socket ?? throw new ArgumentNullException(nameof(socket));
+        _inner = inner ?? throw new ArgumentNullException(nameof(inner));
+        _transport = transport;
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        _requestPump = PumpRequestsAsync(_cts.Token);
-        _responsePump = PumpResponsesAsync(_cts.Token);
     }
 
-    public static IDuplexStreamCall Create(
+    public static async ValueTask<Result<IDuplexStreamCall>> CreateAsync(
         RequestMeta requestMeta,
         ResponseMeta responseMeta,
         ClientWebSocket socket,
         CancellationToken cancellationToken)
     {
-        var inner = DuplexStreamCall.Create(requestMeta, responseMeta);
-        return new HttpDuplexStreamTransportCall(socket, inner, cancellationToken);
+        ArgumentNullException.ThrowIfNull(requestMeta);
+        ArgumentNullException.ThrowIfNull(responseMeta);
+        ArgumentNullException.ThrowIfNull(socket);
+
+        var transport = requestMeta.Transport ?? "http";
+
+        try
+        {
+            var inner = DuplexStreamCall.Create(requestMeta, responseMeta);
+            var call = new HttpDuplexStreamTransportCall(socket, inner, transport, cancellationToken);
+            call.StartPumps();
+            return Ok<IDuplexStreamCall>(call);
+        }
+        catch (Exception ex)
+        {
+            return PolymerErrors.ToResult<IDuplexStreamCall>(ex, transport: transport);
+        }
+    }
+
+    private void StartPumps()
+    {
+        _requestPump = PumpRequestsAsync(_cts.Token);
+        _responsePump = PumpResponsesAsync(_cts.Token);
     }
 
     public RequestMeta RequestMeta => _inner.RequestMeta;
@@ -64,11 +91,29 @@ internal sealed class HttpDuplexStreamTransportCall : IDuplexStreamCall
 
         try
         {
-            await Task.WhenAll(_requestPump, _responsePump).ConfigureAwait(false);
+            if (_requestPump is not null || _responsePump is not null)
+            {
+                await Task.WhenAll(
+                        _requestPump ?? Task.CompletedTask,
+                        _responsePump ?? Task.CompletedTask)
+                    .ConfigureAwait(false);
+            }
         }
         catch
         {
-            // ignored
+            // swallow pump exceptions during disposal
+        }
+
+        if (_socket.State is WebSocketState.Open or WebSocketState.CloseReceived)
+        {
+            try
+            {
+                await _socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "completed", CancellationToken.None).ConfigureAwait(false);
+            }
+            catch
+            {
+                // ignore close failures
+            }
         }
 
         _socket.Dispose();
@@ -93,7 +138,7 @@ internal sealed class HttpDuplexStreamTransportCall : IDuplexStreamCall
             var error = PolymerErrorAdapter.FromStatus(
                 PolymerStatusCode.Cancelled,
                 "The request stream was cancelled.",
-                transport: "http");
+                transport: _transport);
             await HttpDuplexProtocol.SendFrameAsync(_socket, HttpDuplexProtocol.FrameType.RequestError, HttpDuplexProtocol.CreateErrorPayload(error), CancellationToken.None).ConfigureAwait(false);
             await _inner.CompleteRequestsAsync(error, CancellationToken.None).ConfigureAwait(false);
         }
@@ -102,7 +147,7 @@ internal sealed class HttpDuplexStreamTransportCall : IDuplexStreamCall
             var error = PolymerErrorAdapter.FromStatus(
                 PolymerStatusCode.Internal,
                 ex.Message ?? "An error occurred while sending request messages.",
-                transport: "http",
+                transport: _transport,
                 inner: Error.FromException(ex));
             await HttpDuplexProtocol.SendFrameAsync(_socket, HttpDuplexProtocol.FrameType.RequestError, HttpDuplexProtocol.CreateErrorPayload(error), CancellationToken.None).ConfigureAwait(false);
             await _inner.CompleteRequestsAsync(error, CancellationToken.None).ConfigureAwait(false);
@@ -111,7 +156,7 @@ internal sealed class HttpDuplexStreamTransportCall : IDuplexStreamCall
 
     private async Task PumpResponsesAsync(CancellationToken cancellationToken)
     {
-        var buffer = new byte[32 * 1024];
+        var buffer = new byte[BufferSize];
 
         try
         {
@@ -127,17 +172,32 @@ internal sealed class HttpDuplexStreamTransportCall : IDuplexStreamCall
 
                 switch (frame.Type)
                 {
+                    case HttpDuplexProtocol.FrameType.ResponseHeaders:
+                    {
+                        var meta = HttpDuplexProtocol.DeserializeResponseMeta(frame.Payload.Span, _transport);
+                        _inner.SetResponseMeta(meta);
+                        break;
+                    }
+
                     case HttpDuplexProtocol.FrameType.ResponseData:
                         await _inner.ResponseWriter.WriteAsync(frame.Payload.ToArray(), cancellationToken).ConfigureAwait(false);
                         break;
 
                     case HttpDuplexProtocol.FrameType.ResponseComplete:
+                    {
+                        if (!frame.Payload.IsEmpty)
+                        {
+                            var meta = HttpDuplexProtocol.DeserializeResponseMeta(frame.Payload.Span, _transport);
+                            _inner.SetResponseMeta(meta);
+                        }
+
                         await _inner.CompleteResponsesAsync(cancellationToken: CancellationToken.None).ConfigureAwait(false);
                         return;
+                    }
 
                     case HttpDuplexProtocol.FrameType.ResponseError:
                     {
-                        var error = HttpDuplexProtocol.ParseError(frame.Payload.Span, "http");
+                        var error = HttpDuplexProtocol.ParseError(frame.Payload.Span, _transport);
                         await _inner.CompleteResponsesAsync(error, CancellationToken.None).ConfigureAwait(false);
                         return;
                     }
@@ -148,11 +208,15 @@ internal sealed class HttpDuplexStreamTransportCall : IDuplexStreamCall
 
                     case HttpDuplexProtocol.FrameType.RequestError:
                     {
-                        var error = HttpDuplexProtocol.ParseError(frame.Payload.Span, "http");
+                        var error = HttpDuplexProtocol.ParseError(frame.Payload.Span, _transport);
                         await _inner.CompleteRequestsAsync(error, CancellationToken.None).ConfigureAwait(false);
                         await _inner.CompleteResponsesAsync(error, CancellationToken.None).ConfigureAwait(false);
                         return;
                     }
+
+                    case HttpDuplexProtocol.FrameType.RequestData:
+                        await _inner.RequestWriter.WriteAsync(frame.Payload.ToArray(), cancellationToken).ConfigureAwait(false);
+                        break;
                 }
             }
 
@@ -163,18 +227,14 @@ internal sealed class HttpDuplexStreamTransportCall : IDuplexStreamCall
             await _inner.CompleteResponsesAsync(PolymerErrorAdapter.FromStatus(
                 PolymerStatusCode.Cancelled,
                 "The response stream was cancelled.",
-                transport: "http"), CancellationToken.None).ConfigureAwait(false);
-        }
-        catch (WebSocketException wsEx) when (wsEx.WebSocketErrorCode == WebSocketError.ConnectionClosedPrematurely)
-        {
-            await _inner.CompleteResponsesAsync(cancellationToken: CancellationToken.None).ConfigureAwait(false);
+                transport: _transport), CancellationToken.None).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             await _inner.CompleteResponsesAsync(PolymerErrorAdapter.FromStatus(
                 PolymerStatusCode.Internal,
                 ex.Message ?? "An error occurred while receiving response messages.",
-                transport: "http",
+                transport: _transport,
                 inner: Error.FromException(ex)), CancellationToken.None).ConfigureAwait(false);
         }
     }

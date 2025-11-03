@@ -16,7 +16,9 @@ public sealed class RawCodec : ICodec<byte[], byte[]>
 {
     private readonly StringComparer _comparer = StringComparer.OrdinalIgnoreCase;
 
-    public RawCodec(string encoding = "raw")
+    public const string DefaultEncoding = "raw";
+
+    public RawCodec(string encoding = DefaultEncoding)
     {
         if (string.IsNullOrWhiteSpace(encoding))
         {

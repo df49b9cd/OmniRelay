@@ -90,10 +90,10 @@ public sealed class RpcLoggingMiddlewareTests
         var logger = new TestLogger<RpcLoggingMiddleware>();
         var options = new RpcLoggingOptions
         {
-            Enrich = (meta, response, activity) => new[]
-            {
+            Enrich = (meta, response, activity) =>
+            [
                 new KeyValuePair<string, object?>("custom.key", "custom-value")
-            }
+            ]
         };
 
         var middleware = new RpcLoggingMiddleware(logger, options);
