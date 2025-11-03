@@ -221,6 +221,7 @@ Transport Specifics
 * **Status Mapping:** gRPC `StatusCode` ↔ `PolymerStatusCode`.
 
 * **Streaming support:** expose async enumerable APIs for server/client/bidi streams; ensure back-pressure ties into YARPC middleware.
+* **Docs:** `docs/reference/streaming.md` captures handler registration patterns, client helpers, and completion semantics across server, client, and duplex streaming.
 
 * **Metadata bridging:** serialize YARPC headers into gRPC metadata (binary-safe) and convert trailers back into response metadata.
 

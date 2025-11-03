@@ -51,14 +51,14 @@ Comprehensive backlog tracking the remaining work needed to reach feature parity
       - ~~Validate metadata propagation (custom headers/trailers) for gRPC duplex streams.~~ *(completed via `GrpcTransportTests.DuplexStreaming_PropagatesMetadata`)
   - **Shared streaming tasks**
     - ~~Update dispatcher introspection to list available stream procedures and status (unary, client, server, bidi).~~ *(completed)*
-    - Document public APIs (how to build client streaming/bidi handlers).
+    - ~~Document public APIs (how to build client streaming/bidi handlers).~~ *(documented in `docs/reference/streaming.md` with server, client, and duplex guidance.)*
     - ~~Expand gRPC outbound/inbound error handling to surface canonical codes for streaming faults.~~ *(completed)*
     - **gRPC transport test gaps (parity audit)**
-      - Cover duplex/bidirectional streaming happy path, cancellation, and flow-control scenarios.
-      - Validate request/response metadata propagation (`rpc-*` headers, custom headers, TTL/deadline) across unary and streaming RPCs.
-      - Assert response trailers carry `polymer-encoding`, status, and error metadata for success & failure cases.
-      - Verify `GrpcStatusMapper` mappings for all canonical codes surfaced by unary and streaming transports.
-      - Exercise streaming edge conditions: server-initiated cancellation/error for server and client streams, partial writes, and mid-stream failures.
+      - ~~Cover duplex/bidirectional streaming happy path, cancellation, and flow-control scenarios.~~ *(completed via `GrpcTransportTests.DuplexStreaming_OverGrpcTransport`, `_ServerCancellationPropagatesToClient`, `_ClientCancellationPropagatesToServer`, and `_FlowControl_ServerSlow`.)*
+      - ~~Validate request/response metadata propagation (`rpc-*` headers, custom headers, TTL/deadline) across unary and streaming RPCs.~~ *(covered by `GrpcTransportTests.ServerStreaming_PropagatesMetadataAndHeaders` and streaming meta assertions.)*
+      - ~~Assert response trailers carry `polymer-encoding`, status, and error metadata for success & failure cases.~~ *(completed via `GrpcTransportTests.GrpcTransport_ResponseTrailers_SurfaceEncodingAndStatus` and `_SurfaceErrorMetadata`.)*
+      - ~~Verify `GrpcStatusMapper` mappings for all canonical codes surfaced by unary and streaming transports.~~ *(covered by `GrpcTransportTests.GrpcStatusMapper_FromStatus_MapsExpected`/`_ToStatus_MapsExpected`.)*
+      - ~~Exercise streaming edge conditions: server-initiated cancellation/error for server and client streams, partial writes, and mid-stream failures.~~ *(addressed through `GrpcTransportTests.ServerStreaming_ErrorMidStream_PropagatesToClient`, client stream cancellation/error tests, and duplex cancellation coverage.)*
       - Add regression coverage once upstream enables forcing request/response compression so we can validate advertised `grpc-accept-encoding` behavior.
       - Compression negotiation coverage: advertise supported compressors (`grpc-accept-encoding`) and verify request/response compression once upstream exposes the necessary hooks.
 
@@ -173,7 +173,7 @@ Comprehensive backlog tracking the remaining work needed to reach feature parity
 - **Health, Backoff & Circuit Breaking**
   - ~~Add exponential backoff on repeated failures, half-open testing.~~ *(Completed with `PeerCircuitBreaker` supporting exponential backoff, half-open probe limits, and success thresholds integrated into gRPC peers.)*
   - ~~Surface retryable vs non-retryable errors to chooser.~~ *(gRPC outbound now classifies errors via `PolymerErrors.GetFaultType`, avoiding peer penalties for caller faults.)*
-  - Provide configuration knobs for thresholds.
+  - ~~Provide configuration knobs for thresholds.~~ *(exposed via `PeerCircuitBreakerOptions` consumed by `GrpcOutbound`.)*
 
 - **Peer Introspection**
   - Introspection endpoint to show peer health, latency percentiles.
