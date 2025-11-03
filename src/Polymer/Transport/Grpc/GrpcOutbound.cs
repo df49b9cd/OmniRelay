@@ -14,6 +14,7 @@ using System.Threading.Tasks;
 using Grpc.Core;
 using Grpc.Net.Client;
 using Grpc.Core.Interceptors;
+using Grpc.Net.Compression;
 using Hugo;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -111,9 +112,14 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         };
         _peerChooserFactory = peerChooser ?? (peers => new RoundRobinPeerChooser(peers.ToImmutableArray()));
 
-        if (_compressionOptions is { Providers.Count: > 0 })
+        if (_compressionOptions is { } compression)
         {
-            var providers = _compressionOptions.Providers.ToList();
+            compression.Validate();
+
+            var providers = compression.Providers.Count > 0
+                ? compression.Providers.ToList()
+                : new List<ICompressionProvider>();
+
             _compressionAlgorithms = new HashSet<string>(
                 providers.Select(provider => provider.EncodingName),
                 StringComparer.OrdinalIgnoreCase);

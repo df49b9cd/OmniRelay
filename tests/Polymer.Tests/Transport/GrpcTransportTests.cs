@@ -2,6 +2,8 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Net.Sockets;
 using System.Reflection;
@@ -12,6 +14,7 @@ using System.Diagnostics.Metrics;
 using Grpc.Core;
 using Grpc.Core.Interceptors;
 using Grpc.Net.Client;
+using Grpc.Net.Compression;
 using Microsoft.Extensions.Logging;
 using Polymer.Core;
 using Polymer.Core.Transport;
@@ -39,6 +42,68 @@ public class GrpcTransportTests
     private const string EncodingTrailerKey = "polymer-encoding";
     private const string ErrorMessageTrailerKey = "polymer-error-message";
     private const string ErrorCodeTrailerKey = "polymer-error-code";
+
+    [Fact]
+    public void CompressionOptions_ValidateRequiresRegisteredAlgorithm()
+    {
+        var options = new GrpcCompressionOptions
+        {
+            Providers = Array.Empty<ICompressionProvider>(),
+            DefaultAlgorithm = "gzip"
+        };
+
+        Assert.Throws<InvalidOperationException>(() => options.Validate());
+    }
+
+    [Fact]
+    public void GrpcOutbound_CreateCallOptionsAddsAcceptEncoding()
+    {
+        var provider = new DummyCompressionProvider("gzip");
+        var compressionOptions = new GrpcCompressionOptions
+        {
+            Providers = new[] { provider },
+            DefaultAlgorithm = provider.EncodingName
+        };
+
+        var outbound = new GrpcOutbound(new Uri("http://127.0.0.1:5000"), "echo", compressionOptions: compressionOptions);
+        var requestMeta = new RequestMeta(service: "echo", procedure: "echo::call", transport: GrpcTransportConstants.TransportName);
+
+        var createCallOptions = typeof(GrpcOutbound).GetMethod("CreateCallOptions", BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException("Unable to locate CreateCallOptions method.");
+
+        var callOptions = (CallOptions)createCallOptions.Invoke(outbound, new object[] { requestMeta, CancellationToken.None })!;
+        var headers = callOptions.Headers ?? new Metadata();
+        var acceptEncoding = headers.GetValue(GrpcTransportConstants.GrpcAcceptEncodingHeader);
+
+        Assert.Equal(provider.EncodingName, acceptEncoding);
+    }
+
+    [Fact]
+    public void GrpcOutbound_CreateCallOptionsPreservesExistingAcceptEncoding()
+    {
+        var provider = new DummyCompressionProvider("gzip");
+        var compressionOptions = new GrpcCompressionOptions
+        {
+            Providers = new[] { provider },
+            DefaultAlgorithm = provider.EncodingName
+        };
+
+        var outbound = new GrpcOutbound(new Uri("http://127.0.0.1:5001"), "echo", compressionOptions: compressionOptions);
+        var requestHeaders = new[]
+        {
+            new KeyValuePair<string, string>(GrpcTransportConstants.GrpcAcceptEncodingHeader, "identity")
+        };
+        var requestMeta = new RequestMeta(service: "echo", procedure: "echo::call", transport: GrpcTransportConstants.TransportName, headers: requestHeaders);
+
+        var createCallOptions = typeof(GrpcOutbound).GetMethod("CreateCallOptions", BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException("Unable to locate CreateCallOptions method.");
+
+        var callOptions = (CallOptions)createCallOptions.Invoke(outbound, new object[] { requestMeta, CancellationToken.None })!;
+        var callHeaders = callOptions.Headers ?? new Metadata();
+        var acceptEncoding = callHeaders.GetValue(GrpcTransportConstants.GrpcAcceptEncodingHeader);
+
+        Assert.Equal("identity", acceptEncoding);
+    }
 
     [Fact(Timeout = 30_000)]
     public async Task ServerStreaming_OverGrpcTransport()
@@ -2257,4 +2322,23 @@ public class GrpcTransportTests
     private sealed record AggregateResponse(int TotalAmount);
 
     private sealed record ChatMessage(string Message);
+
+    private sealed class DummyCompressionProvider : ICompressionProvider
+    {
+        public DummyCompressionProvider(string encodingName)
+        {
+            if (string.IsNullOrWhiteSpace(encodingName))
+            {
+                throw new ArgumentException("Encoding name is required.", nameof(encodingName));
+            }
+
+            EncodingName = encodingName;
+        }
+
+        public string EncodingName { get; }
+
+        public Stream CreateCompressionStream(Stream stream, CompressionLevel? compressionLevel) => stream;
+
+        public Stream CreateDecompressionStream(Stream stream) => stream;
+    }
 }

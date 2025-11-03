@@ -12,4 +12,34 @@ public sealed record GrpcCompressionOptions
     public string? DefaultAlgorithm { get; init; }
 
     public CompressionLevel? DefaultCompressionLevel { get; init; }
+
+    public void Validate()
+    {
+        if (string.IsNullOrWhiteSpace(DefaultAlgorithm))
+        {
+            return;
+        }
+
+        if (Providers is null)
+        {
+            throw new InvalidOperationException(
+                $"Compression options specify default algorithm '{DefaultAlgorithm}' but no providers are registered.");
+        }
+
+        foreach (var provider in Providers)
+        {
+            if (provider is null)
+            {
+                continue;
+            }
+
+            if (string.Equals(provider.EncodingName, DefaultAlgorithm, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"Compression provider for algorithm '{DefaultAlgorithm}' was not registered.");
+    }
 }

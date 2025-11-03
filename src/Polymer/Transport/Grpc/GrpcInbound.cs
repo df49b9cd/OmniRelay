@@ -181,12 +181,17 @@ public sealed class GrpcInbound : ILifecycle, IDispatcherAware
                 options.Interceptors.Add<GrpcServerLoggingInterceptor>();
             }
 
-            if (_compressionOptions is { Providers.Count: > 0 } compressionOptions)
+            if (_compressionOptions is { } compressionOptions)
             {
-                options.CompressionProviders.Clear();
-                foreach (var provider in compressionOptions.Providers)
+                compressionOptions.Validate();
+
+                if (compressionOptions.Providers.Count > 0)
                 {
-                    options.CompressionProviders.Add(provider);
+                    options.CompressionProviders.Clear();
+                    foreach (var provider in compressionOptions.Providers)
+                    {
+                        options.CompressionProviders.Add(provider);
+                    }
                 }
 
                 if (!string.IsNullOrWhiteSpace(compressionOptions.DefaultAlgorithm))
