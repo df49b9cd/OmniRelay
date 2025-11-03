@@ -311,6 +311,8 @@ Middleware & Observability
 
 * **Hugo diagnostics:** plug `Hugo.Diagnostics.OpenTelemetry` middleware where possible so span/metric emission remains consistent with other Hugo-based services.
 
+**Status:** Dispatcher exposes type-specific global middleware collections, and the new `Register*` procedure builders (`UnaryProcedureBuilder`, `StreamProcedureBuilder`, etc.) allow per-procedure middleware, encoding, and metadata configuration. Ordering is locked down by `DispatcherTests.RegisterUnary_BuilderConfiguresPipelineAndMetadata` and documented in `docs/reference/middleware.md`.
+
 * * *
 
 Configuration

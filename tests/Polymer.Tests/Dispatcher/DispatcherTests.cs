@@ -109,6 +109,82 @@ public class DispatcherTests
     }
 
     [Fact]
+    public async Task RegisterUnary_BuilderConfiguresPipelineAndMetadata()
+    {
+        var order = new List<string>();
+        var options = new DispatcherOptions("keyvalue");
+        options.UnaryInboundMiddleware.Add(new RecordingUnaryInboundMiddleware("global", order));
+
+        var dispatcher = new Polymer.Dispatcher.Dispatcher(options);
+
+        var middleware1 = new RecordingUnaryInboundMiddleware("m1", order);
+        var middleware2 = new RecordingUnaryInboundMiddleware("m2", order);
+
+        dispatcher.RegisterUnary(
+            "user::get",
+            (request, cancellationToken) =>
+            {
+                order.Add("handler");
+                var response = Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty);
+                return ValueTask.FromResult(Ok(response));
+            },
+            builder => builder
+                .WithEncoding("json")
+                .AddAlias("users::get")
+                .Use(middleware1)
+                .Use(middleware2));
+
+        var meta = new RequestMeta(service: "keyvalue", procedure: "user::get", transport: "test");
+        var request = new Request<ReadOnlyMemory<byte>>(meta, ReadOnlyMemory<byte>.Empty);
+        var result = await dispatcher.InvokeUnaryAsync("user::get", request, TestContext.Current.CancellationToken);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(new[] { "global", "m1", "m2", "handler" }, order);
+
+        Assert.True(dispatcher.TryGetProcedure("user::get", ProcedureKind.Unary, out var spec));
+        var unarySpec = Assert.IsType<UnaryProcedureSpec>(spec);
+        Assert.Equal("json", unarySpec.Encoding);
+        Assert.Contains("users::get", unarySpec.Aliases);
+        Assert.Collection(unarySpec.Middleware,
+            mw => Assert.Same(middleware1, mw),
+            mw => Assert.Same(middleware2, mw));
+    }
+
+    [Fact]
+    public void RegisterUnary_BuilderRequiresHandler()
+    {
+        var dispatcher = new Polymer.Dispatcher.Dispatcher(new DispatcherOptions("edge"));
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            dispatcher.RegisterUnary("missing", builder => builder.WithEncoding("json")));
+
+        Assert.Contains("Handle", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RegisterStream_BuilderConfiguresMetadata()
+    {
+        var dispatcher = new Polymer.Dispatcher.Dispatcher(new DispatcherOptions("streaming"));
+        var metadata = new StreamIntrospectionMetadata(
+            new StreamChannelMetadata(StreamDirection.Server, "bounded-channel", Capacity: 32, TracksMessageCount: true));
+
+        dispatcher.RegisterStream(
+            "events::subscribe",
+            (request, options, cancellationToken) =>
+                ValueTask.FromResult(Err<IStreamCall>(PolymerErrorAdapter.FromStatus(PolymerStatusCode.Unimplemented, "stub"))),
+            builder => builder
+                .WithEncoding("json")
+                .AddAliases(new[] { "events::watch" })
+                .WithMetadata(metadata));
+
+        Assert.True(dispatcher.TryGetProcedure("events::subscribe", ProcedureKind.Stream, out var spec));
+        var streamSpec = Assert.IsType<StreamProcedureSpec>(spec);
+        Assert.Equal("json", streamSpec.Encoding);
+        Assert.Equal(metadata, streamSpec.Metadata);
+        Assert.Contains("events::watch", streamSpec.Aliases);
+    }
+
+    [Fact]
     public void ClientConfig_ReturnsOutboundsAndMiddleware()
     {
         var unaryOutbound = new StubUnaryOutbound();
@@ -310,5 +386,26 @@ public class DispatcherTests
             IRequest<ReadOnlyMemory<byte>> request,
             CancellationToken cancellationToken,
             UnaryInboundDelegate next) => next(request, cancellationToken);
+    }
+
+    private sealed class RecordingUnaryInboundMiddleware : IUnaryInboundMiddleware
+    {
+        private readonly string _name;
+        private readonly IList<string> _order;
+
+        public RecordingUnaryInboundMiddleware(string name, IList<string> order)
+        {
+            _name = name;
+            _order = order ?? throw new ArgumentNullException(nameof(order));
+        }
+
+        public ValueTask<Result<Response<ReadOnlyMemory<byte>>>> InvokeAsync(
+            IRequest<ReadOnlyMemory<byte>> request,
+            CancellationToken cancellationToken,
+            UnaryInboundDelegate next)
+        {
+            _order.Add(_name);
+            return next(request, cancellationToken);
+        }
     }
 }

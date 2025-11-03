@@ -98,6 +98,126 @@ public sealed class Dispatcher
         _procedures.Register(spec);
     }
 
+    public void RegisterUnary(string name, UnaryInboundDelegate handler, Action<UnaryProcedureBuilder>? configure = null)
+    {
+        if (handler is null)
+        {
+            throw new ArgumentNullException(nameof(handler));
+        }
+
+        var builder = new UnaryProcedureBuilder(handler);
+        configure?.Invoke(builder);
+        Register(builder.Build(_serviceName, EnsureProcedureName(name)));
+    }
+
+    public void RegisterUnary(string name, Action<UnaryProcedureBuilder> configure)
+    {
+        if (configure is null)
+        {
+            throw new ArgumentNullException(nameof(configure));
+        }
+
+        var builder = new UnaryProcedureBuilder();
+        configure(builder);
+        Register(builder.Build(_serviceName, EnsureProcedureName(name)));
+    }
+
+    public void RegisterOneway(string name, OnewayInboundDelegate handler, Action<OnewayProcedureBuilder>? configure = null)
+    {
+        if (handler is null)
+        {
+            throw new ArgumentNullException(nameof(handler));
+        }
+
+        var builder = new OnewayProcedureBuilder(handler);
+        configure?.Invoke(builder);
+        Register(builder.Build(_serviceName, EnsureProcedureName(name)));
+    }
+
+    public void RegisterOneway(string name, Action<OnewayProcedureBuilder> configure)
+    {
+        if (configure is null)
+        {
+            throw new ArgumentNullException(nameof(configure));
+        }
+
+        var builder = new OnewayProcedureBuilder();
+        configure(builder);
+        Register(builder.Build(_serviceName, EnsureProcedureName(name)));
+    }
+
+    public void RegisterStream(string name, StreamInboundDelegate handler, Action<StreamProcedureBuilder>? configure = null)
+    {
+        if (handler is null)
+        {
+            throw new ArgumentNullException(nameof(handler));
+        }
+
+        var builder = new StreamProcedureBuilder(handler);
+        configure?.Invoke(builder);
+        Register(builder.Build(_serviceName, EnsureProcedureName(name)));
+    }
+
+    public void RegisterStream(string name, Action<StreamProcedureBuilder> configure)
+    {
+        if (configure is null)
+        {
+            throw new ArgumentNullException(nameof(configure));
+        }
+
+        var builder = new StreamProcedureBuilder();
+        configure(builder);
+        Register(builder.Build(_serviceName, EnsureProcedureName(name)));
+    }
+
+    public void RegisterClientStream(string name, ClientStreamInboundDelegate handler, Action<ClientStreamProcedureBuilder>? configure = null)
+    {
+        if (handler is null)
+        {
+            throw new ArgumentNullException(nameof(handler));
+        }
+
+        var builder = new ClientStreamProcedureBuilder(handler);
+        configure?.Invoke(builder);
+        Register(builder.Build(_serviceName, EnsureProcedureName(name)));
+    }
+
+    public void RegisterClientStream(string name, Action<ClientStreamProcedureBuilder> configure)
+    {
+        if (configure is null)
+        {
+            throw new ArgumentNullException(nameof(configure));
+        }
+
+        var builder = new ClientStreamProcedureBuilder();
+        configure(builder);
+        Register(builder.Build(_serviceName, EnsureProcedureName(name)));
+    }
+
+    public void RegisterDuplex(string name, DuplexInboundDelegate handler, Action<DuplexProcedureBuilder>? configure = null)
+    {
+        if (handler is null)
+        {
+            throw new ArgumentNullException(nameof(handler));
+        }
+
+        var builder = new DuplexProcedureBuilder(handler);
+        configure?.Invoke(builder);
+        Register(builder.Build(_serviceName, EnsureProcedureName(name)));
+    }
+
+    public void RegisterDuplex(string name, Action<DuplexProcedureBuilder> configure)
+    {
+        if (configure is null)
+        {
+            throw new ArgumentNullException(nameof(configure));
+        }
+
+        var builder = new DuplexProcedureBuilder();
+        configure(builder);
+        Register(builder.Build(_serviceName, EnsureProcedureName(name)));
+    }
+
     public bool TryGetProcedure(string name, ProcedureKind kind, out ProcedureSpec spec) =>
         _procedures.TryGet(_serviceName, name, kind, out spec);
 
@@ -561,5 +681,15 @@ public sealed class Dispatcher
         }
 
         return combined;
+    }
+
+    private static string EnsureProcedureName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            throw new ArgumentException("Procedure name cannot be null or whitespace.", nameof(name));
+        }
+
+        return name.Trim();
     }
 }

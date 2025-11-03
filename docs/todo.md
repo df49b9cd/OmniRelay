@@ -128,9 +128,9 @@ Comprehensive backlog tracking the remaining work needed to reach feature parity
   - Add validation to prevent conflicting registrations.
 
 - **Middleware Composition**
-  - Maintain separate inbound/outbound stacks for unary, oneway, client stream, server stream, bidi stream.
-  - Provide builder APIs to attach middleware during registration (`dispatcher.Register(..., middleware => ...)`).
-  - Ensure middleware ordering is deterministic and documented.
+  - ~~Maintain separate inbound/outbound stacks for unary, oneway, client stream, server stream, bidi stream.~~ *(`DispatcherOptions` exposes dedicated lists per RPC type; `DispatcherTests` asserts client configs preserve the typed splits.)*
+  - ~~Provide builder APIs to attach middleware during registration (`dispatcher.Register(..., middleware => ...)`).~~ *(`Dispatcher.Register*` overloads now accept fluent builders (`UnaryProcedureBuilder`, `StreamProcedureBuilder`, etc.) with coverage in `DispatcherTests.RegisterUnary_BuilderConfiguresPipelineAndMetadata`.)*
+  - ~~Ensure middleware ordering is deterministic and documented.~~ *(Builders append middleware in declaration order after global stacks; ordering is verified in tests and captured in `docs/reference/middleware.md`.)*
 
 - **Introspection Endpoint**
   - ~~Implement HTTP endpoint (`/polymer/introspect`) returning dispatcher summary (service, status, procedures, middleware).~~ *(completed via `HttpInbound.HandleIntrospectAsync` and `HttpIntrospectionTests.IntrospectionEndpoint_ReportsDispatcherState`)*
