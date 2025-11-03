@@ -515,6 +515,8 @@ Each step includes _Done when…_ acceptance criteria.
 
 **Done when:** Generated code round‑trips over gRPC; optional Protobuf‑over‑HTTP via codec.
 
+**Status:** `protoc-gen-polymer-csharp` now lives under `src/Polymer.Codegen.Protobuf/`. The generator emits dispatcher registration helpers and lazy clients that wrap `ProtobufCodec`. Runtime changes extend media-type negotiation so HTTP outbounds understand `application/x-protobuf`. Golden tests (`ProtobufCodeGeneratorTests`) and integration tests (`GeneratedServiceIntegrationTests`) cover unary HTTP and gRPC flows. Documentation for tooling resides in `docs/reference/codegen/protobuf.md`. Future work: extend generator for streaming convenience helpers and Thrift parity.
+
 * * *
 
 ### 9) Error Parity & Mappings

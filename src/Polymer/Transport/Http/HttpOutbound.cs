@@ -157,9 +157,18 @@ public sealed class HttpOutbound(HttpClient httpClient, Uri requestUri, bool dis
             return null;
         }
 
-        return string.Equals(encoding, RawCodec.DefaultEncoding, StringComparison.OrdinalIgnoreCase)
-            ? MediaTypeNames.Application.Octet
-            : encoding;
+        if (string.Equals(encoding, RawCodec.DefaultEncoding, StringComparison.OrdinalIgnoreCase))
+        {
+            return MediaTypeNames.Application.Octet;
+        }
+
+        var mediaType = ProtobufEncoding.GetMediaType(encoding);
+        if (!string.IsNullOrEmpty(mediaType))
+        {
+            return mediaType;
+        }
+
+        return encoding;
     }
 
     private static ResponseMeta BuildResponseMeta(HttpResponseMessage response)
@@ -178,6 +187,7 @@ public sealed class HttpOutbound(HttpClient httpClient, Uri requestUri, bool dis
 
         response.Headers.TryGetValues(HttpTransportHeaders.Encoding, out var encodingValues);
         var encoding = encodingValues?.FirstOrDefault() ?? response.Content.Headers.ContentType?.MediaType;
+        encoding = ProtobufEncoding.Normalize(encoding);
 
         return new ResponseMeta(
             encoding: encoding,

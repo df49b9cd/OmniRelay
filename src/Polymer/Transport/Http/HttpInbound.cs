@@ -276,7 +276,7 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
 
         try
         {
-        if (!context.Request.Headers.TryGetValue(HttpTransportHeaders.Procedure, out var procedureValues) ||
+            if (!context.Request.Headers.TryGetValue(HttpTransportHeaders.Procedure, out var procedureValues) ||
             StringValues.IsNullOrEmpty(procedureValues))
         {
             context.Response.StatusCode = StatusCodes.Status400BadRequest;
@@ -286,18 +286,9 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
 
         var procedure = procedureValues![0];
 
-        string? encoding = null;
-        if (context.Request.Headers.TryGetValue(HttpTransportHeaders.Encoding, out var encodingValues) &&
-            !StringValues.IsNullOrEmpty(encodingValues))
-        {
-            encoding = encodingValues![0];
-        }
-        else if (!string.IsNullOrEmpty(context.Request.ContentType))
-        {
-            encoding = context.Request.ContentType;
-        }
+            var encoding = ResolveRequestEncoding(context.Request.Headers, context.Request.ContentType);
 
-        var meta = BuildRequestMeta(dispatcher.ServiceName, procedure!, encoding, context.Request.Headers, transport, context.RequestAborted);
+            var meta = BuildRequestMeta(dispatcher.ServiceName, procedure!, encoding, context.Request.Headers, transport, context.RequestAborted);
 
         byte[] buffer;
         if (context.Request.ContentLength is > 0)
@@ -331,12 +322,7 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
             var ackMeta = onewayResult.Value.Meta;
             var ackEncoding = ackMeta.Encoding ?? encoding;
             context.Response.Headers[HttpTransportHeaders.Encoding] = ackEncoding ?? MediaTypeNames.Application.Octet;
-            if (!string.IsNullOrEmpty(ackEncoding))
-            {
-                context.Response.ContentType = string.Equals(ackEncoding, RawCodec.DefaultEncoding, StringComparison.OrdinalIgnoreCase)
-                    ? MediaTypeNames.Application.Octet
-                    : ackEncoding;
-            }
+            context.Response.ContentType = ResolveContentType(ackEncoding) ?? MediaTypeNames.Application.Octet;
 
             foreach (var header in ackMeta.Headers)
             {
@@ -360,13 +346,7 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
         var responseEncoding = response.Meta.Encoding ?? encoding;
         context.Response.Headers[HttpTransportHeaders.Encoding] = responseEncoding ?? MediaTypeNames.Application.Octet;
         context.Response.Headers[HttpTransportHeaders.Transport] = transport;
-
-        if (!string.IsNullOrEmpty(responseEncoding))
-        {
-            context.Response.ContentType = string.Equals(responseEncoding, RawCodec.DefaultEncoding, StringComparison.OrdinalIgnoreCase)
-                ? MediaTypeNames.Application.Octet
-                : responseEncoding;
-        }
+        context.Response.ContentType = ResolveContentType(responseEncoding) ?? MediaTypeNames.Application.Octet;
 
         foreach (var header in response.Meta.Headers)
         {
@@ -434,9 +414,7 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
         var meta = BuildRequestMeta(
             dispatcher.ServiceName,
             procedure!,
-            encoding: context.Request.Headers.TryGetValue(HttpTransportHeaders.Encoding, out var encodingValues) && !StringValues.IsNullOrEmpty(encodingValues)
-                ? encodingValues![0]
-                : null,
+            encoding: ResolveRequestEncoding(context.Request.Headers, context.Request.ContentType),
             headers: context.Request.Headers,
             transport: transport,
             cancellationToken: context.RequestAborted);
@@ -520,9 +498,7 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
         var meta = BuildRequestMeta(
             dispatcher.ServiceName,
             procedure!,
-            encoding: context.Request.Headers.TryGetValue(HttpTransportHeaders.Encoding, out var encodingValues) && !StringValues.IsNullOrEmpty(encodingValues)
-                ? encodingValues![0]
-                : null,
+            encoding: ResolveRequestEncoding(context.Request.Headers, context.Request.ContentType),
             headers: context.Request.Headers,
             transport: transport,
             cancellationToken: context.RequestAborted);
@@ -685,6 +661,37 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
             transport: string.IsNullOrEmpty(meta.Transport) ? transport : meta.Transport,
             ttl: meta.Ttl,
             headers: headers);
+    }
+
+    private static string? ResolveRequestEncoding(IHeaderDictionary headers, string? contentType)
+    {
+        if (headers.TryGetValue(HttpTransportHeaders.Encoding, out var encodingValues) &&
+            !StringValues.IsNullOrEmpty(encodingValues))
+        {
+            return encodingValues![0];
+        }
+
+        if (!string.IsNullOrEmpty(contentType))
+        {
+            return contentType;
+        }
+
+        return null;
+    }
+
+    private static string? ResolveContentType(string? encoding)
+    {
+        if (string.IsNullOrEmpty(encoding))
+        {
+            return null;
+        }
+
+        if (string.Equals(encoding, RawCodec.DefaultEncoding, StringComparison.OrdinalIgnoreCase))
+        {
+            return MediaTypeNames.Application.Octet;
+        }
+
+        return ProtobufEncoding.GetMediaType(encoding) ?? encoding;
     }
 
     private static RequestMeta BuildRequestMeta(

@@ -85,12 +85,12 @@ Comprehensive backlog tracking the remaining work needed to reach feature parity
   - ~~Add tests ensuring raw payloads bypass serialization.~~ *(covered by `tests/Polymer.Tests/Core/RawCodecTests.cs`, validating encode/decode pass-through and metadata enforcement.)*
 
 - **Protobuf Support**
-  - Author `protoc-gen-polymer-csharp` plugin:
-    - Generate request/response DTOs, codecs, dispatcher registration stubs, client helpers.
-    - Provide MSBuild integration / tooling instructions.
-  - Support Protobuf over gRPC (native) and optional HTTP JSON + Protobuf:
-    - Handle content negotiation & media types.
-  - Write codegen tests (golden outputs) and integration tests round-tripping messages across transports.
+  - ~~Author `protoc-gen-polymer-csharp` plugin:~~ *(implemented in `src/Polymer.Codegen.Protobuf`; generator emits dispatcher registration helpers plus lazy C# clients and `ProtobufCodec` wiring. Usage documented in `docs/reference/codegen/protobuf.md`.)*
+    - ~~Generate request/response DTOs, codecs, dispatcher registration stubs, client helpers.~~ *(Generated output lives under `tests/Polymer.Tests/Generated/TestService.Polymer.g.cs` with golden coverage.)*
+    - ~~Provide MSBuild integration / tooling instructions.~~ *(Documented in `docs/reference/codegen/protobuf.md`, including `Grpc.Tools` pairing and `protoc` invocation.)*
+  - ~~Support Protobuf over gRPC (native) and optional HTTP Protobuf:~~ *(Runtime `ProtobufCodec` gained media-type negotiation; HTTP metadata normalization extended so JSON/Protobuf interop works across transports.)*
+    - ~~Handle content negotiation & media types.~~ *(HTTP inbounds/outbounds now normalize `application/x-protobuf` ↔ `protobuf`.)*
+  - ~~Write codegen tests (golden outputs) and integration tests round-tripping messages across transports.~~ *(See `ProtobufCodeGeneratorTests` for golden coverage and `GeneratedServiceIntegrationTests` for HTTP and gRPC round-trips.)*
 
 - **Thrift Encoding**
   - Investigate options: port ThriftRW vs using Apache Thrift.
