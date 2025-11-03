@@ -21,23 +21,23 @@ public sealed class PolymerConfigurationOptions
 
 public sealed class InboundsConfiguration
 {
-    public IList<HttpInboundConfiguration> Http { get; } = new List<HttpInboundConfiguration>();
+    public IList<HttpInboundConfiguration> Http { get; } = [];
 
-    public IList<GrpcInboundConfiguration> Grpc { get; } = new List<GrpcInboundConfiguration>();
+    public IList<GrpcInboundConfiguration> Grpc { get; } = [];
 }
 
 public sealed class HttpInboundConfiguration
 {
     public string? Name { get; set; }
 
-    public IList<string> Urls { get; } = new List<string>();
+    public IList<string> Urls { get; } = [];
 }
 
 public sealed class GrpcInboundConfiguration
 {
     public string? Name { get; set; }
 
-    public IList<string> Urls { get; } = new List<string>();
+    public IList<string> Urls { get; } = [];
 
     public GrpcServerRuntimeConfiguration Runtime { get; init; } = new();
 
@@ -58,7 +58,7 @@ public sealed class GrpcServerRuntimeConfiguration
 
     public TimeSpan? KeepAlivePingTimeout { get; set; }
 
-    public IList<string> Interceptors { get; } = new List<string>();
+    public IList<string> Interceptors { get; } = [];
 }
 
 public sealed class GrpcServerTlsConfiguration
@@ -94,9 +94,9 @@ public sealed class ServiceOutboundConfiguration
 
 public sealed class RpcOutboundConfiguration
 {
-    public IList<HttpOutboundTargetConfiguration> Http { get; } = new List<HttpOutboundTargetConfiguration>();
+    public IList<HttpOutboundTargetConfiguration> Http { get; } = [];
 
-    public IList<GrpcOutboundTargetConfiguration> Grpc { get; } = new List<GrpcOutboundTargetConfiguration>();
+    public IList<GrpcOutboundTargetConfiguration> Grpc { get; } = [];
 }
 
 public sealed class HttpOutboundTargetConfiguration
@@ -112,7 +112,7 @@ public sealed class GrpcOutboundTargetConfiguration
 {
     public string? Key { get; set; }
 
-    public IList<string> Addresses { get; } = new List<string>();
+    public IList<string> Addresses { get; } = [];
 
     public string? RemoteService { get; set; }
 
@@ -152,7 +152,7 @@ public sealed class GrpcClientRuntimeConfiguration
 
     public TimeSpan? KeepAlivePingTimeout { get; set; }
 
-    public IList<string> Interceptors { get; } = new List<string>();
+    public IList<string> Interceptors { get; } = [];
 }
 
 public sealed class GrpcClientTlsConfiguration
@@ -175,15 +175,15 @@ public sealed class MiddlewareConfiguration
 
 public sealed class MiddlewareStackConfiguration
 {
-    public IList<string> Unary { get; } = new List<string>();
+    public IList<string> Unary { get; } = [];
 
-    public IList<string> Oneway { get; } = new List<string>();
+    public IList<string> Oneway { get; } = [];
 
-    public IList<string> Stream { get; } = new List<string>();
+    public IList<string> Stream { get; } = [];
 
-    public IList<string> ClientStream { get; } = new List<string>();
+    public IList<string> ClientStream { get; } = [];
 
-    public IList<string> Duplex { get; } = new List<string>();
+    public IList<string> Duplex { get; } = [];
 }
 
 public sealed class LoggingConfiguration
@@ -212,16 +212,16 @@ public sealed class JsonEncodingConfiguration
     public IDictionary<string, JsonSerializerProfileConfiguration> Profiles { get; init; } =
         new Dictionary<string, JsonSerializerProfileConfiguration>(StringComparer.OrdinalIgnoreCase);
 
-    public IList<JsonCodecRegistrationConfiguration> Inbound { get; } = new List<JsonCodecRegistrationConfiguration>();
+    public IList<JsonCodecRegistrationConfiguration> Inbound { get; } = [];
 
-    public IList<JsonCodecRegistrationConfiguration> Outbound { get; } = new List<JsonCodecRegistrationConfiguration>();
+    public IList<JsonCodecRegistrationConfiguration> Outbound { get; } = [];
 }
 
 public sealed class JsonSerializerProfileConfiguration
 {
     public JsonSerializerOptionsConfiguration Options { get; init; } = new();
 
-    public IList<string> Converters { get; } = new List<string>();
+    public IList<string> Converters { get; } = [];
 
     public string? Context { get; set; }
 }
@@ -248,7 +248,7 @@ public sealed class JsonCodecRegistrationConfiguration
 
     public JsonSchemaConfiguration Schemas { get; init; } = new();
 
-    public IList<string> Aliases { get; } = new List<string>();
+    public IList<string> Aliases { get; } = [];
 }
 
 public sealed class JsonSerializerOptionsConfiguration
@@ -261,9 +261,9 @@ public sealed class JsonSerializerOptionsConfiguration
 
     public string? DefaultIgnoreCondition { get; set; }
 
-    public IList<string> Converters { get; } = new List<string>();
+    public IList<string> Converters { get; } = [];
 
-    public IList<string> NumberHandling { get; } = new List<string>();
+    public IList<string> NumberHandling { get; } = [];
 
     public bool? AllowTrailingCommas { get; set; }
 

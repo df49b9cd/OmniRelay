@@ -20,7 +20,7 @@ public sealed class PolymerExceptionFilterTests
         var filter = new PolymerExceptionFilter();
         var httpContext = new DefaultHttpContext();
         var actionContext = new ActionContext(httpContext, new RouteData(), new ActionDescriptor());
-        var exceptionContext = new ExceptionContext(actionContext, new List<IFilterMetadata>())
+        var exceptionContext = new ExceptionContext(actionContext, [])
         {
             Exception = new TimeoutException("deadline")
         };

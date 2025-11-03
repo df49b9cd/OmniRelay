@@ -20,7 +20,7 @@ public sealed class PeerMetricsTests : IDisposable
 {
     private readonly MetricListener _listener;
 
-    private readonly ConcurrentBag<MetricMeasurement> _measurements = new();
+    private readonly ConcurrentBag<MetricMeasurement> _measurements = [];
     private static readonly string[] InstrumentsToTrack =
     [
         "polymer.peer.inflight",

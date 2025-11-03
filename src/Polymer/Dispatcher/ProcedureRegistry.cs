@@ -8,7 +8,7 @@ internal sealed class ProcedureRegistry
 {
     private readonly Dictionary<string, ProcedureSpec> _procedures = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _aliases = new(StringComparer.OrdinalIgnoreCase);
-    private readonly List<WildcardAlias> _wildcardAliases = new();
+    private readonly List<WildcardAlias> _wildcardAliases = [];
     private readonly Lock _gate = new();
 
     public void Register(ProcedureSpec spec)

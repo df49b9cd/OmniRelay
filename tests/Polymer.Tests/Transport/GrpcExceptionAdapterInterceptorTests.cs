@@ -57,10 +57,10 @@ public sealed class GrpcExceptionAdapterInterceptorTests
         private readonly string _host = host;
         private readonly string _peer = peer;
         private readonly DateTime _deadline = deadline ?? DateTime.UtcNow.AddMinutes(1);
-        private readonly Metadata _requestHeaders = requestHeaders ?? new Metadata();
+        private readonly Metadata _requestHeaders = requestHeaders ?? [];
         private readonly CancellationToken _cancellationToken = cancellationToken;
-        private readonly Metadata _responseTrailers = new();
-        private readonly AuthContext _authContext = new(null, new Dictionary<string, List<AuthProperty>>());
+        private readonly Metadata _responseTrailers = [];
+        private readonly AuthContext _authContext = new(null, []);
 
         protected override Task WriteResponseHeadersAsyncCore(Metadata responseHeaders) => Task.CompletedTask;
 

@@ -73,7 +73,7 @@ public class GrpcTransportTests
             ?? throw new InvalidOperationException("Unable to locate CreateCallOptions method.");
 
         var callOptions = (CallOptions)createCallOptions.Invoke(outbound, [requestMeta, CancellationToken.None])!;
-        var headers = callOptions.Headers ?? new Metadata();
+        var headers = callOptions.Headers ?? [];
         var acceptEncoding = headers.GetValue(GrpcTransportConstants.GrpcAcceptEncodingHeader);
 
         Assert.Equal(provider.EncodingName, acceptEncoding);
@@ -100,7 +100,7 @@ public class GrpcTransportTests
             ?? throw new InvalidOperationException("Unable to locate CreateCallOptions method.");
 
         var callOptions = (CallOptions)createCallOptions.Invoke(outbound, [requestMeta, CancellationToken.None])!;
-        var callHeaders = callOptions.Headers ?? new Metadata();
+        var callHeaders = callOptions.Headers ?? [];
         var acceptEncoding = callHeaders.GetValue(GrpcTransportConstants.GrpcAcceptEncodingHeader);
 
         Assert.Equal("identity", acceptEncoding);
@@ -2289,7 +2289,7 @@ public class GrpcTransportTests
 
     private sealed class CaptureLoggerProvider : ILoggerProvider
     {
-        private readonly ConcurrentBag<LogEntry> _entries = new();
+        private readonly ConcurrentBag<LogEntry> _entries = [];
 
         public IReadOnlyCollection<LogEntry> Entries => _entries;
 
@@ -2373,7 +2373,7 @@ public class GrpcTransportTests
 
     private sealed class ServerTaskTracker : IAsyncDisposable
     {
-        private readonly List<Task> _tasks = new();
+        private readonly List<Task> _tasks = [];
 
         public void Track(Task task)
         {
@@ -2426,7 +2426,7 @@ public class GrpcTransportTests
         {
             Interlocked.Increment(ref _unaryCount);
 
-            var headers = context.Options.Headers ?? new Metadata();
+            var headers = context.Options.Headers ?? [];
             headers.Add("x-client-interceptor", "true");
 
             var options = context.Options.WithHeaders(headers);

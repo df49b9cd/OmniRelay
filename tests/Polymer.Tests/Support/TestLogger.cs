@@ -8,7 +8,7 @@ namespace Polymer.Tests.Support;
 
 internal sealed class TestLogger<T> : ILogger<T>
 {
-    private readonly List<LogEntry> _entries = new();
+    private readonly List<LogEntry> _entries = [];
     private readonly AsyncLocal<ScopeState?> _currentScope = new();
 
     public IReadOnlyList<LogEntry> Entries => _entries;

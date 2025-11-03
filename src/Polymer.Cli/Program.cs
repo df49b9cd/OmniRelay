@@ -72,18 +72,22 @@ public static class Program
 
     private static RootCommand BuildRootCommand()
     {
-        var root = new RootCommand("Polymer CLI providing configuration validation, dispatcher introspection, and ad-hoc request tooling.");
-        root.Add(CreateConfigCommand());
-        root.Add(CreateIntrospectCommand());
-        root.Add(CreateRequestCommand());
-        root.Add(CreateScriptCommand());
+        var root = new RootCommand("Polymer CLI providing configuration validation, dispatcher introspection, and ad-hoc request tooling.")
+        {
+            CreateConfigCommand(),
+            CreateIntrospectCommand(),
+            CreateRequestCommand(),
+            CreateScriptCommand()
+        };
         return root;
     }
 
     private static Command CreateConfigCommand()
     {
-        var command = new Command("config", "Configuration utilities.");
-        command.Add(CreateConfigValidateCommand());
+        var command = new Command("config", "Configuration utilities.")
+        {
+            CreateConfigValidateCommand()
+        };
         return command;
     }
 
@@ -1169,13 +1173,13 @@ public static class Program
 
     private static bool TryParseHeaders(IEnumerable<string> values, out List<KeyValuePair<string, string>> headers)
     {
-        headers = new List<KeyValuePair<string, string>>();
+        headers = [];
         foreach (var value in values)
         {
             if (!TrySplitKeyValue(value, out var key, out var parsedValue))
             {
                 Console.Error.WriteLine($"Could not parse header '{value}'. Expected KEY=VALUE.");
-                headers = new List<KeyValuePair<string, string>>();
+                headers = [];
                 return false;
             }
 

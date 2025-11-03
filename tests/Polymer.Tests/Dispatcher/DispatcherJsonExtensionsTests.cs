@@ -122,7 +122,7 @@ public class DispatcherJsonExtensionsTests
 
     private sealed class RecordingUnaryOutbound : IUnaryOutbound
     {
-        public List<Request<ReadOnlyMemory<byte>>> Requests { get; } = new();
+        public List<Request<ReadOnlyMemory<byte>>> Requests { get; } = [];
 
         public ValueTask StartAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
 

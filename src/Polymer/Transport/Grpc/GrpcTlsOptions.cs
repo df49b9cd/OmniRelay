@@ -8,7 +8,7 @@ namespace Polymer.Transport.Grpc;
 
 public sealed record GrpcClientTlsOptions
 {
-    public X509Certificate2Collection ClientCertificates { get; init; } = new();
+    public X509Certificate2Collection ClientCertificates { get; init; } = [];
 
     public EncryptionPolicy? EncryptionPolicy { get; init; }
 
