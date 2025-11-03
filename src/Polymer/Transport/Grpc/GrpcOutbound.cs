@@ -226,12 +226,15 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
             var message = string.IsNullOrWhiteSpace(rpcEx.Status.Detail) ? rpcEx.Status.StatusCode.ToString() : rpcEx.Status.Detail;
             GrpcTransportDiagnostics.RecordException(activity, rpcEx, rpcEx.Status.StatusCode, message);
             var error = PolymerErrorAdapter.FromStatus(status, message, transport: GrpcTransportConstants.TransportName);
+            RecordPeerOutcome(lease, error);
             return Err<Response<ReadOnlyMemory<byte>>>(error);
         }
         catch (Exception ex)
         {
             GrpcTransportDiagnostics.RecordException(activity, ex, StatusCode.Unknown, ex.Message);
-            return PolymerErrors.ToResult<Response<ReadOnlyMemory<byte>>>(ex, transport: GrpcTransportConstants.TransportName);
+            var result = PolymerErrors.ToResult<Response<ReadOnlyMemory<byte>>>(ex, transport: GrpcTransportConstants.TransportName);
+            RecordPeerOutcome(lease, result.Error!);
+            return result;
         }
     }
 
@@ -285,12 +288,15 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
             var message = string.IsNullOrWhiteSpace(rpcEx.Status.Detail) ? rpcEx.Status.StatusCode.ToString() : rpcEx.Status.Detail;
             GrpcTransportDiagnostics.RecordException(activity, rpcEx, rpcEx.Status.StatusCode, message);
             var error = PolymerErrorAdapter.FromStatus(status, message, transport: GrpcTransportConstants.TransportName);
+            RecordPeerOutcome(lease, error);
             return Err<OnewayAck>(error);
         }
         catch (Exception ex)
         {
             GrpcTransportDiagnostics.RecordException(activity, ex, StatusCode.Unknown, ex.Message);
-            return PolymerErrors.ToResult<OnewayAck>(ex, transport: GrpcTransportConstants.TransportName);
+            var result = PolymerErrors.ToResult<OnewayAck>(ex, transport: GrpcTransportConstants.TransportName);
+            RecordPeerOutcome(lease, result.Error!);
+            return result;
         }
     }
 
@@ -339,6 +345,7 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
             if (streamCallResult.IsFailure)
             {
                 call.Dispose();
+                RecordPeerOutcome(lease, streamCallResult.Error!);
                 await lease.DisposeAsync().ConfigureAwait(false);
                 var exception = PolymerErrors.FromError(streamCallResult.Error!, GrpcTransportConstants.TransportName);
                 var grpcStatus = GrpcStatusMapper.ToStatus(exception.StatusCode, exception.Message);
@@ -357,14 +364,17 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
             var message = string.IsNullOrWhiteSpace(rpcEx.Status.Detail) ? rpcEx.Status.StatusCode.ToString() : rpcEx.Status.Detail;
             GrpcTransportDiagnostics.RecordException(activity, rpcEx, rpcEx.Status.StatusCode, message);
             var error = PolymerErrorAdapter.FromStatus(status, message, transport: GrpcTransportConstants.TransportName);
+            RecordPeerOutcome(lease, error);
             await lease.DisposeAsync().ConfigureAwait(false);
             return Err<IStreamCall>(error);
         }
         catch (Exception ex)
         {
             GrpcTransportDiagnostics.RecordException(activity, ex, StatusCode.Unknown, ex.Message);
+            var result = PolymerErrors.ToResult<IStreamCall>(ex, transport: GrpcTransportConstants.TransportName);
+            RecordPeerOutcome(lease, result.Error!);
             await lease.DisposeAsync().ConfigureAwait(false);
-            return PolymerErrors.ToResult<IStreamCall>(ex, transport: GrpcTransportConstants.TransportName);
+            return result;
         }
     }
 
@@ -416,18 +426,21 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         }
         catch (RpcException rpcEx)
         {
-            await lease.DisposeAsync().ConfigureAwait(false);
             var status = GrpcStatusMapper.FromStatus(rpcEx.Status);
             var message = string.IsNullOrWhiteSpace(rpcEx.Status.Detail) ? rpcEx.Status.StatusCode.ToString() : rpcEx.Status.Detail;
             GrpcTransportDiagnostics.RecordException(activity, rpcEx, rpcEx.Status.StatusCode, message);
             var error = PolymerErrorAdapter.FromStatus(status, message, transport: GrpcTransportConstants.TransportName);
+            RecordPeerOutcome(lease, error);
+            await lease.DisposeAsync().ConfigureAwait(false);
             return Err<IClientStreamTransportCall>(error);
         }
         catch (Exception ex)
         {
-            await lease.DisposeAsync().ConfigureAwait(false);
             GrpcTransportDiagnostics.RecordException(activity, ex, StatusCode.Unknown, ex.Message);
-            return PolymerErrors.ToResult<IClientStreamTransportCall>(ex, transport: GrpcTransportConstants.TransportName);
+            var result = PolymerErrors.ToResult<IClientStreamTransportCall>(ex, transport: GrpcTransportConstants.TransportName);
+            RecordPeerOutcome(lease, result.Error!);
+            await lease.DisposeAsync().ConfigureAwait(false);
+            return result;
         }
     }
 
@@ -474,6 +487,7 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
             if (duplexResult.IsFailure)
             {
                 call.Dispose();
+                RecordPeerOutcome(lease, duplexResult.Error!);
                 await lease.DisposeAsync().ConfigureAwait(false);
                 var exception = PolymerErrors.FromError(duplexResult.Error!, GrpcTransportConstants.TransportName);
                 var grpcStatus = GrpcStatusMapper.ToStatus(exception.StatusCode, exception.Message);
@@ -492,14 +506,17 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
             var message = string.IsNullOrWhiteSpace(rpcEx.Status.Detail) ? rpcEx.Status.StatusCode.ToString() : rpcEx.Status.Detail;
             GrpcTransportDiagnostics.RecordException(activity, rpcEx, rpcEx.Status.StatusCode, message);
             var error = PolymerErrorAdapter.FromStatus(status, message, transport: GrpcTransportConstants.TransportName);
+            RecordPeerOutcome(lease, error);
             await lease.DisposeAsync().ConfigureAwait(false);
             return Err<IDuplexStreamCall>(error);
         }
         catch (Exception ex)
         {
             GrpcTransportDiagnostics.RecordException(activity, ex, StatusCode.Unknown, ex.Message);
+            var result = PolymerErrors.ToResult<IDuplexStreamCall>(ex, transport: GrpcTransportConstants.TransportName);
+            RecordPeerOutcome(lease, result.Error!);
             await lease.DisposeAsync().ConfigureAwait(false);
-            return PolymerErrors.ToResult<IDuplexStreamCall>(ex, transport: GrpcTransportConstants.TransportName);
+            return result;
         }
     }
 
@@ -951,6 +968,33 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         {
             handler.KeepAlivePingPolicy = policy;
         }
+    }
+
+    private static void RecordPeerOutcome(PeerLease lease, Error error)
+    {
+        if (lease is null)
+        {
+            return;
+        }
+
+        if (ShouldPenalizePeer(error))
+        {
+            lease.MarkFailure();
+            return;
+        }
+
+        lease.MarkSuccess();
+    }
+
+    private static bool ShouldPenalizePeer(Error error)
+    {
+        if (error is null)
+        {
+            return true;
+        }
+
+        var faultType = PolymerErrors.GetFaultType(error);
+        return faultType != PolymerFaultType.Client;
     }
 
     private static SocketsHttpHandler GetOrCreateSocketsHandler(GrpcChannelOptions channelOptions)

@@ -172,7 +172,7 @@ Comprehensive backlog tracking the remaining work needed to reach feature parity
 
 - **Health, Backoff & Circuit Breaking**
   - ~~Add exponential backoff on repeated failures, half-open testing.~~ *(Completed with `PeerCircuitBreaker` supporting exponential backoff, half-open probe limits, and success thresholds integrated into gRPC peers.)*
-  - Surface retryable vs non-retryable errors to chooser.
+  - ~~Surface retryable vs non-retryable errors to chooser.~~ *(gRPC outbound now classifies errors via `PolymerErrors.GetFaultType`, avoiding peer penalties for caller faults.)*
   - Provide configuration knobs for thresholds.
 
 - **Peer Introspection**
