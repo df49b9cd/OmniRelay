@@ -150,8 +150,7 @@ Comprehensive backlog tracking the remaining work needed to reach feature parity
   - ~~Tracing middleware:~~ *(completed via `RpcTracingMiddleware` providing ActivitySource-based spans with context extraction/injection and YARPC tag conventions.)*
   - ~~Metrics middleware:~~ *(completed via `RpcMetricsMiddleware` + `RpcMetricsOptions` recording request counters and latency histograms across inbound/outbound/stream pipelines; payload sizing remains future work.)*
   - ~~Deadline enforcement:~~ *(completed via `DeadlineMiddleware`/`DeadlineOptions` enforcing TTL/absolute deadlines with canonical `DeadlineExceeded` errors.)*
-  - Panic/exception recovery:
-    - Catch unhandled exceptions, translate to `Internal` with stack metadata.
+  - ~~Panic/exception recovery:~~ *(completed via `PanicRecoveryMiddleware` converting unhandled exceptions into `Internal` errors with logging/metadata.)*
   - Retry/backoff middleware:
     - Utilize Hugo result policies; configure per-procedure.
   - Rate limiting / circuit breaking:
