@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+    <TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);AddAnalyzerDependencies</TargetsForTfmSpecificBuildOutput>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf" Version="3.30.2" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.9.2" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\\Polymer.Codegen.Protobuf.Core\\Polymer.Codegen.Protobuf.Core.csproj" />
+  </ItemGroup>
+
+  <Target Name="AddAnalyzerDependencies">
+    <ItemGroup>
+      <AnalyzerDependency Include="@(ReferenceCopyLocalPaths)"
+                          Condition="%(ReferenceCopyLocalPaths.Extension) == '.dll' and (%(ReferenceCopyLocalPaths.FileName) == 'Google.Protobuf' or %(ReferenceCopyLocalPaths.FileName) == 'Polymer.Codegen.Protobuf.Core' or %(ReferenceCopyLocalPaths.FileName) == 'Polymer')">
+        <TargetPath>analyzers/dotnet/cs/%(ReferenceCopyLocalPaths.FileName)%(ReferenceCopyLocalPaths.Extension)</TargetPath>
+      </AnalyzerDependency>
+    </ItemGroup>
+
+    <ItemGroup>
+      <TfmSpecificBuildOutput Include="@(AnalyzerDependency)">
+        <TargetPath>%(AnalyzerDependency.TargetPath)</TargetPath>
+      </TfmSpecificBuildOutput>
+    </ItemGroup>
+  </Target>
+</Project>

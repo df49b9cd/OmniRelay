@@ -17,10 +17,10 @@ namespace Polymer.Tests.Protos;
 
 public static class TestServicePolymer
 {
-    private static readonly ProtobufCodec<global::Polymer.Tests.Protos.UnaryRequest, global::Polymer.Tests.Protos.UnaryResponse> __UnaryCallCodec = new(defaultEncoding: ProtobufEncoding.Protobuf);
-    private static readonly ProtobufCodec<global::Polymer.Tests.Protos.StreamRequest, global::Polymer.Tests.Protos.StreamResponse> __ServerStreamCodec = new(defaultEncoding: ProtobufEncoding.Protobuf);
-    private static readonly ProtobufCodec<global::Polymer.Tests.Protos.StreamRequest, global::Polymer.Tests.Protos.UnaryResponse> __ClientStreamCodec = new(defaultEncoding: ProtobufEncoding.Protobuf);
-    private static readonly ProtobufCodec<global::Polymer.Tests.Protos.StreamRequest, global::Polymer.Tests.Protos.StreamResponse> __DuplexStreamCodec = new(defaultEncoding: ProtobufEncoding.Protobuf);
+    private static readonly ProtobufCodec<global::Polymer.Tests.Protos.UnaryRequest, global::Polymer.Tests.Protos.UnaryResponse> __UnaryCallCodec = new(defaultEncoding: "protobuf");
+    private static readonly ProtobufCodec<global::Polymer.Tests.Protos.StreamRequest, global::Polymer.Tests.Protos.StreamResponse> __ServerStreamCodec = new(defaultEncoding: "protobuf");
+    private static readonly ProtobufCodec<global::Polymer.Tests.Protos.StreamRequest, global::Polymer.Tests.Protos.UnaryResponse> __ClientStreamCodec = new(defaultEncoding: "protobuf");
+    private static readonly ProtobufCodec<global::Polymer.Tests.Protos.StreamRequest, global::Polymer.Tests.Protos.StreamResponse> __DuplexStreamCodec = new(defaultEncoding: "protobuf");
 
     public static void RegisterTestService(this global::Polymer.Dispatcher.Dispatcher dispatcher, ITestService implementation)
     {

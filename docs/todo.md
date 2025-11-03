@@ -91,6 +91,7 @@ Comprehensive backlog tracking the remaining work needed to reach feature parity
   - ~~Support Protobuf over gRPC (native) and optional HTTP Protobuf:~~ *(Runtime `ProtobufCodec` gained media-type negotiation; HTTP metadata normalization extended so JSON/Protobuf interop works across transports.)*
     - ~~Handle content negotiation & media types.~~ *(HTTP inbounds/outbounds now normalize `application/x-protobuf` ↔ `protobuf`.)*
   - ~~Write codegen tests (golden outputs) and integration tests round-tripping messages across transports.~~ *(See `ProtobufCodeGeneratorTests` for golden coverage and `GeneratedServiceIntegrationTests` for HTTP and gRPC round-trips.)*
+  - ~~Expose Roslyn incremental generator and MSBuild wiring sample.~~ *(Incremental generator lives in `src/Polymer.Codegen.Protobuf.Generator`; `tests/Polymer.Tests/Projects/ProtobufIncrementalSample` demonstrates referencing the analyzer with a descriptor set AdditionalFile.)*
 
 - **Thrift Encoding**
   - Investigate options: port ThriftRW vs using Apache Thrift.

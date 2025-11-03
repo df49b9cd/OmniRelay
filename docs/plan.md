@@ -148,7 +148,9 @@ Project Layout (Namespaces & Packages)
 | `src/Polymer/Transport/Http` | `Polymer.Transport.Http` | ASP.NET Core inbound adapter, HttpClient-based outbound, oneway helpers, HTTP-specific middleware defaults. |
 | `src/Polymer/Transport/Grpc` | `Polymer.Transport.Grpc` | gRPC inbound/outbound, metadata translators, streaming utilities, logging/metrics interceptors. |
 | `src/Polymer/Configuration` | `Polymer.Configuration` | (Planned) Declarative config loader, DI extensions, transport/peer registries, validation logic. |
-| `src/Polymer/Codegen/Protobuf` | `protoc-gen-polymer-csharp` | (Planned) Protobuf plugin emitting service adapters, client facades, and codec glue code. |
+| `src/Polymer/Codegen/Protobuf` | `protoc-gen-polymer-csharp` | Protobuf CLI plug-in emitting dispatcher registration helpers, typed clients, and codec wiring. |
+| `src/Polymer.Codegen.Protobuf.Core` | `Polymer.Codegen.Protobuf.Core` | Shared code generation library used by the `protoc` plug-in and incremental generator. |
+| `src/Polymer.Codegen.Protobuf.Generator` | `Polymer.Codegen.Protobuf.Generator` | Roslyn incremental generator that consumes descriptor sets from MSBuild `AdditionalFiles`. |
 | `samples/KeyValueService` | `KeyValueService` | Demonstrates multi-transport dispatcher, config-driven wiring, OpenTelemetry integration. |
 | `samples/PingClient` | `PingClient` | Console client exercising unary, oneway, and streaming calls for manual verification. |
 | `tests/<ProjectName>.Tests` | Mirrors each library | xUnit-based unit tests, transport/interop harnesses, property tests for peer choosers. |

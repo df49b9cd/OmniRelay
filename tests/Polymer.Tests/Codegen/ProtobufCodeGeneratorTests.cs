@@ -5,6 +5,10 @@ using System.Linq;
 using Google.Protobuf;
 using Google.Protobuf.Compiler;
 using Google.Protobuf.Reflection;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.Text;
+using Polymer.Codegen.Protobuf.Generator;
 using Xunit;
 
 namespace Polymer.Tests.Codegen;
@@ -20,14 +24,75 @@ public class ProtobufCodeGeneratorTests
         Assert.Single(response.File);
         var generated = response.File[0].Content.Replace("\r\n", "\n");
         var goldenPath = TestPath.Combine("tests", "Polymer.Tests", "Generated", "TestService.Polymer.g.cs");
+        File.WriteAllText(TestPath.Combine("tests", "Polymer.Tests", "Generated", "TestService.actual.g.cs"), response.File[0].Content);
         var expected = File.ReadAllText(goldenPath).Replace("\r\n", "\n");
 
         Assert.Equal(expected, generated);
     }
 
+    [Fact]
+    public void IncrementalGenerator_Produces_Golden_File()
+    {
+        var descriptorSet = CodeGeneratorRequestFactory.CreateDescriptorSet();
+        var tempDirectory = Path.Combine(Path.GetTempPath(), "polymer-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDirectory);
+        var descriptorPath = Path.Combine(tempDirectory, "test_service.pb");
+
+        var cancellationToken = TestContext.Current.CancellationToken;
+
+        try
+        {
+            File.WriteAllBytes(descriptorPath, descriptorSet.ToByteArray());
+
+            var generator = new ProtobufIncrementalGenerator();
+            var additionalTexts = new AdditionalText[] { new DescriptorAdditionalText(descriptorPath) };
+            var driver = CSharpGeneratorDriver.Create(new[] { generator.AsSourceGenerator() }, additionalTexts: additionalTexts);
+
+            var compilation = CSharpCompilation.Create(
+                assemblyName: "Polymer.Codegen.Tests",
+                references: new[] { MetadataReference.CreateFromFile(typeof(object).Assembly.Location) },
+                options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+            driver = (CSharpGeneratorDriver)driver.RunGenerators(compilation, cancellationToken);
+            var runResult = driver.GetRunResult();
+
+            Assert.True(runResult.GeneratedTrees.Length > 0, "Generator did not produce any output.");
+
+            var generatedRaw = runResult.GeneratedTrees[0].GetText(TestContext.Current.CancellationToken).ToString();
+            File.WriteAllText(TestPath.Combine("tests", "Polymer.Tests", "Generated", "TestService.incremental.g.cs"), generatedRaw);
+            var generatedText = generatedRaw.Replace("\r\n", "\n");
+            var expected = File.ReadAllText(TestPath.Combine("tests", "Polymer.Tests", "Generated", "TestService.Polymer.g.cs")).Replace("\r\n", "\n");
+
+            Assert.Equal(expected, generatedText);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDirectory))
+            {
+                Directory.Delete(tempDirectory, recursive: true);
+            }
+        }
+    }
+
     private static class CodeGeneratorRequestFactory
     {
         public static CodeGeneratorRequest Create()
+        {
+            var file = CreateFileDescriptor();
+            var request = new CodeGeneratorRequest();
+            request.FileToGenerate.Add(file.Name);
+            request.ProtoFile.Add(file);
+            return request;
+        }
+
+        public static FileDescriptorSet CreateDescriptorSet()
+        {
+            var set = new FileDescriptorSet();
+            set.File.Add(CreateFileDescriptor());
+            return set;
+        }
+
+        private static FileDescriptorProto CreateFileDescriptor()
         {
             var file = new FileDescriptorProto
             {
@@ -72,11 +137,7 @@ public class ProtobufCodeGeneratorTests
             });
 
             file.Service.Add(service);
-
-            var request = new CodeGeneratorRequest();
-            request.FileToGenerate.Add(file.Name);
-            request.ProtoFile.Add(file);
-            return request;
+            return file;
         }
 
         private static DescriptorProto CreateMessage(string name, params (string Name, FieldDescriptorProto.Types.Type Type)[] fields)
@@ -174,5 +235,19 @@ public class ProtobufCodeGeneratorTests
         public static string Root => Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
 
         public static string Combine(params string[] segments) => Path.Combine(new[] { Root }.Concat(segments).ToArray());
+    }
+
+    private sealed class DescriptorAdditionalText : AdditionalText
+    {
+        private readonly string _path;
+
+        public DescriptorAdditionalText(string path)
+        {
+            _path = path ?? throw new ArgumentNullException(nameof(path));
+        }
+
+        public override string Path => _path;
+
+        public override SourceText? GetText(System.Threading.CancellationToken cancellationToken = default) => null;
     }
 }

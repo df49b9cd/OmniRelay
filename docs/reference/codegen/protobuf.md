@@ -42,6 +42,50 @@ protoc \
 
 The generated C# file mirrors the proto namespace. See `tests/Polymer.Tests/Generated/TestService.Polymer.g.cs` for a complete example.
 
+## Roslyn incremental generator (MSBuild integration)
+
+For projects that already produce [descriptor sets](https://github.com/dotnet/roslyn/blob/main/docs/features/incremental-generators.md) you can skip the `protoc` plug-in entirely and let MSBuild feed Polymer’s incremental generator. The generator ships from `src/Polymer.Codegen.Protobuf.Generator/` and can be consumed as a project reference or packaged analyzer.
+
+1. Reference the generator as an analyzer:
+
+   ```xml
+   <ItemGroup>
+     <ProjectReference Include="..\..\src\Polymer.Codegen.Protobuf.Generator\Polymer.Codegen.Protobuf.Generator.csproj"
+                       OutputItemType="Analyzer"
+                       ReferenceOutputAssembly="true" />
+   </ItemGroup>
+   ```
+
+2. Provide a descriptor set (`.pb`) via `AdditionalFiles`. The generator reads binary descriptor sets, so you can pre-generate them with `Grpc.Tools`/`protoc`:
+
+   ```bash
+   ~/.nuget/packages/grpc.tools/2.71.0/tools/macosx_x64/protoc \
+     --descriptor_set_out=Descriptors/test_service.pb \
+     --include_imports \
+     --proto_path=Protos \
+     Protos/test_service.proto
+   ```
+
+   and then include it in the project:
+
+   ```xml
+   <ItemGroup>
+     <AdditionalFiles Include="Descriptors/test_service.pb" />
+   </ItemGroup>
+   ```
+
+   You still need the regular `Protobuf` MSBuild item so that DTOs are generated (the incremental generator only produces clients/dispatcher helpers):
+
+   ```xml
+   <ItemGroup>
+     <Protobuf Include="Protos/test_service.proto" GrpcServices="None" />
+   </ItemGroup>
+   ```
+
+3. Build the project. MSBuild writes the generated files under `obj/<tfm>/generated/Polymer.Codegen.Protobuf.Generator/...` and the types become available to your project just like the protoc plug-in output.
+
+The repository contains a working sample wired this way: `tests/Polymer.Tests/Projects/ProtobufIncrementalSample/`. It keeps the descriptor set under `Descriptors/test_service.pb`, references the analyzer, and builds successfully with `dotnet build`.
+
 ## Runtime integration
 
 Generated code exposes two entry points:

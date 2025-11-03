@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../../../src/Polymer/Polymer.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../../../src/Polymer.Codegen.Protobuf.Generator/Polymer.Codegen.Protobuf.Generator.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="true" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf" Version="3.30.2" />
+    <PackageReference Include="Grpc.Tools" Version="2.71.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <AdditionalFiles Include="Descriptors/test_service.pb" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Protobuf Include="Protos/test_service.proto"
+              GrpcServices="None"
+              GenerateDescriptorSet="false" />
+  </ItemGroup>
+  <ItemGroup>
+    <Analyzer Include="../../../../src/Polymer.Codegen.Protobuf.Generator/bin/Debug/net10.0/Google.Protobuf.dll" />
+    <Analyzer Include="../../../../src/Polymer.Codegen.Protobuf.Generator/bin/Debug/net10.0/Polymer.Codegen.Protobuf.Core.dll" />
+    <Analyzer Include="../../../../src/Polymer.Codegen.Protobuf.Generator/bin/Debug/net10.0/Polymer.dll" />
+  </ItemGroup>
+</Project>
