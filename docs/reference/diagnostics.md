@@ -86,6 +86,7 @@ Each workflow measurement includes metric tags for `workflow.namespace`, `workfl
 - Create a schema-aware activity source with `GoDiagnostics.CreateActivitySource(string? name = GoDiagnostics.ActivitySourceName)` and optionally throttle spans via `GoDiagnostics.UseRateLimitedSampling(...)` when your workload emits high volumes of internal activities.
 - Invoke `GoDiagnostics.Reset()` (typically in unit tests) to dispose existing meters before registering new ones.
 - Pass `GrpcTelemetryOptions` to `GrpcInbound`/`GrpcOutbound` so the built-in logging/metrics interceptors attach automatically without bespoke interceptor wiring.
+- Peer metrics emitted by `Polymer.Core.Peers` include `polymer.peer.inflight`, `polymer.peer.successes`, `polymer.peer.failures`, and `polymer.peer.lease.duration` (histogram). Pair these with the `/polymer/introspect` endpoint, which now surfaces per-peer success/failure counts and latency percentiles, to build health dashboards.
 
 ## Usage guidelines
 
