@@ -139,9 +139,9 @@ Comprehensive backlog tracking the remaining work needed to reach feature parity
   - ~~Surface outbound/peer chooser state and runtime counters to align with YARPC-Go’s debug output.~~ *(completed via `OutboundDescriptor`/`OutboundBindingDescriptor` and transport diagnostic snapshots such as `GrpcOutboundSnapshot` and `HttpOutboundSnapshot`; still plan richer peer health metrics as choosers evolve.)*
 
 - **Shadowing & Tee Support**
-  - Support registering dual outbounds (primary + shadow) for migration scenarios.
-  - Add policy configuration to enable teeing per procedure with percentage sampling.
-  - Provide tests verifying secondary traffic dispatch and optional response suppression.
+  - ~~Support registering dual outbounds (primary + shadow) for migration scenarios.~~ *(completed via `TeeUnaryOutbound`/`TeeOnewayOutbound` and `DispatcherOptions.AddTee*` helpers.)*
+  - ~~Add policy configuration to enable teeing per procedure with percentage sampling.~~ *(handled by `TeeOptions` with sampling, header tagging, and success-only gating.)*
+  - ~~Provide tests verifying secondary traffic dispatch and optional response suppression.~~ *(covered by `TeeOutboundTests` exercising success/failure flows and header propagation.)*
 
 ## 4. Middleware & Observability (Phase 5)
 
