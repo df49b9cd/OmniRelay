@@ -27,6 +27,7 @@ polymer <command> [options]
 | `config validate` | Load one or more configuration files, apply ad-hoc overrides, and verify the dispatcher can be constructed. |
 | `introspect` | Fetch `/polymer/introspect` and print a summary (or the raw JSON) of a running dispatcher. |
 | `request` | Issue a unary RPC over HTTP or gRPC with configurable metadata and payload sources. |
+| `script run` | Replay a sequence of requests, introspection calls, and delays defined in a JSON automation file. |
 
 Run `polymer <command> --help` for a detailed option list.
 
@@ -79,6 +80,53 @@ polymer request \
 ```
 
 Use `--body-file` to stream large payloads directly off disk and `--header key=value` to attach transport headers.
+
+## Scripted automation
+
+Complex smoke tests become easier when they are declared in a single JSON file. The `script run` subcommand executes each step in order and stops on the first failure by default (use `--continue-on-error` to keep going, or `--dry-run` to preview the flow).
+
+Example script: `docs/reference/cli-scripts/echo-harness.json`
+
+```bash
+# Start the sample echo harness (separate terminal)
+bash tests/Polymer.YabInterop/run-yab.sh
+
+# In another terminal, replay the scripted scenario
+polymer script run --file docs/reference/cli-scripts/echo-harness.json
+```
+
+Each step is typed (`request`, `introspect`, or `delay`) and matches the options exposed by the interactive commands:
+
+```json
+{
+  "steps": [
+    {
+      "type": "request",
+      "transport": "http",
+      "service": "echo",
+      "procedure": "echo::ping",
+      "url": "http://127.0.0.1:8080/yarpc/v1",
+      "encoding": "application/json",
+      "body": "{\"message\":\"hello\"}",
+      "headers": {
+        "x-run-id": "automation"
+      }
+    },
+    {
+      "type": "delay",
+      "duration": "1s"
+    },
+    {
+      "type": "introspect",
+      "url": "http://127.0.0.1:8080/polymer/introspect",
+      "format": "text",
+      "timeout": "3s"
+    }
+  ]
+}
+```
+
+This mirrors common `yab` automation flows, while keeping the payload format aligned with Polymer's transport metadata. Mix HTTP and gRPC requests in one file, adjust headers per call, and share the scripts with CI for reproducible diagnostics.
 
 ## Automation recipe
 

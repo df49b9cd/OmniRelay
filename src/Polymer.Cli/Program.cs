@@ -52,6 +52,7 @@ public static class Program
         root.Add(CreateConfigCommand());
         root.Add(CreateIntrospectCommand());
         root.Add(CreateRequestCommand());
+        root.Add(CreateScriptCommand());
         return root;
     }
 
@@ -59,6 +60,45 @@ public static class Program
     {
         var command = new Command("config", "Configuration utilities.");
         command.Add(CreateConfigValidateCommand());
+        return command;
+    }
+
+    private static Command CreateScriptCommand()
+    {
+        var command = new Command("script", "Run scripted Polymer CLI automation.");
+
+        var runCommand = new Command("run", "Execute a sequence of actions described in a JSON script.");
+
+        var fileOption = new Option<string>("--file")
+        {
+            Description = "Path to the automation script (JSON).",
+            Required = true
+        };
+        fileOption.Aliases.Add("-f");
+
+        var dryRunOption = new Option<bool>("--dry-run")
+        {
+            Description = "Emit the planned steps without executing them."
+        };
+
+        var continueOnErrorOption = new Option<bool>("--continue-on-error")
+        {
+            Description = "Keep executing subsequent steps even if one fails."
+        };
+
+        runCommand.Add(fileOption);
+        runCommand.Add(dryRunOption);
+        runCommand.Add(continueOnErrorOption);
+
+        runCommand.SetAction(parseResult =>
+        {
+            var file = parseResult.GetValue(fileOption) ?? string.Empty;
+            var dryRun = parseResult.GetValue(dryRunOption);
+            var continueOnError = parseResult.GetValue(continueOnErrorOption);
+            return RunAutomationAsync(file, dryRun, continueOnError).GetAwaiter().GetResult();
+        });
+
+        command.Add(runCommand);
         return command;
     }
 
@@ -681,6 +721,228 @@ public static class Program
         {
             await outbound.StopAsync(CancellationToken.None).ConfigureAwait(false);
         }
+    }
+
+    private static async Task<int> RunAutomationAsync(string scriptPath, bool dryRun, bool continueOnError)
+    {
+        if (string.IsNullOrWhiteSpace(scriptPath))
+        {
+            Console.Error.WriteLine("Script path was empty.");
+            return 1;
+        }
+
+        if (!File.Exists(scriptPath))
+        {
+            Console.Error.WriteLine($"Script file '{scriptPath}' does not exist.");
+            return 1;
+        }
+
+        AutomationScript? script;
+        try
+        {
+            await using var stream = File.OpenRead(scriptPath);
+            var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
+            {
+                PropertyNameCaseInsensitive = true,
+                AllowTrailingCommas = true
+            };
+            script = await JsonSerializer.DeserializeAsync<AutomationScript>(stream, options).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Failed to parse script '{scriptPath}': {ex.Message}");
+            return 1;
+        }
+
+        if (script?.Steps is null || script.Steps.Length == 0)
+        {
+            Console.Error.WriteLine($"Script '{scriptPath}' does not contain any steps.");
+            return 1;
+        }
+
+        Console.WriteLine($"Loaded script '{scriptPath}' with {script.Steps.Length} step(s).");
+        var exitCode = 0;
+
+        for (var index = 0; index < script.Steps.Length; index++)
+        {
+            var step = script.Steps[index];
+            var typeLabel = string.IsNullOrWhiteSpace(step.Type) ? "(unspecified)" : step.Type;
+            var description = string.IsNullOrWhiteSpace(step.Description) ? string.Empty : $" - {step.Description}";
+            Console.WriteLine($"[{index + 1}/{script.Steps.Length}] {typeLabel}{description}");
+
+            var normalizedType = step.Type?.Trim().ToLowerInvariant() ?? string.Empty;
+            switch (normalizedType)
+            {
+                case "request":
+                    if (string.IsNullOrWhiteSpace(step.Service) || string.IsNullOrWhiteSpace(step.Procedure))
+                    {
+                        Console.Error.WriteLine("  Request step is missing 'service' or 'procedure'.");
+                        exitCode = exitCode == 0 ? 1 : exitCode;
+                        if (!continueOnError)
+                        {
+                            return exitCode;
+                        }
+                        continue;
+                    }
+
+                    var headerPairs = step.Headers?.Select(static kvp => $"{kvp.Key}={kvp.Value}").ToArray() ?? Array.Empty<string>();
+                    var addresses = step.Addresses ?? Array.Empty<string>();
+                    if (addresses.Length == 0 && !string.IsNullOrWhiteSpace(step.Address))
+                    {
+                        addresses = new[] { step.Address! };
+                    }
+
+                    var targetSummary = !string.IsNullOrWhiteSpace(step.Url)
+                        ? step.Url
+                        : (addresses.Length > 0 ? string.Join(", ", addresses) : "(default transport settings)");
+                    Console.WriteLine($"  -> {step.Transport ?? "http"} {step.Service}/{step.Procedure} @ {targetSummary}");
+
+                    if (dryRun)
+                    {
+                        Console.WriteLine("  dry-run: skipping request execution.");
+                        continue;
+                    }
+
+                    var requestResult = await RunRequestAsync(
+                        step.Transport ?? "http",
+                        step.Service,
+                        step.Procedure,
+                        step.Caller,
+                        step.Encoding,
+                        headerPairs,
+                        step.ShardKey,
+                        step.RoutingKey,
+                        step.RoutingDelegate,
+                        step.Ttl,
+                        step.Deadline,
+                        step.Timeout,
+                        step.Body,
+                        step.BodyFile,
+                        step.BodyBase64,
+                        step.Url,
+                        addresses).ConfigureAwait(false);
+
+                    if (requestResult != 0)
+                    {
+                        exitCode = exitCode == 0 ? requestResult : exitCode;
+                        if (!continueOnError)
+                        {
+                            return exitCode;
+                        }
+                    }
+                    break;
+
+                case "introspect":
+                    var targetUrl = string.IsNullOrWhiteSpace(step.Url) ? DefaultIntrospectionUrl : step.Url!;
+                    Console.WriteLine($"  -> GET {targetUrl} (format={step.Format ?? "text"})");
+
+                    if (dryRun)
+                    {
+                        Console.WriteLine("  dry-run: skipping introspection call.");
+                        continue;
+                    }
+
+                    var introspectResult = await RunIntrospectAsync(targetUrl, step.Format ?? "text", step.Timeout).ConfigureAwait(false);
+                    if (introspectResult != 0)
+                    {
+                        exitCode = exitCode == 0 ? introspectResult : exitCode;
+                        if (!continueOnError)
+                        {
+                            return exitCode;
+                        }
+                    }
+                    break;
+
+                case "delay":
+                case "sleep":
+                case "wait":
+                    var delayValue = step.Duration ?? step.Delay;
+                    if (string.IsNullOrWhiteSpace(delayValue))
+                    {
+                        Console.Error.WriteLine("  Delay step requires a 'duration' or 'delay' value.");
+                        exitCode = exitCode == 0 ? 1 : exitCode;
+                        if (!continueOnError)
+                        {
+                            return exitCode;
+                        }
+                        continue;
+                    }
+
+                    var delayText = delayValue!;
+                    if (!TryParseDuration(delayText, out var delay))
+                    {
+                        Console.Error.WriteLine($"  Could not parse delay '{delayValue}'.");
+                        exitCode = exitCode == 0 ? 1 : exitCode;
+                        if (!continueOnError)
+                        {
+                            return exitCode;
+                        }
+                        continue;
+                    }
+
+                    Console.WriteLine($"  ... waiting for {delay}");
+                    if (!dryRun)
+                    {
+                        try
+                        {
+                            await Task.Delay(delay).ConfigureAwait(false);
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.Error.WriteLine($"  Delay interrupted: {ex.Message}");
+                            exitCode = exitCode == 0 ? 1 : exitCode;
+                            if (!continueOnError)
+                            {
+                                return exitCode;
+                            }
+                        }
+                    }
+                    break;
+
+                default:
+                    Console.Error.WriteLine($"  Unknown script step type '{step.Type}'.");
+                    exitCode = exitCode == 0 ? 1 : exitCode;
+                    if (!continueOnError)
+                    {
+                        return exitCode;
+                    }
+                    break;
+            }
+        }
+
+        return exitCode;
+    }
+
+    private sealed record AutomationScript
+    {
+        public AutomationStep[] Steps { get; init; } = Array.Empty<AutomationStep>();
+    }
+
+    private sealed record AutomationStep
+    {
+        public string Type { get; init; } = string.Empty;
+        public string? Description { get; init; }
+        public string? Transport { get; init; }
+        public string? Service { get; init; }
+        public string? Procedure { get; init; }
+        public string? Caller { get; init; }
+        public string? Encoding { get; init; }
+        public Dictionary<string, string>? Headers { get; init; }
+        public string? ShardKey { get; init; }
+        public string? RoutingKey { get; init; }
+        public string? RoutingDelegate { get; init; }
+        public string? Ttl { get; init; }
+        public string? Deadline { get; init; }
+        public string? Timeout { get; init; }
+        public string? Body { get; init; }
+        public string? BodyFile { get; init; }
+        public string? BodyBase64 { get; init; }
+        public string? Url { get; init; }
+        public string? Address { get; init; }
+        public string[]? Addresses { get; init; }
+        public string? Format { get; init; }
+        public string? Duration { get; init; }
+        public string? Delay { get; init; }
     }
 
     private static void PrintResponse(Response<ReadOnlyMemory<byte>> response)

@@ -1,0 +1,29 @@
+{
+  "steps": [
+    {
+      "type": "request",
+      "description": "HTTP echo call via local Polymer.YabInterop harness",
+      "transport": "http",
+      "service": "echo",
+      "procedure": "echo::ping",
+      "url": "http://127.0.0.1:8080/yarpc/v1",
+      "encoding": "application/json",
+      "body": "{\"message\":\"hello from polymer script\"}",
+      "headers": {
+        "x-run-id": "cli-script"
+      }
+    },
+    {
+      "type": "delay",
+      "description": "Allow the harness to process logs",
+      "duration": "1s"
+    },
+    {
+      "type": "introspect",
+      "description": "Summarise the dispatcher state",
+      "url": "http://127.0.0.1:8080/polymer/introspect",
+      "format": "text",
+      "timeout": "3s"
+    }
+  ]
+}
