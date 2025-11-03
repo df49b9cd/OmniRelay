@@ -497,7 +497,7 @@ Each step includes _Done when…_ acceptance criteria.
 
 **Done when:** YAML can spin up HTTP inbound on `:8080`, HTTP unary+oneway outbound to service `keyvalue` with RR peers, and logging levels.
 
-**Status:** `Polymer.Configuration` binds dispatcher settings from `IConfiguration`, exposes `AddPolymerDispatcher` for DI wiring, and includes tests (see `PolymerConfigurationTests`) covering HTTP/gRPC bootstrap and logging overrides. Next steps: extensibility hooks for custom `TransportSpec`/peer lists and richer configuration samples.
+**Status:** `Polymer.Configuration` binds dispatcher settings from `IConfiguration`, exposes `AddPolymerDispatcher` for DI wiring, and includes tests (see `PolymerConfigurationTests`) covering HTTP/gRPC bootstrap, logging overrides, and custom transport/peer specs (`ICustomInboundSpec`, `ICustomOutboundSpec`, `ICustomPeerChooserSpec`). Next steps: richer configuration samples and optional hot-reload support.
 
 * * *
 

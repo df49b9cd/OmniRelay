@@ -51,7 +51,7 @@ public static class PolymerServiceCollectionExtensions
         services.AddSingleton(provider =>
         {
             var options = provider.GetRequiredService<IOptions<PolymerConfigurationOptions>>().Value;
-            var builder = new DispatcherBuilder(options, provider);
+            var builder = new DispatcherBuilder(options, provider, configuration);
             return builder.Build();
         });
 

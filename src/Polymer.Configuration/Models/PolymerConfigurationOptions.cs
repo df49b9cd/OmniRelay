@@ -116,6 +116,8 @@ public sealed class GrpcOutboundTargetConfiguration
 
     public string? PeerChooser { get; set; }
 
+    public PeerSpecConfiguration? Peer { get; set; }
+
     public PeerCircuitBreakerConfiguration CircuitBreaker { get; init; } = new();
 
     public GrpcClientRuntimeConfiguration Runtime { get; init; } = new();
@@ -188,4 +190,12 @@ public sealed class LoggingConfiguration
 
     public IDictionary<string, string> Overrides { get; init; } =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+}
+
+public sealed class PeerSpecConfiguration
+{
+    public string? Spec { get; set; }
+
+    public IDictionary<string, string?> Settings { get; init; } =
+        new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
 }

@@ -86,3 +86,7 @@ builder.Services.AddPolymerDispatcher(builder.Configuration.GetSection("polymer"
 var app = builder.Build();
 await app.RunAsync();
 ```
+
+### Extending Configuration
+
+Register custom transports or peer choosers by adding DI implementations of `ICustomInboundSpec`, `ICustomOutboundSpec`, or `ICustomPeerChooserSpec`. Configuration entries under `inbounds:custom`, `outbounds:<service>:<rpcKind>:custom`, or `peer` reference the spec by name and supply additional settings. See `PolymerConfigurationTests` for working examples.

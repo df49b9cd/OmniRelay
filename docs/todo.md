@@ -194,8 +194,7 @@ Comprehensive backlog tracking the remaining work needed to reach feature parity
 
 - ~~**Declarative Bootstrap**~~ *(Delivered via the new `src/Polymer.Configuration` project. `PolymerConfigurationOptions` captures transports/peers/middleware, `AddPolymerDispatcher` wires everything into DI, and validation is covered by `PolymerConfigurationTests`.)*
 
-- **Transport/Peer Specs**
-  - Allow registration of custom `TransportSpec`/`PeerListSpec` via DI so new transports plug into configuration.
+- ~~**Transport/Peer Specs**~~ *(`ICustomInboundSpec`, `ICustomOutboundSpec`, and `ICustomPeerChooserSpec` let DI registered components materialize transports/peer choosers from configuration. Covered by `PolymerConfigurationTests.AddPolymerDispatcher_UsesCustomTransportSpecs` and `.UsesCustomPeerSpec`.)*
 
 - **Environment Overrides**
   - ~~Support layered configuration (appsettings + env vars + command line).~~ *(Binder operates on `IConfiguration`, so configuration layering works out of the box; follow-up task is documenting best practices.)*

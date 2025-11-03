@@ -8,6 +8,8 @@ using System.Net.Http;
 using System.Net.Security;
 using System.Security.Cryptography.X509Certificates;
 using Grpc.Core.Interceptors;
+using Microsoft.AspNetCore.Server.Kestrel.Https;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Polymer.Configuration.Models;
@@ -16,7 +18,6 @@ using Polymer.Core.Peers;
 using Polymer.Dispatcher;
 using Polymer.Transport.Grpc;
 using Polymer.Transport.Http;
-using Microsoft.AspNetCore.Server.Kestrel.Https;
 
 namespace Polymer.Configuration.Internal;
 
@@ -24,13 +25,30 @@ internal sealed class DispatcherBuilder
 {
     private readonly PolymerConfigurationOptions _options;
     private readonly IServiceProvider _serviceProvider;
+    private readonly IConfiguration _configuration;
     private readonly Dictionary<string, HttpOutbound> _httpOutboundCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, GrpcOutbound> _grpcOutboundCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly IReadOnlyDictionary<string, ICustomInboundSpec> _customInboundSpecs;
+    private readonly IReadOnlyDictionary<string, ICustomOutboundSpec> _customOutboundSpecs;
+    private readonly IReadOnlyDictionary<string, ICustomPeerChooserSpec> _customPeerSpecs;
 
-    public DispatcherBuilder(PolymerConfigurationOptions options, IServiceProvider serviceProvider)
+    public DispatcherBuilder(PolymerConfigurationOptions options, IServiceProvider serviceProvider, IConfiguration configuration)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
+        _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+
+        _customInboundSpecs = _serviceProvider
+            .GetServices<ICustomInboundSpec>()
+            .ToDictionary(spec => spec.Name, StringComparer.OrdinalIgnoreCase);
+
+        _customOutboundSpecs = _serviceProvider
+            .GetServices<ICustomOutboundSpec>()
+            .ToDictionary(spec => spec.Name, StringComparer.OrdinalIgnoreCase);
+
+        _customPeerSpecs = _serviceProvider
+            .GetServices<ICustomPeerChooserSpec>()
+            .ToDictionary(spec => spec.Name, StringComparer.OrdinalIgnoreCase);
     }
 
     public Dispatcher.Dispatcher Build()
@@ -54,6 +72,7 @@ internal sealed class DispatcherBuilder
     {
         ConfigureHttpInbounds(dispatcherOptions);
         ConfigureGrpcInbounds(dispatcherOptions);
+        ConfigureCustomInbounds(dispatcherOptions);
     }
 
     private void ConfigureHttpInbounds(DispatcherOptions dispatcherOptions)
@@ -140,6 +159,47 @@ internal sealed class DispatcherBuilder
         }
     }
 
+    private void ConfigureCustomInbounds(DispatcherOptions dispatcherOptions)
+    {
+        if (_customInboundSpecs.Count == 0)
+        {
+            return;
+        }
+
+        var customSection = _configuration.GetSection("inbounds:custom");
+        if (!customSection.Exists())
+        {
+            return;
+        }
+
+        var index = 0;
+        foreach (var section in customSection.GetChildren())
+        {
+            var specName = section.GetValue<string>("spec");
+            if (string.IsNullOrWhiteSpace(specName))
+            {
+                throw new PolymerConfigurationException($"Custom inbound at index {index} must specify a 'spec' value.");
+            }
+
+            if (!_customInboundSpecs.TryGetValue(specName, out var spec))
+            {
+                throw new PolymerConfigurationException($"No custom inbound spec registered for '{specName}'.");
+            }
+
+            var inbound = spec.CreateInbound(section, _serviceProvider)
+                ?? throw new PolymerConfigurationException($"Custom inbound spec '{specName}' returned null.");
+
+            var name = section.GetValue<string>("name");
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                name = $"custom-inbound:{specName}:{index}";
+            }
+
+            dispatcherOptions.AddLifecycle(name!, inbound);
+            index++;
+        }
+    }
+
     private void ConfigureOutbounds(DispatcherOptions dispatcherOptions)
     {
         foreach (var (service, config) in _options.Outbounds)
@@ -149,11 +209,13 @@ internal sealed class DispatcherBuilder
                 continue;
             }
 
-            RegisterOutboundSet(dispatcherOptions, service, config.Unary, OutboundKind.Unary);
-            RegisterOutboundSet(dispatcherOptions, service, config.Oneway, OutboundKind.Oneway);
-            RegisterOutboundSet(dispatcherOptions, service, config.Stream, OutboundKind.Stream);
-            RegisterOutboundSet(dispatcherOptions, service, config.ClientStream, OutboundKind.ClientStream);
-            RegisterOutboundSet(dispatcherOptions, service, config.Duplex, OutboundKind.Duplex);
+            var serviceSection = _configuration.GetSection($"outbounds:{service}");
+
+            RegisterOutboundSet(dispatcherOptions, service, config.Unary, serviceSection, OutboundKind.Unary);
+            RegisterOutboundSet(dispatcherOptions, service, config.Oneway, serviceSection, OutboundKind.Oneway);
+            RegisterOutboundSet(dispatcherOptions, service, config.Stream, serviceSection, OutboundKind.Stream);
+            RegisterOutboundSet(dispatcherOptions, service, config.ClientStream, serviceSection, OutboundKind.ClientStream);
+            RegisterOutboundSet(dispatcherOptions, service, config.Duplex, serviceSection, OutboundKind.Duplex);
         }
     }
 
@@ -161,12 +223,16 @@ internal sealed class DispatcherBuilder
         DispatcherOptions dispatcherOptions,
         string service,
         RpcOutboundConfiguration? configuration,
+        IConfigurationSection? serviceSection,
         OutboundKind kind)
     {
         if (configuration is null)
         {
             return;
         }
+
+        var kindSectionName = GetOutboundSectionName(kind);
+        var kindSection = serviceSection?.GetSection(kindSectionName);
 
         foreach (var http in configuration.Http)
         {
@@ -193,14 +259,19 @@ internal sealed class DispatcherBuilder
             }
         }
 
+        var grpcIndex = 0;
         foreach (var grpc in configuration.Grpc)
         {
             if (grpc is null)
             {
+                grpcIndex++;
                 continue;
             }
 
-            var outbound = CreateGrpcOutbound(service, grpc);
+            var outboundSection = kindSection?.GetSection("grpc")?.GetSection(grpcIndex.ToString(CultureInfo.InvariantCulture))
+                ?? kindSection?.GetSection(grpcIndex.ToString(CultureInfo.InvariantCulture));
+
+            var outbound = CreateGrpcOutbound(service, grpc, outboundSection);
             switch (kind)
             {
                 case OutboundKind.Unary:
@@ -219,6 +290,98 @@ internal sealed class DispatcherBuilder
                     dispatcherOptions.AddDuplexOutbound(service, grpc.Key, outbound);
                     break;
             }
+
+            grpcIndex++;
+        }
+
+        ConfigureCustomOutbounds(dispatcherOptions, service, kind, kindSection);
+    }
+
+    private static string GetOutboundSectionName(OutboundKind kind) => kind switch
+    {
+        OutboundKind.Unary => "unary",
+        OutboundKind.Oneway => "oneway",
+        OutboundKind.Stream => "stream",
+        OutboundKind.ClientStream => "clientStream",
+        OutboundKind.Duplex => "duplex",
+        _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
+    };
+
+    private void ConfigureCustomOutbounds(
+        DispatcherOptions dispatcherOptions,
+        string service,
+        OutboundKind kind,
+        IConfigurationSection? kindSection)
+    {
+        if (_customOutboundSpecs.Count == 0 || kindSection is null)
+        {
+            return;
+        }
+
+        var customSection = kindSection.GetSection("custom");
+        if (!customSection.Exists())
+        {
+            return;
+        }
+
+        var index = 0;
+        foreach (var section in customSection.GetChildren())
+        {
+            var specName = section.GetValue<string>("spec");
+            if (string.IsNullOrWhiteSpace(specName))
+            {
+                throw new PolymerConfigurationException($"Custom outbound at index {index} for service '{service}' must specify a 'spec' value.");
+            }
+
+            if (!_customOutboundSpecs.TryGetValue(specName, out var spec))
+            {
+                throw new PolymerConfigurationException($"No custom outbound spec registered for '{specName}'.");
+            }
+
+            var key = section.GetValue<string>("key");
+
+            switch (kind)
+            {
+                case OutboundKind.Unary:
+                {
+                    var outbound = spec.CreateUnaryOutbound(section, _serviceProvider)
+                        ?? throw new PolymerConfigurationException($"Custom outbound spec '{specName}' did not provide a unary outbound.");
+                    dispatcherOptions.AddUnaryOutbound(service, key, outbound);
+                    break;
+                }
+                case OutboundKind.Oneway:
+                {
+                    var outbound = spec.CreateOnewayOutbound(section, _serviceProvider)
+                        ?? throw new PolymerConfigurationException($"Custom outbound spec '{specName}' did not provide a oneway outbound.");
+                    dispatcherOptions.AddOnewayOutbound(service, key, outbound);
+                    break;
+                }
+                case OutboundKind.Stream:
+                {
+                    var outbound = spec.CreateStreamOutbound(section, _serviceProvider)
+                        ?? throw new PolymerConfigurationException($"Custom outbound spec '{specName}' did not provide a stream outbound.");
+                    dispatcherOptions.AddStreamOutbound(service, key, outbound);
+                    break;
+                }
+                case OutboundKind.ClientStream:
+                {
+                    var outbound = spec.CreateClientStreamOutbound(section, _serviceProvider)
+                        ?? throw new PolymerConfigurationException($"Custom outbound spec '{specName}' did not provide a client stream outbound.");
+                    dispatcherOptions.AddClientStreamOutbound(service, key, outbound);
+                    break;
+                }
+                case OutboundKind.Duplex:
+                {
+                    var outbound = spec.CreateDuplexOutbound(section, _serviceProvider)
+                        ?? throw new PolymerConfigurationException($"Custom outbound spec '{specName}' did not provide a duplex outbound.");
+                    dispatcherOptions.AddDuplexOutbound(service, key, outbound);
+                    break;
+                }
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(kind), kind, null);
+            }
+
+            index++;
         }
     }
 
@@ -260,7 +423,7 @@ internal sealed class DispatcherBuilder
         return (new HttpClient(), true);
     }
 
-    private GrpcOutbound CreateGrpcOutbound(string service, GrpcOutboundTargetConfiguration configuration)
+    private GrpcOutbound CreateGrpcOutbound(string service, GrpcOutboundTargetConfiguration configuration, IConfigurationSection? configurationSection)
     {
         if (configuration.Addresses.Count == 0)
         {
@@ -276,22 +439,38 @@ internal sealed class DispatcherBuilder
             ? service
             : configuration.RemoteService!;
 
-        var cacheKey = string.Create(
-            CultureInfo.InvariantCulture,
-            $"{service}|{configuration.Key ?? OutboundCollection.DefaultKey}|{remoteService}|{string.Join(",", uris.Select(u => u.ToString()))}|{configuration.PeerChooser ?? "round-robin"}");
-
-        if (_grpcOutboundCache.TryGetValue(cacheKey, out var cached))
-        {
-            return cached;
-        }
-
-        var chooserFactory = CreatePeerChooserFactory(configuration.PeerChooser);
+        var peerSection = configurationSection?.GetSection("peer");
+        var chooserFactory = CreatePeerChooserFactory(configuration.PeerChooser, configuration.Peer, peerSection);
         var breakerOptions = BuildCircuitBreakerOptions(configuration.CircuitBreaker);
         var telemetryOptions = BuildGrpcTelemetryOptions(configuration.Telemetry, serverSide: false);
         var runtimeOptions = BuildGrpcClientRuntimeOptions(configuration.Runtime);
         var tlsOptions = BuildGrpcClientTlsOptions(configuration.Tls);
 
-        var outbound = new GrpcOutbound(
+        if (configuration.Peer?.Spec is null)
+        {
+            var cacheKey = string.Create(
+                CultureInfo.InvariantCulture,
+                $"{service}|{configuration.Key ?? OutboundCollection.DefaultKey}|{remoteService}|{string.Join(",", uris.Select(u => u.ToString()))}|{configuration.PeerChooser ?? "round-robin"}");
+
+            if (_grpcOutboundCache.TryGetValue(cacheKey, out var cachedOutbound))
+            {
+                return cachedOutbound;
+            }
+
+            var outboundCached = new GrpcOutbound(
+                uris,
+                remoteService,
+                clientTlsOptions: tlsOptions,
+                peerChooser: chooserFactory,
+                clientRuntimeOptions: runtimeOptions,
+                peerCircuitBreakerOptions: breakerOptions,
+                telemetryOptions: telemetryOptions);
+
+            _grpcOutboundCache[cacheKey] = outboundCached;
+            return outboundCached;
+        }
+
+        return new GrpcOutbound(
             uris,
             remoteService,
             clientTlsOptions: tlsOptions,
@@ -299,13 +478,28 @@ internal sealed class DispatcherBuilder
             clientRuntimeOptions: runtimeOptions,
             peerCircuitBreakerOptions: breakerOptions,
             telemetryOptions: telemetryOptions);
-
-        _grpcOutboundCache[cacheKey] = outbound;
-        return outbound;
     }
 
-    private static Func<IReadOnlyList<IPeer>, IPeerChooser> CreatePeerChooserFactory(string? peerChooser)
+    private Func<IReadOnlyList<IPeer>, IPeerChooser> CreatePeerChooserFactory(
+        string? peerChooser,
+        PeerSpecConfiguration? peerSpec,
+        IConfigurationSection? peerSection)
     {
+        if (peerSpec is { Spec: { Length: > 0 } specName })
+        {
+            if (!_customPeerSpecs.TryGetValue(specName, out var spec))
+            {
+                throw new PolymerConfigurationException($"No custom peer chooser spec registered for '{specName}'.");
+            }
+
+            if (peerSection is null)
+            {
+                throw new PolymerConfigurationException($"Peer spec '{specName}' requires configuration under 'peer'.");
+            }
+
+            return spec.CreateFactory(peerSection, _serviceProvider);
+        }
+
         if (string.IsNullOrWhiteSpace(peerChooser) ||
             peerChooser.Equals("round-robin", StringComparison.OrdinalIgnoreCase) ||
             peerChooser.Equals("roundrobin", StringComparison.OrdinalIgnoreCase))
