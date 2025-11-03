@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Polymer.Configuration.Internal;
 using Polymer.Configuration.Models;
+using Polymer.Dispatcher;
 
 namespace Polymer.Configuration;
 
@@ -48,6 +49,8 @@ public static class PolymerServiceCollectionExtensions
             var builder = new DispatcherBuilder(options, provider, configuration);
             return builder.Build();
         });
+
+        services.AddSingleton(provider => provider.GetRequiredService<Dispatcher.Dispatcher>().Codecs);
 
         services.AddSingleton<IHostedService>(provider =>
         {

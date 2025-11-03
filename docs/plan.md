@@ -243,7 +243,7 @@ Transport Specifics
 Encodings (JSON, Protobuf, Thrift)
 ----------------------------------
 
-* **JSON:**`ICodec<TReq,TRes>` using `System.Text.Json`; pluggable.
+* **JSON:**`ICodec<TReq,TRes>` using `System.Text.Json`; now configurable via `encodings:json` profiles that shape `JsonSerializerOptions`, opt into source-generated `JsonSerializerContext` metadata, and (optionally) attach request/response schemas enforced by `JsonSchema.Net` during encode/decode.
 
 * **Raw:** byte array passthrough codec enforcing metadata consistency. Implemented via `src/Polymer/Core/RawCodec.cs` with unit coverage in `tests/Polymer.Tests/Core/RawCodecTests.cs`. HTTP transport now maps the `raw` encoding to `application/octet-stream` on both outbound requests and inbound acknowledgements, with coverage in `tests/Polymer.Tests/Transport/HttpDuplexTransportTests.cs`.
 
@@ -251,7 +251,7 @@ Encodings (JSON, Protobuf, Thrift)
 
 * **Thrift (later):** integrate Apache Thrift C# with a small YARPC adapter (optional).
 
-* **Negotiation:** allow dispatcher registration to specify default codec per procedure while honouring explicit call-site overrides.
+* **Negotiation / Registry:** codec registrations live in the dispatcher-level `CodecRegistry`, enabling per-procedure defaults (aliases included) while honouring explicit call-site overrides and powering DI-backed client creation.
 
 * **Versioning:** document approach for payload evolution (backward compatibility, optional fields) and surface validation helpers for JSON schema drift.
 

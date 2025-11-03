@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using Polymer.Core;
 using Polymer.Core.Middleware;
 using Polymer.Core.Transport;
 using Polymer.Transport.Http.Middleware;
@@ -15,6 +16,7 @@ public sealed class DispatcherOptions
     private readonly HashSet<ILifecycle> _uniqueComponentSet = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<string, OutboundCollectionBuilder> _outboundBuilders =
         new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<ProcedureCodecRegistration> _codecRegistrations = [];
 
     public DispatcherOptions(string serviceName)
     {
@@ -44,6 +46,7 @@ public sealed class DispatcherOptions
     internal IReadOnlyList<DispatcherLifecycleComponent> ComponentDescriptors => _componentDescriptors;
     internal IReadOnlyList<DispatcherLifecycleComponent> UniqueComponents => _uniqueComponents;
     internal IReadOnlyDictionary<string, OutboundCollectionBuilder> OutboundBuilders => _outboundBuilders;
+    internal IReadOnlyList<ProcedureCodecRegistration> CodecRegistrations => _codecRegistrations;
 
     public void AddTransport(ITransport transport)
     {
@@ -135,6 +138,80 @@ public sealed class DispatcherOptions
     {
         var variant = string.IsNullOrWhiteSpace(key) ? OutboundCollection.DefaultKey : key;
         return $"{service}:{variant}:{kind}";
+    }
+
+    public void AddInboundUnaryCodec<TRequest, TResponse>(string procedure, ICodec<TRequest, TResponse> codec, IEnumerable<string>? aliases = null) =>
+        AddCodec(ProcedureCodecScope.Inbound, null, procedure, ProcedureKind.Unary, codec, aliases);
+
+    public void AddInboundOnewayCodec<TRequest>(string procedure, ICodec<TRequest, object> codec, IEnumerable<string>? aliases = null) =>
+        AddCodec(ProcedureCodecScope.Inbound, null, procedure, ProcedureKind.Oneway, codec, aliases);
+
+    public void AddInboundStreamCodec<TRequest, TResponse>(string procedure, ICodec<TRequest, TResponse> codec, IEnumerable<string>? aliases = null) =>
+        AddCodec(ProcedureCodecScope.Inbound, null, procedure, ProcedureKind.Stream, codec, aliases);
+
+    public void AddInboundClientStreamCodec<TRequest, TResponse>(string procedure, ICodec<TRequest, TResponse> codec, IEnumerable<string>? aliases = null) =>
+        AddCodec(ProcedureCodecScope.Inbound, null, procedure, ProcedureKind.ClientStream, codec, aliases);
+
+    public void AddInboundDuplexCodec<TRequest, TResponse>(string procedure, ICodec<TRequest, TResponse> codec, IEnumerable<string>? aliases = null) =>
+        AddCodec(ProcedureCodecScope.Inbound, null, procedure, ProcedureKind.Duplex, codec, aliases);
+
+    public void AddOutboundUnaryCodec<TRequest, TResponse>(string service, string procedure, ICodec<TRequest, TResponse> codec, IEnumerable<string>? aliases = null) =>
+        AddCodec(ProcedureCodecScope.Outbound, service, procedure, ProcedureKind.Unary, codec, aliases);
+
+    public void AddOutboundOnewayCodec<TRequest>(string service, string procedure, ICodec<TRequest, object> codec, IEnumerable<string>? aliases = null) =>
+        AddCodec(ProcedureCodecScope.Outbound, service, procedure, ProcedureKind.Oneway, codec, aliases);
+
+    public void AddOutboundStreamCodec<TRequest, TResponse>(string service, string procedure, ICodec<TRequest, TResponse> codec, IEnumerable<string>? aliases = null) =>
+        AddCodec(ProcedureCodecScope.Outbound, service, procedure, ProcedureKind.Stream, codec, aliases);
+
+    public void AddOutboundClientStreamCodec<TRequest, TResponse>(string service, string procedure, ICodec<TRequest, TResponse> codec, IEnumerable<string>? aliases = null) =>
+        AddCodec(ProcedureCodecScope.Outbound, service, procedure, ProcedureKind.ClientStream, codec, aliases);
+
+    public void AddOutboundDuplexCodec<TRequest, TResponse>(string service, string procedure, ICodec<TRequest, TResponse> codec, IEnumerable<string>? aliases = null) =>
+        AddCodec(ProcedureCodecScope.Outbound, service, procedure, ProcedureKind.Duplex, codec, aliases);
+
+    private void AddCodec<TRequest, TResponse>(
+        ProcedureCodecScope scope,
+        string? service,
+        string procedure,
+        ProcedureKind kind,
+        ICodec<TRequest, TResponse> codec,
+        IEnumerable<string>? aliases)
+    {
+        if (string.IsNullOrWhiteSpace(procedure))
+        {
+            throw new ArgumentException("Procedure name cannot be null or whitespace.", nameof(procedure));
+        }
+
+        ArgumentNullException.ThrowIfNull(codec);
+
+        var aliasSnapshot = aliases is null
+            ? ImmutableArray<string>.Empty
+            : ImmutableArray.CreateRange(aliases);
+
+        ValidateAliasSnapshot(aliasSnapshot);
+
+        _codecRegistrations.Add(new ProcedureCodecRegistration(
+            scope,
+            service,
+            procedure.Trim(),
+            kind,
+            typeof(TRequest),
+            typeof(TResponse),
+            codec,
+            codec.Encoding,
+            aliasSnapshot));
+    }
+
+    private static void ValidateAliasSnapshot(ImmutableArray<string> aliases)
+    {
+        foreach (var alias in aliases)
+        {
+            if (string.IsNullOrWhiteSpace(alias))
+            {
+                throw new ArgumentException("Codec aliases cannot contain null or whitespace entries.", nameof(aliases));
+            }
+        }
     }
 
     internal sealed record DispatcherLifecycleComponent(string Name, ILifecycle Lifecycle);

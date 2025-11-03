@@ -24,13 +24,15 @@ public sealed class UnaryClient<TRequest, TResponse>
 
     public async ValueTask<Result<Response<TResponse>>> CallAsync(Request<TRequest> request, CancellationToken cancellationToken = default)
     {
-        var encodeResult = _codec.EncodeRequest(request.Body, request.Meta);
+        var meta = EnsureEncoding(request.Meta);
+
+        var encodeResult = _codec.EncodeRequest(request.Body, meta);
         if (encodeResult.IsFailure)
         {
             return Err<Response<TResponse>>(encodeResult.Error!);
         }
 
-        var rawRequest = new Request<ReadOnlyMemory<byte>>(request.Meta, encodeResult.Value);
+        var rawRequest = new Request<ReadOnlyMemory<byte>>(meta, encodeResult.Value);
         var outboundResult = await _pipeline(rawRequest, cancellationToken).ConfigureAwait(false);
 
         if (outboundResult.IsFailure)
@@ -46,5 +48,17 @@ public sealed class UnaryClient<TRequest, TResponse>
 
         var response = Response<TResponse>.Create(decodeResult.Value, outboundResult.Value.Meta);
         return Ok(response);
+    }
+
+    private RequestMeta EnsureEncoding(RequestMeta meta)
+    {
+        ArgumentNullException.ThrowIfNull(meta);
+
+        if (string.IsNullOrWhiteSpace(meta.Encoding))
+        {
+            return meta with { Encoding = _codec.Encoding };
+        }
+
+        return meta;
     }
 }

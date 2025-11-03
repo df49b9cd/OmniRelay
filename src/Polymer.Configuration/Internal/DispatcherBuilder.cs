@@ -6,18 +6,24 @@ using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Security;
+using System.Reflection;
 using System.Security.Cryptography.X509Certificates;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Grpc.Core.Interceptors;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Hosting;
 using Polymer.Configuration.Models;
+using Polymer.Core;
 using Polymer.Core.Middleware;
 using Polymer.Core.Peers;
 using Polymer.Dispatcher;
 using Polymer.Transport.Grpc;
 using Polymer.Transport.Http;
+using Json.Schema;
 
 namespace Polymer.Configuration.Internal;
 
@@ -64,6 +70,7 @@ internal sealed class DispatcherBuilder
         ApplyMiddleware(dispatcherOptions);
         ConfigureInbounds(dispatcherOptions);
         ConfigureOutbounds(dispatcherOptions);
+        ConfigureEncodings(dispatcherOptions);
 
         return new Dispatcher.Dispatcher(dispatcherOptions);
     }
@@ -772,6 +779,596 @@ internal sealed class DispatcherBuilder
             LoggerFactory = loggerFactory
         };
     }
+
+    private void ConfigureEncodings(DispatcherOptions dispatcherOptions)
+    {
+        ConfigureJsonEncodings(dispatcherOptions);
+    }
+
+    private void ConfigureJsonEncodings(DispatcherOptions dispatcherOptions)
+    {
+        var jsonConfig = _options.Encodings?.Json;
+        if (jsonConfig is null)
+        {
+            return;
+        }
+
+        if (jsonConfig.Inbound.Count == 0 && jsonConfig.Outbound.Count == 0)
+        {
+            return;
+        }
+
+        var basePath = ResolveContentRootPath();
+        var profiles = BuildJsonProfiles(jsonConfig);
+
+        foreach (var registration in jsonConfig.Inbound)
+        {
+            RegisterJsonCodec(dispatcherOptions, registration, profiles, ProcedureCodecScope.Inbound, basePath);
+        }
+
+        foreach (var registration in jsonConfig.Outbound)
+        {
+            RegisterJsonCodec(dispatcherOptions, registration, profiles, ProcedureCodecScope.Outbound, basePath);
+        }
+    }
+
+    private static Dictionary<string, JsonProfileDescriptor> BuildJsonProfiles(JsonEncodingConfiguration configuration)
+    {
+        var profiles = new Dictionary<string, JsonProfileDescriptor>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var entry in configuration.Profiles)
+        {
+            if (entry.Value is null)
+            {
+                continue;
+            }
+
+            profiles[entry.Key] = new JsonProfileDescriptor(
+                entry.Value.Options,
+                entry.Value.Converters,
+                entry.Value.Context);
+        }
+
+        return profiles;
+    }
+
+    private void RegisterJsonCodec(
+        DispatcherOptions dispatcherOptions,
+        JsonCodecRegistrationConfiguration registration,
+        IDictionary<string, JsonProfileDescriptor> profiles,
+        ProcedureCodecScope scope,
+        string basePath)
+    {
+        if (registration is null)
+        {
+            return;
+        }
+
+        var procedure = registration.Procedure?.Trim();
+        if (string.IsNullOrWhiteSpace(procedure))
+        {
+            throw new PolymerConfigurationException("JSON codec registrations must specify a procedure name.");
+        }
+
+        var kind = ParseProcedureKind(registration.Kind, procedure);
+
+        var requestType = ResolveType(registration.RequestType, $"json codec registration for '{procedure}'");
+        var responseType = ResolveResponseType(registration, kind, procedure);
+
+        var materials = BuildJsonCodecMaterials(profiles, registration, requestType, responseType);
+
+        var encoding = string.IsNullOrWhiteSpace(registration.Encoding)
+            ? "application/json"
+            : registration.Encoding!.Trim();
+
+        var requestSchema = LoadJsonSchema(registration.Schemas.Request, basePath, $"request schema for '{procedure}'");
+        var responseSchema = LoadJsonSchema(registration.Schemas.Response, basePath, $"response schema for '{procedure}'");
+
+        var codecInstance = CreateJsonCodecInstance(
+            requestType,
+            responseType,
+            materials.Options,
+            encoding,
+            materials.Context,
+            requestSchema,
+            registration.Schemas.Request,
+            responseSchema,
+            registration.Schemas.Response);
+
+        RegisterCodecWithDispatcher(
+            dispatcherOptions,
+            scope,
+            registration.Service,
+            procedure,
+            kind,
+            requestType,
+            responseType,
+            codecInstance,
+            registration.Aliases);
+    }
+
+    private (JsonSerializerOptions Options, JsonSerializerContext? Context) BuildJsonCodecMaterials(
+        IDictionary<string, JsonProfileDescriptor> profiles,
+        JsonCodecRegistrationConfiguration registration,
+        Type requestType,
+        Type responseType)
+    {
+        JsonSerializerOptions options = CreateDefaultJsonSerializerOptions();
+        JsonProfileDescriptor? profile = null;
+
+        if (!string.IsNullOrWhiteSpace(registration.Profile))
+        {
+            if (!profiles.TryGetValue(registration.Profile!, out profile))
+            {
+                throw new PolymerConfigurationException($"No JSON codec profile named '{registration.Profile}' was found.");
+            }
+
+            options = new JsonSerializerOptions(options);
+            ApplyJsonSerializerOptions(options, profile.Options, profile.Converters);
+        }
+
+        options = new JsonSerializerOptions(options);
+        ApplyJsonSerializerOptions(options, registration.Options, registration.Options.Converters);
+
+        var contextTypeName = registration.Context ?? profile?.ContextTypeName;
+        var context = CreateSerializerContext(contextTypeName, options, registration.Procedure ?? requestType.FullName ?? "json-procedure");
+
+        return (options, context);
+    }
+
+    private JsonSerializerContext? CreateSerializerContext(string? contextTypeName, JsonSerializerOptions options, string procedure)
+    {
+        if (string.IsNullOrWhiteSpace(contextTypeName))
+        {
+            return null;
+        }
+
+        var contextType = ResolveType(contextTypeName, $"JsonSerializerContext for '{procedure}'");
+        if (!typeof(JsonSerializerContext).IsAssignableFrom(contextType))
+        {
+            throw new PolymerConfigurationException($"Type '{contextTypeName}' is not a valid JsonSerializerContext.");
+        }
+
+        try
+        {
+            var ctorWithOptions = contextType.GetConstructor(new[] { typeof(JsonSerializerOptions) });
+            if (ctorWithOptions is not null)
+            {
+                var instance = ctorWithOptions.Invoke(new object[] { options });
+                if (instance is JsonSerializerContext context)
+                {
+                    return context;
+                }
+            }
+
+            var defaultInstance = Activator.CreateInstance(contextType);
+            return defaultInstance as JsonSerializerContext
+                ?? throw new PolymerConfigurationException($"Failed to instantiate JsonSerializerContext '{contextTypeName}'.");
+        }
+        catch (PolymerConfigurationException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new PolymerConfigurationException($"Failed to instantiate JsonSerializerContext '{contextTypeName}'.", ex);
+        }
+    }
+
+    private JsonSchema? LoadJsonSchema(string? path, string basePath, string description)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return null;
+        }
+
+        var resolved = Path.IsPathRooted(path)
+            ? path
+            : Path.Combine(basePath, path);
+
+        if (!File.Exists(resolved))
+        {
+            throw new PolymerConfigurationException($"Unable to locate JSON schema '{path}' for {description}.");
+        }
+
+        try
+        {
+            var schemaText = File.ReadAllText(resolved);
+            return JsonSchema.FromText(schemaText);
+        }
+        catch (Exception ex)
+        {
+            throw new PolymerConfigurationException($"Failed to load JSON schema '{path}' for {description}.", ex);
+        }
+    }
+
+    private static ProcedureKind ParseProcedureKind(string? value, string procedure)
+    {
+        if (Enum.TryParse<ProcedureKind>(value, ignoreCase: true, out var parsed))
+        {
+            return parsed;
+        }
+
+        throw new PolymerConfigurationException($"JSON codec registration for '{procedure}' specifies invalid procedure kind '{value}'.");
+    }
+
+    private static Type ResolveType(string? typeName, string description)
+    {
+        if (string.IsNullOrWhiteSpace(typeName))
+        {
+            throw new PolymerConfigurationException($"Type name is required for {description}.");
+        }
+
+        var type = Type.GetType(typeName, throwOnError: false);
+        if (type is null)
+        {
+            throw new PolymerConfigurationException($"Unable to resolve type '{typeName}' for {description}.");
+        }
+
+        return type;
+    }
+
+    private Type ResolveResponseType(JsonCodecRegistrationConfiguration registration, ProcedureKind kind, string procedure)
+    {
+        if (kind == ProcedureKind.Oneway)
+        {
+            return typeof(object);
+        }
+
+        if (string.IsNullOrWhiteSpace(registration.ResponseType))
+        {
+            throw new PolymerConfigurationException($"JSON codec registration for '{procedure}' must specify a response type.");
+        }
+
+        return ResolveType(registration.ResponseType, $"json codec registration for '{procedure}'");
+    }
+
+    private object CreateJsonCodecInstance(
+        Type requestType,
+        Type responseType,
+        JsonSerializerOptions options,
+        string encoding,
+        JsonSerializerContext? context,
+        JsonSchema? requestSchema,
+        string? requestSchemaId,
+        JsonSchema? responseSchema,
+        string? responseSchemaId)
+    {
+        var codecType = typeof(JsonCodec<,>).MakeGenericType(requestType, responseType);
+
+        try
+        {
+            return Activator.CreateInstance(
+                       codecType,
+                       options,
+                       encoding,
+                       context,
+                       requestSchema,
+                       requestSchemaId,
+                       responseSchema,
+                       responseSchemaId)
+                   ?? throw new PolymerConfigurationException($"Failed to create JsonCodec instance for '{requestType.FullName}' → '{responseType.FullName}'.");
+        }
+        catch (TargetInvocationException ex)
+        {
+            throw new PolymerConfigurationException("Failed to create JsonCodec instance.", ex.InnerException ?? ex);
+        }
+        catch (Exception ex)
+        {
+            throw new PolymerConfigurationException("Failed to create JsonCodec instance.", ex);
+        }
+    }
+
+    private void RegisterCodecWithDispatcher(
+        DispatcherOptions dispatcherOptions,
+        ProcedureCodecScope scope,
+        string? service,
+        string procedure,
+        ProcedureKind kind,
+        Type requestType,
+        Type responseType,
+        object codec,
+        IList<string> aliases)
+    {
+        var aliasArgument = aliases.Count == 0 ? null : aliases;
+
+        try
+        {
+            switch (scope)
+            {
+                case ProcedureCodecScope.Inbound:
+                    RegisterInboundCodec(dispatcherOptions, kind, requestType, responseType, codec, procedure, aliasArgument);
+                    break;
+                case ProcedureCodecScope.Outbound:
+                    if (string.IsNullOrWhiteSpace(service))
+                    {
+                        throw new PolymerConfigurationException($"JSON codec registration for '{procedure}' must specify a service when used for outbound codecs.");
+                    }
+
+                    RegisterOutboundCodec(dispatcherOptions, kind, requestType, responseType, codec, service!, procedure, aliasArgument);
+                    break;
+                default:
+                    throw new PolymerConfigurationException($"Unsupported codec scope '{scope}'.");
+            }
+        }
+        catch (TargetInvocationException ex)
+        {
+            throw new PolymerConfigurationException("Failed to register JSON codec with dispatcher.", ex.InnerException ?? ex);
+        }
+    }
+
+    private static void RegisterInboundCodec(
+        DispatcherOptions dispatcherOptions,
+        ProcedureKind kind,
+        Type requestType,
+        Type responseType,
+        object codec,
+        string procedure,
+        IList<string>? aliases)
+    {
+        switch (kind)
+        {
+            case ProcedureKind.Unary:
+                InvokeCodecRegistration(dispatcherOptions, nameof(DispatcherOptions.AddInboundUnaryCodec), requestType, responseType, codec, procedure, aliases);
+                break;
+            case ProcedureKind.Oneway:
+                InvokeOnewayCodecRegistration(dispatcherOptions, nameof(DispatcherOptions.AddInboundOnewayCodec), requestType, codec, procedure, aliases);
+                break;
+            case ProcedureKind.Stream:
+                InvokeCodecRegistration(dispatcherOptions, nameof(DispatcherOptions.AddInboundStreamCodec), requestType, responseType, codec, procedure, aliases);
+                break;
+            case ProcedureKind.ClientStream:
+                InvokeCodecRegistration(dispatcherOptions, nameof(DispatcherOptions.AddInboundClientStreamCodec), requestType, responseType, codec, procedure, aliases);
+                break;
+            case ProcedureKind.Duplex:
+                InvokeCodecRegistration(dispatcherOptions, nameof(DispatcherOptions.AddInboundDuplexCodec), requestType, responseType, codec, procedure, aliases);
+                break;
+            default:
+                throw new PolymerConfigurationException($"JSON codec registrations do not support inbound kind '{kind}'.");
+        }
+    }
+
+    private static void RegisterOutboundCodec(
+        DispatcherOptions dispatcherOptions,
+        ProcedureKind kind,
+        Type requestType,
+        Type responseType,
+        object codec,
+        string service,
+        string procedure,
+        IList<string>? aliases)
+    {
+        switch (kind)
+        {
+            case ProcedureKind.Unary:
+                InvokeCodecRegistration(dispatcherOptions, nameof(DispatcherOptions.AddOutboundUnaryCodec), requestType, responseType, codec, service, procedure, aliases);
+                break;
+            case ProcedureKind.Oneway:
+                InvokeOnewayCodecRegistration(dispatcherOptions, nameof(DispatcherOptions.AddOutboundOnewayCodec), requestType, codec, service, procedure, aliases);
+                break;
+            case ProcedureKind.Stream:
+                InvokeCodecRegistration(dispatcherOptions, nameof(DispatcherOptions.AddOutboundStreamCodec), requestType, responseType, codec, service, procedure, aliases);
+                break;
+            case ProcedureKind.ClientStream:
+                InvokeCodecRegistration(dispatcherOptions, nameof(DispatcherOptions.AddOutboundClientStreamCodec), requestType, responseType, codec, service, procedure, aliases);
+                break;
+            case ProcedureKind.Duplex:
+                InvokeCodecRegistration(dispatcherOptions, nameof(DispatcherOptions.AddOutboundDuplexCodec), requestType, responseType, codec, service, procedure, aliases);
+                break;
+            default:
+                throw new PolymerConfigurationException($"JSON codec registrations do not support outbound kind '{kind}'.");
+        }
+    }
+
+    private static void InvokeCodecRegistration(
+        DispatcherOptions dispatcherOptions,
+        string methodName,
+        Type requestType,
+        Type responseType,
+        object codec,
+        string procedure,
+        IList<string>? aliases)
+    {
+        var method = typeof(DispatcherOptions).GetMethod(methodName) ??
+                     throw new InvalidOperationException($"DispatcherOptions.{methodName} not found.");
+
+        var generic = method.MakeGenericMethod(requestType, responseType);
+        generic.Invoke(dispatcherOptions, new object?[] { procedure, codec, aliases });
+    }
+
+    private static void InvokeCodecRegistration(
+        DispatcherOptions dispatcherOptions,
+        string methodName,
+        Type requestType,
+        Type responseType,
+        object codec,
+        string service,
+        string procedure,
+        IList<string>? aliases)
+    {
+        var method = typeof(DispatcherOptions).GetMethod(methodName) ??
+                     throw new InvalidOperationException($"DispatcherOptions.{methodName} not found.");
+
+        var generic = method.MakeGenericMethod(requestType, responseType);
+        generic.Invoke(dispatcherOptions, new object?[] { service, procedure, codec, aliases });
+    }
+
+    private static void InvokeOnewayCodecRegistration(
+        DispatcherOptions dispatcherOptions,
+        string methodName,
+        Type requestType,
+        object codec,
+        string procedure,
+        IList<string>? aliases)
+    {
+        var method = typeof(DispatcherOptions).GetMethod(methodName) ??
+                     throw new InvalidOperationException($"DispatcherOptions.{methodName} not found.");
+
+        var generic = method.MakeGenericMethod(requestType);
+        generic.Invoke(dispatcherOptions, new object?[] { procedure, codec, aliases });
+    }
+
+    private static void InvokeOnewayCodecRegistration(
+        DispatcherOptions dispatcherOptions,
+        string methodName,
+        Type requestType,
+        object codec,
+        string service,
+        string procedure,
+        IList<string>? aliases)
+    {
+        var method = typeof(DispatcherOptions).GetMethod(methodName) ??
+                     throw new InvalidOperationException($"DispatcherOptions.{methodName} not found.");
+
+        var generic = method.MakeGenericMethod(requestType);
+        generic.Invoke(dispatcherOptions, new object?[] { service, procedure, codec, aliases });
+    }
+
+    private static JsonSerializerOptions CreateDefaultJsonSerializerOptions() =>
+        new(JsonSerializerDefaults.Web)
+        {
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+            PropertyNameCaseInsensitive = true
+        };
+
+    private void ApplyJsonSerializerOptions(
+        JsonSerializerOptions target,
+        JsonSerializerOptionsConfiguration configuration,
+        IList<string> additionalConverters)
+    {
+        if (configuration.PropertyNameCaseInsensitive.HasValue)
+        {
+            target.PropertyNameCaseInsensitive = configuration.PropertyNameCaseInsensitive.Value;
+        }
+
+        if (configuration.WriteIndented.HasValue)
+        {
+            target.WriteIndented = configuration.WriteIndented.Value;
+        }
+
+        if (configuration.AllowTrailingCommas.HasValue)
+        {
+            target.AllowTrailingCommas = configuration.AllowTrailingCommas.Value;
+        }
+
+        if (configuration.ReadCommentHandling.HasValue)
+        {
+            target.ReadCommentHandling = configuration.ReadCommentHandling.Value
+                ? JsonCommentHandling.Allow
+                : JsonCommentHandling.Disallow;
+        }
+
+        if (configuration.IgnoreNullValues.HasValue)
+        {
+            target.DefaultIgnoreCondition = configuration.IgnoreNullValues.Value
+                ? JsonIgnoreCondition.WhenWritingNull
+                : JsonIgnoreCondition.Never;
+        }
+
+        if (!string.IsNullOrWhiteSpace(configuration.DefaultIgnoreCondition))
+        {
+            if (Enum.TryParse<JsonIgnoreCondition>(configuration.DefaultIgnoreCondition, ignoreCase: true, out var ignoreCondition))
+            {
+                target.DefaultIgnoreCondition = ignoreCondition;
+            }
+            else
+            {
+                throw new PolymerConfigurationException($"Unsupported JSON ignore condition '{configuration.DefaultIgnoreCondition}'.");
+            }
+        }
+
+        if (configuration.NumberHandling.Count > 0)
+        {
+            JsonNumberHandling handling = 0;
+            foreach (var entry in configuration.NumberHandling)
+            {
+                if (!Enum.TryParse<JsonNumberHandling>(entry, ignoreCase: true, out var parsed))
+                {
+                    throw new PolymerConfigurationException($"Unsupported JSON number handling flag '{entry}'.");
+                }
+
+                handling |= parsed;
+            }
+
+            target.NumberHandling = handling;
+        }
+
+        if (!string.IsNullOrWhiteSpace(configuration.PropertyNamingPolicy))
+        {
+            var policy = configuration.PropertyNamingPolicy.Trim();
+            if (policy.Equals("CamelCase", StringComparison.OrdinalIgnoreCase))
+            {
+                target.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+            }
+            else if (policy.Equals("PascalCase", StringComparison.OrdinalIgnoreCase) ||
+                     policy.Equals("None", StringComparison.OrdinalIgnoreCase))
+            {
+                target.PropertyNamingPolicy = null;
+            }
+            else
+            {
+                throw new PolymerConfigurationException($"Unsupported JSON property naming policy '{configuration.PropertyNamingPolicy}'.");
+            }
+        }
+
+        if (additionalConverters is not null)
+        {
+            foreach (var converterType in additionalConverters)
+            {
+                AddJsonConverter(target, converterType);
+            }
+        }
+
+        foreach (var converterType in configuration.Converters)
+        {
+            AddJsonConverter(target, converterType);
+        }
+    }
+
+    private void AddJsonConverter(JsonSerializerOptions target, string converterTypeName)
+    {
+        if (string.IsNullOrWhiteSpace(converterTypeName))
+        {
+            return;
+        }
+
+        var converterType = ResolveType(converterTypeName, "JSON converter");
+        if (!typeof(JsonConverter).IsAssignableFrom(converterType))
+        {
+            throw new PolymerConfigurationException($"Type '{converterTypeName}' is not assignable to JsonConverter.");
+        }
+
+        try
+        {
+            var converter = Activator.CreateInstance(converterType) as JsonConverter
+                            ?? throw new PolymerConfigurationException($"Unable to instantiate JSON converter '{converterTypeName}'.");
+            target.Converters.Add(converter);
+        }
+        catch (PolymerConfigurationException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new PolymerConfigurationException($"Failed to instantiate JSON converter '{converterTypeName}'.", ex);
+        }
+    }
+
+    private string ResolveContentRootPath()
+    {
+        var environment = _serviceProvider.GetService<IHostEnvironment>();
+        if (environment is not null && !string.IsNullOrWhiteSpace(environment.ContentRootPath))
+        {
+            return environment.ContentRootPath;
+        }
+
+        return AppContext.BaseDirectory;
+    }
+
+    private sealed record JsonProfileDescriptor(
+        JsonSerializerOptionsConfiguration Options,
+        IList<string> Converters,
+        string? ContextTypeName);
 
     private void ApplyMiddleware(DispatcherOptions dispatcherOptions)
     {

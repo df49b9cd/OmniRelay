@@ -30,13 +30,15 @@ public sealed class ClientStreamClient<TRequest, TResponse>
     {
         ArgumentNullException.ThrowIfNull(meta);
 
-        var result = await _pipeline(meta, cancellationToken).ConfigureAwait(false);
+        var normalizedMeta = EnsureEncoding(meta);
+
+        var result = await _pipeline(normalizedMeta, cancellationToken).ConfigureAwait(false);
         if (result.IsFailure)
         {
-            throw PolymerErrors.FromError(result.Error!, meta.Transport ?? "unknown");
+            throw PolymerErrors.FromError(result.Error!, normalizedMeta.Transport ?? "unknown");
         }
 
-        return new ClientStreamSession(meta, _codec, result.Value);
+        return new ClientStreamSession(normalizedMeta, _codec, result.Value);
     }
 
     public sealed class ClientStreamSession : IAsyncDisposable
@@ -97,5 +99,15 @@ public sealed class ClientStreamClient<TRequest, TResponse>
 
             return Response<TResponse>.Create(decode.Value, result.Value.Meta);
         }
+    }
+
+    private RequestMeta EnsureEncoding(RequestMeta meta)
+    {
+        if (string.IsNullOrWhiteSpace(meta.Encoding))
+        {
+            return meta with { Encoding = _codec.Encoding };
+        }
+
+        return meta;
     }
 }

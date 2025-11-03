@@ -32,13 +32,15 @@ public sealed class StreamClient<TRequest, TResponse>
         StreamCallOptions options,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var encodeResult = _codec.EncodeRequest(request.Body, request.Meta);
+        var meta = EnsureEncoding(request.Meta);
+
+        var encodeResult = _codec.EncodeRequest(request.Body, meta);
         if (encodeResult.IsFailure)
         {
             throw PolymerErrors.FromError(encodeResult.Error!, options.Direction.ToString());
         }
 
-        var rawRequest = new Request<ReadOnlyMemory<byte>>(request.Meta, encodeResult.Value);
+        var rawRequest = new Request<ReadOnlyMemory<byte>>(meta, encodeResult.Value);
         var streamResult = await _pipeline(rawRequest, options, cancellationToken).ConfigureAwait(false);
         if (streamResult.IsFailure)
         {
@@ -58,5 +60,17 @@ public sealed class StreamClient<TRequest, TResponse>
 
             yield return Response<TResponse>.Create(decodeResult.Value, call.ResponseMeta);
         }
+    }
+
+    private RequestMeta EnsureEncoding(RequestMeta meta)
+    {
+        ArgumentNullException.ThrowIfNull(meta);
+
+        if (string.IsNullOrWhiteSpace(meta.Encoding))
+        {
+            return meta with { Encoding = _codec.Encoding };
+        }
+
+        return meta;
     }
 }

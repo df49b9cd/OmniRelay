@@ -32,14 +32,16 @@ public sealed class DuplexStreamClient<TRequest, TResponse>
     {
         ArgumentNullException.ThrowIfNull(meta);
 
-        var request = new Request<ReadOnlyMemory<byte>>(meta, ReadOnlyMemory<byte>.Empty);
+        var normalized = EnsureEncoding(meta);
+
+        var request = new Request<ReadOnlyMemory<byte>>(normalized, ReadOnlyMemory<byte>.Empty);
         var result = await _pipeline(request, cancellationToken).ConfigureAwait(false);
         if (result.IsFailure)
         {
-            throw PolymerErrors.FromError(result.Error!, meta.Transport ?? "unknown");
+            throw PolymerErrors.FromError(result.Error!, normalized.Transport ?? "unknown");
         }
 
-        return new DuplexStreamSession(meta, _codec, result.Value);
+        return new DuplexStreamSession(normalized, _codec, result.Value);
     }
 
     public sealed class DuplexStreamSession : IAsyncDisposable
@@ -98,5 +100,15 @@ public sealed class DuplexStreamClient<TRequest, TResponse>
         }
 
         public ValueTask DisposeAsync() => _call.DisposeAsync();
+    }
+
+    private RequestMeta EnsureEncoding(RequestMeta meta)
+    {
+        if (string.IsNullOrWhiteSpace(meta.Encoding))
+        {
+            return meta with { Encoding = _codec.Encoding };
+        }
+
+        return meta;
     }
 }

@@ -30,14 +30,28 @@ public sealed class OnewayClient<TRequest>
 
     public async ValueTask<Result<OnewayAck>> CallAsync(Request<TRequest> request, CancellationToken cancellationToken = default)
     {
-        var encodeResult = _codec.EncodeRequest(request.Body, request.Meta);
+        var meta = EnsureEncoding(request.Meta);
+
+        var encodeResult = _codec.EncodeRequest(request.Body, meta);
         if (encodeResult.IsFailure)
         {
             return Err<OnewayAck>(encodeResult.Error!);
         }
 
-        var outboundRequest = new Request<ReadOnlyMemory<byte>>(request.Meta, encodeResult.Value);
+        var outboundRequest = new Request<ReadOnlyMemory<byte>>(meta, encodeResult.Value);
         var ackResult = await _pipeline(outboundRequest, cancellationToken).ConfigureAwait(false);
         return ackResult;
+    }
+
+    private RequestMeta EnsureEncoding(RequestMeta meta)
+    {
+        ArgumentNullException.ThrowIfNull(meta);
+
+        if (string.IsNullOrWhiteSpace(meta.Encoding))
+        {
+            return meta with { Encoding = _codec.Encoding };
+        }
+
+        return meta;
     }
 }

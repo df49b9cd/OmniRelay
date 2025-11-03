@@ -100,14 +100,14 @@ Comprehensive backlog tracking the remaining work needed to reach feature parity
   - Add interop tests using YARPC fixtures.
 
 - **JSON Enhancements**
-  - Allow custom `JsonSerializerOptions` via configuration (per-procedure overrides).
-  - Add source-generated context support for performance.
-  - Optional: schema validation hooks leveraging JSON Schema.
+  - ~~Allow custom `JsonSerializerOptions` via configuration (per-procedure overrides).~~ *(`DispatcherBuilder` now binds `encodings:json` profiles/registrations into strongly typed `JsonCodec` instances, wiring them into the dispatcher via `DispatcherOptions.Add*Codec`; validated by `PolymerConfigurationTests.AddPolymerDispatcher_ConfiguresJsonCodecs`.)*
+  - ~~Add source-generated context support for performance.~~ *(`JsonCodec` accepts `JsonSerializerContext` metadata; configuration may reference generated contexts (see `EchoJsonContext`) ensuring serializers use statically generated type info.)*
+  - ~~Optional: schema validation hooks leveraging JSON Schema.~~ *(`JsonCodec` gained optional request/response `JsonSchema` enforcement, triggered through configuration-provided schema paths; failures map to `InvalidArgument` with schema error metadata and are exercised in new unit tests.)*
 
 - **Codec Registry**
-  - Introduce registry at dispatcher level mapping procedure → codec.
-  - Provide DI integration so transports autoselect codecs without manual wiring.
-  - Update documentation to reflect simplified registration workflow.
+  - ~~Introduce registry at dispatcher level mapping procedure → codec.~~ *(Added `CodecRegistry` with typed lookup/registration and memory-safe alias handling inside `Dispatcher`.)*
+  - ~~Provide DI integration so transports autoselect codecs without manual wiring.~~ *(`DispatcherClientExtensions` gained registry-backed overloads; `AddPolymerDispatcher` now exposes the shared registry via DI for middleware/transports.)*
+  - ~~Update documentation to reflect simplified registration workflow.~~ *(Docs updated inline here and `docs/plan.md` section refined to describe registry + JSON configuration pipeline.)*
 
 ## 3. Dispatcher & Routing (Phase 2)
 

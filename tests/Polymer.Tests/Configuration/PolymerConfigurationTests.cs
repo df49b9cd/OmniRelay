@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
@@ -15,6 +17,7 @@ using Polymer.Core.Peers;
 using Polymer.Core.Transport;
 using Polymer.Dispatcher;
 using Polymer.Errors;
+using System.Text.Json.Serialization;
 using Xunit;
 using static Hugo.Go;
 using PolymerDispatcher = Polymer.Dispatcher.Dispatcher;
@@ -168,6 +171,73 @@ public class PolymerConfigurationTests
         Assert.Equal("sticky", peerSpec.LastMode);
     }
 
+    [Fact]
+    public void AddPolymerDispatcher_ConfiguresJsonCodecs()
+    {
+        var schemaPath = Path.Combine(Path.GetTempPath(), $"polymer-schema-{Guid.NewGuid():N}.json");
+        File.WriteAllText(schemaPath, "{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\"},\"count\":{\"type\":\"integer\"}},\"required\":[\"name\",\"count\"]}");
+
+        try
+        {
+            var configuration = new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["polymer:service"] = "echo",
+                    ["polymer:encodings:json:inbound:0:procedure"] = "echo::call",
+                    ["polymer:encodings:json:inbound:0:kind"] = "Unary",
+                    ["polymer:encodings:json:inbound:0:requestType"] = typeof(EchoRequest).AssemblyQualifiedName,
+                    ["polymer:encodings:json:inbound:0:responseType"] = typeof(EchoResponse).AssemblyQualifiedName,
+                    ["polymer:encodings:json:inbound:0:encoding"] = "application/json",
+                    ["polymer:encodings:json:inbound:0:options:propertyNameCaseInsensitive"] = "false",
+                    ["polymer:encodings:json:inbound:0:schemas:request"] = schemaPath,
+                    ["polymer:encodings:json:outbound:0:service"] = "remote",
+                    ["polymer:encodings:json:outbound:0:procedure"] = "echo::call",
+                    ["polymer:encodings:json:outbound:0:kind"] = "Unary",
+                    ["polymer:encodings:json:outbound:0:requestType"] = typeof(EchoRequest).AssemblyQualifiedName,
+                    ["polymer:encodings:json:outbound:0:responseType"] = typeof(EchoResponse).AssemblyQualifiedName,
+                    ["polymer:encodings:json:outbound:0:profile"] = "strict",
+                    ["polymer:encodings:json:outbound:0:context"] = typeof(EchoJsonContext).AssemblyQualifiedName,
+                    ["polymer:encodings:json:profiles:strict:options:propertyNameCaseInsensitive"] = "false"
+                }!)
+                .Build();
+
+            var services = new ServiceCollection();
+            services.AddLogging();
+            services.AddPolymerDispatcher(configuration.GetSection("polymer"));
+
+            using var provider = services.BuildServiceProvider();
+            var dispatcher = provider.GetRequiredService<PolymerDispatcher>();
+
+            Assert.True(dispatcher.Codecs.TryResolve<EchoRequest, EchoResponse>(
+                ProcedureCodecScope.Inbound,
+                "echo",
+                "echo::call",
+                ProcedureKind.Unary,
+                out var inboundCodec));
+            Assert.Equal("application/json", inboundCodec.Encoding);
+
+            var invalidPayload = new ReadOnlyMemory<byte>(Encoding.UTF8.GetBytes("{\"count\":2}"));
+            var decode = inboundCodec.DecodeRequest(invalidPayload, new RequestMeta(service: "echo", procedure: "echo::call"));
+            Assert.True(decode.IsFailure);
+            Assert.Equal(PolymerStatusCode.InvalidArgument, PolymerErrorAdapter.ToStatus(decode.Error!));
+
+            Assert.True(dispatcher.Codecs.TryResolve<EchoRequest, EchoResponse>(
+                ProcedureCodecScope.Outbound,
+                "remote",
+                "echo::call",
+                ProcedureKind.Unary,
+                out var outboundCodec));
+            Assert.Equal("application/json", outboundCodec.Encoding);
+        }
+        finally
+        {
+            if (File.Exists(schemaPath))
+            {
+                File.Delete(schemaPath);
+            }
+        }
+    }
+
     private sealed class TestInboundSpec : ICustomInboundSpec
     {
         public const string SpecName = "test-inbound";
@@ -250,3 +320,13 @@ public class PolymerConfigurationTests
         }
     }
 }
+
+[JsonSerializable(typeof(EchoRequest))]
+[JsonSerializable(typeof(EchoResponse))]
+internal partial class EchoJsonContext : JsonSerializerContext
+{
+}
+
+internal sealed record EchoRequest(string Name, int Count);
+
+internal sealed record EchoResponse(string Message);

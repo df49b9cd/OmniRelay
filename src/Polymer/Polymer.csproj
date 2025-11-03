@@ -10,6 +10,7 @@
     <PackageReference Include="Grpc.Net.Client" Version="2.71.0" />
     <PackageReference Include="Grpc.HealthCheck" Version="2.71.0" />
     <PackageReference Include="Google.Protobuf" Version="3.30.2" />
+    <PackageReference Include="JsonSchema.Net" Version="7.4.0" />
   </ItemGroup>
   
   <ItemGroup>
