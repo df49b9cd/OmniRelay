@@ -450,7 +450,7 @@ Each step includes _Done when…_ acceptance criteria.
 
 *Implementation tip:* compose middleware via Hugo `Functional` extensions where possible to reuse existing retry/timeout primitives.
 
-**Status:** `RpcLoggingMiddleware` handles structured logs, `RpcTracingMiddleware` emits `ActivitySource` spans, and `RpcMetricsMiddleware` publishes request counters and latency histograms. Deadline enforcement, panic recovery, retry/backoff, and advanced rate limiting remain outstanding.
+**Status:** `RpcLoggingMiddleware` handles structured logs, `RpcTracingMiddleware` emits `ActivitySource` spans, `RpcMetricsMiddleware` publishes request counters/latency histograms, and `DeadlineMiddleware` enforces TTL/deadline metadata. Panic recovery, retry/backoff, and advanced rate limiting remain outstanding.
 
 * * *
 
