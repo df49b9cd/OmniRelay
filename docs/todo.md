@@ -208,7 +208,7 @@ Comprehensive backlog tracking the remaining work needed to reach feature parity
 ## 8. Tooling & Introspection
 
 - **CLI Support**
-  - Develop `polymer` CLI (or adapt `yab`) for issuing test requests, inspecting dispatcher state, validating configuration.
+  - Develop `polymer` CLI (or adapt `yab`) for issuing test requests, inspecting dispatcher state, validating configuration. *(Initial `yab` harness available under `tests/Polymer.YabInterop`; expand to richer CLI and automation.)*
   - Include scripting/automation examples.
 
 - **Diagnostics**
@@ -231,7 +231,7 @@ Comprehensive backlog tracking the remaining work needed to reach feature parity
   - Mirror YARPC crossdock tests if feasible.
 
 - **Performance Benchmarks**
-  - Provide scripts/infrastructure (e.g., `yab`, `wrk`, `ghz`) to measure throughput/latency.
+  - ~~Provide scripts/infrastructure (e.g., `yab`, `wrk`, `ghz`) to measure throughput/latency.~~ *(Initial `yab` script + echo harness in `tests/Polymer.YabInterop`; extend with benchmarking tools.)*
   - Capture baseline metrics for releases and regressions.
 
 - **CI Enhancements**

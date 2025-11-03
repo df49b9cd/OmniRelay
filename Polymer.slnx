@@ -4,5 +4,6 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Polymer.Tests/Polymer.Tests.csproj" />
+    <Project Path="tests/Polymer.YabInterop/Polymer.YabInterop.csproj" />
   </Folder>
 </Solution>

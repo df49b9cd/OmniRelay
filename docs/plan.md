@@ -526,6 +526,8 @@ Each step includes _Done when…_ acceptance criteria.
 
 **Prompt:** Interop tests against a `yarpc-go` sample (HTTP/gRPC; unary/stream). Provide `yab` commands for benchmarks.
 
+**Status:** Initial `yab` harness and helper script live under `tests/Polymer.YabInterop`; extend to full yarpc-go interop matrix and benchmarking tooling.
+
 **Done when:** Tests pass; `yab` successfully exercises the C# server.
 
 * * *

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Collections.Immutable;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Text.Json;
@@ -14,6 +15,7 @@ using Polymer.Core.Transport;
 using Polymer.Dispatcher;
 using Polymer.Transport.Grpc;
 using Polymer.Errors;
+using Polymer.Core.Peers;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 using static Hugo.Go;
@@ -220,6 +222,178 @@ public class GrpcTransportTests
         }
         finally
         {
+            await dispatcher.StopAsync(ct);
+        }
+    }
+
+    [Fact(Timeout = 30_000)]
+    public async Task GrpcOutbound_RoundRobinPeers_RecordSuccessAcrossEndpoints()
+    {
+        var port1 = TestPortAllocator.GetRandomPort();
+        var port2 = TestPortAllocator.GetRandomPort();
+        var address1 = new Uri($"http://127.0.0.1:{port1}");
+        var address2 = new Uri($"http://127.0.0.1:{port2}");
+
+        var options = new DispatcherOptions("echo");
+        var grpcInbound = new GrpcInbound(new[] { address1.ToString(), address2.ToString() });
+        options.AddLifecycle("grpc-inbound", grpcInbound);
+
+        var dispatcher = new Polymer.Dispatcher.Dispatcher(options);
+        var codec = new JsonCodec<EchoRequest, EchoResponse>(new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+        dispatcher.Register(new UnaryProcedureSpec(
+            "echo",
+            "echo::ping",
+            (request, cancellationToken) =>
+            {
+                var decode = codec.DecodeRequest(request.Body, request.Meta);
+                if (decode.IsFailure)
+                {
+                    return ValueTask.FromResult(Err<Response<ReadOnlyMemory<byte>>>(decode.Error!));
+                }
+
+                var payload = new EchoResponse { Message = decode.Value.Message };
+                var responseMeta = new ResponseMeta(encoding: "application/json");
+                var encode = codec.EncodeResponse(payload, responseMeta);
+                return encode.IsSuccess
+                    ? ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(encode.Value, responseMeta)))
+                    : ValueTask.FromResult(Err<Response<ReadOnlyMemory<byte>>>(encode.Error!));
+            }));
+
+        var ct = TestContext.Current.CancellationToken;
+        await dispatcher.StartAsync(ct);
+        await WaitForGrpcReadyAsync(address1, ct);
+        await WaitForGrpcReadyAsync(address2, ct);
+
+        var outbound = new GrpcOutbound(new[] { address1, address2 }, "echo");
+        await outbound.StartAsync(ct);
+
+        try
+        {
+            for (var i = 0; i < 4; i++)
+            {
+                var meta = new RequestMeta(
+                    service: "echo",
+                    procedure: "echo::ping",
+                    encoding: "application/json",
+                    transport: "grpc");
+                var requestPayload = codec.EncodeRequest(new EchoRequest($"call-{i}"), meta);
+                Assert.True(requestPayload.IsSuccess);
+                var request = new Request<ReadOnlyMemory<byte>>(meta, requestPayload.Value);
+
+                var responseResult = await outbound.CallAsync(request, ct);
+                Assert.True(responseResult.IsSuccess, responseResult.Error?.Message);
+
+                var decode = codec.DecodeResponse(responseResult.Value.Body, responseResult.Value.Meta);
+                Assert.True(decode.IsSuccess, decode.Error?.Message);
+                Assert.Equal($"call-{i}", decode.Value.Message);
+            }
+
+            var snapshot = Assert.IsType<GrpcOutboundSnapshot>(outbound.GetOutboundDiagnostics());
+            Assert.Equal(2, snapshot.PeerSummaries.Count);
+            Assert.All(snapshot.PeerSummaries, peer => Assert.True(peer.LastSuccess.HasValue));
+        }
+        finally
+        {
+            await outbound.StopAsync(ct);
+            await dispatcher.StopAsync(ct);
+        }
+    }
+
+    [Fact(Timeout = 30_000)]
+    public async Task GrpcOutbound_FailingPeerTriggersCircuitBreaker()
+    {
+        var healthyPort = TestPortAllocator.GetRandomPort();
+        var failingPort = TestPortAllocator.GetRandomPort();
+        var healthyAddress = new Uri($"http://127.0.0.1:{healthyPort}");
+        var failingAddress = new Uri($"http://127.0.0.1:{failingPort}");
+
+        var options = new DispatcherOptions("echo");
+        var grpcInbound = new GrpcInbound(new[] { healthyAddress.ToString() });
+        options.AddLifecycle("grpc-inbound", grpcInbound);
+
+        var dispatcher = new Polymer.Dispatcher.Dispatcher(options);
+        var codec = new JsonCodec<EchoRequest, EchoResponse>(new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+        dispatcher.Register(new UnaryProcedureSpec(
+            "echo",
+            "echo::ping",
+            (request, cancellationToken) =>
+            {
+                var decode = codec.DecodeRequest(request.Body, request.Meta);
+                if (decode.IsFailure)
+                {
+                    return ValueTask.FromResult(Err<Response<ReadOnlyMemory<byte>>>(decode.Error!));
+                }
+
+                var payload = new EchoResponse { Message = decode.Value.Message };
+                var responseMeta = new ResponseMeta(encoding: "application/json");
+                var encode = codec.EncodeResponse(payload, responseMeta);
+                return encode.IsSuccess
+                    ? ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(encode.Value, responseMeta)))
+                    : ValueTask.FromResult(Err<Response<ReadOnlyMemory<byte>>>(encode.Error!));
+            }));
+
+        var ct = TestContext.Current.CancellationToken;
+        await dispatcher.StartAsync(ct);
+        await WaitForGrpcReadyAsync(healthyAddress, ct);
+
+        var breakerOptions = new PeerCircuitBreakerOptions
+        {
+            BaseDelay = TimeSpan.FromMilliseconds(200),
+            MaxDelay = TimeSpan.FromMilliseconds(200),
+            FailureThreshold = 1
+        };
+
+        var outbound = new GrpcOutbound(
+            new[] { failingAddress, healthyAddress },
+            "echo",
+            peerCircuitBreakerOptions: breakerOptions,
+            peerChooser: peers => new FewestPendingPeerChooser(ImmutableArray.CreateRange(peers)));
+
+        await outbound.StartAsync(ct);
+
+        try
+        {
+            var failingMeta = new RequestMeta(
+                service: "echo",
+                procedure: "echo::ping",
+                encoding: "application/json",
+                transport: "grpc",
+                timeToLive: TimeSpan.FromMilliseconds(200));
+            var failingPayload = codec.EncodeRequest(new EchoRequest("first"), failingMeta);
+            Assert.True(failingPayload.IsSuccess);
+            var failingRequest = new Request<ReadOnlyMemory<byte>>(failingMeta, failingPayload.Value);
+
+            var failureResult = await outbound.CallAsync(failingRequest, ct);
+            Assert.True(failureResult.IsFailure);
+
+            var successMeta = new RequestMeta(
+                service: "echo",
+                procedure: "echo::ping",
+                encoding: "application/json",
+                transport: "grpc");
+            var successPayload = codec.EncodeRequest(new EchoRequest("second"), successMeta);
+            Assert.True(successPayload.IsSuccess);
+            var successRequest = new Request<ReadOnlyMemory<byte>>(successMeta, successPayload.Value);
+
+            var successResult = await outbound.CallAsync(successRequest, ct);
+            Assert.True(successResult.IsSuccess, successResult.Error?.Message);
+
+            var decode = codec.DecodeResponse(successResult.Value.Body, successResult.Value.Meta);
+            Assert.True(decode.IsSuccess, decode.Error?.Message);
+            Assert.Equal("second", decode.Value.Message);
+
+            var snapshot = Assert.IsType<GrpcOutboundSnapshot>(outbound.GetOutboundDiagnostics());
+            Assert.Equal(2, snapshot.PeerSummaries.Count);
+            var failingPeerSummary = snapshot.PeerSummaries[0];
+            Assert.True(failingPeerSummary.LastFailure.HasValue);
+            var healthyPeerSummary = snapshot.PeerSummaries[1];
+            Assert.True(healthyPeerSummary.LastSuccess.HasValue);
+        }
+        finally
+        {
+            await outbound.StopAsync(ct);
             await dispatcher.StopAsync(ct);
         }
     }
