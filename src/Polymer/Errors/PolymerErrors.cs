@@ -122,35 +122,28 @@ public static class PolymerErrors
 
     public static PolymerFaultType GetFaultType(Exception exception)
     {
+        if (exception is null)
+        {
+            throw new ArgumentNullException(nameof(exception));
+        }
+
+        if (exception is PolymerException polymerException)
+        {
+            return GetFaultType(polymerException.Error);
+        }
+
+        if (exception is ResultException resultException && resultException.Error is not null)
+        {
+            return GetFaultType(resultException.Error);
+        }
+
         return TryGetStatus(exception, out var status)
             ? GetFaultType(status)
             : PolymerFaultType.Server;
     }
 
     public static PolymerFaultType GetFaultType(PolymerStatusCode statusCode) =>
-        statusCode switch
-        {
-            PolymerStatusCode.Cancelled or
-            PolymerStatusCode.InvalidArgument or
-            PolymerStatusCode.DeadlineExceeded or
-            PolymerStatusCode.NotFound or
-            PolymerStatusCode.AlreadyExists or
-            PolymerStatusCode.PermissionDenied or
-            PolymerStatusCode.FailedPrecondition or
-            PolymerStatusCode.Aborted or
-            PolymerStatusCode.OutOfRange
-                => PolymerFaultType.Client,
-
-            PolymerStatusCode.Internal or
-            PolymerStatusCode.Unavailable or
-            PolymerStatusCode.DataLoss or
-            PolymerStatusCode.Unimplemented or
-            PolymerStatusCode.ResourceExhausted
-                => PolymerFaultType.Server,
-
-            _
-                => PolymerFaultType.Unknown
-        };
+        PolymerStatusFacts.GetFaultType(statusCode);
 
     public static PolymerFaultType GetFaultType(Error error)
     {
@@ -159,7 +152,52 @@ public static class PolymerErrors
             throw new ArgumentNullException(nameof(error));
         }
 
-        return GetFaultType(PolymerErrorAdapter.ToStatus(error));
+        if (error.TryGetMetadata(PolymerErrorAdapter.FaultMetadataKey, out string? faultName) &&
+            Enum.TryParse<PolymerFaultType>(faultName, ignoreCase: true, out var parsed))
+        {
+            return parsed;
+        }
+
+        return PolymerStatusFacts.GetFaultType(PolymerErrorAdapter.ToStatus(error));
+    }
+
+    public static bool IsRetryable(Exception exception)
+    {
+        if (exception is null)
+        {
+            throw new ArgumentNullException(nameof(exception));
+        }
+
+        return exception switch
+        {
+            PolymerException polymerException => IsRetryable(polymerException.Error),
+            ResultException resultException when resultException.Error is not null => IsRetryable(resultException.Error),
+            _ => TryGetStatus(exception, out var status) && IsRetryable(status)
+        };
+    }
+
+    public static bool IsRetryable(PolymerStatusCode statusCode) =>
+        PolymerStatusFacts.IsRetryable(statusCode);
+
+    public static bool IsRetryable(Error error)
+    {
+        if (error is null)
+        {
+            throw new ArgumentNullException(nameof(error));
+        }
+
+        if (error.TryGetMetadata(PolymerErrorAdapter.RetryableMetadataKey, out bool retryable))
+        {
+            return retryable;
+        }
+
+        if (error.TryGetMetadata(PolymerErrorAdapter.RetryableMetadataKey, out string? retryableText) &&
+            bool.TryParse(retryableText, out var parsed))
+        {
+            return parsed;
+        }
+
+        return PolymerStatusFacts.IsRetryable(PolymerErrorAdapter.ToStatus(error));
     }
 
     public static Result<T> ToResult<T>(Exception exception, string? transport = null) =>

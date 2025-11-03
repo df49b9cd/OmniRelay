@@ -79,4 +79,25 @@ public class PolymerErrorsTests
         Assert.True(rewritten.Error.TryGetMetadata("polymer.transport", out string? newTransport));
         Assert.Equal("grpc", newTransport);
     }
+
+    [Fact]
+    public void FromStatus_PopulatesFaultAndRetryableMetadata()
+    {
+        var error = PolymerErrorAdapter.FromStatus(PolymerStatusCode.Unavailable, "unavailable");
+
+        Assert.True(error.TryGetMetadata(PolymerErrorAdapter.FaultMetadataKey, out string? fault));
+        Assert.Equal(PolymerFaultType.Server.ToString(), fault);
+        Assert.True(error.TryGetMetadata(PolymerErrorAdapter.RetryableMetadataKey, out bool retryable));
+        Assert.True(retryable);
+    }
+
+    [Fact]
+    public void IsRetryable_RespectsErrorMetadataOverride()
+    {
+        var error = Error.From("unavailable", "unavailable")
+            .WithMetadata(PolymerErrorAdapter.RetryableMetadataKey, false);
+        error = PolymerErrorAdapter.WithStatusMetadata(error, PolymerStatusCode.Unavailable);
+
+        Assert.False(PolymerErrors.IsRetryable(error));
+    }
 }

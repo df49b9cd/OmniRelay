@@ -147,7 +147,7 @@ internal sealed class ProcedureRegistry
                 continue;
             }
 
-            if (best is null || alias.Specificity > best.Value.Specificity)
+            if (best is null || alias.Specificity > best.Specificity)
             {
                 best = alias;
             }

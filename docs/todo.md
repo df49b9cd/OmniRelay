@@ -182,11 +182,11 @@ Comprehensive backlog tracking the remaining work needed to reach feature parity
 ## 6. Error Model Parity (Phase 9)
 
 - **Status Mapping**
-  - Ensure HTTP/gRPC/TChannel (if implemented) map all YARPC codes correctly.
-  - Define retry hints, fault classification metadata.
+  - ~~Ensure HTTP/gRPC/TChannel (if implemented) map all YARPC codes correctly.~~ *(HTTP + gRPC mappings now verified via `HttpStatusMapperTests` and existing `GrpcStatusMapper` coverage; TChannel remains intentionally out of scope for this parity push.)*
+  - ~~Define retry hints, fault classification metadata.~~ *(Errors are annotated with `polymer.faultType`/`polymer.retryable` metadata via `PolymerErrorAdapter` and surfaced through `PolymerErrors.IsRetryable`.)*
 
 - **Error Helpers**
-  - Add helper APIs: `PolymerErrors.IsStatus`, `GetFaultType`, `GetRetryable`.
+  - ~~Add helper APIs: `PolymerErrors.IsStatus`, `GetFaultType`, `GetRetryable`.~~ *(Expanded helpers include `PolymerErrors.IsRetryable(...)` and metadata-aware fault classification.)*
   - Provide ASP.NET + gRPC exception adapters (filters/interceptors).
   - Document canonical error handling patterns.
 

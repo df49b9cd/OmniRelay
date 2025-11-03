@@ -292,6 +292,8 @@ Error Model
 
 * **Hugo alignment:** adapt YARPC status enums into Hugo `Error.Code` metadata so existing Hugo-aware tooling (result pipelines, diagnostics) understands transport failures.
 
+**Status:** HTTP and gRPC transports now share canonical mappings (`HttpStatusMapper`, `GrpcStatusMapper` tests), while `PolymerErrorAdapter` stamps `polymer.faultType`/`polymer.retryable` metadata consumed by the expanded `PolymerErrors.IsRetryable` helper.
+
 * * *
 
 Middleware & Observability

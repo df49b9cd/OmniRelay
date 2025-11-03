@@ -9,6 +9,8 @@ public static class PolymerErrorAdapter
 {
     internal const string StatusMetadataKey = "polymer.status";
     internal const string TransportMetadataKey = "polymer.transport";
+    internal const string FaultMetadataKey = "polymer.faultType";
+    internal const string RetryableMetadataKey = "polymer.retryable";
     private static readonly ImmutableDictionary<PolymerStatusCode, string> StatusCodeNames = new[]
     {
         (PolymerStatusCode.Unknown, "unknown"),
@@ -36,7 +38,7 @@ public static class PolymerErrorAdapter
         IReadOnlyDictionary<string, object?>? metadata = null)
     {
         var error = inner ?? Error.From(message, StatusCodeNames[code]);
-        error = error.WithCode(StatusCodeNames[code]).WithMetadata(StatusMetadataKey, code.ToString());
+        error = AnnotateCoreMetadata(error, code);
 
         if (!string.IsNullOrEmpty(transport))
         {
@@ -82,7 +84,28 @@ public static class PolymerErrorAdapter
     }
 
     public static Error WithStatusMetadata(Error error, PolymerStatusCode code) =>
-        error.WithCode(StatusCodeNames[code]).WithMetadata(StatusMetadataKey, code.ToString());
+        AnnotateCoreMetadata(error, code);
 
     internal static string GetStatusName(PolymerStatusCode code) => StatusCodeNames[code];
+
+    private static Error AnnotateCoreMetadata(Error error, PolymerStatusCode code)
+    {
+        var updated = error.WithCode(StatusCodeNames[code]).WithMetadata(StatusMetadataKey, code.ToString());
+
+        if (!updated.TryGetMetadata(FaultMetadataKey, out string? _))
+        {
+            var fault = PolymerStatusFacts.GetFaultType(code);
+            if (fault != PolymerFaultType.Unknown)
+            {
+                updated = updated.WithMetadata(FaultMetadataKey, fault.ToString());
+            }
+        }
+
+        if (!updated.TryGetMetadata(RetryableMetadataKey, out bool _))
+        {
+            updated = updated.WithMetadata(RetryableMetadataKey, PolymerStatusFacts.IsRetryable(code));
+        }
+
+        return updated;
+    }
 }

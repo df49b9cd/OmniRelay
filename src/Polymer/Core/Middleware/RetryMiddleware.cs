@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Immutable;
 using System.Threading;
 using System.Threading.Tasks;
 using Hugo;
@@ -14,14 +13,6 @@ namespace Polymer.Core.Middleware;
 
 public sealed class RetryMiddleware : IUnaryOutboundMiddleware
 {
-    private static readonly ImmutableHashSet<PolymerStatusCode> DefaultRetryableStatuses =
-        ImmutableHashSet.Create(
-            PolymerStatusCode.Unavailable,
-            PolymerStatusCode.Internal,
-            PolymerStatusCode.ResourceExhausted,
-            PolymerStatusCode.Aborted,
-            PolymerStatusCode.DeadlineExceeded);
-
     private readonly RetryOptions _options;
 
     public RetryMiddleware(RetryOptions? options = null)
@@ -126,7 +117,6 @@ public sealed class RetryMiddleware : IUnaryOutboundMiddleware
             return predicate(error);
         }
 
-        var status = PolymerErrorAdapter.ToStatus(error);
-        return DefaultRetryableStatuses.Contains(status);
+        return PolymerErrors.IsRetryable(error);
     }
 }
