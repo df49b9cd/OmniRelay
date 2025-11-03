@@ -1928,37 +1928,73 @@ public static class Program
             return false;
         }
 
-        var fileDescriptors = new List<FileDescriptorProto>();
-        foreach (var path in resolvedFiles)
+        var normalizedMessage = NormalizeProtoMessageName(messageName);
+        var cacheKey = BuildDescriptorCacheKey(resolvedFiles);
+
+        if (DescriptorCache.TryGetValue(cacheKey, out var cachedEntry) &&
+            cachedEntry.Messages.TryGetValue(normalizedMessage, out var cachedDescriptor))
+        {
+            descriptor = cachedDescriptor;
+            return true;
+        }
+
+        DescriptorCacheEntry entry;
+        try
+        {
+            entry = BuildDescriptorCacheEntry(resolvedFiles);
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            return false;
+        }
+
+        DescriptorCache[cacheKey] = entry;
+
+        if (entry.Messages.TryGetValue(normalizedMessage, out var resolvedDescriptor))
+        {
+            descriptor = resolvedDescriptor;
+            return true;
+        }
+
+        error = $"Could not find protobuf message '{messageName}' in provided descriptors.";
+        descriptor = default!;
+        return false;
+    }
+
+    private static DescriptorCacheEntry BuildDescriptorCacheEntry(IReadOnlyList<string> descriptorFiles)
+    {
+        var descriptorProtos = new List<FileDescriptorProto>();
+
+        foreach (var path in descriptorFiles)
         {
             try
             {
                 using var stream = File.OpenRead(path);
                 var set = FileDescriptorSet.Parser.ParseFrom(stream);
-                fileDescriptors.AddRange(set.File);
+                descriptorProtos.AddRange(set.File);
             }
             catch (Exception ex)
             {
-                error = $"Failed to read descriptor '{path}': {ex.Message}";
-                return false;
+                throw new InvalidOperationException($"Failed to read descriptor '{path}': {ex.Message}");
             }
         }
 
-        if (!TryBuildFileDescriptors(fileDescriptors, out var descriptorMap, out error))
+        if (!TryBuildFileDescriptors(descriptorProtos, out var descriptorMap, out var buildError))
         {
-            return false;
+            throw new InvalidOperationException(buildError ?? "Failed to build protobuf descriptors.");
         }
 
-        var normalizedMessage = NormalizeProtoMessageName(messageName);
-        var match = FindMessageDescriptor(descriptorMap.Values, normalizedMessage);
-        if (match is null)
+        var messageMap = new Dictionary<string, MessageDescriptor>(StringComparer.Ordinal);
+        foreach (var descriptor in descriptorMap.Values)
         {
-            error = $"Could not find protobuf message '{messageName}' in provided descriptors.";
-            return false;
+            foreach (var message in EnumerateMessages(descriptor.MessageTypes))
+            {
+                messageMap[message.FullName] = message;
+            }
         }
 
-        descriptor = match;
-        return true;
+        return new DescriptorCacheEntry(descriptorMap, messageMap);
     }
 
     private static bool TryBuildFileDescriptors(
@@ -2087,21 +2123,40 @@ public static class Program
 
             if (Directory.Exists(input))
             {
-                files.AddRange(Directory.EnumerateFiles(input, "*.pb", SearchOption.AllDirectories));
-                files.AddRange(Directory.EnumerateFiles(input, "*.desc", SearchOption.AllDirectories));
-                files.AddRange(Directory.EnumerateFiles(input, "*.protoset", SearchOption.AllDirectories));
-                files.AddRange(Directory.EnumerateFiles(input, "*.fds", SearchOption.AllDirectories));
-                files.AddRange(Directory.EnumerateFiles(input, "*.bin", SearchOption.AllDirectories));
+                files.AddRange(Directory.EnumerateFiles(input, "*.pb", SearchOption.AllDirectories).Select(Path.GetFullPath));
+                files.AddRange(Directory.EnumerateFiles(input, "*.desc", SearchOption.AllDirectories).Select(Path.GetFullPath));
+                files.AddRange(Directory.EnumerateFiles(input, "*.protoset", SearchOption.AllDirectories).Select(Path.GetFullPath));
+                files.AddRange(Directory.EnumerateFiles(input, "*.fds", SearchOption.AllDirectories).Select(Path.GetFullPath));
+                files.AddRange(Directory.EnumerateFiles(input, "*.bin", SearchOption.AllDirectories).Select(Path.GetFullPath));
                 continue;
             }
 
             if (File.Exists(input))
             {
-                files.Add(input);
+                files.Add(Path.GetFullPath(input));
             }
         }
 
         return files;
+    }
+
+    private static string BuildDescriptorCacheKey(IReadOnlyList<string> descriptorFiles)
+    {
+        if (descriptorFiles.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var fragments = new string[descriptorFiles.Count];
+        for (var index = 0; index < descriptorFiles.Count; index++)
+        {
+            var fullPath = descriptorFiles[index];
+            var timestamp = File.GetLastWriteTimeUtc(fullPath).Ticks;
+            fragments[index] = $"{fullPath}:{timestamp}";
+        }
+
+        Array.Sort(fragments, StringComparer.Ordinal);
+        return string.Join('|', fragments);
     }
 
     private static FileDescriptor BuildFileDescriptor(FileDescriptorProto proto, FileDescriptor[] dependencies)
@@ -2285,6 +2340,10 @@ public static class Program
         File,
         Base64
     }
+
+    private sealed record DescriptorCacheEntry(
+        Dictionary<string, FileDescriptor> Files,
+        Dictionary<string, MessageDescriptor> Messages);
 
     private static bool TryDecodeUtf8(ReadOnlySpan<byte> data, out string text)
     {
