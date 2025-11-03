@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Threading.Tasks;
 using Polymer.Core;
 
@@ -10,6 +11,7 @@ public sealed class PeerLease : IAsyncDisposable
     private readonly string _peerIdentifier;
     private bool _released;
     private bool _success;
+    private readonly long _startTimestamp;
 
     internal PeerLease(IPeer peer, RequestMeta meta)
     {
@@ -17,6 +19,7 @@ public sealed class PeerLease : IAsyncDisposable
         Meta = meta ?? throw new ArgumentNullException(nameof(meta));
         _success = false;
         _peerIdentifier = _peer.Identifier;
+        _startTimestamp = Stopwatch.GetTimestamp();
         PeerMetrics.RecordLeaseAcquired(Meta, _peerIdentifier);
     }
 
@@ -36,7 +39,13 @@ public sealed class PeerLease : IAsyncDisposable
         }
 
         _released = true;
-        PeerMetrics.RecordLeaseReleased(Meta, _peerIdentifier, _success);
+        var elapsed = Stopwatch.GetElapsedTime(_startTimestamp).TotalMilliseconds;
+        PeerMetrics.RecordLeaseReleased(Meta, _peerIdentifier, _success, elapsed);
+        if (_peer is IPeerTelemetry telemetry)
+        {
+            telemetry.RecordLeaseResult(_success, elapsed);
+        }
+
         _peer.Release(_success);
         return ValueTask.CompletedTask;
     }

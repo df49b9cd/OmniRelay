@@ -26,6 +26,9 @@ internal static class PeerMetrics
     private static readonly Counter<long> PoolExhaustedCounter =
         Meter.CreateCounter<long>("polymer.peer.pool_exhausted", unit: "requests", description: "Times an outbound exhausted all available peers.");
 
+    private static readonly Histogram<double> LeaseDurationHistogram =
+        Meter.CreateHistogram<double>("polymer.peer.lease.duration", unit: "ms", description: "Observed lease durations by peer.");
+
     private static readonly Counter<long> RetryScheduledCounter =
         Meter.CreateCounter<long>("polymer.retry.scheduled", unit: "attempts", description: "Retry attempts scheduled after peer failures.");
 
@@ -40,7 +43,7 @@ internal static class PeerMetrics
         InflightCounter.Add(1, CreatePeerTags(meta, peerIdentifier));
     }
 
-    internal static void RecordLeaseReleased(RequestMeta meta, string peerIdentifier, bool success)
+    internal static void RecordLeaseReleased(RequestMeta meta, string peerIdentifier, bool success, double durationMilliseconds)
     {
         var tags = CreatePeerTags(meta, peerIdentifier);
         InflightCounter.Add(-1, tags);
@@ -53,6 +56,8 @@ internal static class PeerMetrics
         {
             FailureCounter.Add(1, tags);
         }
+
+        LeaseDurationHistogram.Record(durationMilliseconds, tags);
     }
 
     internal static void RecordLeaseRejected(RequestMeta meta, string peerIdentifier, string reason)

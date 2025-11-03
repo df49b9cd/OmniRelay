@@ -538,12 +538,23 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
             : _peerChooser.GetType().FullName ?? _peerChooser.GetType().Name;
 
         var peers = _peers
-            .Select(peer => new GrpcPeerSummary(
-                peer.Address,
-                peer.Status.State,
-                peer.Status.Inflight,
-                peer.Status.LastSuccess,
-                peer.Status.LastFailure))
+            .Select(peer =>
+            {
+                var status = peer.Status;
+                var latency = peer.GetLatencySnapshot();
+                return new GrpcPeerSummary(
+                    peer.Address,
+                    status.State,
+                    status.Inflight,
+                    status.LastSuccess,
+                    status.LastFailure,
+                    peer.SuccessCount,
+                    peer.FailureCount,
+                    latency.HasData ? (double?)latency.Average : null,
+                    latency.HasData ? (double?)latency.P50 : null,
+                    latency.HasData ? (double?)latency.P90 : null,
+                    latency.HasData ? (double?)latency.P99 : null);
+            })
             .ToImmutableArray();
 
         return new GrpcOutboundSnapshot(
@@ -663,7 +674,7 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         return resolved;
     }
 
-    private sealed class GrpcPeer : IPeer, IAsyncDisposable
+    private sealed class GrpcPeer : IPeer, IAsyncDisposable, IPeerTelemetry
     {
         private readonly GrpcOutbound _owner;
         private readonly Uri _address;
@@ -674,6 +685,9 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         private PeerState _state = PeerState.Unknown;
         private DateTimeOffset? _lastSuccess;
         private DateTimeOffset? _lastFailure;
+        private long _successCount;
+        private long _failureCount;
+        private readonly LatencyTracker _latencyTracker = new();
 
         public GrpcPeer(Uri address, GrpcOutbound owner, PeerCircuitBreakerOptions breakerOptions)
         {
@@ -695,6 +709,12 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
                 return new PeerStatus(state, inflight, _lastSuccess, _lastFailure);
             }
         }
+
+        public long SuccessCount => Interlocked.Read(ref _successCount);
+
+        public long FailureCount => Interlocked.Read(ref _failureCount);
+
+        public LatencySnapshot GetLatencySnapshot() => _latencyTracker.Snapshot();
 
         public CallInvoker CallInvoker => _callInvoker ?? throw new InvalidOperationException("Peer has not been started.");
 
@@ -764,6 +784,20 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
             }
         }
 
+        public void RecordLeaseResult(bool success, double durationMilliseconds)
+        {
+            if (success)
+            {
+                Interlocked.Increment(ref _successCount);
+            }
+            else
+            {
+                Interlocked.Increment(ref _failureCount);
+            }
+
+            _latencyTracker.Record(durationMilliseconds);
+        }
+
         public ValueTask DisposeAsync()
         {
             var channel = Interlocked.Exchange(ref _channel, null);
@@ -803,6 +837,126 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
 
             return options;
         }
+    }
+
+    private sealed class LatencyTracker
+    {
+        private readonly double[] _buffer;
+        private readonly object _lock = new();
+        private int _count;
+        private int _nextIndex;
+        private double _sum;
+
+        public LatencyTracker(int capacity = 256)
+        {
+            if (capacity <= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(capacity));
+            }
+
+            _buffer = new double[capacity];
+        }
+
+        public void Record(double durationMilliseconds)
+        {
+            if (double.IsNaN(durationMilliseconds) || double.IsInfinity(durationMilliseconds))
+            {
+                return;
+            }
+
+            var value = Math.Max(0, durationMilliseconds);
+
+            lock (_lock)
+            {
+                if (_count == _buffer.Length)
+                {
+                    _sum -= _buffer[_nextIndex];
+                }
+                else
+                {
+                    _count++;
+                }
+
+                _buffer[_nextIndex] = value;
+                _sum += value;
+                _nextIndex = (_nextIndex + 1) % _buffer.Length;
+            }
+        }
+
+        public LatencySnapshot Snapshot()
+        {
+            lock (_lock)
+            {
+                if (_count == 0)
+                {
+                    return LatencySnapshot.Empty;
+                }
+
+                var samples = new double[_count];
+                if (_count == _buffer.Length)
+                {
+                    for (var i = 0; i < _count; i++)
+                    {
+                        var index = (_nextIndex + i) % _buffer.Length;
+                        samples[i] = _buffer[index];
+                    }
+                }
+                else
+                {
+                    Array.Copy(_buffer, samples, _count);
+                }
+
+                Array.Sort(samples);
+                var average = _sum / _count;
+                var p50 = CalculatePercentile(samples, 0.50);
+                var p90 = CalculatePercentile(samples, 0.90);
+                var p99 = CalculatePercentile(samples, 0.99);
+                return new LatencySnapshot(average, p50, p90, p99);
+            }
+        }
+
+        private static double CalculatePercentile(double[] samples, double percentile)
+        {
+            if (samples.Length == 0)
+            {
+                return double.NaN;
+            }
+
+            var position = percentile * (samples.Length - 1);
+            var lowerIndex = (int)Math.Floor(position);
+            var upperIndex = (int)Math.Ceiling(position);
+
+            if (lowerIndex == upperIndex)
+            {
+                return samples[lowerIndex];
+            }
+
+            var fraction = position - lowerIndex;
+            return samples[lowerIndex] + (samples[upperIndex] - samples[lowerIndex]) * fraction;
+        }
+    }
+
+    internal readonly struct LatencySnapshot
+    {
+        public static LatencySnapshot Empty { get; } = new(double.NaN, double.NaN, double.NaN, double.NaN);
+
+        public LatencySnapshot(double average, double p50, double p90, double p99)
+        {
+            Average = average;
+            P50 = p50;
+            P90 = p90;
+            P99 = p99;
+        }
+
+        public double Average { get; }
+
+        public double P50 { get; }
+
+        public double P90 { get; }
+
+        public double P99 { get; }
+
+        public bool HasData => !double.IsNaN(Average);
     }
 
     private sealed class PeerTrackedStreamCall : IStreamCall
@@ -1057,4 +1211,10 @@ public sealed record GrpcPeerSummary(
     PeerState State,
     int Inflight,
     DateTimeOffset? LastSuccess,
-    DateTimeOffset? LastFailure);
+    DateTimeOffset? LastFailure,
+    long SuccessCount,
+    long FailureCount,
+    double? AverageLatencyMs,
+    double? P50LatencyMs,
+    double? P90LatencyMs,
+    double? P99LatencyMs);

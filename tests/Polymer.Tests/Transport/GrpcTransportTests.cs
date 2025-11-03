@@ -295,7 +295,13 @@ public class GrpcTransportTests
 
             var snapshot = Assert.IsType<GrpcOutboundSnapshot>(outbound.GetOutboundDiagnostics());
             Assert.Equal(2, snapshot.PeerSummaries.Count);
-            Assert.All(snapshot.PeerSummaries, peer => Assert.True(peer.LastSuccess.HasValue));
+            Assert.All(snapshot.PeerSummaries, peer =>
+            {
+                Assert.True(peer.LastSuccess.HasValue);
+                Assert.True(peer.SuccessCount > 0);
+                Assert.NotNull(peer.AverageLatencyMs);
+                Assert.NotNull(peer.P50LatencyMs);
+            });
         }
         finally
         {
@@ -404,9 +410,10 @@ public class GrpcTransportTests
 
             var snapshot = Assert.IsType<GrpcOutboundSnapshot>(outbound.GetOutboundDiagnostics());
             Assert.Equal(2, snapshot.PeerSummaries.Count);
-            var failingPeerSummary = snapshot.PeerSummaries[0];
+            var failingPeerSummary = Assert.Single(snapshot.PeerSummaries, peer => peer.Address == failingAddress);
             Assert.True(failingPeerSummary.LastFailure.HasValue);
-            var healthyPeerSummary = snapshot.PeerSummaries[1];
+            Assert.True(failingPeerSummary.FailureCount > 0);
+            var healthyPeerSummary = Assert.Single(snapshot.PeerSummaries, peer => peer.Address == healthyAddress);
             Assert.True(healthyPeerSummary.LastSuccess.HasValue);
         }
         finally

@@ -176,7 +176,7 @@ Comprehensive backlog tracking the remaining work needed to reach feature parity
   - ~~Provide configuration knobs for thresholds.~~ *(exposed via `PeerCircuitBreakerOptions` consumed by `GrpcOutbound`.)*
 
 - **Peer Introspection**
-  - Introspection endpoint to show peer health, latency percentiles.
+  - ~~Introspection endpoint to show peer health, latency percentiles.~~ *(completed: `GrpcOutbound` exposes success/failure counters and latency percentiles through `GrpcPeerSummary`, surfaced via `/polymer/introspect`; covered by new telemetry tests ensuring metrics/logging interceptors feed the snapshots.)*
   - ~~Add metrics per peer (success/failure counts, inflight gauge).~~ *(covered by `PeerMetrics` counters/UpDownCounters tagged with peer identifiers during lease acquisition and release.)*
 
 ## 6. Error Model Parity (Phase 9)
