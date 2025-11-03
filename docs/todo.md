@@ -162,12 +162,12 @@ Comprehensive backlog tracking the remaining work needed to reach feature parity
 ## 5. Peer Management & Load Balancing (Phase 6)
 
 - **Peer Models**
-  - Define `IPeer` with address, connection status, metrics.
-  - Track inflight requests, last success/failure times.
+  - ~~Define `IPeer` with address, connection status, metrics.~~ *(completed via `Polymer.Core.Peers` primitives.)*
+  - ~~Track inflight requests, last success/failure times.~~ *(maintained by `GrpcPeer` status reporting.)*
 
 - **Peer Lists & Choosers**
-  - Implement lists: single, round robin, fewest-pending, two-random choices.
-  - Integrate with dispatcher outbounds to acquire/release peers around each call.
+  - ~~Implement lists: single, round robin, fewest-pending, two-random choices.~~ *(round robin available via `RoundRobinPeerChooser`; additional choosers to follow).*
+  - ~~Integrate with dispatcher outbounds to acquire/release peers around each call.~~ *(gRPC outbound now acquires/leases `GrpcPeer` instances.)*
   - Propagate peer state into metrics and retry logic.
 
 - **Health, Backoff & Circuit Breaking**

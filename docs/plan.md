@@ -254,9 +254,9 @@ Peer & Load‑Balancing
 
 * **Choosers:**
 
-  * `RoundRobinPeerList` (cycle over healthy peers).
+  * `RoundRobinPeerList` (cycle over healthy peers). *(Implemented via `Polymer.Core.Peers.RoundRobinPeerChooser`; gRPC outbound now leases peers with inflight accounting.)*
 
-  * `PendingHeapPeerList` (fewest in‑flight; tie‑break RR/random).
+  * `PendingHeapPeerList` (fewest in-flight; tie-break RR/random).
 
 * **Health:** per‑peer inflight counters, error backoff, basic circuit‑breaking hooks.
 

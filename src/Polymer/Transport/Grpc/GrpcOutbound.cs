@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Linq;
 using System.Net.Http;
@@ -8,6 +9,7 @@ using System.Net.Security;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using Grpc.Core;
 using Grpc.Net.Client;
@@ -15,6 +17,7 @@ using Grpc.Core.Interceptors;
 using Hugo;
 using Polymer.Core;
 using Polymer.Core.Transport;
+using Polymer.Core.Peers;
 using Polymer.Errors;
 using static Hugo.Go;
 
@@ -28,9 +31,9 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
     private readonly GrpcClientTlsOptions? _clientTlsOptions;
     private readonly GrpcClientRuntimeOptions? _clientRuntimeOptions;
     private readonly GrpcCompressionOptions? _compressionOptions;
-    private readonly IGrpcPeerChooser _peerChooser;
-    private readonly ConcurrentDictionary<Uri, GrpcChannel> _channels = new();
-    private readonly ConcurrentDictionary<Uri, CallInvoker> _callInvokers = new();
+    private readonly Func<IReadOnlyList<IPeer>, IPeerChooser> _peerChooserFactory;
+    private ImmutableArray<GrpcPeer> _peers = ImmutableArray<GrpcPeer>.Empty;
+    private IPeerChooser? _peerChooser;
     private readonly ConcurrentDictionary<string, Method<byte[], byte[]>> _unaryMethods = new();
     private readonly ConcurrentDictionary<string, Method<byte[], byte[]>> _serverStreamMethods = new();
     private readonly ConcurrentDictionary<string, Method<byte[], byte[]>> _clientStreamMethods = new();
@@ -43,7 +46,7 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         string remoteService,
         GrpcChannelOptions? channelOptions = null,
         GrpcClientTlsOptions? clientTlsOptions = null,
-        IGrpcPeerChooser? peerChooser = null,
+        Func<IReadOnlyList<IPeer>, IPeerChooser>? peerChooser = null,
         GrpcClientRuntimeOptions? clientRuntimeOptions = null,
         GrpcCompressionOptions? compressionOptions = null)
         : this(
@@ -62,7 +65,7 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         string remoteService,
         GrpcChannelOptions? channelOptions = null,
         GrpcClientTlsOptions? clientTlsOptions = null,
-        IGrpcPeerChooser? peerChooser = null,
+        Func<IReadOnlyList<IPeer>, IPeerChooser>? peerChooser = null,
         GrpcClientRuntimeOptions? clientRuntimeOptions = null,
         GrpcCompressionOptions? compressionOptions = null)
     {
@@ -94,7 +97,7 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
                 EnableMultipleHttp2Connections = true
             }
         };
-        _peerChooser = peerChooser ?? new RoundRobinGrpcPeerChooser();
+        _peerChooserFactory = peerChooser ?? (peers => new RoundRobinPeerChooser(peers.ToImmutableArray()));
 
         if (_compressionOptions is { Providers.Count: > 0 })
         {
@@ -131,43 +134,41 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
             return ValueTask.CompletedTask;
         }
 
-        _channels.Clear();
-        _callInvokers.Clear();
-
+        var builder = ImmutableArray.CreateBuilder<GrpcPeer>(_addresses.Count);
         foreach (var address in _addresses)
         {
-            var channel = GrpcChannel.ForAddress(address, _channelOptions);
-            var callInvoker = channel.CreateCallInvoker();
-
-            if (_clientRuntimeOptions is { Interceptors.Count: > 0 } runtimeOptions)
-            {
-                callInvoker = callInvoker.Intercept(runtimeOptions.Interceptors.ToArray());
-            }
-
-            _channels[address] = channel;
-            _callInvokers[address] = callInvoker;
+            var peer = new GrpcPeer(address, this);
+            peer.Start();
+            builder.Add(peer);
         }
+
+        _peers = builder.ToImmutable();
+        _peerChooser = _peerChooserFactory(_peers);
 
         _started = true;
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask StopAsync(CancellationToken cancellationToken = default)
+    public async ValueTask StopAsync(CancellationToken cancellationToken = default)
     {
-        foreach (var channel in _channels.Values)
+        if (!_started)
         {
-            channel.Dispose();
+            return;
         }
 
-        _channels.Clear();
-        _callInvokers.Clear();
+        foreach (var peer in _peers)
+        {
+            await peer.DisposeAsync().ConfigureAwait(false);
+        }
+
+        _peers = ImmutableArray<GrpcPeer>.Empty;
+        _peerChooser = null;
         _started = false;
 
         _unaryMethods.Clear();
         _serverStreamMethods.Clear();
         _clientStreamMethods.Clear();
         _duplexMethods.Clear();
-        return ValueTask.CompletedTask;
     }
 
     public async ValueTask<Result<Response<ReadOnlyMemory<byte>>>> CallAsync(
@@ -186,11 +187,20 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         }
 
         var procedure = request.Meta.Procedure!;
-        var (peerAddress, callInvoker) = GetCallInvoker(request.Meta);
-        using var activity = GrpcTransportDiagnostics.StartClientActivity(_remoteService, procedure, peerAddress, "unary");
+        var acquireResult = await AcquirePeerAsync(request.Meta, cancellationToken).ConfigureAwait(false);
+        if (acquireResult.IsFailure)
+        {
+            return Err<Response<ReadOnlyMemory<byte>>>(acquireResult.Error!);
+        }
+
+        var (lease, peer) = acquireResult.Value;
+        await using var leaseScope = lease;
+
+        using var activity = GrpcTransportDiagnostics.StartClientActivity(_remoteService, procedure, peer.Address, "unary");
 
         var method = _unaryMethods.GetOrAdd(procedure, CreateUnaryMethod);
         var callOptions = CreateCallOptions(request.Meta, cancellationToken);
+        var callInvoker = peer.CallInvoker;
 
         try
         {
@@ -202,6 +212,7 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
             var responseMeta = GrpcMetadataAdapter.CreateResponseMeta(headers, trailers, GrpcTransportConstants.TransportName);
 
             GrpcTransportDiagnostics.SetStatus(activity, StatusCode.OK);
+            lease.MarkSuccess();
             return Ok(Response<ReadOnlyMemory<byte>>.Create(response, responseMeta));
         }
         catch (RpcException rpcEx)
@@ -235,11 +246,20 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         }
 
         var procedure = request.Meta.Procedure!;
-        var (peerAddress, callInvoker) = GetCallInvoker(request.Meta);
-        using var activity = GrpcTransportDiagnostics.StartClientActivity(_remoteService, procedure, peerAddress, "oneway");
+        var acquireResult = await AcquirePeerAsync(request.Meta, cancellationToken).ConfigureAwait(false);
+        if (acquireResult.IsFailure)
+        {
+            return Err<OnewayAck>(acquireResult.Error!);
+        }
+
+        var (lease, peer) = acquireResult.Value;
+        await using var leaseScope = lease;
+
+        using var activity = GrpcTransportDiagnostics.StartClientActivity(_remoteService, procedure, peer.Address, "oneway");
 
         var method = _unaryMethods.GetOrAdd(procedure, CreateUnaryMethod);
         var callOptions = CreateCallOptions(request.Meta, cancellationToken);
+        var callInvoker = peer.CallInvoker;
 
         try
         {
@@ -251,6 +271,7 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
             var responseMeta = GrpcMetadataAdapter.CreateResponseMeta(headers, trailers, GrpcTransportConstants.TransportName);
 
             GrpcTransportDiagnostics.SetStatus(activity, StatusCode.OK);
+            lease.MarkSuccess();
             return Ok(OnewayAck.Ack(responseMeta));
         }
         catch (RpcException rpcEx)
@@ -293,11 +314,18 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         }
 
         var procedure = request.Meta.Procedure!;
-        var (peerAddress, callInvoker) = GetCallInvoker(request.Meta);
-        using var activity = GrpcTransportDiagnostics.StartClientActivity(_remoteService, procedure, peerAddress, "server_stream");
+        var acquireResult = await AcquirePeerAsync(request.Meta, cancellationToken).ConfigureAwait(false);
+        if (acquireResult.IsFailure)
+        {
+            return Err<IStreamCall>(acquireResult.Error!);
+        }
+
+        var (lease, peer) = acquireResult.Value;
+        using var activity = GrpcTransportDiagnostics.StartClientActivity(_remoteService, procedure, peer.Address, "server_stream");
 
         var method = _serverStreamMethods.GetOrAdd(procedure, CreateServerStreamingMethod);
         var callOptions = CreateCallOptions(request.Meta, cancellationToken);
+        var callInvoker = peer.CallInvoker;
 
         try
         {
@@ -306,6 +334,7 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
             if (streamCallResult.IsFailure)
             {
                 call.Dispose();
+                await lease.DisposeAsync().ConfigureAwait(false);
                 var exception = PolymerErrors.FromError(streamCallResult.Error!, GrpcTransportConstants.TransportName);
                 var grpcStatus = GrpcStatusMapper.ToStatus(exception.StatusCode, exception.Message);
                 GrpcTransportDiagnostics.RecordException(activity, exception, grpcStatus.StatusCode, exception.Message);
@@ -313,7 +342,9 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
             }
 
             GrpcTransportDiagnostics.SetStatus(activity, StatusCode.OK);
-            return Ok((IStreamCall)streamCallResult.Value);
+            lease.MarkSuccess();
+            var wrapped = new PeerTrackedStreamCall(streamCallResult.Value, lease);
+            return Ok((IStreamCall)wrapped);
         }
         catch (RpcException rpcEx)
         {
@@ -321,16 +352,18 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
             var message = string.IsNullOrWhiteSpace(rpcEx.Status.Detail) ? rpcEx.Status.StatusCode.ToString() : rpcEx.Status.Detail;
             GrpcTransportDiagnostics.RecordException(activity, rpcEx, rpcEx.Status.StatusCode, message);
             var error = PolymerErrorAdapter.FromStatus(status, message, transport: GrpcTransportConstants.TransportName);
+            await lease.DisposeAsync().ConfigureAwait(false);
             return Err<IStreamCall>(error);
         }
         catch (Exception ex)
         {
             GrpcTransportDiagnostics.RecordException(activity, ex, StatusCode.Unknown, ex.Message);
+            await lease.DisposeAsync().ConfigureAwait(false);
             return PolymerErrors.ToResult<IStreamCall>(ex, transport: GrpcTransportConstants.TransportName);
         }
     }
 
-    public ValueTask<Result<IClientStreamTransportCall>> CallAsync(
+    public async ValueTask<Result<IClientStreamTransportCall>> CallAsync(
         RequestMeta requestMeta,
         CancellationToken cancellationToken = default)
     {
@@ -346,39 +379,50 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
 
         if (string.IsNullOrEmpty(requestMeta.Procedure))
         {
-            return ValueTask.FromResult(Err<IClientStreamTransportCall>(
+            return Err<IClientStreamTransportCall>(
                 PolymerErrorAdapter.FromStatus(
                     PolymerStatusCode.InvalidArgument,
                     "Procedure metadata is required for gRPC client streaming calls.",
-                    transport: GrpcTransportConstants.TransportName)));
+                    transport: GrpcTransportConstants.TransportName));
         }
 
         var procedure = requestMeta.Procedure!;
-        var (peerAddress, callInvoker) = GetCallInvoker(requestMeta);
-        using var activity = GrpcTransportDiagnostics.StartClientActivity(_remoteService, procedure, peerAddress, "client_stream");
+        var acquireResult = await AcquirePeerAsync(requestMeta, cancellationToken).ConfigureAwait(false);
+        if (acquireResult.IsFailure)
+        {
+            return Err<IClientStreamTransportCall>(acquireResult.Error!);
+        }
+
+        var (lease, peer) = acquireResult.Value;
+        using var activity = GrpcTransportDiagnostics.StartClientActivity(_remoteService, procedure, peer.Address, "client_stream");
 
         var method = _clientStreamMethods.GetOrAdd(procedure, CreateClientStreamingMethod);
         var callOptions = CreateCallOptions(requestMeta, cancellationToken);
+        var callInvoker = peer.CallInvoker;
 
         try
         {
             var call = callInvoker.AsyncClientStreamingCall(method, null, callOptions);
             var streamingCall = new GrpcClientStreamTransportCall(requestMeta, call, null);
+            lease.MarkSuccess();
+            var wrapped = new PeerTrackedClientStreamCall(streamingCall, lease);
             GrpcTransportDiagnostics.SetStatus(activity, StatusCode.OK);
-            return ValueTask.FromResult(Ok((IClientStreamTransportCall)streamingCall));
+            return Ok((IClientStreamTransportCall)wrapped);
         }
         catch (RpcException rpcEx)
         {
+            await lease.DisposeAsync().ConfigureAwait(false);
             var status = GrpcStatusMapper.FromStatus(rpcEx.Status);
             var message = string.IsNullOrWhiteSpace(rpcEx.Status.Detail) ? rpcEx.Status.StatusCode.ToString() : rpcEx.Status.Detail;
             GrpcTransportDiagnostics.RecordException(activity, rpcEx, rpcEx.Status.StatusCode, message);
             var error = PolymerErrorAdapter.FromStatus(status, message, transport: GrpcTransportConstants.TransportName);
-            return ValueTask.FromResult(Err<IClientStreamTransportCall>(error));
+            return Err<IClientStreamTransportCall>(error);
         }
         catch (Exception ex)
         {
+            await lease.DisposeAsync().ConfigureAwait(false);
             GrpcTransportDiagnostics.RecordException(activity, ex, StatusCode.Unknown, ex.Message);
-            return ValueTask.FromResult(PolymerErrors.ToResult<IClientStreamTransportCall>(ex, transport: GrpcTransportConstants.TransportName));
+            return PolymerErrors.ToResult<IClientStreamTransportCall>(ex, transport: GrpcTransportConstants.TransportName);
         }
     }
 
@@ -405,11 +449,18 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         }
 
         var procedure = request.Meta.Procedure!;
-        var (peerAddress, callInvoker) = GetCallInvoker(request.Meta);
-        using var activity = GrpcTransportDiagnostics.StartClientActivity(_remoteService, procedure, peerAddress, "bidi_stream");
+        var acquireResult = await AcquirePeerAsync(request.Meta, cancellationToken).ConfigureAwait(false);
+        if (acquireResult.IsFailure)
+        {
+            return Err<IDuplexStreamCall>(acquireResult.Error!);
+        }
+
+        var (lease, peer) = acquireResult.Value;
+        using var activity = GrpcTransportDiagnostics.StartClientActivity(_remoteService, procedure, peer.Address, "bidi_stream");
 
         var method = _duplexMethods.GetOrAdd(procedure, CreateDuplexStreamingMethod);
         var callOptions = CreateCallOptions(request.Meta, cancellationToken);
+        var callInvoker = peer.CallInvoker;
 
         try
         {
@@ -418,6 +469,7 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
             if (duplexResult.IsFailure)
             {
                 call.Dispose();
+                await lease.DisposeAsync().ConfigureAwait(false);
                 var exception = PolymerErrors.FromError(duplexResult.Error!, GrpcTransportConstants.TransportName);
                 var grpcStatus = GrpcStatusMapper.ToStatus(exception.StatusCode, exception.Message);
                 GrpcTransportDiagnostics.RecordException(activity, exception, grpcStatus.StatusCode, exception.Message);
@@ -425,7 +477,9 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
             }
 
             GrpcTransportDiagnostics.SetStatus(activity, StatusCode.OK);
-            return Ok(duplexResult.Value);
+            lease.MarkSuccess();
+            var wrapped = new PeerTrackedDuplexStreamCall(duplexResult.Value, lease);
+            return Ok<IDuplexStreamCall>(wrapped);
         }
         catch (RpcException rpcEx)
         {
@@ -433,11 +487,13 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
             var message = string.IsNullOrWhiteSpace(rpcEx.Status.Detail) ? rpcEx.Status.StatusCode.ToString() : rpcEx.Status.Detail;
             GrpcTransportDiagnostics.RecordException(activity, rpcEx, rpcEx.Status.StatusCode, message);
             var error = PolymerErrorAdapter.FromStatus(status, message, transport: GrpcTransportConstants.TransportName);
+            await lease.DisposeAsync().ConfigureAwait(false);
             return Err<IDuplexStreamCall>(error);
         }
         catch (Exception ex)
         {
             GrpcTransportDiagnostics.RecordException(activity, ex, StatusCode.Unknown, ex.Message);
+            await lease.DisposeAsync().ConfigureAwait(false);
             return PolymerErrors.ToResult<IDuplexStreamCall>(ex, transport: GrpcTransportConstants.TransportName);
         }
     }
@@ -448,12 +504,25 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
             ? _compressionAlgorithms.ToArray()
             : Array.Empty<string>();
 
+        var chooserName = _peerChooser is null
+            ? "none"
+            : _peerChooser.GetType().FullName ?? _peerChooser.GetType().Name;
+
+        var peers = _peers
+            .Select(peer => new GrpcPeerSummary(
+                peer.Address,
+                peer.Status.State,
+                peer.Status.Inflight,
+                peer.Status.LastSuccess,
+                peer.Status.LastFailure))
+            .ToImmutableArray();
+
         return new GrpcOutboundSnapshot(
             _remoteService,
             _addresses.ToArray(),
-            _peerChooser.GetType().FullName ?? _peerChooser.GetType().Name,
+            chooserName,
             _started,
-            _callInvokers.Count,
+            peers,
             algorithms);
     }
 
@@ -489,25 +558,6 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
             GrpcMarshallerCache.ByteMarshaller,
             GrpcMarshallerCache.ByteMarshaller);
 
-    private (Uri Address, CallInvoker CallInvoker) GetCallInvoker(RequestMeta requestMeta)
-    {
-        if (!_started)
-        {
-            throw new InvalidOperationException("gRPC outbound has not been started.");
-        }
-
-        var address = _addresses.Count == 1
-            ? _addresses[0]
-            : _peerChooser.ChoosePeer(requestMeta, _addresses);
-
-        if (!_callInvokers.TryGetValue(address, out var callInvoker))
-        {
-            throw new InvalidOperationException($"No gRPC call invoker is registered for peer '{address}'.");
-        }
-
-        return (address, callInvoker);
-    }
-
     private CallOptions CreateCallOptions(RequestMeta meta, CancellationToken cancellationToken)
     {
         var metadata = GrpcMetadataAdapter.CreateRequestMetadata(meta);
@@ -523,6 +573,37 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         }
 
         return callOptions;
+    }
+
+    private async ValueTask<Result<(PeerLease Lease, GrpcPeer Peer)>> AcquirePeerAsync(RequestMeta meta, CancellationToken cancellationToken)
+    {
+        if (_peerChooser is null)
+        {
+            var error = PolymerErrorAdapter.FromStatus(
+                PolymerStatusCode.Unavailable,
+                "gRPC outbound has not been started.",
+                transport: meta.Transport ?? GrpcTransportConstants.TransportName);
+            return Err<(PeerLease, GrpcPeer)>(error);
+        }
+
+        var leaseResult = await _peerChooser.AcquireAsync(meta, cancellationToken).ConfigureAwait(false);
+        if (leaseResult.IsFailure)
+        {
+            return Err<(PeerLease, GrpcPeer)>(leaseResult.Error!);
+        }
+
+        var lease = leaseResult.Value;
+        if (lease.Peer is not GrpcPeer grpcPeer)
+        {
+            await lease.DisposeAsync().ConfigureAwait(false);
+            var error = PolymerErrorAdapter.FromStatus(
+                PolymerStatusCode.Internal,
+                "Peer chooser returned an incompatible peer instance for gRPC.",
+                transport: meta.Transport ?? GrpcTransportConstants.TransportName);
+            return Err<(PeerLease, GrpcPeer)>(error);
+        }
+
+        return Ok((lease, grpcPeer));
     }
 
     private static DateTime? ResolveDeadline(RequestMeta meta)
@@ -551,6 +632,214 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         }
 
         return resolved;
+    }
+
+    private sealed class GrpcPeer : IPeer, IAsyncDisposable
+    {
+        private readonly GrpcOutbound _owner;
+        private readonly Uri _address;
+        private GrpcChannel? _channel;
+        private CallInvoker? _callInvoker;
+        private int _inflight;
+        private PeerState _state = PeerState.Unknown;
+        private DateTimeOffset? _lastSuccess;
+        private DateTimeOffset? _lastFailure;
+
+        public GrpcPeer(Uri address, GrpcOutbound owner)
+        {
+            _address = address ?? throw new ArgumentNullException(nameof(address));
+            _owner = owner ?? throw new ArgumentNullException(nameof(owner));
+        }
+
+        public Uri Address => _address;
+
+        public string Identifier => _address.ToString();
+
+        public PeerStatus Status => new(_state, Volatile.Read(ref _inflight), _lastSuccess, _lastFailure);
+
+        public CallInvoker CallInvoker => _callInvoker ?? throw new InvalidOperationException("Peer has not been started.");
+
+        public void Start()
+        {
+            var options = CloneChannelOptions();
+            _channel = GrpcChannel.ForAddress(_address, options);
+            var invoker = _channel.CreateCallInvoker();
+
+            if (_owner._clientRuntimeOptions is { Interceptors.Count: > 0 } runtimeOptions)
+            {
+                invoker = invoker.Intercept(runtimeOptions.Interceptors.ToArray());
+            }
+
+            _callInvoker = invoker;
+            _state = PeerState.Available;
+        }
+
+        public bool TryAcquire(CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Interlocked.Increment(ref _inflight);
+            return true;
+        }
+
+        public void Release(bool success)
+        {
+            Interlocked.Decrement(ref _inflight);
+
+            if (success)
+            {
+                _lastSuccess = DateTimeOffset.UtcNow;
+                _state = PeerState.Available;
+            }
+            else
+            {
+                _lastFailure = DateTimeOffset.UtcNow;
+                _state = PeerState.Available;
+            }
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            var channel = Interlocked.Exchange(ref _channel, null);
+            if (channel is not null)
+            {
+                channel.Dispose();
+            }
+
+            _callInvoker = null;
+            _state = PeerState.Unknown;
+            _inflight = 0;
+            return ValueTask.CompletedTask;
+        }
+
+        private GrpcChannelOptions CloneChannelOptions()
+        {
+            var options = new GrpcChannelOptions
+            {
+                LoggerFactory = _owner._channelOptions.LoggerFactory,
+                DisposeHttpClient = _owner._channelOptions.DisposeHttpClient,
+                Credentials = _owner._channelOptions.Credentials,
+                CompressionProviders = _owner._channelOptions.CompressionProviders,
+                MaxReceiveMessageSize = _owner._channelOptions.MaxReceiveMessageSize,
+                MaxSendMessageSize = _owner._channelOptions.MaxSendMessageSize,
+                UnsafeUseInsecureChannelCallCredentials = _owner._channelOptions.UnsafeUseInsecureChannelCallCredentials
+            };
+
+            if (_owner._channelOptions.HttpHandler is not null)
+            {
+                options.HttpHandler = _owner._channelOptions.HttpHandler;
+            }
+
+            if (_owner._channelOptions.HttpClient is not null)
+            {
+                options.HttpClient = _owner._channelOptions.HttpClient;
+            }
+
+            return options;
+        }
+    }
+
+    private sealed class PeerTrackedStreamCall : IStreamCall
+    {
+        private readonly IStreamCall _inner;
+        private readonly PeerLease _lease;
+
+        public PeerTrackedStreamCall(IStreamCall inner, PeerLease lease)
+        {
+            _inner = inner ?? throw new ArgumentNullException(nameof(inner));
+            _lease = lease ?? throw new ArgumentNullException(nameof(lease));
+        }
+
+        public StreamDirection Direction => _inner.Direction;
+        public RequestMeta RequestMeta => _inner.RequestMeta;
+        public ResponseMeta ResponseMeta => _inner.ResponseMeta;
+        public ChannelWriter<ReadOnlyMemory<byte>> Requests => _inner.Requests;
+        public ChannelReader<ReadOnlyMemory<byte>> Responses => _inner.Responses;
+
+        public ValueTask CompleteAsync(Error? error = null, CancellationToken cancellationToken = default) =>
+            _inner.CompleteAsync(error, cancellationToken);
+
+        public async ValueTask DisposeAsync()
+        {
+            try
+            {
+                await _inner.DisposeAsync().ConfigureAwait(false);
+            }
+            finally
+            {
+                await _lease.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+    }
+
+    private sealed class PeerTrackedClientStreamCall : IClientStreamTransportCall
+    {
+        private readonly IClientStreamTransportCall _inner;
+        private readonly PeerLease _lease;
+
+        public PeerTrackedClientStreamCall(IClientStreamTransportCall inner, PeerLease lease)
+        {
+            _inner = inner ?? throw new ArgumentNullException(nameof(inner));
+            _lease = lease ?? throw new ArgumentNullException(nameof(lease));
+        }
+
+        public RequestMeta RequestMeta => _inner.RequestMeta;
+        public ResponseMeta ResponseMeta => _inner.ResponseMeta;
+        public Task<Result<Response<ReadOnlyMemory<byte>>>> Response => _inner.Response;
+
+        public ValueTask WriteAsync(ReadOnlyMemory<byte> payload, CancellationToken cancellationToken = default) =>
+            _inner.WriteAsync(payload, cancellationToken);
+
+        public ValueTask CompleteAsync(CancellationToken cancellationToken = default) =>
+            _inner.CompleteAsync(cancellationToken);
+
+        public async ValueTask DisposeAsync()
+        {
+            try
+            {
+                await _inner.DisposeAsync().ConfigureAwait(false);
+            }
+            finally
+            {
+                await _lease.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+    }
+
+    private sealed class PeerTrackedDuplexStreamCall : IDuplexStreamCall
+    {
+        private readonly IDuplexStreamCall _inner;
+        private readonly PeerLease _lease;
+
+        public PeerTrackedDuplexStreamCall(IDuplexStreamCall inner, PeerLease lease)
+        {
+            _inner = inner ?? throw new ArgumentNullException(nameof(inner));
+            _lease = lease ?? throw new ArgumentNullException(nameof(lease));
+        }
+
+        public RequestMeta RequestMeta => _inner.RequestMeta;
+        public ResponseMeta ResponseMeta => _inner.ResponseMeta;
+        public ChannelWriter<ReadOnlyMemory<byte>> RequestWriter => _inner.RequestWriter;
+        public ChannelReader<ReadOnlyMemory<byte>> RequestReader => _inner.RequestReader;
+        public ChannelWriter<ReadOnlyMemory<byte>> ResponseWriter => _inner.ResponseWriter;
+        public ChannelReader<ReadOnlyMemory<byte>> ResponseReader => _inner.ResponseReader;
+
+        public ValueTask CompleteRequestsAsync(Error? error = null, CancellationToken cancellationToken = default) =>
+            _inner.CompleteRequestsAsync(error, cancellationToken);
+
+        public ValueTask CompleteResponsesAsync(Error? error = null, CancellationToken cancellationToken = default) =>
+            _inner.CompleteResponsesAsync(error, cancellationToken);
+
+        public async ValueTask DisposeAsync()
+        {
+            try
+            {
+                await _inner.DisposeAsync().ConfigureAwait(false);
+            }
+            finally
+            {
+                await _lease.DisposeAsync().ConfigureAwait(false);
+            }
+        }
     }
 
     private static void ApplyClientTlsOptions(GrpcChannelOptions channelOptions, GrpcClientTlsOptions tlsOptions)
@@ -664,5 +953,12 @@ public sealed record GrpcOutboundSnapshot(
     IReadOnlyList<Uri> Peers,
     string PeerChooser,
     bool IsStarted,
-    int ChannelCount,
+    IReadOnlyList<GrpcPeerSummary> PeerSummaries,
     IReadOnlyList<string> CompressionAlgorithms);
+
+public sealed record GrpcPeerSummary(
+    Uri Address,
+    PeerState State,
+    int Inflight,
+    DateTimeOffset? LastSuccess,
+    DateTimeOffset? LastFailure);
