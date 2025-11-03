@@ -508,9 +508,11 @@ Each step includes _Done when…_ acceptance criteria.
 
 ### 10) Introspection & Tooling
 
-**Prompt:** Expose `/yarpc/introspect`:
+**Prompt:** Expose `/polymer/introspect`:
 
 * JSON view of procedures, inbounds/outbounds, peer chooser state, middleware chains.
+
+**Status:** `HttpInbound` now serves `/polymer/introspect`, returning dispatcher status, procedures, lifecycle components, and middleware lists (see `HttpIntrospectionTests.IntrospectionEndpoint_ReportsDispatcherState`). Extend the payload with RPC-type grouping, streaming metrics, and peer chooser/outbound state to match YARPC-Go parity.
 
 **Done when:** Endpoint reflects live state and updates dynamically.
 

@@ -9,6 +9,7 @@ using System.Net.Mime;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
@@ -32,6 +33,7 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
     private readonly Action<WebApplication>? _configureApp;
     private WebApplication? _app;
     private Dispatcher.Dispatcher? _dispatcher;
+    private static readonly JsonSerializerOptions IntrospectionSerializerOptions = CreateIntrospectionSerializerOptions();
 
     public HttpInbound(
         IEnumerable<string> urls,
@@ -86,6 +88,7 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
 
         _configureApp?.Invoke(app);
 
+        app.MapGet("/polymer/introspect", HandleIntrospectAsync);
         app.MapMethods("/{**_}", [HttpMethods.Post], HandleUnaryAsync);
         app.MapMethods("/{**_}", [HttpMethods.Get], HandleServerStreamAsync);
 
@@ -103,6 +106,39 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
         await _app.StopAsync(cancellationToken).ConfigureAwait(false);
         await _app.DisposeAsync().ConfigureAwait(false);
         _app = null;
+    }
+
+    private static JsonSerializerOptions CreateIntrospectionSerializerOptions()
+    {
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
+        {
+            WriteIndented = true,
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+        };
+
+        options.Converters.Add(new JsonStringEnumConverter());
+        return options;
+    }
+
+    private async Task HandleIntrospectAsync(HttpContext context)
+    {
+        if (_dispatcher is null)
+        {
+            context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+            await context.Response.CompleteAsync().ConfigureAwait(false);
+            return;
+        }
+
+        context.Response.StatusCode = StatusCodes.Status200OK;
+        context.Response.ContentType = MediaTypeNames.Application.Json;
+
+        var introspection = _dispatcher.Introspect();
+        await JsonSerializer.SerializeAsync(
+                context.Response.Body,
+                introspection,
+                IntrospectionSerializerOptions,
+                context.RequestAborted)
+            .ConfigureAwait(false);
     }
 
     private async Task HandleUnaryAsync(HttpContext context)

@@ -133,12 +133,10 @@ Comprehensive backlog tracking the remaining work needed to reach feature parity
   - Ensure middleware ordering is deterministic and documented.
 
 - **Introspection Endpoint**
-  - Implement HTTP endpoint (`/polymer/introspect`) returning:
-    - Registered procedures grouped by RPC type.
-    - Transport inbounds/outbounds, middleware chains, peer choosers.
-    - Streaming procedure metadata (buffer sizes, message counts).
-  - Ensure data updates dynamically as dispatcher state changes.
-  - Include unit/integration tests verifying JSON shape.
+  - ~~Implement HTTP endpoint (`/polymer/introspect`) returning dispatcher summary (service, status, procedures, middleware).~~ *(completed via `HttpInbound.HandleIntrospectAsync` and `HttpIntrospectionTests.IntrospectionEndpoint_ReportsDispatcherState`)*
+  - ~~Include unit/integration tests verifying JSON shape.~~ *(covered by `HttpIntrospectionTests.IntrospectionEndpoint_ReportsDispatcherState`)*
+  - Group procedures by RPC type and embed streaming-specific metadata (buffer sizing, message counts).
+  - Surface outbound/peer chooser state and runtime counters to align with YARPC-Go’s debug output.
 
 - **Shadowing & Tee Support**
   - Support registering dual outbounds (primary + shadow) for migration scenarios.
