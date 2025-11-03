@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -195,6 +196,8 @@ public sealed class RpcLoggingMiddleware :
             return;
         }
 
+        using var scope = BeginScope(meta, responseMeta);
+
         _logger.Log(
             _options.SuccessLogLevel,
             "rpc {Pipeline} completed in {DurationMs:F2} ms (service={Service} procedure={Procedure} transport={Transport} caller={Caller} encoding={Encoding} responseEncoding={ResponseEncoding})",
@@ -217,6 +220,8 @@ public sealed class RpcLoggingMiddleware :
 
         var status = PolymerErrorAdapter.ToStatus(error);
 
+        using var scope = BeginScope(meta, null);
+
         _logger.Log(
             _options.FailureLogLevel,
             "rpc {Pipeline} failed in {DurationMs:F2} ms (service={Service} procedure={Procedure} transport={Transport} status={Status} code={Code}) - {ErrorMessage}",
@@ -237,6 +242,8 @@ public sealed class RpcLoggingMiddleware :
             return;
         }
 
+        using var scope = BeginScope(meta, null);
+
         _logger.Log(
             _options.FailureLogLevel,
             exception,
@@ -247,4 +254,124 @@ public sealed class RpcLoggingMiddleware :
             meta.Procedure ?? string.Empty,
             meta.Transport ?? "unknown");
     }
+
+    private IDisposable? BeginScope(RequestMeta meta, ResponseMeta? responseMeta)
+    {
+        var activity = Activity.Current;
+        var scopeItems = new List<KeyValuePair<string, object?>>(10)
+        {
+            new("rpc.service", meta.Service),
+            new("rpc.procedure", meta.Procedure ?? string.Empty),
+            new("rpc.transport", meta.Transport ?? "unknown"),
+            new("rpc.caller", meta.Caller ?? string.Empty)
+        };
+
+        if (!string.IsNullOrEmpty(meta.Encoding))
+        {
+            scopeItems.Add(new KeyValuePair<string, object?>("rpc.request_encoding", meta.Encoding));
+        }
+
+        if (responseMeta?.Encoding is { Length: > 0 } responseEncoding)
+        {
+            scopeItems.Add(new KeyValuePair<string, object?>("rpc.response_encoding", responseEncoding));
+        }
+
+        if (TryGetRequestId(meta, out var requestId))
+        {
+            scopeItems.Add(new KeyValuePair<string, object?>("rpc.request_id", requestId));
+        }
+
+        if (TryGetPeer(meta, activity, out var peerValue, out var peerPort))
+        {
+            if (!string.IsNullOrEmpty(peerValue))
+            {
+                scopeItems.Add(new KeyValuePair<string, object?>("rpc.peer", peerValue));
+            }
+
+            if (peerPort.HasValue)
+            {
+                scopeItems.Add(new KeyValuePair<string, object?>("rpc.peer_port", peerPort.Value));
+            }
+        }
+
+        if (activity is not null)
+        {
+            var traceId = activity.TraceId.ToString();
+            if (!string.IsNullOrWhiteSpace(traceId))
+            {
+                scopeItems.Add(new KeyValuePair<string, object?>("activity.trace_id", traceId));
+            }
+
+            var spanId = activity.SpanId.ToString();
+            if (!string.IsNullOrWhiteSpace(spanId))
+            {
+                scopeItems.Add(new KeyValuePair<string, object?>("activity.span_id", spanId));
+            }
+        }
+
+        if (_options.Enrich is { } enricher)
+        {
+            var extra = enricher(meta, responseMeta, activity);
+            if (extra is not null)
+            {
+                foreach (var pair in extra)
+                {
+                    scopeItems.Add(pair);
+                }
+            }
+        }
+
+        return scopeItems.Count == 0 ? null : _logger.BeginScope(scopeItems);
+    }
+
+    private static bool TryGetRequestId(RequestMeta meta, out string requestId)
+    {
+        foreach (var key in RequestIdHeaderKeys)
+        {
+            if (meta.Headers.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value))
+            {
+                requestId = value;
+                return true;
+            }
+        }
+
+        requestId = string.Empty;
+        return false;
+    }
+
+    private static bool TryGetPeer(RequestMeta meta, Activity? activity, out string? peer, out int? port)
+    {
+        peer = null;
+        port = null;
+
+        if (meta.Headers.TryGetValue("rpc.peer", out var headerPeer) && !string.IsNullOrWhiteSpace(headerPeer))
+        {
+            peer = headerPeer;
+        }
+
+        if (activity is not null)
+        {
+            peer ??= activity.GetTagItem("net.peer.name") as string ?? activity.GetTagItem("net.peer.ip") as string;
+
+            var portTag = activity.GetTagItem("net.peer.port");
+            switch (portTag)
+            {
+                case int intPort:
+                    port ??= intPort;
+                    break;
+                case string stringPort when int.TryParse(stringPort, out var parsed):
+                    port ??= parsed;
+                    break;
+            }
+        }
+
+        return peer is not null || port.HasValue;
+    }
+
+    private static readonly string[] RequestIdHeaderKeys =
+    {
+        "x-request-id",
+        "request-id",
+        "rpc-request-id"
+    };
 }
