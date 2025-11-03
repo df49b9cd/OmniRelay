@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -14,14 +15,19 @@ using Polymer.Core.Transport;
 using Polymer.Errors;
 using Hugo;
 using static Hugo.Go;
+using Polymer.Transport.Http.Middleware;
 
 namespace Polymer.Transport.Http;
 
-public sealed class HttpOutbound(HttpClient httpClient, Uri requestUri, bool disposeClient = false) : IUnaryOutbound, IOnewayOutbound, IOutboundDiagnostic
+public sealed class HttpOutbound(HttpClient httpClient, Uri requestUri, bool disposeClient = false) : IUnaryOutbound, IOnewayOutbound, IOutboundDiagnostic, IHttpOutboundMiddlewareSink
 {
     private readonly HttpClient _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
     private readonly Uri _requestUri = requestUri ?? throw new ArgumentNullException(nameof(requestUri));
     private readonly bool _disposeClient = disposeClient;
+    private HttpOutboundMiddlewareRegistry? _middlewareRegistry;
+    private string? _middlewareService;
+    private int _middlewareConfigured;
+    private ConcurrentDictionary<string, HttpClientMiddlewareDelegate>? _middlewarePipelines;
 
     public ValueTask StartAsync(CancellationToken cancellationToken = default) =>
         ValueTask.CompletedTask;
@@ -43,7 +49,12 @@ public sealed class HttpOutbound(HttpClient httpClient, Uri requestUri, bool dis
         try
         {
             using var httpRequest = BuildHttpRequest(request);
-            using var response = await _httpClient.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
+            using var response = await SendWithMiddlewareAsync(
+                    httpRequest,
+                    request.Meta,
+                    HttpOutboundCallKind.Unary,
+                    HttpCompletionOption.ResponseHeadersRead,
+                    cancellationToken)
                 .ConfigureAwait(false);
 
             var responseMeta = BuildResponseMeta(response);
@@ -70,7 +81,13 @@ public sealed class HttpOutbound(HttpClient httpClient, Uri requestUri, bool dis
         try
         {
             using var httpRequest = BuildHttpRequest(request);
-            using var response = await _httpClient.SendAsync(httpRequest, cancellationToken).ConfigureAwait(false);
+            using var response = await SendWithMiddlewareAsync(
+                    httpRequest,
+                    request.Meta,
+                    HttpOutboundCallKind.Oneway,
+                    HttpCompletionOption.ResponseContentRead,
+                    cancellationToken)
+                .ConfigureAwait(false);
 
             if (response.StatusCode == System.Net.HttpStatusCode.Accepted ||
                 response.StatusCode == (System.Net.HttpStatusCode)StatusCodes.Status202Accepted)
@@ -222,6 +239,77 @@ public sealed class HttpOutbound(HttpClient httpClient, Uri requestUri, bool dis
 
     public object? GetOutboundDiagnostics() =>
         new HttpOutboundSnapshot(_requestUri, _disposeClient);
+
+    void IHttpOutboundMiddlewareSink.Attach(string service, HttpOutboundMiddlewareRegistry registry)
+    {
+        ArgumentNullException.ThrowIfNull(registry);
+
+        if (Interlocked.Exchange(ref _middlewareConfigured, 1) == 1)
+        {
+            return;
+        }
+
+        _middlewareService = string.IsNullOrWhiteSpace(service) ? string.Empty : service;
+        _middlewareRegistry = registry;
+        _middlewarePipelines = new ConcurrentDictionary<string, HttpClientMiddlewareDelegate>(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private ValueTask<HttpResponseMessage> SendWithMiddlewareAsync(
+        HttpRequestMessage httpRequest,
+        RequestMeta requestMeta,
+        HttpOutboundCallKind callKind,
+        HttpCompletionOption completionOption,
+        CancellationToken cancellationToken)
+    {
+        var registry = _middlewareRegistry;
+        var service = _middlewareService;
+
+        if (registry is null || string.IsNullOrEmpty(service))
+        {
+            return new ValueTask<HttpResponseMessage>(_httpClient.SendAsync(httpRequest, completionOption, cancellationToken));
+        }
+
+        var middleware = registry.Resolve(service, requestMeta.Procedure);
+
+        if (middleware.Count == 0)
+        {
+            return new ValueTask<HttpResponseMessage>(_httpClient.SendAsync(httpRequest, completionOption, cancellationToken));
+        }
+
+        var cacheKey = BuildCacheKey(callKind, requestMeta.Procedure);
+        var pipelines = _middlewarePipelines;
+        HttpClientMiddlewareDelegate pipeline;
+
+        if (pipelines is not null)
+        {
+            pipeline = pipelines.GetOrAdd(cacheKey, _ => ComposePipeline(middleware));
+        }
+        else
+        {
+            pipeline = ComposePipeline(middleware);
+        }
+
+        var context = new HttpClientMiddlewareContext(httpRequest, requestMeta, callKind, completionOption);
+        return pipeline(context, cancellationToken);
+
+        HttpClientMiddlewareDelegate ComposePipeline(IReadOnlyList<IHttpClientMiddleware> source)
+        {
+            return HttpClientMiddlewareComposer.Compose(source, Terminal);
+        }
+
+        ValueTask<HttpResponseMessage> Terminal(HttpClientMiddlewareContext ctx, CancellationToken token) =>
+            new(_httpClient.SendAsync(ctx.Request, ctx.CompletionOption, token));
+    }
+
+    private static string BuildCacheKey(HttpOutboundCallKind callKind, string? procedure)
+    {
+        var normalizedProcedure = string.IsNullOrWhiteSpace(procedure) ? string.Empty : procedure!;
+        return callKind switch
+        {
+            HttpOutboundCallKind.Oneway => $"o:{normalizedProcedure}",
+            _ => $"u:{normalizedProcedure}"
+        };
+    }
 }
 
 public sealed record HttpOutboundSnapshot(Uri RequestUri, bool DisposesClient);

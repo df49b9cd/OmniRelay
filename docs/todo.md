@@ -73,12 +73,7 @@ Comprehensive backlog tracking the remaining work needed to reach feature parity
     - ~~Deadline/TTL enforcement & header hygiene: We serialize TTL/deadline information into metadata (src/Polymer/Transport/Grpc/GrpcMetadataAdapter.cs (lines 75-88)) but never convert it into gRPC deadlines in CallOptions, so the runtime won’t actually enforce them (src/Polymer/Transport/Grpc/GrpcOutbound.cs (lines 61-174)). YARPC-Go validates headers, propagates TTLs into contexts, and distinguishes application errors via metadata, which leaves us short on request semantics.~~ *(completed: `GrpcOutbound` maps TTL/deadline via `ResolveDeadline` when building `CallOptions`, and tests like `GrpcTransportTests.ClientStreaming_DeadlineExceededMapsStatus` verify deadline propagation and status mapping.)*
 
 
-- **Transport Middleware & Interceptors**
-  - Design middleware interfaces for transport-specific hooks:
-    - HTTP message handler chain for outbound requests (pre/post).
-    - gRPC interceptors for unary and streaming calls (client + server).
-  - Integrate transport middleware with dispatcher pipeline ordering (global → per-procedure).
-  - Provide sample middleware (e.g., logging interceptor) to demonstrate usage.
+- ~~**Transport Middleware & Interceptors**~~ *(completed: HTTP outbound now composes transport-aware middleware via `HttpClientMiddlewareComposer` with logging sample (`HttpClientLoggingMiddleware`), gRPC client/server use composite interceptors with ordered registries, and regression coverage lives in `HttpOutboundMiddlewareTests` and `GrpcInterceptorPipelineTests`.)*
 
 - **Transport Lifecycle & Health**
   - Implement graceful shutdown semantics:

@@ -10,6 +10,10 @@ using Polymer.Core;
 using Polymer.Core.Middleware;
 using Polymer.Core.Transport;
 using Polymer.Errors;
+using Polymer.Transport.Http;
+using Polymer.Transport.Http.Middleware;
+using Polymer.Transport.Grpc;
+using Polymer.Transport.Grpc.Interceptors;
 
 namespace Polymer.Dispatcher;
 
@@ -32,6 +36,9 @@ public sealed class Dispatcher
     private readonly ImmutableArray<IDuplexOutboundMiddleware> _outboundDuplexMiddleware;
     private readonly Lock _stateLock = new();
     private DispatcherStatus _status = DispatcherStatus.Created;
+    private readonly HttpOutboundMiddlewareRegistry? _httpOutboundMiddlewareRegistry;
+    private readonly GrpcClientInterceptorRegistry? _grpcClientInterceptorRegistry;
+    private readonly GrpcServerInterceptorRegistry? _grpcServerInterceptorRegistry;
 
     public Dispatcher(DispatcherOptions options)
     {
@@ -54,6 +61,10 @@ public sealed class Dispatcher
         _outboundDuplexMiddleware = [.. options.DuplexOutboundMiddleware];
 
         BindDispatcherAwareComponents(_lifecycleDescriptors);
+        _httpOutboundMiddlewareRegistry = options.HttpOutboundMiddleware.Build();
+        _grpcClientInterceptorRegistry = options.GrpcInterceptors.BuildClientRegistry();
+        _grpcServerInterceptorRegistry = options.GrpcInterceptors.BuildServerRegistry();
+        AttachTransportExtensions();
     }
 
     public string ServiceName => _serviceName;
@@ -615,6 +626,90 @@ public sealed class Dispatcher
             if (component.Lifecycle is IDispatcherAware aware)
             {
                 aware.Bind(this);
+            }
+        }
+    }
+
+    private void AttachTransportExtensions()
+    {
+        if (_outbounds.Count > 0)
+        {
+            if (_httpOutboundMiddlewareRegistry is not null)
+            {
+                AttachHttpOutboundMiddleware(_httpOutboundMiddlewareRegistry);
+            }
+
+            if (_grpcClientInterceptorRegistry is not null)
+            {
+                AttachGrpcClientInterceptors(_grpcClientInterceptorRegistry);
+            }
+        }
+
+        if (_grpcServerInterceptorRegistry is not null)
+        {
+            AttachGrpcServerInterceptors(_grpcServerInterceptorRegistry);
+        }
+    }
+
+    private void AttachHttpOutboundMiddleware(HttpOutboundMiddlewareRegistry registry)
+    {
+        var attached = new HashSet<IHttpOutboundMiddlewareSink>(ReferenceEqualityComparer.Instance);
+
+        foreach (var (service, collection) in _outbounds)
+        {
+            Attach(collection.Unary.Values, service);
+            Attach(collection.Oneway.Values, service);
+            Attach(collection.Stream.Values, service);
+            Attach(collection.ClientStream.Values, service);
+            Attach(collection.Duplex.Values, service);
+        }
+
+        void Attach(IEnumerable<object> outbounds, string service)
+        {
+            foreach (var outbound in outbounds)
+            {
+                if (outbound is IHttpOutboundMiddlewareSink sink && attached.Add(sink))
+                {
+                    sink.Attach(service, registry);
+                }
+            }
+        }
+    }
+
+    private void AttachGrpcClientInterceptors(GrpcClientInterceptorRegistry registry)
+    {
+        var attached = new HashSet<IGrpcClientInterceptorSink>(ReferenceEqualityComparer.Instance);
+
+        foreach (var (service, collection) in _outbounds)
+        {
+            Attach(collection.Unary.Values, service);
+            Attach(collection.Oneway.Values, service);
+            Attach(collection.Stream.Values, service);
+            Attach(collection.ClientStream.Values, service);
+            Attach(collection.Duplex.Values, service);
+        }
+
+        void Attach(IEnumerable<object> outbounds, string service)
+        {
+            foreach (var outbound in outbounds)
+            {
+                if (outbound is IGrpcClientInterceptorSink sink && attached.Add(sink))
+                {
+                    sink.AttachGrpcClientInterceptors(service, registry);
+                }
+            }
+        }
+    }
+
+    private void AttachGrpcServerInterceptors(GrpcServerInterceptorRegistry registry)
+    {
+        var attached = new HashSet<IGrpcServerInterceptorSink>(ReferenceEqualityComparer.Instance);
+
+        foreach (var component in _lifecycleDescriptors)
+        {
+            if (component.Lifecycle is IGrpcServerInterceptorSink sink && attached.Add(sink))
+            {
+                sink.AttachGrpcServerInterceptors(registry);
             }
         }
     }

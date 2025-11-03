@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using Polymer.Core.Middleware;
 using Polymer.Core.Transport;
+using Polymer.Transport.Http.Middleware;
+using Polymer.Transport.Grpc.Interceptors;
 
 namespace Polymer.Dispatcher;
 
@@ -36,6 +38,8 @@ public sealed class DispatcherOptions
     public IList<IDuplexInboundMiddleware> DuplexInboundMiddleware { get; } = [];
     public IList<IDuplexOutboundMiddleware> DuplexOutboundMiddleware { get; } = [];
     public IList<IClientStreamOutboundMiddleware> ClientStreamOutboundMiddleware { get; } = [];
+    public HttpOutboundMiddlewareBuilder HttpOutboundMiddleware { get; } = new();
+    public GrpcTransportInterceptorBuilder GrpcInterceptors { get; } = new();
 
     internal IReadOnlyList<DispatcherLifecycleComponent> ComponentDescriptors => _componentDescriptors;
     internal IReadOnlyList<DispatcherLifecycleComponent> UniqueComponents => _uniqueComponents;

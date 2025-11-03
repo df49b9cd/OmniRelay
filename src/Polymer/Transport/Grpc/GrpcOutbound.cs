@@ -23,10 +23,11 @@ using Polymer.Core.Transport;
 using Polymer.Core.Peers;
 using Polymer.Errors;
 using static Hugo.Go;
+using Polymer.Transport.Grpc.Interceptors;
 
 namespace Polymer.Transport.Grpc;
 
-public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbound, IClientStreamOutbound, IDuplexOutbound, IOutboundDiagnostic
+public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbound, IClientStreamOutbound, IDuplexOutbound, IOutboundDiagnostic, IGrpcClientInterceptorSink
 {
     private readonly IReadOnlyList<Uri> _addresses;
     private readonly string _remoteService;
@@ -45,6 +46,9 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
     private readonly ConcurrentDictionary<string, Method<byte[], byte[]>> _duplexMethods = new();
     private readonly HashSet<string>? _compressionAlgorithms;
     private volatile bool _started;
+    private CompositeClientInterceptor? _compositeClientInterceptor;
+    private string? _interceptorService;
+    private int _interceptorConfigured;
 
     public GrpcOutbound(
         Uri address,
@@ -668,6 +672,19 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         return resolved;
     }
 
+    void IGrpcClientInterceptorSink.AttachGrpcClientInterceptors(string service, GrpcClientInterceptorRegistry registry)
+    {
+        ArgumentNullException.ThrowIfNull(registry);
+
+        if (Interlocked.Exchange(ref _interceptorConfigured, 1) == 1)
+        {
+            return;
+        }
+
+        _interceptorService = string.IsNullOrWhiteSpace(service) ? string.Empty : service;
+        _compositeClientInterceptor = new CompositeClientInterceptor(registry, _interceptorService);
+    }
+
     private sealed class GrpcPeer(Uri address, GrpcOutbound owner, PeerCircuitBreakerOptions breakerOptions) : IPeer, IAsyncDisposable, IPeerTelemetry
     {
         private readonly GrpcOutbound _owner = owner ?? throw new ArgumentNullException(nameof(owner));
@@ -712,6 +729,11 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
             var invoker = _channel.CreateCallInvoker();
 
             var interceptors = new List<Interceptor>();
+
+            if (_owner._compositeClientInterceptor is { } composite)
+            {
+                interceptors.Add(composite);
+            }
 
             if (_owner._clientRuntimeOptions is { Interceptors.Count: > 0 } runtimeOptions)
             {

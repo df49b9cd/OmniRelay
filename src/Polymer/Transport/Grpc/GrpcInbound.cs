@@ -13,10 +13,11 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Polymer.Core.Transport;
 using Polymer.Dispatcher;
+using Polymer.Transport.Grpc.Interceptors;
 
 namespace Polymer.Transport.Grpc;
 
-public sealed class GrpcInbound : ILifecycle, IDispatcherAware
+public sealed class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcServerInterceptorSink
 {
     private readonly string[] _urls;
     private readonly Action<IServiceCollection>? _configureServices;
@@ -27,6 +28,8 @@ public sealed class GrpcInbound : ILifecycle, IDispatcherAware
     private readonly GrpcServerRuntimeOptions? _serverRuntimeOptions;
     private readonly GrpcCompressionOptions? _compressionOptions;
     private readonly GrpcTelemetryOptions? _telemetryOptions;
+    private GrpcServerInterceptorRegistry? _serverInterceptorRegistry;
+    private int _interceptorsConfigured;
 
     public GrpcInbound(
         IEnumerable<string> urls,
@@ -136,9 +139,21 @@ public sealed class GrpcInbound : ILifecycle, IDispatcherAware
             builder.Services.TryAddSingleton<GrpcServerLoggingInterceptor>();
         }
 
+        var hasServerTransportInterceptors = _serverInterceptorRegistry is not null;
+
+        if (hasServerTransportInterceptors)
+        {
+            builder.Services.AddSingleton(new CompositeServerInterceptor(_serverInterceptorRegistry!));
+        }
+
         builder.Services.AddGrpc(options =>
         {
             var loggingInterceptorAdded = false;
+
+            if (hasServerTransportInterceptors)
+            {
+                options.Interceptors.Add<CompositeServerInterceptor>();
+            }
 
             if (_serverRuntimeOptions is { } runtimeOptions)
             {
@@ -216,6 +231,18 @@ public sealed class GrpcInbound : ILifecycle, IDispatcherAware
 
         await app.StartAsync(cancellationToken).ConfigureAwait(false);
         _app = app;
+    }
+
+    void IGrpcServerInterceptorSink.AttachGrpcServerInterceptors(GrpcServerInterceptorRegistry registry)
+    {
+        ArgumentNullException.ThrowIfNull(registry);
+
+        if (Interlocked.Exchange(ref _interceptorsConfigured, 1) == 1)
+        {
+            return;
+        }
+
+        _serverInterceptorRegistry = registry;
     }
 
     public async ValueTask StopAsync(CancellationToken cancellationToken = default)
