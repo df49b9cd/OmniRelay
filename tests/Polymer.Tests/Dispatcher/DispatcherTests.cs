@@ -151,6 +151,107 @@ public class DispatcherTests
     }
 
     [Fact]
+    public async Task RegisterUnary_WildcardAliasRoutesRequests()
+    {
+        var options = new DispatcherOptions("catalog");
+        var dispatcher = new Polymer.Dispatcher.Dispatcher(options);
+
+        var wildcardInvocations = 0;
+        var directInvocations = 0;
+
+        dispatcher.RegisterUnary(
+            "catalog::primary",
+            (request, _) =>
+            {
+                wildcardInvocations++;
+                return ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty)));
+            },
+            builder => builder.AddAlias("catalog::*"));
+
+        dispatcher.RegisterUnary(
+            "catalog::exact",
+            (request, _) =>
+            {
+                directInvocations++;
+                return ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty)));
+            });
+
+        var wildcardRequest = new Request<ReadOnlyMemory<byte>>(
+            new RequestMeta(service: "catalog", procedure: "catalog::listing", transport: "test"),
+            ReadOnlyMemory<byte>.Empty);
+
+        var wildcardResult = await dispatcher.InvokeUnaryAsync("catalog::listing", wildcardRequest, TestContext.Current.CancellationToken);
+        Assert.True(wildcardResult.IsSuccess, wildcardResult.Error?.ToString());
+        Assert.Equal(1, wildcardInvocations);
+        Assert.Equal(0, directInvocations);
+
+        var directRequest = new Request<ReadOnlyMemory<byte>>(
+            new RequestMeta(service: "catalog", procedure: "catalog::exact", transport: "test"),
+            ReadOnlyMemory<byte>.Empty);
+
+        var directResult = await dispatcher.InvokeUnaryAsync("catalog::exact", directRequest, TestContext.Current.CancellationToken);
+        Assert.True(directResult.IsSuccess, directResult.Error?.ToString());
+        Assert.Equal(1, directInvocations);
+    }
+
+    [Fact]
+    public async Task RegisterUnary_WildcardSpecificityPrefersMostSpecificAlias()
+    {
+        var options = new DispatcherOptions("inventory");
+        var dispatcher = new Polymer.Dispatcher.Dispatcher(options);
+
+        var generalCount = 0;
+        var versionCount = 0;
+
+        dispatcher.RegisterUnary(
+            "inventory::fallback",
+            (request, _) =>
+            {
+                generalCount++;
+                return ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty)));
+            },
+            builder => builder.AddAlias("inventory::*"));
+
+        dispatcher.RegisterUnary(
+            "inventory::v2::handler",
+            (request, _) =>
+            {
+                versionCount++;
+                return ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty)));
+            },
+            builder => builder.AddAlias("inventory::v2::*"));
+
+        var request = new Request<ReadOnlyMemory<byte>>(
+            new RequestMeta(service: "inventory", procedure: "inventory::v2::list", transport: "test"),
+            ReadOnlyMemory<byte>.Empty);
+
+        var result = await dispatcher.InvokeUnaryAsync("inventory::v2::list", request, TestContext.Current.CancellationToken);
+        Assert.True(result.IsSuccess, result.Error?.ToString());
+        Assert.Equal(0, generalCount);
+        Assert.Equal(1, versionCount);
+    }
+
+    [Fact]
+    public void RegisterUnary_DuplicateWildcardAliasThrows()
+    {
+        var options = new DispatcherOptions("billing");
+        var dispatcher = new Polymer.Dispatcher.Dispatcher(options);
+
+        dispatcher.RegisterUnary(
+            "billing::primary",
+            (request, _) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty))),
+            builder => builder.AddAlias("billing::*"));
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            dispatcher.RegisterUnary(
+                "billing::secondary",
+                (request, _) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty))),
+                builder => builder.AddAlias("billing::*")));
+
+        Assert.Contains("conflicts", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void RegisterUnary_BuilderRequiresHandler()
     {
         var dispatcher = new Polymer.Dispatcher.Dispatcher(new DispatcherOptions("edge"));

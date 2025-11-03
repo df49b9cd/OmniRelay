@@ -113,8 +113,8 @@ Comprehensive backlog tracking the remaining work needed to reach feature parity
 
 - **Procedure Catalogue Enhancements**
   - ~~Support hierarchical naming: `service::module::method`, alias resolution.~~ *(completed via alias-aware `ProcedureSpec` + `ProcedureRegistry` updates allowing alternate names and exposing them through introspection.)*
-  - Implement router table with wildcard/version matching (e.g., `foo::*`, `foo::v2::*`).
-  - Add validation to prevent conflicting registrations.
+  - ~~Implement router table with wildcard/version matching (e.g., `foo::*`, `foo::v2::*`).~~ *(`ProcedureRegistry` now stores wildcard aliases with specificity scoring so lookups resolve to the most specific match; see `DispatcherTests.RegisterUnary_WildcardAliasRoutesRequests` / `RegisterUnary_WildcardSpecificityPrefersMostSpecificAlias`.)*
+  - ~~Add validation to prevent conflicting registrations.~~ *(Wildcard alias registration rejects conflicting patterns, covered by `DispatcherTests.RegisterUnary_DuplicateWildcardAliasThrows`.)*
 
 - **Middleware Composition**
   - ~~Maintain separate inbound/outbound stacks for unary, oneway, client stream, server stream, bidi stream.~~ *(`DispatcherOptions` exposes dedicated lists per RPC type; `DispatcherTests` asserts client configs preserve the typed splits.)*
