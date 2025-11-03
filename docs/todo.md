@@ -192,17 +192,13 @@ Comprehensive backlog tracking the remaining work needed to reach feature parity
 
 ## 7. Configuration System (Phase 7)
 
-- **Declarative Bootstrap**
-  - Build `Polymer.Configuration` package:
-    - YAML/JSON schema for services, transports, peers, middleware.
-    - DI integration (`AddPolymerDispatcher(configuration)`).
-    - Validation with detailed error messages.
+- ~~**Declarative Bootstrap**~~ *(Delivered via the new `src/Polymer.Configuration` project. `PolymerConfigurationOptions` captures transports/peers/middleware, `AddPolymerDispatcher` wires everything into DI, and validation is covered by `PolymerConfigurationTests`.)*
 
 - **Transport/Peer Specs**
   - Allow registration of custom `TransportSpec`/`PeerListSpec` via DI so new transports plug into configuration.
 
 - **Environment Overrides**
-  - Support layered configuration (appsettings + env vars + command line).
+  - ~~Support layered configuration (appsettings + env vars + command line).~~ *(Binder operates on `IConfiguration`, so configuration layering works out of the box; follow-up task is documenting best practices.)*
   - Provide sample `appsettings.json` showing multi-environment overrides.
 
 ## 8. Tooling & Introspection

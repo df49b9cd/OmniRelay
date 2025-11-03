@@ -49,3 +49,40 @@ await client.CallAsync(
         new AuditRecord(/* ... */),
         new RequestMeta(service: "audit", procedure: "audit::record")));
 ```
+
+## Configuration Bootstrap
+
+`appsettings.json`
+
+```json
+{
+  "polymer": {
+    "service": "gateway",
+    "inbounds": {
+      "http": [
+        { "urls": [ "http://0.0.0.0:8080" ] }
+      ]
+    },
+    "outbounds": {
+      "keyvalue": {
+        "unary": {
+          "http": [
+            { "url": "http://keyvalue:8080", "key": "primary" }
+          ]
+        }
+      }
+    }
+  }
+}
+```
+
+`Program.cs`
+
+```csharp
+var builder = Host.CreateApplicationBuilder(args);
+builder.Services.AddLogging();
+builder.Services.AddPolymerDispatcher(builder.Configuration.GetSection("polymer"));
+
+var app = builder.Build();
+await app.RunAsync();
+```

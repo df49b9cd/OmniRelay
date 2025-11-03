@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/Polymer.Configuration/Polymer.Configuration.csproj" />
     <Project Path="src/Polymer/Polymer.csproj" />
   </Folder>
   <Folder Name="/tests/">

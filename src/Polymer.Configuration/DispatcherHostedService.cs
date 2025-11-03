@@ -1,0 +1,50 @@
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+
+namespace Polymer.Configuration;
+
+internal sealed class DispatcherHostedService : IHostedService
+{
+    private readonly Dispatcher.Dispatcher _dispatcher;
+    private readonly ILogger<DispatcherHostedService> _logger;
+
+    public DispatcherHostedService(Dispatcher.Dispatcher dispatcher, ILogger<DispatcherHostedService>? logger = null)
+    {
+        _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
+        _logger = logger ?? NullLogger<DispatcherHostedService>.Instance;
+    }
+
+    public async Task StartAsync(CancellationToken cancellationToken)
+    {
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            _logger.LogInformation("Starting Polymer dispatcher for service {ServiceName}", _dispatcher.ServiceName);
+        }
+
+        await _dispatcher.StartAsync(cancellationToken).ConfigureAwait(false);
+
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            _logger.LogInformation("Polymer dispatcher for service {ServiceName} started", _dispatcher.ServiceName);
+        }
+    }
+
+    public async Task StopAsync(CancellationToken cancellationToken)
+    {
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            _logger.LogInformation("Stopping Polymer dispatcher for service {ServiceName}", _dispatcher.ServiceName);
+        }
+
+        await _dispatcher.StopAsync(cancellationToken).ConfigureAwait(false);
+
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            _logger.LogInformation("Polymer dispatcher for service {ServiceName} stopped", _dispatcher.ServiceName);
+        }
+    }
+}

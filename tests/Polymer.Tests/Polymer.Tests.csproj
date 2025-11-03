@@ -14,5 +14,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Polymer\Polymer.csproj" />
+    <ProjectReference Include="..\..\src\Polymer.Configuration\Polymer.Configuration.csproj" />
   </ItemGroup>
 </Project>
