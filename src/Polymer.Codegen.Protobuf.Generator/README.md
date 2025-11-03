@@ -1,12 +1,45 @@
 # Polymer.Codegen.Protobuf.Generator
 
-A Roslyn incremental generator that turns compiled protobuf descriptor sets (`.pb` files) into dispatcher registration helpers and typed Polymer clients.
+`Polymer.Codegen.Protobuf.Generator` is the Roslyn incremental generator that powers Polymer's protobuf story. It consumes descriptor sets (`.pb` files) and emits:
 
-## Usage
+- `Register<Service>` extension methods that wire server implementations into a `Dispatcher`.
+- Strongly typed service interfaces mirroring the protobuf service definition.
+- Typed Polymer clients (`Create<Service>Client`) that wrap dispatcher outbounds with correct codecs for unary + streaming RPCs.
+
+The NuGet package ships the generator plus its runtime dependencies (`Polymer.dll`, `Polymer.Codegen.Protobuf.Core.dll`, `Google.Protobuf.dll`) so consumers do not have to reference the runtime separately.
+
+## Using The protoc Plugin
+
+The console project in `src/Polymer.Codegen.Protobuf` builds `protoc-gen-polymer-csharp`. Point `protoc` (or `Grpc.Tools`) at the published binary to generate C# during your build:
+
+```bash
+dotnet publish src/Polymer.Codegen.Protobuf/Polymer.Codegen.Protobuf.csproj -c Release -o artifacts/codegen
+
+protoc \
+  --plugin=protoc-gen-polymer-csharp=artifacts/codegen/Polymer.Codegen.Protobuf \
+  --polymer-csharp_out=Generated \
+  --proto_path=Protos \
+  Protos/test_service.proto
+```
+
+The generated files can be added to your project directly, or referenced through MSBuild `<Compile Include="Generated/**/*.cs" />`.
+
+## Using The Incremental Generator
+
+Reference the incremental generator as an analyzer and surface descriptor sets via `AdditionalFiles`. The sample below mirrors `tests/Polymer.Tests/Projects/ProtobufIncrementalSample`:
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="Polymer.Codegen.Protobuf.Generator" Version="0.1.0" PrivateAssets="all" />
+  <ProjectReference Include="..\..\src\Polymer.Codegen.Protobuf.Generator\Polymer.Codegen.Protobuf.Generator.csproj"
+                    OutputItemType="Analyzer"
+                    ReferenceOutputAssembly="true" />
+</ItemGroup>
+
+<ItemGroup>
+  <PackageReference Include="Grpc.Tools" Version="2.71.0">
+    <PrivateAssets>all</PrivateAssets>
+    <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+  </PackageReference>
 </ItemGroup>
 
 <ItemGroup>
@@ -22,8 +55,19 @@ A Roslyn incremental generator that turns compiled protobuf descriptor sets (`.p
 </Target>
 ```
 
-The package already contains the Polymer runtime dependencies it needs (including `Polymer.dll` and `Google.Protobuf.dll`).
+The generator watches the descriptor set and services regenerate on every design-time/build invocation; no extra build steps are required. Because the generator includes Polymer runtime assemblies, the emitted clients compile without additional references.
+
+## Generated Surface
+
+For each protobuf service, the generator emits:
+
+- A server registration helper: `dispatcher.Register<Namespace><Service>(ITestService implementation)` that registers unary + streaming handlers with codecs and metadata configured.
+- A service interface that expresses the dispatcher-friendly method signatures.
+- A typed client exposing `Unary`, `ServerStream`, `ClientStream`, and `DuplexStream` methods that internally call `Dispatcher.Create*Client`.
+- Codec fields (JSON/protobuf) scoped per RPC to avoid redundant allocations.
+
+See `tests/Polymer.Tests/Generated/TestService.Polymer.g.cs` for the full emitted shape.
 
 ## Versioning
 
-Pre-release builds follow `0.x.y` until the API stabilises. Once we cut a stable release, the generator will match the Polymer runtime major/minor version.
+Pre-release builds follow `0.x.y` while we stabilise the generator APIs. Once Polymer reaches a stable release, generator versions will align with the Polymer runtime major/minor version.
