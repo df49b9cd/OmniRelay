@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Polymer.Core.Transport;
 using Polymer.Dispatcher;
 
@@ -25,6 +26,7 @@ public sealed class GrpcInbound : ILifecycle, IDispatcherAware
     private readonly GrpcServerTlsOptions? _serverTlsOptions;
     private readonly GrpcServerRuntimeOptions? _serverRuntimeOptions;
     private readonly GrpcCompressionOptions? _compressionOptions;
+    private readonly GrpcTelemetryOptions? _telemetryOptions;
 
     public GrpcInbound(
         IEnumerable<string> urls,
@@ -32,7 +34,8 @@ public sealed class GrpcInbound : ILifecycle, IDispatcherAware
         Action<WebApplication>? configureApp = null,
         GrpcServerTlsOptions? serverTlsOptions = null,
         GrpcServerRuntimeOptions? serverRuntimeOptions = null,
-        GrpcCompressionOptions? compressionOptions = null)
+        GrpcCompressionOptions? compressionOptions = null,
+        GrpcTelemetryOptions? telemetryOptions = null)
     {
         _urls = urls?.ToArray() ?? throw new ArgumentNullException(nameof(urls));
         if (_urls.Length == 0)
@@ -45,6 +48,7 @@ public sealed class GrpcInbound : ILifecycle, IDispatcherAware
         _serverTlsOptions = serverTlsOptions;
         _serverRuntimeOptions = serverRuntimeOptions;
         _compressionOptions = compressionOptions;
+        _telemetryOptions = telemetryOptions;
     }
 
     public IReadOnlyCollection<string> Urls =>
@@ -125,8 +129,17 @@ public sealed class GrpcInbound : ILifecycle, IDispatcherAware
         builder.Services.AddSingleton<IServiceMethodProvider<GrpcDispatcherService>>(
             _ => new GrpcDispatcherServiceMethodProvider(_dispatcher));
         builder.Services.AddSingleton<GrpcDispatcherService>();
+
+        var runtimeLoggingInterceptorSpecified = _serverRuntimeOptions?.Interceptors?.Any(type => type == typeof(GrpcServerLoggingInterceptor)) == true;
+        if (runtimeLoggingInterceptorSpecified || (_telemetryOptions?.EnableServerLogging == true))
+        {
+            builder.Services.TryAddSingleton<GrpcServerLoggingInterceptor>();
+        }
+
         builder.Services.AddGrpc(options =>
         {
+            var loggingInterceptorAdded = false;
+
             if (_serverRuntimeOptions is { } runtimeOptions)
             {
                 if (runtimeOptions.MaxReceiveMessageSize is { } maxReceive)
@@ -153,9 +166,19 @@ public sealed class GrpcInbound : ILifecycle, IDispatcherAware
                             continue;
                         }
 
+                        if (interceptorType == typeof(GrpcServerLoggingInterceptor))
+                        {
+                            loggingInterceptorAdded = true;
+                        }
+
                         options.Interceptors.Add(interceptorType);
                     }
                 }
+            }
+
+            if (_telemetryOptions?.EnableServerLogging == true && !loggingInterceptorAdded)
+            {
+                options.Interceptors.Add<GrpcServerLoggingInterceptor>();
             }
 
             if (_compressionOptions is { Providers.Count: > 0 } compressionOptions)

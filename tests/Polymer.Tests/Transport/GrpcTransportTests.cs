@@ -1,15 +1,18 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
 using System.Collections.Immutable;
+using System.Linq;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Diagnostics.Metrics;
 using Grpc.Core;
 using Grpc.Core.Interceptors;
 using Grpc.Net.Client;
+using Microsoft.Extensions.Logging;
 using Polymer.Core;
 using Polymer.Core.Transport;
 using Polymer.Dispatcher;
@@ -1899,6 +1902,218 @@ public class GrpcTransportTests
         var status = (Status)method.Invoke(null, new object[] { polymerStatus, "detail" })!;
 
         Assert.Equal(expectedStatusCode, status.StatusCode);
+    }
+
+    [Fact(Timeout = 30_000)]
+    public async Task GrpcOutbound_TelemetryOptions_EnableClientLoggingInterceptor()
+    {
+        var port = TestPortAllocator.GetRandomPort();
+        var address = new Uri($"http://127.0.0.1:{port}");
+
+        var options = new DispatcherOptions("echo");
+        var grpcInbound = new GrpcInbound(new[] { address.ToString() }, telemetryOptions: new GrpcTelemetryOptions { EnableServerLogging = false });
+        options.AddLifecycle("grpc-inbound", grpcInbound);
+
+        var dispatcher = new Polymer.Dispatcher.Dispatcher(options);
+        var codec = new JsonCodec<EchoRequest, EchoResponse>(new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+        dispatcher.Register(new UnaryProcedureSpec(
+            "echo",
+            "echo::ping",
+            (request, cancellationToken) =>
+            {
+                var decode = codec.DecodeRequest(request.Body, request.Meta);
+                if (decode.IsFailure)
+                {
+                    return ValueTask.FromResult(Err<Response<ReadOnlyMemory<byte>>>(decode.Error!));
+                }
+
+                var responseMeta = new ResponseMeta(encoding: "application/json");
+                var encode = codec.EncodeResponse(new EchoResponse { Message = decode.Value.Message }, responseMeta);
+                return encode.IsSuccess
+                    ? ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(encode.Value, responseMeta)))
+                    : ValueTask.FromResult(Err<Response<ReadOnlyMemory<byte>>>(encode.Error!));
+            }));
+
+        var ct = TestContext.Current.CancellationToken;
+        await dispatcher.StartAsync(ct);
+        await WaitForGrpcReadyAsync(address, ct);
+
+        var loggerProvider = new CaptureLoggerProvider();
+        using var loggerFactory = LoggerFactory.Create(builder =>
+        {
+            builder.SetMinimumLevel(LogLevel.Information);
+            builder.AddProvider(loggerProvider);
+        });
+
+        var outbound = new GrpcOutbound(
+            address,
+            "echo",
+            telemetryOptions: new GrpcTelemetryOptions
+            {
+                EnableClientLogging = true,
+                LoggerFactory = loggerFactory
+            });
+
+        await outbound.StartAsync(ct);
+
+        try
+        {
+            var requestMeta = new RequestMeta(
+                service: "echo",
+                procedure: "echo::ping",
+                encoding: "application/json",
+                transport: TransportName);
+            var payload = codec.EncodeRequest(new EchoRequest("hello"), requestMeta);
+            Assert.True(payload.IsSuccess);
+
+            var request = new Request<ReadOnlyMemory<byte>>(requestMeta, payload.Value);
+            var responseResult = await outbound.CallAsync(request, ct);
+            Assert.True(responseResult.IsSuccess, responseResult.Error?.Message);
+
+            Assert.Contains(loggerProvider.Entries, entry =>
+                string.Equals(entry.CategoryName, typeof(GrpcClientLoggingInterceptor).FullName, StringComparison.Ordinal) &&
+                entry.Message.Contains("Completed gRPC client unary call", StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            await outbound.StopAsync(ct);
+            await dispatcher.StopAsync(ct);
+        }
+    }
+
+    [Fact(Timeout = 30_000)]
+    public async Task GrpcInbound_TelemetryOptions_RegistersServerLoggingInterceptor()
+    {
+        var port = TestPortAllocator.GetRandomPort();
+        var address = new Uri($"http://127.0.0.1:{port}");
+
+        double? serverDuration = null;
+        using var listener = new MeterListener
+        {
+            InstrumentPublished = (instrument, l) =>
+            {
+                if (string.Equals(instrument.Meter.Name, GrpcTransportMetrics.MeterName, StringComparison.Ordinal) &&
+                    string.Equals(instrument.Name, "polymer.grpc.server.unary.duration", StringComparison.Ordinal))
+                {
+                    l.EnableMeasurementEvents(instrument);
+                }
+            }
+        };
+
+        listener.SetMeasurementEventCallback<double>((instrument, measurement, tags, state) =>
+        {
+            if (string.Equals(instrument.Name, "polymer.grpc.server.unary.duration", StringComparison.Ordinal))
+            {
+                serverDuration = measurement;
+            }
+        });
+        listener.Start();
+
+        var options = new DispatcherOptions("echo");
+        var grpcInbound = new GrpcInbound(new[] { address.ToString() }, telemetryOptions: new GrpcTelemetryOptions());
+        options.AddLifecycle("grpc-inbound", grpcInbound);
+
+        var dispatcher = new Polymer.Dispatcher.Dispatcher(options);
+        var codec = new JsonCodec<EchoRequest, EchoResponse>(new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+        dispatcher.Register(new UnaryProcedureSpec(
+            "echo",
+            "echo::ping",
+            (request, cancellationToken) =>
+            {
+                var decode = codec.DecodeRequest(request.Body, request.Meta);
+                if (decode.IsFailure)
+                {
+                    return ValueTask.FromResult(Err<Response<ReadOnlyMemory<byte>>>(decode.Error!));
+                }
+
+                var responseMeta = new ResponseMeta(encoding: "application/json");
+                var encode = codec.EncodeResponse(new EchoResponse { Message = decode.Value.Message }, responseMeta);
+                return encode.IsSuccess
+                    ? ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(encode.Value, responseMeta)))
+                    : ValueTask.FromResult(Err<Response<ReadOnlyMemory<byte>>>(encode.Error!));
+            }));
+
+        var ct = TestContext.Current.CancellationToken;
+        await dispatcher.StartAsync(ct);
+        await WaitForGrpcReadyAsync(address, ct);
+
+        var outbound = new GrpcOutbound(address, "echo");
+        await outbound.StartAsync(ct);
+
+        try
+        {
+            var requestMeta = new RequestMeta(
+                service: "echo",
+                procedure: "echo::ping",
+                encoding: "application/json",
+                transport: TransportName);
+            var payload = codec.EncodeRequest(new EchoRequest("hello"), requestMeta);
+            Assert.True(payload.IsSuccess);
+
+            var request = new Request<ReadOnlyMemory<byte>>(requestMeta, payload.Value);
+            var responseResult = await outbound.CallAsync(request, ct);
+            Assert.True(responseResult.IsSuccess, responseResult.Error?.Message);
+        }
+        finally
+        {
+            await outbound.StopAsync(ct);
+            await dispatcher.StopAsync(ct);
+        }
+
+        Assert.True(serverDuration.HasValue && serverDuration.Value > 0, "Expected server unary duration metric to be recorded.");
+    }
+
+    private sealed class CaptureLoggerProvider : ILoggerProvider
+    {
+        private readonly ConcurrentBag<LogEntry> _entries = new();
+
+        public IReadOnlyCollection<LogEntry> Entries => _entries;
+
+        public ILogger CreateLogger(string categoryName) => new CaptureLogger(categoryName, _entries);
+
+        public void Dispose()
+        {
+        }
+
+        internal sealed record LogEntry(string CategoryName, LogLevel LogLevel, string Message);
+
+        private sealed class CaptureLogger : ILogger
+        {
+            private readonly string _categoryName;
+            private readonly ConcurrentBag<LogEntry> _entries;
+
+            public CaptureLogger(string categoryName, ConcurrentBag<LogEntry> entries)
+            {
+                _categoryName = categoryName;
+                _entries = entries;
+            }
+
+            public IDisposable BeginScope<TState>(TState state) where TState : notnull => NullScope.Instance;
+
+            public bool IsEnabled(LogLevel logLevel) => true;
+
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            {
+                if (formatter is null)
+                {
+                    throw new ArgumentNullException(nameof(formatter));
+                }
+
+                var message = formatter(state, exception) ?? string.Empty;
+                _entries.Add(new LogEntry(_categoryName, logLevel, message));
+            }
+        }
+
+        private sealed class NullScope : IDisposable
+        {
+            public static readonly NullScope Instance = new();
+
+            public void Dispose()
+            {
+            }
+        }
     }
 
     private static async Task WaitForGrpcReadyAsync(Uri address, CancellationToken cancellationToken)

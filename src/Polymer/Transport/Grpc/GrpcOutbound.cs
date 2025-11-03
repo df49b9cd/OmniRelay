@@ -15,6 +15,8 @@ using Grpc.Core;
 using Grpc.Net.Client;
 using Grpc.Core.Interceptors;
 using Hugo;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Polymer.Core;
 using Polymer.Core.Transport;
 using Polymer.Core.Peers;
@@ -32,6 +34,7 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
     private readonly GrpcClientRuntimeOptions? _clientRuntimeOptions;
     private readonly GrpcCompressionOptions? _compressionOptions;
     private readonly PeerCircuitBreakerOptions _peerBreakerOptions;
+    private readonly GrpcTelemetryOptions? _telemetryOptions;
     private readonly Func<IReadOnlyList<IPeer>, IPeerChooser> _peerChooserFactory;
     private ImmutableArray<GrpcPeer> _peers = ImmutableArray<GrpcPeer>.Empty;
     private IPeerChooser? _peerChooser;
@@ -50,7 +53,8 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         Func<IReadOnlyList<IPeer>, IPeerChooser>? peerChooser = null,
         GrpcClientRuntimeOptions? clientRuntimeOptions = null,
         GrpcCompressionOptions? compressionOptions = null,
-        PeerCircuitBreakerOptions? peerCircuitBreakerOptions = null)
+        PeerCircuitBreakerOptions? peerCircuitBreakerOptions = null,
+        GrpcTelemetryOptions? telemetryOptions = null)
         : this(
             new[] { address ?? throw new ArgumentNullException(nameof(address)) },
             remoteService,
@@ -59,7 +63,8 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
             peerChooser,
             clientRuntimeOptions,
             compressionOptions,
-            peerCircuitBreakerOptions)
+            peerCircuitBreakerOptions,
+            telemetryOptions)
     {
     }
 
@@ -71,7 +76,8 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         Func<IReadOnlyList<IPeer>, IPeerChooser>? peerChooser = null,
         GrpcClientRuntimeOptions? clientRuntimeOptions = null,
         GrpcCompressionOptions? compressionOptions = null,
-        PeerCircuitBreakerOptions? peerCircuitBreakerOptions = null)
+        PeerCircuitBreakerOptions? peerCircuitBreakerOptions = null,
+        GrpcTelemetryOptions? telemetryOptions = null)
     {
         if (addresses is null)
         {
@@ -94,6 +100,7 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         _clientTlsOptions = clientTlsOptions;
         _clientRuntimeOptions = clientRuntimeOptions;
         _compressionOptions = compressionOptions;
+        _telemetryOptions = telemetryOptions;
         _peerBreakerOptions = peerCircuitBreakerOptions ?? new PeerCircuitBreakerOptions();
         _channelOptions = channelOptions ?? new GrpcChannelOptions
         {
@@ -697,9 +704,28 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
             _channel = GrpcChannel.ForAddress(_address, options);
             var invoker = _channel.CreateCallInvoker();
 
+            var interceptors = new List<Interceptor>();
+
             if (_owner._clientRuntimeOptions is { Interceptors.Count: > 0 } runtimeOptions)
             {
-                invoker = invoker.Intercept(runtimeOptions.Interceptors.ToArray());
+                foreach (var interceptor in runtimeOptions.Interceptors)
+                {
+                    if (interceptor is not null)
+                    {
+                        interceptors.Add(interceptor);
+                    }
+                }
+            }
+
+            if (_owner._telemetryOptions?.EnableClientLogging == true)
+            {
+                var loggerFactory = _owner._telemetryOptions.ResolveLoggerFactory();
+                interceptors.Add(new GrpcClientLoggingInterceptor(loggerFactory.CreateLogger<GrpcClientLoggingInterceptor>()));
+            }
+
+            if (interceptors.Count > 0)
+            {
+                invoker = invoker.Intercept(interceptors.ToArray());
             }
 
             _callInvoker = invoker;

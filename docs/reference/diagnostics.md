@@ -85,6 +85,7 @@ Each workflow measurement includes metric tags for `workflow.namespace`, `workfl
 - Use `GoDiagnostics.Configure(Meter meter)` when DI already exposes a pre-built `Meter`.
 - Create a schema-aware activity source with `GoDiagnostics.CreateActivitySource(string? name = GoDiagnostics.ActivitySourceName)` and optionally throttle spans via `GoDiagnostics.UseRateLimitedSampling(...)` when your workload emits high volumes of internal activities.
 - Invoke `GoDiagnostics.Reset()` (typically in unit tests) to dispose existing meters before registering new ones.
+- Pass `GrpcTelemetryOptions` to `GrpcInbound`/`GrpcOutbound` so the built-in logging/metrics interceptors attach automatically without bespoke interceptor wiring.
 
 ## Usage guidelines
 
