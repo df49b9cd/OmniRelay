@@ -53,6 +53,9 @@ jobs:
       - name: Build Polymer CLI
         run: dotnet build src/Polymer.Cli/Polymer.Cli.csproj --configuration Release
 
+      - name: Build Protobuf codegen plug-in
+        run: dotnet build src/Polymer.Codegen.Protobuf/Polymer.Codegen.Protobuf.csproj --configuration Release
+
       - name: Run tests
         run: dotnet test --configuration Release
 
