@@ -260,7 +260,7 @@ Peer & Load‑Balancing
 
   * `TwoRandomChoices` (power-of-two). *(Implemented via `TwoRandomPeerChooser`.)*
 
-* **Health:** per-peer inflight counters, error backoff, basic circuit-breaking hooks. *(Initial backoff implemented via `PeerCircuitBreaker`; plan to add half-open probing.)*
+* **Health:** per-peer inflight counters, error backoff, basic circuit-breaking hooks. *(Completed: `PeerCircuitBreaker` now supports exponential backoff, half-open probing limits, and success thresholds, keeping unhealthy peers quarantined until they recover.)*
 
 * **Discovery hooks:** design `IPeerTransport`/`IPeerDirectory` to plug static lists, DNS SRV, or future service discovery without altering core choosers.
 

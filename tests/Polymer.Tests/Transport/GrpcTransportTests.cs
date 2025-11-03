@@ -350,7 +350,7 @@ public class GrpcTransportTests
             new[] { failingAddress, healthyAddress },
             "echo",
             peerCircuitBreakerOptions: breakerOptions,
-            peerChooser: peers => new FewestPendingPeerChooser(ImmutableArray.CreateRange(peers)));
+            peerChooser: peers => new RoundRobinPeerChooser(ImmutableArray.CreateRange(peers)));
 
         await outbound.StartAsync(ct);
 

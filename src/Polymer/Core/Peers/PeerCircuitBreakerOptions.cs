@@ -10,5 +10,9 @@ public sealed class PeerCircuitBreakerOptions
 
     public int FailureThreshold { get; init; } = 1;
 
+    public int HalfOpenMaxAttempts { get; init; } = 1;
+
+    public int HalfOpenSuccessThreshold { get; init; } = 1;
+
     public TimeProvider TimeProvider { get; init; } = TimeProvider.System;
 }
