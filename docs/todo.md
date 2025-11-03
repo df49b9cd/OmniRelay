@@ -123,7 +123,7 @@ Comprehensive backlog tracking the remaining work needed to reach feature parity
 ## 3. Dispatcher & Routing (Phase 2)
 
 - **Procedure Catalogue Enhancements**
-  - Support hierarchical naming: `service::module::method`, alias resolution.
+  - ~~Support hierarchical naming: `service::module::method`, alias resolution.~~ *(completed via alias-aware `ProcedureSpec` + `ProcedureRegistry` updates allowing alternate names and exposing them through introspection.)*
   - Implement router table with wildcard/version matching (e.g., `foo::*`, `foo::v2::*`).
   - Add validation to prevent conflicting registrations.
 

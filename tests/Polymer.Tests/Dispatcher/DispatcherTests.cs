@@ -66,6 +66,41 @@ public class DispatcherTests
     }
 
     [Fact]
+    public async Task InvokeUnaryAsync_ResolvesProcedureAliases()
+    {
+        var options = new DispatcherOptions("keyvalue");
+        var dispatcher = new Polymer.Dispatcher.Dispatcher(options);
+        var callCount = 0;
+
+        var spec = new UnaryProcedureSpec(
+            "keyvalue",
+            "user::get",
+            (request, cancellationToken) =>
+            {
+                Interlocked.Increment(ref callCount);
+                var response = Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty);
+                return ValueTask.FromResult(Ok(response));
+            },
+            aliases: new[] { "v1::user::get", "users::get" });
+
+        dispatcher.Register(spec);
+
+        var meta = new RequestMeta(service: "keyvalue", procedure: "v1::user::get", transport: "test");
+        var request = new Request<ReadOnlyMemory<byte>>(meta, ReadOnlyMemory<byte>.Empty);
+        var ct = TestContext.Current.CancellationToken;
+
+        var result = await dispatcher.InvokeUnaryAsync("v1::user::get", request, ct);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, callCount);
+
+        var snapshot = dispatcher.Introspect();
+        var descriptor = Assert.Single(snapshot.Procedures.Unary);
+        Assert.Contains("v1::user::get", descriptor.Aliases);
+        Assert.Contains("users::get", descriptor.Aliases);
+    }
+
+    [Fact]
     public void ClientConfig_ReturnsOutboundsAndMiddleware()
     {
         var unaryOutbound = new StubUnaryOutbound();

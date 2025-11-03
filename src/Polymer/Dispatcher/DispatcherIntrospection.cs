@@ -17,13 +17,13 @@ public sealed record ProcedureGroups(
     ImmutableArray<ClientStreamProcedureDescriptor> ClientStream,
     ImmutableArray<DuplexProcedureDescriptor> Duplex);
 
-public sealed record ProcedureDescriptor(string Name, string? Encoding);
+public sealed record ProcedureDescriptor(string Name, string? Encoding, ImmutableArray<string> Aliases);
 
-public sealed record StreamProcedureDescriptor(string Name, string? Encoding, StreamIntrospectionMetadata Metadata);
+public sealed record StreamProcedureDescriptor(string Name, string? Encoding, ImmutableArray<string> Aliases, StreamIntrospectionMetadata Metadata);
 
-public sealed record ClientStreamProcedureDescriptor(string Name, string? Encoding, ClientStreamIntrospectionMetadata Metadata);
+public sealed record ClientStreamProcedureDescriptor(string Name, string? Encoding, ImmutableArray<string> Aliases, ClientStreamIntrospectionMetadata Metadata);
 
-public sealed record DuplexProcedureDescriptor(string Name, string? Encoding, DuplexIntrospectionMetadata Metadata);
+public sealed record DuplexProcedureDescriptor(string Name, string? Encoding, ImmutableArray<string> Aliases, DuplexIntrospectionMetadata Metadata);
 
 public sealed record LifecycleComponentDescriptor(string Name, string ComponentType);
 

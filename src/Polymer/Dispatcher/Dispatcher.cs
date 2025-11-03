@@ -338,31 +338,31 @@ public sealed class Dispatcher
         var unaryProcedures = procedureSnapshot
             .OfType<UnaryProcedureSpec>()
             .OrderBy(static p => p.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(static spec => new ProcedureDescriptor(spec.Name, spec.Encoding))
+            .Select(static spec => new ProcedureDescriptor(spec.Name, spec.Encoding, spec.Aliases))
             .ToImmutableArray();
 
         var onewayProcedures = procedureSnapshot
             .OfType<OnewayProcedureSpec>()
             .OrderBy(static p => p.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(static spec => new ProcedureDescriptor(spec.Name, spec.Encoding))
+            .Select(static spec => new ProcedureDescriptor(spec.Name, spec.Encoding, spec.Aliases))
             .ToImmutableArray();
 
         var streamProcedures = procedureSnapshot
             .OfType<StreamProcedureSpec>()
             .OrderBy(static p => p.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(static spec => new StreamProcedureDescriptor(spec.Name, spec.Encoding, spec.Metadata))
+            .Select(static spec => new StreamProcedureDescriptor(spec.Name, spec.Encoding, spec.Aliases, spec.Metadata))
             .ToImmutableArray();
 
         var clientStreamProcedures = procedureSnapshot
             .OfType<ClientStreamProcedureSpec>()
             .OrderBy(static p => p.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(static spec => new ClientStreamProcedureDescriptor(spec.Name, spec.Encoding, spec.Metadata))
+            .Select(static spec => new ClientStreamProcedureDescriptor(spec.Name, spec.Encoding, spec.Aliases, spec.Metadata))
             .ToImmutableArray();
 
         var duplexProcedures = procedureSnapshot
             .OfType<DuplexProcedureSpec>()
             .OrderBy(static p => p.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(static spec => new DuplexProcedureDescriptor(spec.Name, spec.Encoding, spec.Metadata))
+            .Select(static spec => new DuplexProcedureDescriptor(spec.Name, spec.Encoding, spec.Aliases, spec.Metadata))
             .ToImmutableArray();
 
         var procedures = new ProcedureGroups(

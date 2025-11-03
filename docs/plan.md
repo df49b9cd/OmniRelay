@@ -190,6 +190,7 @@ Wire‑Up & Lifecycle
 * Provide helper extensions (`AddPolymerDispatcher`, `UsePolymer`) so ASP.NET Core or worker services can register dispatcher components declaratively in `Program.cs`.
 
 * Bootstrap Hugo diagnostics (`GoDiagnostics.Configure(...)`) as part of dispatcher startup so transport/middleware metrics flow into the shared telemetry backends without bespoke instrumentation.
+* **Procedure aliases:** `ProcedureSpec` now accepts alternative names; the registry resolves aliases transparently and introspection surfaces them alongside canonical procedure names.
 * **Shadowing:** dual outbound tee support (`TeeUnaryOutbound`, `TeeOnewayOutbound`, `DispatcherOptions.AddTee*`) mirrors YARPC-Go shadow traffic, with sampling, header tagging, and best-effort failure handling.
 
 * * *

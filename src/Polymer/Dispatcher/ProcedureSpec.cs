@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Linq;
 using Polymer.Core.Middleware;
 using Polymer.Core.Transport;
 
@@ -7,7 +9,12 @@ namespace Polymer.Dispatcher;
 
 public abstract record ProcedureSpec
 {
-    protected ProcedureSpec(string service, string name, ProcedureKind kind, string? encoding = null)
+    protected ProcedureSpec(
+        string service,
+        string name,
+        ProcedureKind kind,
+        string? encoding = null,
+        IReadOnlyList<string>? aliases = null)
     {
         Service = service ?? throw new ArgumentNullException(nameof(service));
         if (string.IsNullOrWhiteSpace(name))
@@ -18,12 +25,21 @@ public abstract record ProcedureSpec
         Name = name;
         Kind = kind;
         Encoding = encoding;
+        Aliases = aliases is null
+            ? ImmutableArray<string>.Empty
+            : ImmutableArray.CreateRange(aliases);
+
+        if (Aliases.Any(static alias => string.IsNullOrWhiteSpace(alias)))
+        {
+            throw new ArgumentException("Aliases cannot contain null or whitespace entries.", nameof(aliases));
+        }
     }
 
     public string Service { get; }
     public string Name { get; }
     public ProcedureKind Kind { get; }
     public string? Encoding { get; }
+    public ImmutableArray<string> Aliases { get; }
     public string FullName => $"{Service}::{Name}";
 }
 
@@ -34,8 +50,9 @@ public sealed record UnaryProcedureSpec : ProcedureSpec
         string name,
         UnaryInboundDelegate handler,
         string? encoding = null,
-        IReadOnlyList<IUnaryInboundMiddleware>? middleware = null)
-        : base(service, name, ProcedureKind.Unary, encoding)
+        IReadOnlyList<IUnaryInboundMiddleware>? middleware = null,
+        IReadOnlyList<string>? aliases = null)
+        : base(service, name, ProcedureKind.Unary, encoding, aliases)
     {
         Handler = handler ?? throw new ArgumentNullException(nameof(handler));
         Middleware = middleware ?? Array.Empty<IUnaryInboundMiddleware>();
@@ -52,8 +69,9 @@ public sealed record OnewayProcedureSpec : ProcedureSpec
         string name,
         OnewayInboundDelegate handler,
         string? encoding = null,
-        IReadOnlyList<IOnewayInboundMiddleware>? middleware = null)
-        : base(service, name, ProcedureKind.Oneway, encoding)
+        IReadOnlyList<IOnewayInboundMiddleware>? middleware = null,
+        IReadOnlyList<string>? aliases = null)
+        : base(service, name, ProcedureKind.Oneway, encoding, aliases)
     {
         Handler = handler ?? throw new ArgumentNullException(nameof(handler));
         Middleware = middleware ?? Array.Empty<IOnewayInboundMiddleware>();
@@ -71,8 +89,9 @@ public sealed record StreamProcedureSpec : ProcedureSpec
         StreamInboundDelegate handler,
         string? encoding = null,
         IReadOnlyList<IStreamInboundMiddleware>? middleware = null,
-        StreamIntrospectionMetadata? metadata = null)
-        : base(service, name, ProcedureKind.Stream, encoding)
+        StreamIntrospectionMetadata? metadata = null,
+        IReadOnlyList<string>? aliases = null)
+        : base(service, name, ProcedureKind.Stream, encoding, aliases)
     {
         Handler = handler ?? throw new ArgumentNullException(nameof(handler));
         Middleware = middleware ?? Array.Empty<IStreamInboundMiddleware>();
@@ -92,8 +111,9 @@ public sealed record ClientStreamProcedureSpec : ProcedureSpec
         ClientStreamInboundDelegate handler,
         string? encoding = null,
         IReadOnlyList<IClientStreamInboundMiddleware>? middleware = null,
-        ClientStreamIntrospectionMetadata? metadata = null)
-        : base(service, name, ProcedureKind.ClientStream, encoding)
+        ClientStreamIntrospectionMetadata? metadata = null,
+        IReadOnlyList<string>? aliases = null)
+        : base(service, name, ProcedureKind.ClientStream, encoding, aliases)
     {
         Handler = handler ?? throw new ArgumentNullException(nameof(handler));
         Middleware = middleware ?? Array.Empty<IClientStreamInboundMiddleware>();
@@ -113,8 +133,9 @@ public sealed record DuplexProcedureSpec : ProcedureSpec
         DuplexInboundDelegate handler,
         string? encoding = null,
         IReadOnlyList<IDuplexInboundMiddleware>? middleware = null,
-        DuplexIntrospectionMetadata? metadata = null)
-        : base(service, name, ProcedureKind.Duplex, encoding)
+        DuplexIntrospectionMetadata? metadata = null,
+        IReadOnlyList<string>? aliases = null)
+        : base(service, name, ProcedureKind.Duplex, encoding, aliases)
     {
         Handler = handler ?? throw new ArgumentNullException(nameof(handler));
         Middleware = middleware ?? Array.Empty<IDuplexInboundMiddleware>();
