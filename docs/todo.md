@@ -146,8 +146,7 @@ Comprehensive backlog tracking the remaining work needed to reach feature parity
 ## 4. Middleware & Observability (Phase 5)
 
 - **Core Middleware Set**
-  - Logging middleware:
-    - Structured logging for inbound/outbound (request id, procedure, duration) with sampling controls.
+  - ~~Logging middleware:~~ *(completed via `RpcLoggingMiddleware` + `RpcLoggingOptions` providing structured inbound/outbound logging with sampling controls.)*
   - Tracing middleware:
     - OpenTelemetry integration with span creation, context propagation (HTTP headers + gRPC metadata).
   - Metrics middleware:
