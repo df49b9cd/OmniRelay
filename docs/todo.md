@@ -147,8 +147,7 @@ Comprehensive backlog tracking the remaining work needed to reach feature parity
 
 - **Core Middleware Set**
   - ~~Logging middleware:~~ *(completed via `RpcLoggingMiddleware` + `RpcLoggingOptions` providing structured inbound/outbound logging with sampling controls.)*
-  - Tracing middleware:
-    - OpenTelemetry integration with span creation, context propagation (HTTP headers + gRPC metadata).
+  - ~~Tracing middleware:~~ *(completed via `RpcTracingMiddleware` providing ActivitySource-based spans with context extraction/injection and YARPC tag conventions.)*
   - Metrics middleware:
     - Expose counters/histograms for requests, latency, retries, payload sizes.
   - Deadline enforcement:
