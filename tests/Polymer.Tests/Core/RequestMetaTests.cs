@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using Polymer.Core;
 using Xunit;
 

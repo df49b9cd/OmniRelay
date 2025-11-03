@@ -1,18 +1,9 @@
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Globalization;
-using System.IO;
-using System.Linq;
-using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Threading;
-using System.Threading.Tasks;
 using System.CommandLine;
-using System.CommandLine.Invocation;
-using System.CommandLine.Parsing;
 using Hugo;
 using System.Reflection;
 using Google.Protobuf;
@@ -1445,8 +1436,6 @@ public static class Program
     private static bool TrySerializeMessage(MessageDescriptor descriptor, string json, out ReadOnlyMemory<byte> payload, out string? error)
     {
         payload = ReadOnlyMemory<byte>.Empty;
-        error = null;
-
         JsonDocument document;
         try
         {

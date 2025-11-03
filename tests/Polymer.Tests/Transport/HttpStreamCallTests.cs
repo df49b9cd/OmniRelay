@@ -1,5 +1,3 @@
-using System;
-using System.Threading.Tasks;
 using Polymer.Core;
 using Polymer.Core.Transport;
 using Polymer.Errors;

@@ -1,4 +1,3 @@
-using System;
 using Hugo;
 
 namespace Polymer.Errors;

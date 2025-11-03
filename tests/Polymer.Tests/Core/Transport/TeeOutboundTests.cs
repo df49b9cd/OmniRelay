@@ -1,6 +1,3 @@
-using System;
-using System.Threading;
-using System.Threading.Tasks;
 using Hugo;
 using Microsoft.Extensions.Logging.Abstractions;
 using Polymer.Core;

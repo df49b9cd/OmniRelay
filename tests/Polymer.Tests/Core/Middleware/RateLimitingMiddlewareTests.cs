@@ -1,7 +1,4 @@
-using System;
-using System.Threading;
 using System.Threading.RateLimiting;
-using System.Threading.Tasks;
 using Polymer.Core;
 using Polymer.Core.Middleware;
 using Polymer.Core.Transport;

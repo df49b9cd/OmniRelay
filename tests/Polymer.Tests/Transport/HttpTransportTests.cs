@@ -1,18 +1,3 @@
-using System;
-using System.Net.Http;
-using System.Text.Json;
-using System.Threading.Tasks;
-using System.IO;
-using System.Text;
-using Polymer.Core;
-using Polymer.Core.Clients;
-using Polymer.Core.Transport;
-using Polymer.Dispatcher;
-using Polymer.Errors;
-using Polymer.Transport.Http;
-using Xunit;
-using static Hugo.Go;
-
 namespace Polymer.Tests.Transport;
 
 // public class HttpTransportTests

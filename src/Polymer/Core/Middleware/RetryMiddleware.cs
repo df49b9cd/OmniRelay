@@ -1,13 +1,8 @@
-using System;
-using System.Threading;
-using System.Threading.Tasks;
 using Hugo;
 using Hugo.Policies;
-using Polymer.Core;
 using Polymer.Core.Peers;
 using Polymer.Core.Transport;
 using Polymer.Errors;
-using static Hugo.Go;
 
 namespace Polymer.Core.Middleware;
 

@@ -1,11 +1,6 @@
-using System;
-using System.Linq;
 using System.Net.Sockets;
 using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
 using Polymer.Core;
-using Polymer.Core.Transport;
 using Polymer.Dispatcher;
 using Polymer.Transport.Http;
 using Xunit;

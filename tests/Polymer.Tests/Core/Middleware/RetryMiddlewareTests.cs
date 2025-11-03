@@ -1,6 +1,3 @@
-using System;
-using System.Threading;
-using System.Threading.Tasks;
 using Hugo.Policies;
 using Polymer.Core;
 using Polymer.Core.Middleware;

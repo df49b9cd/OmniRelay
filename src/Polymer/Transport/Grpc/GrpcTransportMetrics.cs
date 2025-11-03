@@ -1,4 +1,3 @@
-using System;
 using System.Diagnostics.Metrics;
 using Grpc.Core;
 using Polymer.Core;

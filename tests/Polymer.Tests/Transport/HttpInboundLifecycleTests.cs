@@ -1,11 +1,6 @@
-using System;
 using System.Net;
-using System.Net.Http;
-using System.Threading;
-using System.Threading.Tasks;
 using Polymer.Core;
 using Polymer.Dispatcher;
-using Polymer.Errors;
 using Polymer.Transport.Http;
 using Xunit;
 using static Hugo.Go;

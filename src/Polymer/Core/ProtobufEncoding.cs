@@ -1,5 +1,3 @@
-using System;
-
 namespace Polymer.Core;
 
 internal static class ProtobufEncoding

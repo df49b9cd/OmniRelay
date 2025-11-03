@@ -1,11 +1,6 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
 using System.Text;
 using Google.Protobuf.Compiler;
 using Google.Protobuf.Reflection;
-using Polymer.Core;
 
 namespace Polymer.Codegen.Protobuf.Core;
 

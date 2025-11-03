@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using Microsoft.Extensions.Configuration;
 using Polymer.Core.Peers;
 using Polymer.Core.Transport;

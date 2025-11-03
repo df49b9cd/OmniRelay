@@ -1,9 +1,6 @@
-using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using Hugo;
 using Microsoft.Extensions.Logging;
-using Polymer.Core;
 
 namespace Polymer.Core.Middleware;
 

@@ -1,5 +1,3 @@
-using System;
-using System.Linq;
 using Grpc.Core;
 
 namespace Polymer.Transport.Grpc;

@@ -1,5 +1,3 @@
-using System;
-
 namespace Polymer.Core;
 
 public interface IResponse<out T>

@@ -1,5 +1,3 @@
-using System;
-
 namespace Polymer.Core.Middleware;
 
 public sealed class DeadlineOptions

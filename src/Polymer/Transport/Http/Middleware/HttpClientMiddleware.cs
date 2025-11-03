@@ -1,9 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Net.Http;
-using System.Threading;
-using System.Threading.Tasks;
-using Hugo;
 using Polymer.Core;
 
 namespace Polymer.Transport.Http.Middleware;

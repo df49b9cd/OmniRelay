@@ -1,5 +1,3 @@
-using System;
-
 namespace Polymer.Core.Peers;
 
 public sealed class PeerCircuitBreaker

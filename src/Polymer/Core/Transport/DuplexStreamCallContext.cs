@@ -1,5 +1,3 @@
-using System;
-using System.Threading;
 using Hugo;
 
 namespace Polymer.Core.Transport;

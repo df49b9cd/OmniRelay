@@ -1,8 +1,5 @@
-using System;
 using Hugo;
 using Hugo.Policies;
-using Polymer.Core;
-using Polymer.Errors;
 
 namespace Polymer.Core.Middleware;
 

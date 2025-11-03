@@ -1,5 +1,3 @@
-using System;
-
 namespace Polymer.Dispatcher;
 
 /// <summary>

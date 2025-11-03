@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -7,7 +5,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Polymer.Configuration.Internal;
 using Polymer.Configuration.Models;
-using Polymer.Dispatcher;
 
 namespace Polymer.Configuration;
 

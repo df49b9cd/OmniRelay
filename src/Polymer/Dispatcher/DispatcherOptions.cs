@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using System.Collections.Immutable;
 using Polymer.Core;
 using Polymer.Core.Middleware;

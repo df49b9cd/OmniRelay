@@ -1,10 +1,5 @@
-using System;
-using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Globalization;
-using System.IO;
-using System.Linq;
-using System.Net.Http;
 using System.Net.Security;
 using System.Reflection;
 using System.Security.Cryptography.X509Certificates;
@@ -18,7 +13,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Hosting;
 using Polymer.Configuration.Models;
 using Polymer.Core;
-using Polymer.Core.Middleware;
 using Polymer.Core.Peers;
 using Polymer.Dispatcher;
 using Polymer.Transport.Grpc;

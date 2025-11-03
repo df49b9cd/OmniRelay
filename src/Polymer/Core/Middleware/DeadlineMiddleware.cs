@@ -1,8 +1,4 @@
-using System;
-using System.Threading;
-using System.Threading.Tasks;
 using Hugo;
-using Polymer.Core;
 using Polymer.Core.Transport;
 using Polymer.Errors;
 using static Hugo.Go;

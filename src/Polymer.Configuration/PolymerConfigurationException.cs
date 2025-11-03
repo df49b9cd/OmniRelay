@@ -1,5 +1,3 @@
-using System;
-
 namespace Polymer.Configuration;
 
 public sealed class PolymerConfigurationException : Exception

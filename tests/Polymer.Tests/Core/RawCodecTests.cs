@@ -1,4 +1,3 @@
-using System;
 using Polymer.Core;
 using Polymer.Errors;
 using Xunit;

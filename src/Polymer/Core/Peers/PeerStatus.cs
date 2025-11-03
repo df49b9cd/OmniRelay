@@ -1,5 +1,3 @@
-using System;
-
 namespace Polymer.Core.Peers;
 
 public readonly struct PeerStatus(PeerState state, int inflight, DateTimeOffset? lastSuccess, DateTimeOffset? lastFailure)

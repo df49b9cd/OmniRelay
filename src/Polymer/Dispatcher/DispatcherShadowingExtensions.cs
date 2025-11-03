@@ -1,4 +1,3 @@
-using System;
 using Polymer.Core.Transport;
 
 namespace Polymer.Dispatcher;

@@ -1,4 +1,3 @@
-using System;
 using Google.Protobuf;
 using Google.Protobuf.Compiler;
 using Polymer.Codegen.Protobuf.Core;

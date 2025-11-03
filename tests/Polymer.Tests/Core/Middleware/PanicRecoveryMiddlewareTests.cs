@@ -1,6 +1,3 @@
-using System;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Polymer.Core;
 using Polymer.Core.Middleware;
@@ -8,7 +5,6 @@ using Polymer.Core.Transport;
 using Polymer.Errors;
 using Polymer.Tests.Support;
 using Xunit;
-using static Hugo.Go;
 
 namespace Polymer.Tests.Core.Middleware;
 

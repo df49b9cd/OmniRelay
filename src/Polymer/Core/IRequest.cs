@@ -1,5 +1,3 @@
-using System;
-
 namespace Polymer.Core;
 
 public interface IRequest<out T>

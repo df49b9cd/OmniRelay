@@ -1,5 +1,3 @@
-using Polymer.Tests.Protos;
-
 namespace ProtobufIncrementalSample;
 
 public static class GeneratedUsage

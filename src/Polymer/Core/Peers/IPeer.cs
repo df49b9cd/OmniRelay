@@ -1,5 +1,3 @@
-using System.Threading;
-
 namespace Polymer.Core.Peers;
 
 public interface IPeer

@@ -1,5 +1,3 @@
-using System;
-using System.IO;
 using Google.Protobuf.Reflection;
 using Microsoft.CodeAnalysis;
 using Polymer.Codegen.Protobuf.Core;
