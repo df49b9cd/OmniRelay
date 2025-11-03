@@ -152,8 +152,7 @@ Comprehensive backlog tracking the remaining work needed to reach feature parity
   - ~~Deadline enforcement:~~ *(completed via `DeadlineMiddleware`/`DeadlineOptions` enforcing TTL/absolute deadlines with canonical `DeadlineExceeded` errors.)*
   - ~~Panic/exception recovery:~~ *(completed via `PanicRecoveryMiddleware` converting unhandled exceptions into `Internal` errors with logging/metadata.)*
   - ~~Retry/backoff middleware:~~ *(completed via `RetryMiddleware`/`RetryOptions` leveraging Hugo retry policies with per-request selectors.)*
-  - Rate limiting / circuit breaking:
-    - Token bucket, sliding window, or concurrency-based controls; propagate backoff metadata.
+  - ~~Rate limiting / circuit breaking:~~ *(completed via `RateLimitingMiddleware` + `RateLimitingOptions` providing concurrency-based controls with `ResourceExhausted` signaling; circuit breaking will layer on peer subsystem.)*
 
 - **Middleware SDK**
   - Provide context objects exposing metadata, transport info, channel writers (for streaming).
