@@ -24,7 +24,7 @@ The repository ships focused sample projects that exercise specific runtime feat
 - Run: `dotnet run --project samples/Configuration.Server`
 - Features covered:
   - Generic Host + dependency injection via `Host.CreateDefaultBuilder`.
-  - `AddOmniRelayDispatcher(builder.Configuration.GetSection("polymer"))` binding the dispatcher, transports, middleware, and codecs from `appsettings.json`.
+  - `AddOmniRelayDispatcher(builder.Configuration.GetSection("omnirelay"))` binding the dispatcher, transports, middleware, and codecs from `appsettings.json`.
   - JSON codec registrations configured under `encodings:json` and resolved at runtime via `dispatcher.Codecs.TryResolve(...)`.
   - Diagnostics and control plane enabled declaratively (`diagnostics.runtime`, OTLP/Prometheus exporters).
   - `ICustomOutboundSpec` implementation (`audit-fanout`) that materializes an HTTP oneway outbound with configured headers.

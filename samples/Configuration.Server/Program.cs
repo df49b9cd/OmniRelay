@@ -32,7 +32,7 @@ public static class Program
                 services.AddSingleton<TelemetrySink>();
                 services.AddSingleton<RequestLoggingMiddleware>();
                 services.AddSingleton<ICustomOutboundSpec, AuditFanoutOutboundSpec>();
-                services.AddOmniRelayDispatcher(context.Configuration.GetSection("polymer"));
+                services.AddOmniRelayDispatcher(context.Configuration.GetSection("omnirelay"));
                 services.AddHostedService<OmniRelayRegistrationHostedService>();
                 services.AddHostedService<StartupBannerHostedService>();
             })
@@ -306,12 +306,12 @@ internal sealed class StartupBannerHostedService : IHostedService
     {
         var httpUrls = string.Join(
             ", ",
-            _configuration.GetSection("polymer:inbounds:http").GetChildren()
+            _configuration.GetSection("omnirelay:inbounds:http").GetChildren()
                 .SelectMany(section => section.GetSection("urls").Get<string[]>() ?? Array.Empty<string>()));
 
         var grpcUrls = string.Join(
             ", ",
-            _configuration.GetSection("polymer:inbounds:grpc").GetChildren()
+            _configuration.GetSection("omnirelay:inbounds:grpc").GetChildren()
                 .SelectMany(section => section.GetSection("urls").Get<string[]>() ?? Array.Empty<string>()));
 
         _logger.LogInformation("OmniRelay configuration sample running as {Service}.", _dispatcher.ServiceName);
