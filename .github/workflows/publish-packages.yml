@@ -88,7 +88,7 @@ jobs:
         run: ls -1 artifacts/packages
 
       - name: Upload packages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: omnirelay-packages-${{ steps.version.outputs.value }}
           path: artifacts/packages
@@ -99,7 +99,7 @@ jobs:
           OWNER: ${{ github.repository_owner }}
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          for pkg in artifacts/packages/*.nupkg artifacts/packages/*.snupkg; do
+          for pkg in artifacts/packages/*.nupkg; do
             [ -e "$pkg" ] || continue
             dotnet nuget push "$pkg" \
               --source "https://nuget.pkg.github.com/${OWNER}/index.json" \
