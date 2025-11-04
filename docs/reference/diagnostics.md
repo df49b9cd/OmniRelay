@@ -103,7 +103,7 @@ Each workflow measurement includes metric tags for `workflow.namespace`, `workfl
         "enableMetrics": true,
         "prometheus": {
           "enabled": true,
-          "scrapeEndpointPath": "/polymer/metrics"
+          "scrapeEndpointPath": "/omnirelay/metrics"
         },
         "otlp": {
           "enabled": true,
@@ -120,12 +120,12 @@ Each workflow measurement includes metric tags for `workflow.namespace`, `workfl
 }
 ```
 
-- `openTelemetry.prometheus.enabled` exposes `/polymer/metrics`, which returns the Prometheus text format scraped directly from OpenTelemetry.
+- `openTelemetry.prometheus.enabled` exposes `/omnirelay/metrics`, which returns the Prometheus text format scraped directly from OpenTelemetry.
 - `openTelemetry.otlp.*` configures the standard OTLP exporter (`protocol` defaults to gRPC; omit the endpoint to use the SDK default).
 - `runtime` enables lightweight control-plane endpoints:
-  - `GET /polymer/control/logging` returns `{ "minimumLevel": "Information" }`.
-  - `POST /polymer/control/logging` accepts `{ "level": "Warning" }` (or `null` to reset) and updates `LoggerFilterOptions.MinLevel` on the fly.
-  - `GET /polymer/control/tracing` reports the active sampling probability, and `POST /polymer/control/tracing` accepts `{ "probability": 0.25 }` to throttle new `Activity` creation in `RpcTracingMiddleware` unless an upstream span forces sampling.
+  - `GET /omnirelay/control/logging` returns `{ "minimumLevel": "Information" }`.
+  - `POST /omnirelay/control/logging` accepts `{ "level": "Warning" }` (or `null` to reset) and updates `LoggerFilterOptions.MinLevel` on the fly.
+  - `GET /omnirelay/control/tracing` reports the active sampling probability, and `POST /omnirelay/control/tracing` accepts `{ "probability": 0.25 }` to throttle new `Activity` creation in `RpcTracingMiddleware` unless an upstream span forces sampling.
 
 These endpoints appear alongside `/omnirelay/introspect` on every HTTP inbound when `runtime.enableControlPlane` is true.
 
@@ -135,32 +135,32 @@ With the `appsettings.json` above and an OmniRelay HTTP inbound listening on `ht
 
 ```bash
 # Check the current minimum log level
-curl http://localhost:8080/polymer/control/logging
+curl http://localhost:8080/omnirelay/control/logging
 
 # Raise log level to Warning
 curl -X POST \
   -H 'Content-Type: application/json' \
   -d '{ "level": "Warning" }' \
-  http://localhost:8080/polymer/control/logging
+  http://localhost:8080/omnirelay/control/logging
 
 # Reset to the configuration default
 curl -X POST \
   -H 'Content-Type: application/json' \
   -d '{ "level": null }' \
-  http://localhost:8080/polymer/control/logging
+  http://localhost:8080/omnirelay/control/logging
 
 # Inspect and adjust tracing sampling probability
-curl http://localhost:8080/polymer/control/tracing
+curl http://localhost:8080/omnirelay/control/tracing
 curl -X POST \
   -H 'Content-Type: application/json' \
   -d '{ "probability": 0.25 }' \
-  http://localhost:8080/polymer/control/tracing
+  http://localhost:8080/omnirelay/control/tracing
 
 # Scrape Prometheus metrics exposed by the HTTP inbound
-curl http://localhost:8080/polymer/metrics
+curl http://localhost:8080/omnirelay/metrics
 ```
 
-> **Example:** `samples/Configuration.Server` enables both Prometheus scraping and runtime toggles purely through configuration and exposes the `/polymer/control/*` endpoints automatically on its HTTP inbound.
+> **Example:** `samples/Configuration.Server` enables both Prometheus scraping and runtime toggles purely through configuration and exposes the `/omnirelay/control/*` endpoints automatically on its HTTP inbound.
 
 ## Usage guidelines
 

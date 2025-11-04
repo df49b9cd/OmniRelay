@@ -741,13 +741,13 @@ internal sealed class DispatcherBuilder
     {
         if (options.EnableLoggingToggle)
         {
-            app.MapGet("/polymer/control/logging", (IDiagnosticsRuntime runtime) =>
+            app.MapGet("/omnirelay/control/logging", (IDiagnosticsRuntime runtime) =>
             {
                 var level = runtime.MinimumLogLevel?.ToString();
                 return Results.Json(new { minimumLevel = level });
             });
 
-            app.MapPost("/polymer/control/logging", (DiagnosticsLogLevelRequest request, IDiagnosticsRuntime runtime) =>
+            app.MapPost("/omnirelay/control/logging", (DiagnosticsLogLevelRequest request, IDiagnosticsRuntime runtime) =>
             {
                 if (request is null)
                 {
@@ -772,12 +772,12 @@ internal sealed class DispatcherBuilder
 
         if (options.EnableSamplingToggle)
         {
-            app.MapGet("/polymer/control/tracing", (IDiagnosticsRuntime runtime) =>
+            app.MapGet("/omnirelay/control/tracing", (IDiagnosticsRuntime runtime) =>
             {
                 return Results.Json(new { samplingProbability = runtime.TraceSamplingProbability });
             });
 
-            app.MapPost("/polymer/control/tracing", (DiagnosticsSamplingRequest request, IDiagnosticsRuntime runtime) =>
+            app.MapPost("/omnirelay/control/tracing", (DiagnosticsSamplingRequest request, IDiagnosticsRuntime runtime) =>
             {
                 if (request is null)
                 {

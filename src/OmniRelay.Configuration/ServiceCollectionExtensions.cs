@@ -162,7 +162,7 @@ public static class OmniRelayServiceCollectionExtensions
     {
         if (string.IsNullOrWhiteSpace(path))
         {
-            return "/polymer/metrics";
+            return "/omnirelay/metrics";
         }
 
         var normalized = path.Trim();
