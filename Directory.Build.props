@@ -16,10 +16,8 @@
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/df49b9cd/OmniRelay</PackageProjectUrl>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
-    <IncludeSymbols>true</IncludeSymbols>
-    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
-    <DebugType>portable</DebugType>
+    <DebugType>embedded</DebugType>
     <ContinuousIntegrationBuild Condition="'$(ContinuousIntegrationBuild)' == ''">$(CI)</ContinuousIntegrationBuild>
   </PropertyGroup>
 
