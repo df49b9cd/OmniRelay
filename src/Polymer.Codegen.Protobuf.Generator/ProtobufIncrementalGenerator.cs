@@ -1,3 +1,8 @@
+using System;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using System.Runtime.Loader;
 using Google.Protobuf.Reflection;
 using Microsoft.CodeAnalysis;
 using Polymer.Codegen.Protobuf.Core;
@@ -7,6 +12,20 @@ namespace Polymer.Codegen.Protobuf.Generator;
 [Generator]
 public sealed class ProtobufIncrementalGenerator : IIncrementalGenerator
 {
+    private static readonly Lazy<string?> DependencyDirectory = new(ResolveDependencyDirectory);
+
+    static ProtobufIncrementalGenerator()
+    {
+        var directory = DependencyDirectory.Value;
+        if (!string.IsNullOrEmpty(directory))
+        {
+            AssemblyLoadContext.Default.Resolving += ResolveAssemblyFromDependencies;
+            PreloadDependency(directory, "Google.Protobuf");
+            PreloadDependency(directory, "Polymer.Codegen.Protobuf.Core");
+            PreloadDependency(directory, "Polymer");
+        }
+    }
+
     private static readonly DiagnosticDescriptor DescriptorReadError = new(
         id: "POLYPROT001",
         title: "Failed to read descriptor set",
@@ -101,4 +120,77 @@ public sealed class ProtobufIncrementalGenerator : IIncrementalGenerator
         FileDescriptorSet? DescriptorSet,
         Exception? ReadException,
         Exception? ParseException);
+
+#pragma warning disable RS1035 // Do not do file IO in analyzers
+    private static Assembly? ResolveAssemblyFromDependencies(AssemblyLoadContext context, AssemblyName name)
+    {
+        // Prevent recursion
+        if (string.Equals(name.Name, typeof(ProtobufIncrementalGenerator).Assembly.GetName().Name, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var baseDirectory = Path.GetDirectoryName(typeof(ProtobufIncrementalGenerator).Assembly.Location);
+        if (!string.IsNullOrEmpty(baseDirectory))
+        {
+            var localCandidate = Path.Combine(baseDirectory, $"{name.Name}.dll");
+            if (File.Exists(localCandidate))
+            {
+                return context.LoadFromAssemblyPath(localCandidate);
+            }
+        }
+
+        var dependencyDirectory = DependencyDirectory.Value;
+        if (!string.IsNullOrEmpty(dependencyDirectory))
+        {
+            var candidate = Path.Combine(dependencyDirectory, $"{name.Name}.dll");
+            if (File.Exists(candidate))
+            {
+                return context.LoadFromAssemblyPath(candidate);
+            }
+        }
+
+        return null;
+    }
+
+    private static string? ResolveDependencyDirectory()
+    {
+        var assembly = typeof(ProtobufIncrementalGenerator).Assembly;
+        var metadata = assembly
+            .GetCustomAttributes<AssemblyMetadataAttribute>()
+            .FirstOrDefault(attribute =>
+                string.Equals(attribute.Key, "AnalyzerDependencyPath", StringComparison.Ordinal));
+
+        if (metadata is null || string.IsNullOrWhiteSpace(metadata.Value))
+        {
+            return null;
+        }
+
+        try
+        {
+            var path = Path.GetFullPath(metadata.Value);
+            return Directory.Exists(path) ? path : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static void PreloadDependency(string directory, string assemblyName)
+    {
+        try
+        {
+            var candidate = Path.Combine(directory, $"{assemblyName}.dll");
+            if (File.Exists(candidate))
+            {
+                _ = AssemblyLoadContext.Default.LoadFromAssemblyPath(candidate);
+            }
+        }
+        catch
+        {
+            // best effort only; resolver will attempt to load on demand.
+        }
+    }
+#pragma warning restore RS1035
 }
