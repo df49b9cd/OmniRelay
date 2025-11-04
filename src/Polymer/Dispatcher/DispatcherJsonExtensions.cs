@@ -71,11 +71,11 @@ public static class DispatcherJsonExtensions
         if (dispatcher.TryGetProcedure(name, ProcedureKind.Unary, out var spec) &&
             spec is UnaryProcedureSpec unarySpec)
         {
-            dispatcher.Codecs.RegisterInbound<TRequest, TResponse>(unarySpec.Name, ProcedureKind.Unary, codec, unarySpec.Aliases);
+            dispatcher.Codecs.RegisterInbound(unarySpec.Name, ProcedureKind.Unary, codec, unarySpec.Aliases);
         }
         else
         {
-            dispatcher.Codecs.RegisterInbound<TRequest, TResponse>(name, ProcedureKind.Unary, codec);
+            dispatcher.Codecs.RegisterInbound(name, ProcedureKind.Unary, codec);
         }
     }
 

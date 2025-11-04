@@ -79,7 +79,7 @@ if (grpcPort is { } gp)
     dispatcherOptions.AddLifecycle("grpc-inbound", grpcInbound);
 }
 
-var dispatcher = new Polymer.Dispatcher.Dispatcher(dispatcherOptions);
+var dispatcher = new Dispatcher(dispatcherOptions);
 
 if (httpCodec is not null)
 {

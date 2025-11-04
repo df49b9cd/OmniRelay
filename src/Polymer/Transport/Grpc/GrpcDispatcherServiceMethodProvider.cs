@@ -27,7 +27,7 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                 GrpcMarshallerCache.ByteMarshaller,
                 GrpcMarshallerCache.ByteMarshaller);
 
-            UnaryServerMethod<GrpcDispatcherService, byte[], byte[]> handler = async (_, request, callContext) =>
+            async Task<byte[]> handler(GrpcDispatcherService _, byte[] request, ServerCallContext callContext)
             {
                 if (!_inbound.TryEnterCall(callContext, out var scope, out var rejection))
                 {
@@ -73,9 +73,9 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
 
                 GrpcTransportDiagnostics.SetStatus(activity, StatusCode.OK);
                 return response.Body.ToArray();
-            };
+            }
 
-            context.AddUnaryMethod<byte[], byte[]>(method, [], handler);
+            context.AddUnaryMethod(method, [], handler);
         }
 
         foreach (var spec in procedures.OfType<OnewayProcedureSpec>())
@@ -87,7 +87,7 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                 GrpcMarshallerCache.ByteMarshaller,
                 GrpcMarshallerCache.ByteMarshaller);
 
-            UnaryServerMethod<GrpcDispatcherService, byte[], byte[]> handler = async (_, request, callContext) =>
+            async Task<byte[]> handler(GrpcDispatcherService _, byte[] request, ServerCallContext callContext)
             {
                 if (!_inbound.TryEnterCall(callContext, out var scope, out var rejection))
                 {
@@ -132,9 +132,9 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
 
                 GrpcTransportDiagnostics.SetStatus(activity, StatusCode.OK);
                 return [];
-            };
+            }
 
-            context.AddUnaryMethod<byte[], byte[]>(method, [], handler);
+            context.AddUnaryMethod(method, [], handler);
         }
 
         foreach (var spec in procedures.OfType<StreamProcedureSpec>())
@@ -146,7 +146,7 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                 GrpcMarshallerCache.ByteMarshaller,
                 GrpcMarshallerCache.ByteMarshaller);
 
-            ServerStreamingServerMethod<GrpcDispatcherService, byte[], byte[]> handler = async (_, request, responseStream, callContext) =>
+            async Task handler(GrpcDispatcherService _, byte[] request, IServerStreamWriter<byte[]> responseStream, ServerCallContext callContext)
             {
                 if (!_inbound.TryEnterCall(callContext, out var scope, out var rejection))
                 {
@@ -187,68 +187,70 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                     throw rpcException;
                 }
 
-                await using var streamCall = streamResult.Value;
-                var cancellationToken = callContext.CancellationToken;
-                var headersSent = false;
-
-                async Task EnsureHeadersAsync()
+                await using (var streamCall = streamResult.Value)
                 {
-                    if (headersSent)
+                    var cancellationToken = callContext.CancellationToken;
+                    var headersSent = false;
+
+                    async Task EnsureHeadersAsync()
                     {
-                        return;
+                        if (headersSent)
+                        {
+                            return;
+                        }
+
+                        var headers = GrpcMetadataAdapter.CreateResponseHeaders(streamCall.ResponseMeta);
+                        if (headers.Count > 0)
+                        {
+                            await callContext.WriteResponseHeadersAsync(headers).ConfigureAwait(false);
+                        }
+
+                        headersSent = true;
                     }
 
-                    var headers = GrpcMetadataAdapter.CreateResponseHeaders(streamCall.ResponseMeta);
-                    if (headers.Count > 0)
+                    try
                     {
-                        await callContext.WriteResponseHeadersAsync(headers).ConfigureAwait(false);
-                    }
+                        await foreach (var payload in streamCall.Responses.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+                        {
+                            await EnsureHeadersAsync().ConfigureAwait(false);
+                            cancellationToken.ThrowIfCancellationRequested();
+                            await responseStream.WriteAsync(payload.ToArray()).ConfigureAwait(false);
+                        }
 
-                    headersSent = true;
-                }
-
-                try
-                {
-                    await foreach (var payload in streamCall.Responses.ReadAllAsync(cancellationToken).ConfigureAwait(false))
-                    {
                         await EnsureHeadersAsync().ConfigureAwait(false);
-                        cancellationToken.ThrowIfCancellationRequested();
-                        await responseStream.WriteAsync(payload.ToArray()).ConfigureAwait(false);
+                        ApplySuccessTrailers(callContext, streamCall.ResponseMeta);
                     }
+                    catch (OperationCanceledException)
+                    {
+                        var error = PolymerErrorAdapter.FromStatus(
+                            PolymerStatusCode.Cancelled,
+                            "The client cancelled the request.",
+                            transport: GrpcTransportConstants.TransportName);
+                        await streamCall.CompleteAsync(error, cancellationToken).ConfigureAwait(false);
 
-                    await EnsureHeadersAsync().ConfigureAwait(false);
-                    ApplySuccessTrailers(callContext, streamCall.ResponseMeta);
-                }
-                catch (OperationCanceledException)
-                {
-                    var error = PolymerErrorAdapter.FromStatus(
-                        PolymerStatusCode.Cancelled,
-                        "The client cancelled the request.",
-                        transport: GrpcTransportConstants.TransportName);
-                    await streamCall.CompleteAsync(error, cancellationToken).ConfigureAwait(false);
+                        var status = GrpcStatusMapper.ToStatus(PolymerStatusCode.Cancelled, "The client cancelled the request.");
+                        var trailers = GrpcMetadataAdapter.CreateErrorTrailers(error);
+                        var rpcException = new RpcException(status, trailers);
+                        GrpcTransportDiagnostics.RecordException(activity, rpcException, status.StatusCode, status.Detail);
+                        throw rpcException;
+                    }
+                    catch (Exception ex)
+                    {
+                        var polymerException = PolymerErrors.FromException(ex, GrpcTransportConstants.TransportName);
+                        await streamCall.CompleteAsync(polymerException.Error, cancellationToken).ConfigureAwait(false);
 
-                    var status = GrpcStatusMapper.ToStatus(PolymerStatusCode.Cancelled, "The client cancelled the request.");
-                    var trailers = GrpcMetadataAdapter.CreateErrorTrailers(error);
-                    var rpcException = new RpcException(status, trailers);
-                    GrpcTransportDiagnostics.RecordException(activity, rpcException, status.StatusCode, status.Detail);
-                    throw rpcException;
-                }
-                catch (Exception ex)
-                {
-                    var polymerException = PolymerErrors.FromException(ex, GrpcTransportConstants.TransportName);
-                    await streamCall.CompleteAsync(polymerException.Error, cancellationToken).ConfigureAwait(false);
-
-                    var status = GrpcStatusMapper.ToStatus(polymerException.StatusCode, polymerException.Message);
-                    var trailers = GrpcMetadataAdapter.CreateErrorTrailers(polymerException.Error);
-                    var rpcException = new RpcException(status, trailers);
-                    GrpcTransportDiagnostics.RecordException(activity, rpcException, status.StatusCode, status.Detail);
-                    throw rpcException;
+                        var status = GrpcStatusMapper.ToStatus(polymerException.StatusCode, polymerException.Message);
+                        var trailers = GrpcMetadataAdapter.CreateErrorTrailers(polymerException.Error);
+                        var rpcException = new RpcException(status, trailers);
+                        GrpcTransportDiagnostics.RecordException(activity, rpcException, status.StatusCode, status.Detail);
+                        throw rpcException;
+                    }
                 }
 
                 GrpcTransportDiagnostics.SetStatus(activity, StatusCode.OK);
-            };
+            }
 
-            context.AddServerStreamingMethod<byte[], byte[]>(method, [], handler);
+            context.AddServerStreamingMethod(method, [], handler);
         }
 
         foreach (var spec in procedures.OfType<ClientStreamProcedureSpec>())
@@ -260,7 +262,7 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                 GrpcMarshallerCache.ByteMarshaller,
                 GrpcMarshallerCache.ByteMarshaller);
 
-            ClientStreamingServerMethod<GrpcDispatcherService, byte[], byte[]> handler = async (_, requestStream, callContext) =>
+            async Task<byte[]> handler(GrpcDispatcherService _, IAsyncStreamReader<byte[]> requestStream, ServerCallContext callContext)
             {
                 if (!_inbound.TryEnterCall(callContext, out var scope, out var rejection))
                 {
@@ -325,95 +327,98 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                     throw rpcException;
                 }
 
-                await using var clientStreamCall = callResult.Value;
-                var cancellationToken = callContext.CancellationToken;
-
-                try
+                await using (var clientStreamCall = callResult.Value)
                 {
-                    while (await requestStream.MoveNext(cancellationToken).ConfigureAwait(false))
+                    var cancellationToken = callContext.CancellationToken;
+
+                    try
                     {
-                        var payload = requestStream.Current;
-                        if (payload is null)
+                        while (await requestStream.MoveNext(cancellationToken).ConfigureAwait(false))
                         {
-                            continue;
+                            var payload = requestStream.Current;
+                            if (payload is null)
+                            {
+                                continue;
+                            }
+
+                            Interlocked.Increment(ref requestCount);
+                            GrpcTransportMetrics.ServerClientStreamRequestMessages.Add(1, metricTags);
+                            await clientStreamCall.Requests.WriteAsync(payload, cancellationToken).ConfigureAwait(false);
                         }
 
-                        Interlocked.Increment(ref requestCount);
-                        GrpcTransportMetrics.ServerClientStreamRequestMessages.Add(1, metricTags);
-                        await clientStreamCall.Requests.WriteAsync(payload, cancellationToken).ConfigureAwait(false);
+                        await clientStreamCall.CompleteWriterAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+                    }
+                    catch (RpcException rpcEx)
+                    {
+                        var status = GrpcStatusMapper.FromStatus(rpcEx.Status);
+                        var message = string.IsNullOrWhiteSpace(rpcEx.Status.Detail)
+                            ? rpcEx.Status.StatusCode.ToString()
+                            : rpcEx.Status.Detail;
+                        GrpcTransportDiagnostics.RecordException(activity, rpcEx, rpcEx.Status.StatusCode, message);
+                        var error = PolymerErrorAdapter.FromStatus(status, message, transport: GrpcTransportConstants.TransportName);
+                        await clientStreamCall.CompleteWriterAsync(error).ConfigureAwait(false);
+                        RecordServerClientStreamMetrics(rpcEx.Status.StatusCode);
+                        throw;
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        var error = PolymerErrorAdapter.FromStatus(
+                            PolymerStatusCode.Cancelled,
+                            "The client cancelled the request.",
+                            transport: GrpcTransportConstants.TransportName);
+                        await clientStreamCall.CompleteWriterAsync(error).ConfigureAwait(false);
+                        var status = GrpcStatusMapper.ToStatus(PolymerStatusCode.Cancelled, "The client cancelled the request.");
+                        var rpcException = new RpcException(status);
+                        GrpcTransportDiagnostics.RecordException(activity, rpcException, status.StatusCode, status.Detail);
+                        RecordServerClientStreamMetrics(status.StatusCode);
+                        throw rpcException;
+                    }
+                    catch (Exception ex)
+                    {
+                        var message = string.IsNullOrWhiteSpace(ex.Message)
+                            ? "An error occurred while reading the client stream."
+                            : ex.Message;
+                        var error = PolymerErrorAdapter.FromStatus(
+                            PolymerStatusCode.Internal,
+                            message,
+                            transport: GrpcTransportConstants.TransportName);
+                        await clientStreamCall.CompleteWriterAsync(error).ConfigureAwait(false);
+                        var status = GrpcStatusMapper.ToStatus(PolymerStatusCode.Internal, message);
+                        var rpcException = new RpcException(status);
+                        GrpcTransportDiagnostics.RecordException(activity, rpcException, status.StatusCode, status.Detail);
+                        RecordServerClientStreamMetrics(status.StatusCode);
+                        throw rpcException;
                     }
 
-                    await clientStreamCall.CompleteWriterAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
-                }
-                catch (RpcException rpcEx)
-                {
-                    var status = GrpcStatusMapper.FromStatus(rpcEx.Status);
-                    var message = string.IsNullOrWhiteSpace(rpcEx.Status.Detail)
-                        ? rpcEx.Status.StatusCode.ToString()
-                        : rpcEx.Status.Detail;
-                    GrpcTransportDiagnostics.RecordException(activity, rpcEx, rpcEx.Status.StatusCode, message);
-                    var error = PolymerErrorAdapter.FromStatus(status, message, transport: GrpcTransportConstants.TransportName);
-                    await clientStreamCall.CompleteWriterAsync(error).ConfigureAwait(false);
-                    RecordServerClientStreamMetrics(rpcEx.Status.StatusCode);
-                    throw;
-                }
-                catch (OperationCanceledException)
-                {
-                    var error = PolymerErrorAdapter.FromStatus(
-                        PolymerStatusCode.Cancelled,
-                        "The client cancelled the request.",
-                        transport: GrpcTransportConstants.TransportName);
-                    await clientStreamCall.CompleteWriterAsync(error).ConfigureAwait(false);
-                    var status = GrpcStatusMapper.ToStatus(PolymerStatusCode.Cancelled, "The client cancelled the request.");
-                    var rpcException = new RpcException(status);
-                    GrpcTransportDiagnostics.RecordException(activity, rpcException, status.StatusCode, status.Detail);
-                    RecordServerClientStreamMetrics(status.StatusCode);
-                    throw rpcException;
-                }
-                catch (Exception ex)
-                {
-                    var message = string.IsNullOrWhiteSpace(ex.Message)
-                        ? "An error occurred while reading the client stream."
-                        : ex.Message;
-                    var error = PolymerErrorAdapter.FromStatus(
-                        PolymerStatusCode.Internal,
-                        message,
-                        transport: GrpcTransportConstants.TransportName);
-                    await clientStreamCall.CompleteWriterAsync(error).ConfigureAwait(false);
-                    var status = GrpcStatusMapper.ToStatus(PolymerStatusCode.Internal, message);
-                    var rpcException = new RpcException(status);
-                    GrpcTransportDiagnostics.RecordException(activity, rpcException, status.StatusCode, status.Detail);
-                    RecordServerClientStreamMetrics(status.StatusCode);
-                    throw rpcException;
-                }
+                    var responseResult = await clientStreamCall.Response.ConfigureAwait(false);
 
-                var responseResult = await clientStreamCall.Response.ConfigureAwait(false);
+                    if (responseResult.IsFailure)
+                    {
+                        var exception = PolymerErrors.FromError(responseResult.Error!, GrpcTransportConstants.TransportName);
+                        var status = GrpcStatusMapper.ToStatus(exception.StatusCode, exception.Message);
+                        var trailers = GrpcMetadataAdapter.CreateErrorTrailers(exception.Error);
+                        var rpcException = new RpcException(status, trailers);
+                        GrpcTransportDiagnostics.RecordException(activity, rpcException, status.StatusCode, status.Detail);
+                        RecordServerClientStreamMetrics(status.StatusCode);
+                        throw rpcException;
+                    }
 
-                if (responseResult.IsFailure)
-                {
-                    var exception = PolymerErrors.FromError(responseResult.Error!, GrpcTransportConstants.TransportName);
-                    var status = GrpcStatusMapper.ToStatus(exception.StatusCode, exception.Message);
-                    var trailers = GrpcMetadataAdapter.CreateErrorTrailers(exception.Error);
-                    var rpcException = new RpcException(status, trailers);
-                    GrpcTransportDiagnostics.RecordException(activity, rpcException, status.StatusCode, status.Detail);
-                    RecordServerClientStreamMetrics(status.StatusCode);
-                    throw rpcException;
+                    var response = responseResult.Value;
+                    GrpcTransportMetrics.ServerClientStreamResponseMessages.Add(1, metricTags);
+                    var headers = GrpcMetadataAdapter.CreateResponseHeaders(response.Meta);
+                    if (headers.Count > 0)
+                    {
+                        await callContext.WriteResponseHeadersAsync(headers).ConfigureAwait(false);
+                    }
+
+                    RecordServerClientStreamMetrics(StatusCode.OK);
+                    GrpcTransportDiagnostics.SetStatus(activity, StatusCode.OK);
+                    return response.Body.ToArray();
                 }
+                
+            }
 
-                var response = responseResult.Value;
-                GrpcTransportMetrics.ServerClientStreamResponseMessages.Add(1, metricTags);
-                var headers = GrpcMetadataAdapter.CreateResponseHeaders(response.Meta);
-                if (headers.Count > 0)
-                {
-                    await callContext.WriteResponseHeadersAsync(headers).ConfigureAwait(false);
-                }
-
-                RecordServerClientStreamMetrics(StatusCode.OK);
-                GrpcTransportDiagnostics.SetStatus(activity, StatusCode.OK);
-                return response.Body.ToArray();
-            };
-
-            context.AddClientStreamingMethod<byte[], byte[]>(method, [], handler);
+            context.AddClientStreamingMethod(method, [], handler);
         }
 
         foreach (var spec in procedures.OfType<DuplexProcedureSpec>())
@@ -425,7 +430,7 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                 GrpcMarshallerCache.ByteMarshaller,
                 GrpcMarshallerCache.ByteMarshaller);
 
-            DuplexStreamingServerMethod<GrpcDispatcherService, byte[], byte[]> handler = async (_, requestStream, responseStream, callContext) =>
+            async Task handler(GrpcDispatcherService _, IAsyncStreamReader<byte[]> requestStream, IServerStreamWriter<byte[]> responseStream, ServerCallContext callContext)
             {
                 if (!_inbound.TryEnterCall(callContext, out var scope, out var rejection))
                 {
@@ -491,140 +496,142 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                     throw rpcException;
                 }
 
-                await using var duplexCall = callResult.Value;
-                var cancellationToken = callContext.CancellationToken;
+                await using (var duplexCall = callResult.Value)
+                {
+                    var cancellationToken = callContext.CancellationToken;
 
                 var requestPump = PumpRequestsAsync();
                 var responsePump = PumpResponsesAsync();
 
                 await Task.WhenAll(requestPump, responsePump).ConfigureAwait(false);
 
-                async Task PumpRequestsAsync()
-                {
-                    try
+                    async Task PumpRequestsAsync()
                     {
-                        await foreach (var payload in requestStream.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+                        try
                         {
-                            cancellationToken.ThrowIfCancellationRequested();
-                            Interlocked.Increment(ref requestCount);
-                            GrpcTransportMetrics.ServerDuplexRequestMessages.Add(1, metricTags);
-                            await duplexCall.RequestWriter.WriteAsync(payload, cancellationToken).ConfigureAwait(false);
+                            await foreach (var payload in requestStream.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+                            {
+                                cancellationToken.ThrowIfCancellationRequested();
+                                Interlocked.Increment(ref requestCount);
+                                GrpcTransportMetrics.ServerDuplexRequestMessages.Add(1, metricTags);
+                                await duplexCall.RequestWriter.WriteAsync(payload, cancellationToken).ConfigureAwait(false);
+                            }
+
+                            await duplexCall.CompleteRequestsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+                        }
+                        catch (OperationCanceledException ex)
+                        {
+                            var error = PolymerErrorAdapter.FromStatus(
+                                PolymerStatusCode.Cancelled,
+                                "The client cancelled the request.",
+                                transport: GrpcTransportConstants.TransportName);
+                            await duplexCall.CompleteRequestsAsync(error, cancellationToken).ConfigureAwait(false);
+                            activityHasError = true;
+                            GrpcTransportDiagnostics.RecordException(activity, ex, StatusCode.Cancelled, ex.Message);
+                            RecordServerDuplexMetrics(StatusCode.Cancelled);
+                        }
+                        catch (RpcException rpcEx)
+                        {
+                            var error = PolymerErrorAdapter.FromStatus(
+                                GrpcStatusMapper.FromStatus(rpcEx.Status),
+                                string.IsNullOrWhiteSpace(rpcEx.Status.Detail) ? rpcEx.Status.StatusCode.ToString() : rpcEx.Status.Detail,
+                                transport: GrpcTransportConstants.TransportName);
+                            await duplexCall.CompleteRequestsAsync(error, cancellationToken).ConfigureAwait(false);
+                            activityHasError = true;
+                            GrpcTransportDiagnostics.RecordException(activity, rpcEx, rpcEx.Status.StatusCode, rpcEx.Status.Detail);
+                            RecordServerDuplexMetrics(rpcEx.Status.StatusCode);
+                        }
+                        catch (Exception ex)
+                        {
+                            var error = PolymerErrorAdapter.FromStatus(
+                                PolymerStatusCode.Internal,
+                                ex.Message ?? "An error occurred while reading the duplex request stream.",
+                                transport: GrpcTransportConstants.TransportName,
+                                inner: Error.FromException(ex));
+                            await duplexCall.CompleteRequestsAsync(error, cancellationToken).ConfigureAwait(false);
+                            activityHasError = true;
+                            GrpcTransportDiagnostics.RecordException(activity, ex, StatusCode.Internal, ex.Message);
+                            RecordServerDuplexMetrics(StatusCode.Internal);
+                        }
+                    }
+
+                    async Task PumpResponsesAsync()
+                    {
+                        var headersSent = false;
+
+                        async Task EnsureHeadersAsync()
+                        {
+                            if (headersSent)
+                            {
+                                return;
+                            }
+
+                            var headers = GrpcMetadataAdapter.CreateResponseHeaders(duplexCall.ResponseMeta);
+                            if (headers.Count > 0)
+                            {
+                                await callContext.WriteResponseHeadersAsync(headers).ConfigureAwait(false);
+                            }
+
+                            headersSent = true;
                         }
 
-                        await duplexCall.CompleteRequestsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
-                    }
-                    catch (OperationCanceledException ex)
-                    {
-                        var error = PolymerErrorAdapter.FromStatus(
-                            PolymerStatusCode.Cancelled,
-                            "The client cancelled the request.",
-                            transport: GrpcTransportConstants.TransportName);
-                        await duplexCall.CompleteRequestsAsync(error, cancellationToken).ConfigureAwait(false);
-                        activityHasError = true;
-                        GrpcTransportDiagnostics.RecordException(activity, ex, StatusCode.Cancelled, ex.Message);
-                        RecordServerDuplexMetrics(StatusCode.Cancelled);
-                    }
-                    catch (RpcException rpcEx)
-                    {
-                        var error = PolymerErrorAdapter.FromStatus(
-                            GrpcStatusMapper.FromStatus(rpcEx.Status),
-                            string.IsNullOrWhiteSpace(rpcEx.Status.Detail) ? rpcEx.Status.StatusCode.ToString() : rpcEx.Status.Detail,
-                            transport: GrpcTransportConstants.TransportName);
-                        await duplexCall.CompleteRequestsAsync(error, cancellationToken).ConfigureAwait(false);
-                        activityHasError = true;
-                        GrpcTransportDiagnostics.RecordException(activity, rpcEx, rpcEx.Status.StatusCode, rpcEx.Status.Detail);
-                        RecordServerDuplexMetrics(rpcEx.Status.StatusCode);
-                    }
-                    catch (Exception ex)
-                    {
-                        var error = PolymerErrorAdapter.FromStatus(
-                            PolymerStatusCode.Internal,
-                            ex.Message ?? "An error occurred while reading the duplex request stream.",
-                            transport: GrpcTransportConstants.TransportName,
-                            inner: Error.FromException(ex));
-                        await duplexCall.CompleteRequestsAsync(error, cancellationToken).ConfigureAwait(false);
-                        activityHasError = true;
-                        GrpcTransportDiagnostics.RecordException(activity, ex, StatusCode.Internal, ex.Message);
-                        RecordServerDuplexMetrics(StatusCode.Internal);
-                    }
-                }
-
-                async Task PumpResponsesAsync()
-                {
-                    var headersSent = false;
-
-                    async Task EnsureHeadersAsync()
-                    {
-                        if (headersSent)
+                        try
                         {
-                            return;
-                        }
+                            await foreach (var payload in duplexCall.ResponseReader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+                            {
+                                await EnsureHeadersAsync().ConfigureAwait(false);
+                                cancellationToken.ThrowIfCancellationRequested();
+                                Interlocked.Increment(ref responseCount);
+                                GrpcTransportMetrics.ServerDuplexResponseMessages.Add(1, metricTags);
+                                await responseStream.WriteAsync(payload.ToArray()).ConfigureAwait(false);
+                            }
 
-                        var headers = GrpcMetadataAdapter.CreateResponseHeaders(duplexCall.ResponseMeta);
-                        if (headers.Count > 0)
-                        {
-                            await callContext.WriteResponseHeadersAsync(headers).ConfigureAwait(false);
-                        }
-
-                        headersSent = true;
-                    }
-
-                    try
-                    {
-                        await foreach (var payload in duplexCall.ResponseReader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
-                        {
                             await EnsureHeadersAsync().ConfigureAwait(false);
-                            cancellationToken.ThrowIfCancellationRequested();
-                            Interlocked.Increment(ref responseCount);
-                            GrpcTransportMetrics.ServerDuplexResponseMessages.Add(1, metricTags);
-                            await responseStream.WriteAsync(payload.ToArray()).ConfigureAwait(false);
+                            ApplySuccessTrailers(callContext, duplexCall.ResponseMeta);
+                            await duplexCall.CompleteResponsesAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+                            RecordServerDuplexMetrics(StatusCode.OK);
                         }
+                        catch (OperationCanceledException)
+                        {
+                            var error = PolymerErrorAdapter.FromStatus(
+                                PolymerStatusCode.Cancelled,
+                                "The client cancelled the request.",
+                                transport: GrpcTransportConstants.TransportName);
 
-                        await EnsureHeadersAsync().ConfigureAwait(false);
-                        ApplySuccessTrailers(callContext, duplexCall.ResponseMeta);
-                        await duplexCall.CompleteResponsesAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+                            await duplexCall.CompleteResponsesAsync(error, cancellationToken).ConfigureAwait(false);
+
+                            var status = GrpcStatusMapper.ToStatus(PolymerStatusCode.Cancelled, "The client cancelled the request.");
+                            var trailers = GrpcMetadataAdapter.CreateErrorTrailers(error);
+                            var rpcException = new RpcException(status, trailers);
+                            activityHasError = true;
+                            GrpcTransportDiagnostics.RecordException(activity, rpcException, status.StatusCode, status.Detail);
+                            RecordServerDuplexMetrics(status.StatusCode);
+                            throw rpcException;
+                        }
+                        catch (Exception ex)
+                        {
+                            var polymerException = PolymerErrors.FromException(ex, GrpcTransportConstants.TransportName);
+                            await duplexCall.CompleteResponsesAsync(polymerException.Error, cancellationToken).ConfigureAwait(false);
+
+                            var status = GrpcStatusMapper.ToStatus(polymerException.StatusCode, polymerException.Message);
+                            var trailers = GrpcMetadataAdapter.CreateErrorTrailers(polymerException.Error);
+                            var rpcException = new RpcException(status, trailers);
+                            activityHasError = true;
+                            GrpcTransportDiagnostics.RecordException(activity, rpcException, status.StatusCode, status.Detail);
+                            RecordServerDuplexMetrics(status.StatusCode);
+                            throw rpcException;
+                        }
+                    }
+
+                    if (!activityHasError)
+                    {
                         RecordServerDuplexMetrics(StatusCode.OK);
+                        GrpcTransportDiagnostics.SetStatus(activity, StatusCode.OK);
                     }
-                    catch (OperationCanceledException)
-                    {
-                        var error = PolymerErrorAdapter.FromStatus(
-                            PolymerStatusCode.Cancelled,
-                            "The client cancelled the request.",
-                            transport: GrpcTransportConstants.TransportName);
+                }   
+            }
 
-                        await duplexCall.CompleteResponsesAsync(error, cancellationToken).ConfigureAwait(false);
-
-                        var status = GrpcStatusMapper.ToStatus(PolymerStatusCode.Cancelled, "The client cancelled the request.");
-                        var trailers = GrpcMetadataAdapter.CreateErrorTrailers(error);
-                        var rpcException = new RpcException(status, trailers);
-                        activityHasError = true;
-                        GrpcTransportDiagnostics.RecordException(activity, rpcException, status.StatusCode, status.Detail);
-                        RecordServerDuplexMetrics(status.StatusCode);
-                        throw rpcException;
-                    }
-                    catch (Exception ex)
-                    {
-                        var polymerException = PolymerErrors.FromException(ex, GrpcTransportConstants.TransportName);
-                        await duplexCall.CompleteResponsesAsync(polymerException.Error, cancellationToken).ConfigureAwait(false);
-
-                        var status = GrpcStatusMapper.ToStatus(polymerException.StatusCode, polymerException.Message);
-                        var trailers = GrpcMetadataAdapter.CreateErrorTrailers(polymerException.Error);
-                        var rpcException = new RpcException(status, trailers);
-                        activityHasError = true;
-                        GrpcTransportDiagnostics.RecordException(activity, rpcException, status.StatusCode, status.Detail);
-                        RecordServerDuplexMetrics(status.StatusCode);
-                        throw rpcException;
-                    }
-                }
-
-                if (!activityHasError)
-                {
-                    RecordServerDuplexMetrics(StatusCode.OK);
-                    GrpcTransportDiagnostics.SetStatus(activity, StatusCode.OK);
-                }
-            };
-
-            context.AddDuplexStreamingMethod<byte[], byte[]>(method, [], handler);
+            context.AddDuplexStreamingMethod(method, [], handler);
         }
     }
 

@@ -38,7 +38,7 @@ public sealed class HttpIntrospectionTests
 
         try
         {
-            using var client = new System.Net.Http.HttpClient { BaseAddress = baseAddress };
+            using var client = new HttpClient { BaseAddress = baseAddress };
             using var response = await client.GetAsync("polymer/introspect", ct);
             Assert.True(response.IsSuccessStatusCode, $"HTTP {response.StatusCode}");
 

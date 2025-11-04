@@ -32,7 +32,7 @@ public sealed class GrpcExceptionAdapterInterceptorTests
         var expected = new RpcException(new Status(StatusCode.Internal, "boom"));
 
         var actual = await Assert.ThrowsAsync<RpcException>(() =>
-            interceptor.ServerStreamingServerHandler<object, object>(
+            interceptor.ServerStreamingServerHandler(
                 new object(),
                 new NoopServerStreamWriter<object>(),
                 context,

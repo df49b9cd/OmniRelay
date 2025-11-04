@@ -42,18 +42,18 @@ public sealed class StreamClient<TRequest, TResponse>
             throw PolymerErrors.FromError(streamResult.Error!, options.Direction.ToString());
         }
 
-        await using var call = streamResult.Value;
-
-        await foreach (var payload in call.Responses.ReadAllAsync(cancellationToken).ConfigureAwait(false))
-        {
-            var decodeResult = _codec.DecodeResponse(payload, call.ResponseMeta);
-            if (decodeResult.IsFailure)
+        await using (var call = streamResult.Value) {
+            await foreach (var payload in call.Responses.ReadAllAsync(cancellationToken).ConfigureAwait(false))
             {
-                await call.CompleteAsync(decodeResult.Error!, cancellationToken).ConfigureAwait(false);
-                throw PolymerErrors.FromError(decodeResult.Error!, request.Meta.Transport ?? "stream");
-            }
+                var decodeResult = _codec.DecodeResponse(payload, call.ResponseMeta);
+                if (decodeResult.IsFailure)
+                {
+                    await call.CompleteAsync(decodeResult.Error!, cancellationToken).ConfigureAwait(false);
+                    throw PolymerErrors.FromError(decodeResult.Error!, request.Meta.Transport ?? "stream");
+                }
 
-            yield return Response<TResponse>.Create(decodeResult.Value, call.ResponseMeta);
+                yield return Response<TResponse>.Create(decodeResult.Value, call.ResponseMeta);
+            }
         }
     }
 

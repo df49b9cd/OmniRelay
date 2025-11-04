@@ -68,7 +68,7 @@ public sealed class TwoRandomPeerChooserTests
         }
     }
 
-    private sealed class DeterministicRandom(params int[] sequence) : System.Random
+    private sealed class DeterministicRandom(params int[] sequence) : Random
     {
         private readonly int[] _sequence = sequence.Length == 0 ? [0] : sequence;
         private int _index;

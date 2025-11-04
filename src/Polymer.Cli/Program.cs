@@ -469,7 +469,7 @@ public static class Program
         try
         {
             using var provider = services.BuildServiceProvider();
-            var dispatcher = provider.GetRequiredService<Polymer.Dispatcher.Dispatcher>();
+            var dispatcher = provider.GetRequiredService<Dispatcher.Dispatcher>();
             var summary = dispatcher.Introspect();
 
             Console.WriteLine($"Configuration valid for service '{summary.Service}'.");
@@ -531,40 +531,42 @@ public static class Program
                 return 1;
             }
 
-            await using var stream = await response.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false);
-            var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
+            await using (var stream = await response.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false))
             {
-                PropertyNameCaseInsensitive = true
-            };
-            options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
-
-            var snapshot = await JsonSerializer.DeserializeAsync<DispatcherIntrospection>(stream, options, cts.Token).ConfigureAwait(false);
-            if (snapshot is null)
-            {
-                Console.Error.WriteLine("Introspection response was empty.");
-                return 1;
-            }
-
-            if (normalizedFormat is "json" or "raw")
-            {
-                var outputOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web)
+                var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
                 {
-                    WriteIndented = true
+                    PropertyNameCaseInsensitive = true
                 };
-                outputOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
-                var json = JsonSerializer.Serialize(snapshot, outputOptions);
-                Console.WriteLine(json);
-            }
-            else if (normalizedFormat is "text" or "summary")
-            {
-                PrintIntrospectionSummary(snapshot);
-            }
-            else
-            {
-                Console.Error.WriteLine($"Unknown format '{format}'. Expected 'text' or 'json'.");
-                return 1;
-            }
+                options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
 
+                var snapshot = await JsonSerializer.DeserializeAsync<DispatcherIntrospection>(stream, options, cts.Token).ConfigureAwait(false);
+                if (snapshot is null)
+                {
+                    Console.Error.WriteLine("Introspection response was empty.");
+                    return 1;
+                }
+
+                if (normalizedFormat is "json" or "raw")
+                {
+                    var outputOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web)
+                    {
+                        WriteIndented = true
+                    };
+                    outputOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+                    var json = JsonSerializer.Serialize(snapshot, outputOptions);
+                    Console.WriteLine(json);
+                }
+                else if (normalizedFormat is "text" or "summary")
+                {
+                    PrintIntrospectionSummary(snapshot);
+                }
+                else
+                {
+                    Console.Error.WriteLine($"Unknown format '{format}'. Expected 'text' or 'json'.");
+                    return 1;
+                }
+            }
+            
             return 0;
         }
         catch (TaskCanceledException)
@@ -818,13 +820,15 @@ public static class Program
         AutomationScript? script;
         try
         {
-            await using var stream = File.OpenRead(scriptPath);
-            var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
+            await using (var stream = File.OpenRead(scriptPath))
             {
-                PropertyNameCaseInsensitive = true,
-                AllowTrailingCommas = true
-            };
-            script = await JsonSerializer.DeserializeAsync<AutomationScript>(stream, options).ConfigureAwait(false);
+                var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
+                {
+                    PropertyNameCaseInsensitive = true,
+                    AllowTrailingCommas = true
+                };
+                script = await JsonSerializer.DeserializeAsync<AutomationScript>(stream, options).ConfigureAwait(false);
+            }   
         }
         catch (Exception ex)
         {

@@ -245,6 +245,6 @@ public class ProtobufCodeGeneratorTests
 
         public override string Path => _path;
 
-        public override SourceText? GetText(System.Threading.CancellationToken cancellationToken = default) => null;
+        public override SourceText? GetText(CancellationToken cancellationToken = default) => null;
     }
 }

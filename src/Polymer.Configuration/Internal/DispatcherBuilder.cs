@@ -1363,7 +1363,7 @@ internal sealed class DispatcherBuilder
             PropertyNameCaseInsensitive = true
         };
 
-    private void ApplyJsonSerializerOptions(
+    private static void ApplyJsonSerializerOptions(
         JsonSerializerOptions target,
         JsonSerializerOptionsConfiguration configuration,
         IList<string> additionalConverters)

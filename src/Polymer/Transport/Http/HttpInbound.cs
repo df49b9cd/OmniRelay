@@ -426,28 +426,29 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
                 return;
             }
 
-            await using var call = streamResult.Value;
-
-            context.Response.StatusCode = StatusCodes.Status200OK;
-            context.Response.Headers[HttpTransportHeaders.Transport] = transport;
-            context.Response.Headers.CacheControl = "no-cache";
-            context.Response.Headers.Connection = "keep-alive";
-            context.Response.Headers.ContentType = "text/event-stream";
-
-            var responseMeta = call.ResponseMeta ?? new ResponseMeta();
-            var responseHeaders = responseMeta.Headers ?? [];
-            foreach (var header in responseHeaders)
+            await using (var call = streamResult.Value)
             {
-                context.Response.Headers[header.Key] = header.Value;
-            }
+                context.Response.StatusCode = StatusCodes.Status200OK;
+                context.Response.Headers[HttpTransportHeaders.Transport] = transport;
+                context.Response.Headers.CacheControl = "no-cache";
+                context.Response.Headers.Connection = "keep-alive";
+                context.Response.Headers.ContentType = "text/event-stream";
 
-            await context.Response.BodyWriter.FlushAsync(context.RequestAborted).ConfigureAwait(false);
+                var responseMeta = call.ResponseMeta ?? new ResponseMeta();
+                var responseHeaders = responseMeta.Headers ?? [];
+                foreach (var header in responseHeaders)
+                {
+                    context.Response.Headers[header.Key] = header.Value;
+                }
 
-            await foreach (var payload in call.Responses.ReadAllAsync(context.RequestAborted).ConfigureAwait(false))
-            {
-                var frame = EncodeSseFrame(payload, responseMeta.Encoding);
-                await context.Response.BodyWriter.WriteAsync(frame, context.RequestAborted).ConfigureAwait(false);
                 await context.Response.BodyWriter.FlushAsync(context.RequestAborted).ConfigureAwait(false);
+
+                await foreach (var payload in call.Responses.ReadAllAsync(context.RequestAborted).ConfigureAwait(false))
+                {
+                    var frame = EncodeSseFrame(payload, responseMeta.Encoding);
+                    await context.Response.BodyWriter.WriteAsync(frame, context.RequestAborted).ConfigureAwait(false);
+                    await context.Response.BodyWriter.FlushAsync(context.RequestAborted).ConfigureAwait(false);
+                }
             }
         }
         finally

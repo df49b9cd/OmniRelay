@@ -24,7 +24,7 @@ public class GrpcInterceptorPipelineTests
         var invoker = new RecordingCallInvoker(log);
         var interceptedInvoker = invoker.Intercept(composite);
 
-        var marshaller = Marshallers.Create<byte[]>(static payload => payload, static data => data);
+        var marshaller = Marshallers.Create(static payload => payload, static data => data);
         var method = new Method<byte[], byte[]>(MethodType.Unary, "backend", "Echo", marshaller, marshaller);
 
         var call = interceptedInvoker.AsyncUnaryCall(method, host: null, options: new CallOptions(), request: []);

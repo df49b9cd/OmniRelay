@@ -22,7 +22,7 @@ public class MiddlewareComposerTests
         var terminal = new UnaryOutboundDelegate((_, _) =>
         {
             transcript.Add("terminal");
-            return ValueTask.FromResult<Result<Response<ReadOnlyMemory<byte>>>>(
+            return ValueTask.FromResult(
                 Ok(new Response<ReadOnlyMemory<byte>>(new ResponseMeta(), ReadOnlyMemory<byte>.Empty)));
         });
 
@@ -47,7 +47,7 @@ public class MiddlewareComposerTests
     [Fact]
     public void ComposeOnewayOutbound_WithNoMiddlewareReturnsTerminal()
     {
-        OnewayOutboundDelegate terminal = static (_, _) => ValueTask.FromResult<Result<OnewayAck>>(Ok(OnewayAck.Ack()));
+        OnewayOutboundDelegate terminal = static (_, _) => ValueTask.FromResult(Ok(OnewayAck.Ack()));
 
         var composed = MiddlewareComposer.ComposeOnewayOutbound(null, terminal);
 
@@ -67,7 +67,7 @@ public class MiddlewareComposerTests
         var terminal = new ClientStreamOutboundDelegate((meta, _) =>
         {
             transcript.Add("terminal");
-            return ValueTask.FromResult<Result<IClientStreamTransportCall>>(Ok<IClientStreamTransportCall>(new StubClientStreamTransportCall(meta)));
+            return ValueTask.FromResult(Ok<IClientStreamTransportCall>(new StubClientStreamTransportCall(meta)));
         });
 
         var pipeline = MiddlewareComposer.ComposeClientStreamOutbound(middleware, terminal);
@@ -128,7 +128,7 @@ public class MiddlewareComposerTests
 
         public ResponseMeta ResponseMeta { get; private set; } = new ResponseMeta();
 
-        public Task<Result<Response<ReadOnlyMemory<byte>>>> Response => Task.FromResult<Result<Response<ReadOnlyMemory<byte>>>>(
+        public Task<Result<Response<ReadOnlyMemory<byte>>>> Response => Task.FromResult(
             Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty, ResponseMeta)));
 
         public ValueTask WriteAsync(ReadOnlyMemory<byte> payload, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;

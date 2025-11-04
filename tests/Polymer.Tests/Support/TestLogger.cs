@@ -36,7 +36,7 @@ internal sealed class TestLogger<T> : ILogger<T>
         _entries.Add(new LogEntry(logLevel, message, exception, scopeSnapshot));
     }
 
-    private sealed class ScopeState(IReadOnlyList<KeyValuePair<string, object?>> values, TestLogger<T>.ScopeState? parent)
+    private sealed class ScopeState(IReadOnlyList<KeyValuePair<string, object?>> values, ScopeState? parent)
     {
         public IReadOnlyList<KeyValuePair<string, object?>> Values { get; } = values;
         public ScopeState? Parent { get; } = parent;
@@ -64,7 +64,7 @@ internal sealed class TestLogger<T> : ILogger<T>
         }
     }
 
-    private sealed class Scope(TestLogger<T> logger, TestLogger<T>.ScopeState? previous) : IDisposable
+    private sealed class Scope(TestLogger<T> logger, ScopeState? previous) : IDisposable
     {
         private readonly TestLogger<T> _logger = logger;
         private readonly ScopeState? _previous = previous;

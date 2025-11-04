@@ -15,7 +15,7 @@ public sealed class OnewayClient<TRequest>
         ICodec<TRequest, object> codec,
         IReadOnlyList<IOnewayOutboundMiddleware> middleware)
     {
-        _codec = codec ?? throw new System.ArgumentNullException(nameof(codec));
+        _codec = codec ?? throw new ArgumentNullException(nameof(codec));
 
         ArgumentNullException.ThrowIfNull(outbound);
 

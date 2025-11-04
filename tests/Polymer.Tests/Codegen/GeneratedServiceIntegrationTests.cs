@@ -25,7 +25,7 @@ public class GeneratedServiceIntegrationTests
         var httpOutbound = new HttpOutbound(httpClient, address, disposeClient: true);
         options.AddUnaryOutbound(serviceName, null, httpOutbound);
 
-        var dispatcher = new global::Polymer.Dispatcher.Dispatcher(options);
+        var dispatcher = new Polymer.Dispatcher.Dispatcher(options);
         TestServicePolymer.RegisterTestService(dispatcher, new TestServiceImpl());
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
@@ -57,7 +57,7 @@ public class GeneratedServiceIntegrationTests
         var grpcOutbound = new GrpcOutbound(address, serviceName);
         options.AddUnaryOutbound(serviceName, null, grpcOutbound);
 
-        var dispatcher = new global::Polymer.Dispatcher.Dispatcher(options);
+        var dispatcher = new Polymer.Dispatcher.Dispatcher(options);
         TestServicePolymer.RegisterTestService(dispatcher, new TestServiceImpl());
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
