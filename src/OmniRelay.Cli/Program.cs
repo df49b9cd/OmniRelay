@@ -25,7 +25,7 @@ namespace OmniRelay.Cli;
 public static class Program
 {
     private const string DefaultConfigSection = "polymer";
-    private const string DefaultIntrospectionUrl = "http://127.0.0.1:8080/polymer/introspect";
+    private const string DefaultIntrospectionUrl = "http://127.0.0.1:8080/omnirelay/introspect";
     private static readonly JsonSerializerOptions PrettyJsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true

@@ -40,7 +40,7 @@ public sealed class HttpIntrospectionTests
         try
         {
             using var client = new HttpClient { BaseAddress = baseAddress };
-            using var response = await client.GetAsync("polymer/introspect", ct);
+            using var response = await client.GetAsync("omnirelay/introspect", ct);
             Assert.True(response.IsSuccessStatusCode, $"HTTP {response.StatusCode}");
 
             await using var responseStream = await response.Content.ReadAsStreamAsync(ct);

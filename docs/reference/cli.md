@@ -25,7 +25,7 @@ omnirelay <command> [options]
 | Command | Purpose |
 | ------- | ------- |
 | `config validate` | Load one or more configuration files, apply ad-hoc overrides, and verify the dispatcher can be constructed. |
-| `introspect` | Fetch `/polymer/introspect` and print a summary (or the raw JSON) of a running dispatcher. |
+| `introspect` | Fetch `/omnirelay/introspect` and print a summary (or the raw JSON) of a running dispatcher. |
 | `request` | Issue a unary RPC over HTTP or gRPC with configurable metadata and payload sources. |
 | `script run` | Replay a sequence of requests, introspection calls, and delays defined in a JSON automation file. |
 
@@ -47,7 +47,7 @@ The command prints the resolved service name, dispatcher status, procedure count
 ### Inspect a running dispatcher
 
 ```bash
-omnirelay introspect --url http://localhost:8080/polymer/introspect --format text
+omnirelay introspect --url http://localhost:8080/omnirelay/introspect --format text
 ```
 
 Switch `--format json` to emit the raw JSON payload for scripting or piping into `jq`.
@@ -151,7 +151,7 @@ Each step is typed (`request`, `introspect`, or `delay`) and matches the options
     },
     {
       "type": "introspect",
-      "url": "http://127.0.0.1:8080/polymer/introspect",
+      "url": "http://127.0.0.1:8080/omnirelay/introspect",
       "format": "text",
       "timeout": "3s"
     }
@@ -183,7 +183,7 @@ SERVICE=${3:-echo}
 PROCEDURE=${4:-echo::ping}
 BODY=${5:-'{"message":"smoke"}'}
 
-until omnirelay introspect --url "${ENDPOINT%/yarpc/v1}/polymer/introspect" --timeout 2s >/dev/null 2>&1; do
+until omnirelay introspect --url "${ENDPOINT%/yarpc/v1}/omnirelay/introspect" --timeout 2s >/dev/null 2>&1; do
   echo "Waiting for dispatcher ..."
   sleep 1
 done

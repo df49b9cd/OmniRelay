@@ -81,7 +81,7 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
 
         _configureApp?.Invoke(app);
 
-        app.MapGet("/polymer/introspect", HandleIntrospectAsync);
+        app.MapGet("/omnirelay/introspect", HandleIntrospectAsync);
         app.MapGet("/healthz", HandleHealthzAsync);
         app.MapGet("/readyz", HandleReadyzAsync);
         app.MapMethods("/{**_}", [HttpMethods.Post], HandleUnaryAsync);

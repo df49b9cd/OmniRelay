@@ -5,7 +5,7 @@
 ## Commands
 
 - `omnirelay config validate` &mdash; validate layered configuration files.
-- `omnirelay introspect` &mdash; query `/polymer/introspect` and print dispatcher state.
+- `omnirelay introspect` &mdash; query `/omnirelay/introspect` and print dispatcher state.
 - `omnirelay request` &mdash; issue HTTP or gRPC RPCs with JSON/protobuf profiles.
 - `omnirelay benchmark` &mdash; drive load against HTTP/gRPC transports.
 - `omnirelay script run` &mdash; execute scripted smoke tests.

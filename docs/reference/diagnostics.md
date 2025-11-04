@@ -86,7 +86,7 @@ Each workflow measurement includes metric tags for `workflow.namespace`, `workfl
 - Create a schema-aware activity source with `GoDiagnostics.CreateActivitySource(string? name = GoDiagnostics.ActivitySourceName)` and optionally throttle spans via `GoDiagnostics.UseRateLimitedSampling(...)` when your workload emits high volumes of internal activities.
 - Invoke `GoDiagnostics.Reset()` (typically in unit tests) to dispose existing meters before registering new ones.
 - Pass `GrpcTelemetryOptions` to `GrpcInbound`/`GrpcOutbound` so the built-in logging/metrics interceptors attach automatically without bespoke interceptor wiring.
-- Peer metrics emitted by `OmniRelay.Core.Peers` include `polymer.peer.inflight`, `polymer.peer.successes`, `polymer.peer.failures`, and `polymer.peer.lease.duration` (histogram). Pair these with the `/polymer/introspect` endpoint, which now surfaces per-peer success/failure counts and latency percentiles, to build health dashboards.
+- Peer metrics emitted by `OmniRelay.Core.Peers` include `polymer.peer.inflight`, `polymer.peer.successes`, `polymer.peer.failures`, and `polymer.peer.lease.duration` (histogram). Pair these with the `/omnirelay/introspect` endpoint, which now surfaces per-peer success/failure counts and latency percentiles, to build health dashboards.
 - Logging middleware and transport interceptors now attach request scopes (`rpc.request_id`, `rpc.peer`, activity id tags) so any structured log emitted during a call inherits trace-aware correlation metadata.
 
 ## OmniRelay Diagnostics Configuration
@@ -127,7 +127,7 @@ Each workflow measurement includes metric tags for `workflow.namespace`, `workfl
   - `POST /polymer/control/logging` accepts `{ "level": "Warning" }` (or `null` to reset) and updates `LoggerFilterOptions.MinLevel` on the fly.
   - `GET /polymer/control/tracing` reports the active sampling probability, and `POST /polymer/control/tracing` accepts `{ "probability": 0.25 }` to throttle new `Activity` creation in `RpcTracingMiddleware` unless an upstream span forces sampling.
 
-These endpoints appear alongside `/polymer/introspect` on every HTTP inbound when `runtime.enableControlPlane` is true.
+These endpoints appear alongside `/omnirelay/introspect` on every HTTP inbound when `runtime.enableControlPlane` is true.
 
 ### Control-plane quickstart
 

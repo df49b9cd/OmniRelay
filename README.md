@@ -10,7 +10,7 @@ OmniRelay is the .NET port of Uber's YARPC runtime, layered on top of Hugo concu
 - Middleware set for logging, tracing, metrics, deadlines, retries, panic recovery, and rate limiting across every RPC shape.
 - Codec registry with JSON, protobuf, and raw codecs, including alias metadata surfaced through introspection.
 - Peer management with round-robin, fewest-pending, and two-random-choice choosers, circuit breakers, and per-peer metrics.
-- Operator tooling: `/polymer/introspect`, `/healthz`, `/readyz`, the `omnirelay` CLI, and configuration binder for DI hosting.
+- Operator tooling: `/omnirelay/introspect`, `/healthz`, `/readyz`, the `omnirelay` CLI, and configuration binder for DI hosting.
 - Protobuf automation via a `protoc` plugin and Roslyn incremental generator that emit dispatcher registration helpers and typed clients.
 - Upcoming: richer diagnostics toggles, sample services, cross-language conformance harnesses, and CI matrix coverage (see `docs/todo.md`).
 
@@ -109,7 +109,7 @@ await dispatcher.StartAsync();
 await dispatcher.StopAsync();
 ```
 
-The HTTP inbound exposes `/polymer/introspect`, `/healthz`, and `/readyz`. Introspection snapshots list procedures, middleware stacks, codec aliases, transport diagnostics (including tee/shadow metadata), and per-peer metrics.
+The HTTP inbound exposes `/omnirelay/introspect`, `/healthz`, and `/readyz`. Introspection snapshots list procedures, middleware stacks, codec aliases, transport diagnostics (including tee/shadow metadata), and per-peer metrics.
 
 ### Hosting via configuration
 
@@ -157,7 +157,7 @@ await app.RunAsync();
 ## Tooling
 
 - `omnirelay config validate --config appsettings.json --config appsettings.Development.json`
-- `omnirelay introspect --url http://127.0.0.1:8080/polymer/introspect --format text`
+- `omnirelay introspect --url http://127.0.0.1:8080/omnirelay/introspect --format text`
 - `omnirelay request --transport grpc --address http://127.0.0.1:9090 --service echo --procedure Ping --profile protobuf:echo.EchoRequest --proto-file descriptors/echo.protoset --body '{"message":"cli"}'`
 - `omnirelay benchmark --transport http --url http://127.0.0.1:8080/yarpc/v1 --service echo --procedure echo::ping --profile json:pretty --body '{"message":"load"}' --concurrency 20 --requests 500`
 - `omnirelay script run --file docs/reference/cli-scripts/echo-harness.json --dry-run`

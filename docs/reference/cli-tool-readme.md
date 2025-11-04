@@ -5,7 +5,7 @@
 ## Features
 
 - `omnirelay config validate` — load layered `appsettings*.json` files and ensure the dispatcher can be constructed.
-- `omnirelay introspect` — fetch `/polymer/introspect` and print either a compact summary or the raw JSON snapshot.
+- `omnirelay introspect` — fetch `/omnirelay/introspect` and print either a compact summary or the raw JSON snapshot.
 - `omnirelay request` — issue unary calls over HTTP or gRPC, with profiles for JSON and protobuf payloads.
 - `omnirelay benchmark` — drive concurrent HTTP or gRPC requests and report latency/throughput stats (YAB-style).
 - `omnirelay script run` — replay automation scripts (JSON) that combine requests, delays, and introspection probes.

@@ -277,7 +277,7 @@ Peer & Load‑Balancing
 * **Discovery hooks:** design `IPeerTransport`/`IPeerDirectory` to plug static lists, DNS SRV, or future service discovery without altering core choosers.
 
 * **Metrics:** `PeerMetrics` now emits success/failure counters and inflight gauges per peer, enabling dashboards and alerting.
-* **Introspection:** `/polymer/introspect` includes `GrpcPeerSummary` entries with success/failure counts and rolling latency percentiles so operators can assess peer health quickly.
+* **Introspection:** `/omnirelay/introspect` includes `GrpcPeerSummary` entries with success/failure counts and rolling latency percentiles so operators can assess peer health quickly.
 
 * **Implementation note:** build chooser internals atop Hugo channel builders, wait groups, and result orchestration helpers to align concurrency behavior with existing libraries.
 
@@ -535,11 +535,11 @@ Each step includes _Done when…_ acceptance criteria.
 
 ### 10) Introspection & Tooling
 
-**Prompt:** Expose `/polymer/introspect`:
+**Prompt:** Expose `/omnirelay/introspect`:
 
 * JSON view of procedures, inbounds/outbounds, peer chooser state, middleware chains.
 
-**Status:** `HttpInbound` serves `/polymer/introspect`, returning dispatcher status, lifecycle components, middleware, grouped procedure listings (with streaming metadata defaults), and outbound diagnostics pulled from transport snapshots (`GrpcOutboundSnapshot`, `HttpOutboundSnapshot`, etc.). Remaining parity work is to layer in live peer health stats once choosers/backoff are implemented.
+**Status:** `HttpInbound` serves `/omnirelay/introspect`, returning dispatcher status, lifecycle components, middleware, grouped procedure listings (with streaming metadata defaults), and outbound diagnostics pulled from transport snapshots (`GrpcOutboundSnapshot`, `HttpOutboundSnapshot`, etc.). Remaining parity work is to layer in live peer health stats once choosers/backoff are implemented.
 
 **Done when:** Endpoint reflects live state and updates dynamically.
 

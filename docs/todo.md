@@ -122,7 +122,7 @@ Comprehensive backlog tracking the remaining work needed to reach feature parity
   - ~~Ensure middleware ordering is deterministic and documented.~~ *(Builders append middleware in declaration order after global stacks; ordering is verified in tests and captured in `docs/reference/middleware.md`.)*
 
 - **Introspection Endpoint**
-  - ~~Implement HTTP endpoint (`/polymer/introspect`) returning dispatcher summary (service, status, procedures, middleware).~~ *(completed via `HttpInbound.HandleIntrospectAsync` and `HttpIntrospectionTests.IntrospectionEndpoint_ReportsDispatcherState`)*
+  - ~~Implement HTTP endpoint (`/omnirelay/introspect`) returning dispatcher summary (service, status, procedures, middleware).~~ *(completed via `HttpInbound.HandleIntrospectAsync` and `HttpIntrospectionTests.IntrospectionEndpoint_ReportsDispatcherState`)*
   - ~~Include unit/integration tests verifying JSON shape.~~ *(covered by `HttpIntrospectionTests.IntrospectionEndpoint_ReportsDispatcherState`)*
   - ~~Group procedures by RPC type and embed streaming-specific metadata (buffer sizing, message counts).~~ *(completed via `ProcedureGroups` descriptors and streaming metadata defaults stored on `StreamProcedureSpec`, `ClientStreamProcedureSpec`, and `DuplexProcedureSpec`.)*
   - ~~Surface outbound/peer chooser state and runtime counters to align with YARPC-Go’s debug output.~~ *(completed via `OutboundDescriptor`/`OutboundBindingDescriptor` and transport diagnostic snapshots such as `GrpcOutboundSnapshot` and `HttpOutboundSnapshot`; still plan richer peer health metrics as choosers evolve.)*
@@ -165,7 +165,7 @@ Comprehensive backlog tracking the remaining work needed to reach feature parity
   - ~~Provide configuration knobs for thresholds.~~ *(exposed via `PeerCircuitBreakerOptions` consumed by `GrpcOutbound`.)*
 
 - **Peer Introspection**
-  - ~~Introspection endpoint to show peer health, latency percentiles.~~ *(completed: `GrpcOutbound` exposes success/failure counters and latency percentiles through `GrpcPeerSummary`, surfaced via `/polymer/introspect`; covered by new telemetry tests ensuring metrics/logging interceptors feed the snapshots.)*
+  - ~~Introspection endpoint to show peer health, latency percentiles.~~ *(completed: `GrpcOutbound` exposes success/failure counters and latency percentiles through `GrpcPeerSummary`, surfaced via `/omnirelay/introspect`; covered by new telemetry tests ensuring metrics/logging interceptors feed the snapshots.)*
   - ~~Add metrics per peer (success/failure counts, inflight gauge).~~ *(covered by `PeerMetrics` counters/UpDownCounters tagged with peer identifiers during lease acquisition and release.)*
 
 ## 6. Error Model Parity (Phase 9)
