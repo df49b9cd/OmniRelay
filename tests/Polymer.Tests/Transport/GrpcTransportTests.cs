@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Diagnostics.Metrics;
+using System.Globalization;
 using System.IO.Compression;
 using System.Net.Sockets;
 using System.Reflection;
@@ -1009,7 +1010,7 @@ public class GrpcTransportTests
                     observedClientHeader.TrySetResult(string.Empty);
                 }
 
-                var responsePayload = new EchoResponse { Message = request.Body.Length.ToString() };
+                var responsePayload = new EchoResponse { Message = request.Body.Length.ToString(CultureInfo.InvariantCulture) };
                 var responseMeta = new ResponseMeta(encoding: "application/json");
                 var encode = codec.EncodeResponse(responsePayload, responseMeta);
                 if (encode.IsFailure)
@@ -1077,7 +1078,7 @@ public class GrpcTransportTests
             "server-intercept::echo",
             (request, cancellationToken) =>
             {
-                var responsePayload = new EchoResponse { Message = request.Body.Length.ToString() };
+                var responsePayload = new EchoResponse { Message = request.Body.Length.ToString(CultureInfo.InvariantCulture) };
                 var responseMeta = new ResponseMeta(encoding: "application/json");
                 var encode = codec.EncodeResponse(responsePayload, responseMeta);
                 if (encode.IsFailure)
