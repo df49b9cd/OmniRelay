@@ -1,4 +1,4 @@
-name: Publish YARPCore Packages
+name: Publish OmniRelay Packages
 
 on:
   push:
@@ -80,7 +80,7 @@ jobs:
               --configuration Release \
               --output artifacts/packages \
               /p:ContinuousIntegrationBuild=true \
-              /p:YARPCoreVersion=${{ steps.version.outputs.value }} \
+              /p:OmniRelayVersion=${{ steps.version.outputs.value }} \
               /p:PackageVersion=${{ steps.version.outputs.value }}
           done
 
@@ -90,7 +90,7 @@ jobs:
       - name: Upload packages
         uses: actions/upload-artifact@v4
         with:
-          name: yarpcore-packages-${{ steps.version.outputs.value }}
+          name: omnirelay-packages-${{ steps.version.outputs.value }}
           path: artifacts/packages
           if-no-files-found: error
 

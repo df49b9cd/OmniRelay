@@ -10,14 +10,14 @@
     <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
     <TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);PrepareAnalyzerOutputs</TargetsForTfmSpecificBuildOutput>
     <AssemblyName>YARPCore.Codegen.Generator</AssemblyName>
-    <PackageId>YARPCore.Codegen.Generator</PackageId>
-    <Description>Roslyn incremental generator that emits YARPCore dispatcher/client helpers from protobuf descriptor sets.</Description>
-    <PackageTags>yarpc;protobuf;codegen;roslyn;incremental</PackageTags>
+    <PackageId>OmniRelay.Codegen.Generator</PackageId>
+    <Description>Roslyn incremental generator that emits OmniRelay dispatcher/client helpers from protobuf descriptor sets.</Description>
+    <PackageTags>omnirelay;yarpc;protobuf;codegen;roslyn;incremental</PackageTags>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageType>Analyzer</PackageType>
     <NoWarn>$(NoWarn);NU5128</NoWarn>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageReleaseNotes>Telemetry-less analyzer packaging; bundles YARPCore runtime dependencies.</PackageReleaseNotes>
+    <PackageReleaseNotes>Telemetry-less analyzer packaging; bundles OmniRelay runtime dependencies.</PackageReleaseNotes>
   </PropertyGroup>
 
   <ItemGroup>

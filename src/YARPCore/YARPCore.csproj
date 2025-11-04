@@ -2,9 +2,9 @@
   <PropertyGroup>
     <AssemblyName>YARPCore</AssemblyName>
     <RootNamespace>YARPCore</RootNamespace>
-    <PackageId>YARPCore</PackageId>
-    <Description>YARPCore dispatcher, transports, codecs, middleware, and peer management for .NET.</Description>
-    <PackageTags>yarpc;rpc;grpc;http;middleware</PackageTags>
+    <PackageId>OmniRelay</PackageId>
+    <Description>OmniRelay dispatcher, transports, codecs, middleware, and peer management for .NET.</Description>
+    <PackageTags>omnirelay;yarpc;rpc;grpc;http;middleware</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>

@@ -5,9 +5,9 @@
     <RootNamespace>YARPCore.Cli</RootNamespace>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>yarpcore</ToolCommandName>
-    <PackageId>YARPCore.Cli</PackageId>
-    <Description>YARPCore operator CLI for validations, introspection, smoke tests, and benchmarking.</Description>
-    <PackageTags>yarpc;cli;grpc;http</PackageTags>
+    <PackageId>OmniRelay.Cli</PackageId>
+    <Description>OmniRelay operator CLI for validations, introspection, smoke tests, and benchmarking.</Description>
+    <PackageTags>omnirelay;yarpc;cli;grpc;http</PackageTags>
     <PackageReadmeFile>docs/reference/cli-tool-readme.md</PackageReadmeFile>
   </PropertyGroup>
 

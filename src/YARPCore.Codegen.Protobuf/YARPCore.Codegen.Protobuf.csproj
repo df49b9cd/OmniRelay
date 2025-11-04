@@ -6,9 +6,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <AssemblyName>YARPCore.Codegen.Protobuf</AssemblyName>
-    <PackageId>YARPCore.Codegen.Protobuf</PackageId>
-    <Description>protoc plug-in for generating YARPCore dispatcher and client bindings.</Description>
-    <PackageTags>yarpc;protobuf;codegen;protoc</PackageTags>
+    <PackageId>OmniRelay.Codegen.Protobuf</PackageId>
+    <Description>protoc plug-in for generating OmniRelay dispatcher and client bindings.</Description>
+    <PackageTags>omnirelay;yarpc;protobuf;codegen;protoc</PackageTags>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
   </PropertyGroup>
   <ItemGroup>
