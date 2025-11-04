@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <AssemblyName>OmniRelay.Codegen.Protobuf</AssemblyName>
+    <PackageId>OmniRelay.Codegen.Protobuf</PackageId>
+    <Description>protoc plug-in for generating OmniRelay dispatcher and client bindings.</Description>
+    <PackageTags>omnirelay;yarpc;protobuf;codegen;protoc</PackageTags>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../OmniRelay.Codegen.Protobuf.Core/OmniRelay.Codegen.Protobuf.Core.csproj" />
+  </ItemGroup>
+</Project>

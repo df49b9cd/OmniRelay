@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>OmniRelay.Configuration</AssemblyName>
+    <RootNamespace>OmniRelay.Configuration</RootNamespace>
+    <PackageId>OmniRelay.Configuration</PackageId>
+    <Description>Configuration binder, hosting extensions, and dependency injection for OmniRelay dispatchers.</Description>
+    <PackageTags>omnirelay;yarpc;configuration;hosting;dependency-injection</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="JsonSchema.Net" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
+    <PackageReference Include="OpenTelemetry.Exporter.Prometheus.AspNetCore" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OmniRelay\OmniRelay.csproj" />
+  </ItemGroup>
+</Project>

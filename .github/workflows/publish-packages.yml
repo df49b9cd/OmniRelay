@@ -31,7 +31,7 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Restore
-        run: dotnet restore YARPCore.slnx
+        run: dotnet restore OmniRelay.slnx
 
       - name: Determine package version
         id: version
@@ -57,10 +57,10 @@ jobs:
           echo "value=${version}" >> "$GITHUB_OUTPUT"
 
       - name: Build
-        run: dotnet build YARPCore.slnx --configuration Release
+        run: dotnet build OmniRelay.slnx --configuration Release
 
       - name: Test
-        run: dotnet test YARPCore.slnx --configuration Release --no-build
+        run: dotnet test OmniRelay.slnx --configuration Release --no-build
 
       - name: Pack artifacts
         run: |
@@ -68,10 +68,10 @@ jobs:
           mkdir -p artifacts/packages
 
           projects=(
-            "src/YARPCore/YARPCore.csproj"
-            "src/YARPCore.Configuration/YARPCore.Configuration.csproj"
-            "src/YARPCore.Codegen.Protobuf.Core/YARPCore.Codegen.Protobuf.Core.csproj"
-            "src/YARPCore.Codegen.Protobuf.Generator/YARPCore.Codegen.Protobuf.Generator.csproj"
+            "src/OmniRelay/OmniRelay.csproj"
+            "src/OmniRelay.Configuration/OmniRelay.Configuration.csproj"
+            "src/OmniRelay.Codegen.Protobuf.Core/OmniRelay.Codegen.Protobuf.Core.csproj"
+            "src/OmniRelay.Codegen.Protobuf.Generator/OmniRelay.Codegen.Protobuf.Generator.csproj"
           )
 
           for project in "${projects[@]}"; do

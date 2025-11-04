@@ -1,8 +1,8 @@
-# YARPCore
+# OmniRelay
 
-YARPCore is the .NET port of Uber's YARPC runtime, layered on top of Hugo concurrency primitives. It targets transport, middleware, and tooling parity with `yarpc-go` while embracing .NET idioms (Generic Host, System.CommandLine, Roslyn generators).
+OmniRelay is the .NET port of Uber's YARPC runtime, layered on top of Hugo concurrency primitives. It targets transport, middleware, and tooling parity with `yarpc-go` while embracing .NET idioms (Generic Host, System.CommandLine, Roslyn generators).
 
-> Note: namespaces remain under `Polymer.*` for now to avoid thrashing source callers. NuGet packages, tooling, and assemblies publish as `YARPCore.*`.
+> Note: namespaces remain under `Polymer.*` for now to avoid thrashing source callers. NuGet packages, tooling, and assemblies publish as `OmniRelay.*`.
 
 ## Current Status
 
@@ -16,11 +16,11 @@ YARPCore is the .NET port of Uber's YARPC runtime, layered on top of Hugo concur
 
 ## Repository Layout
 
-- `src/Polymer` - builds `YARPCore.dll`; contains dispatcher, transports, codecs, middleware, peer subsystem, and client helpers.
-- `src/Polymer.Configuration` - builds `YARPCore.Configuration.dll`; contains `AddPolymerDispatcher`, configuration models, and spec hooks (`ICustomInboundSpec`, etc.).
-- `src/Polymer.Cli` - builds the `YARPCore.Cli` global tool (`yarpcore` command) for config validation, introspection, and scripted smoke tests.
-- `src/Polymer.Codegen.Protobuf` - builds the `YARPCore.Codegen.Protobuf` console plug-in (`protoc-gen-yarpcore-csharp`).
-- `src/Polymer.Codegen.Protobuf.Generator` - Roslyn incremental generator package (ships YARPCore runtime dependencies).
+- `src/Polymer` - builds `OmniRelay.dll`; contains dispatcher, transports, codecs, middleware, peer subsystem, and client helpers.
+- `src/Polymer.Configuration` - builds `OmniRelay.Configuration.dll`; contains `AddPolymerDispatcher`, configuration models, and spec hooks (`ICustomInboundSpec`, etc.).
+- `src/Polymer.Cli` - builds the `OmniRelay.Cli` global tool (`yarpcore` command) for config validation, introspection, and scripted smoke tests.
+- `src/Polymer.Codegen.Protobuf` - builds the `OmniRelay.Codegen.Protobuf` console plug-in (`protoc-gen-yarpcore-csharp`).
+- `src/Polymer.Codegen.Protobuf.Generator` - Roslyn incremental generator package (ships OmniRelay runtime dependencies).
 - `tests/Polymer.Tests` - xUnit coverage across transports, middleware, peer logic, codecs, configuration, and codegen.
 - `tests/Polymer.YabInterop` - yab-driven HTTP/gRPC interop harness.
 - `docs/` - architecture plan, backlog, and reference guides (streaming, middleware, diagnostics, shadowing, etc.).
@@ -166,7 +166,7 @@ Install locally with:
 
 ```bash
 dotnet pack src/Polymer.Cli/Polymer.Cli.csproj -c Release -o artifacts/cli
-dotnet tool install --global YARPCore.Cli --add-source artifacts/cli
+dotnet tool install --global OmniRelay.Cli --add-source artifacts/cli
 ```
 
 See `docs/reference/cli.md` for profiles, protobuf automation, and CI recipes.

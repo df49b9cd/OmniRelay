@@ -1,4 +1,4 @@
-# YARPCore CLI Tool
+# OmniRelay CLI Tool
 
 `yarpcore` is a .NET global tool that helps Polymer operators validate configuration, inspect a running dispatcher, and issue ad-hoc RPCs over HTTP or gRPC. It mirrors the ergonomics of `yab` while staying aligned with Polymer's transport metadata and codec stack.
 
@@ -14,8 +14,8 @@
 
 ```bash
 # Install from a local package feed
-# (publish with `dotnet pack src/YARPCore.Cli/YARPCore.Cli.csproj -c Release -o artifacts/cli`)
-dotnet tool install --global YARPCore.Cli --add-source artifacts/cli
+# (publish with `dotnet pack src/OmniRelay.Cli/OmniRelay.Cli.csproj -c Release -o artifacts/cli`)
+dotnet tool install --global OmniRelay.Cli --add-source artifacts/cli
 
 # Validate config and execute a smoke test call
 yarpcore config validate --config appsettings.json

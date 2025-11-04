@@ -1,15 +1,15 @@
 using System.Collections.Immutable;
 using System.Diagnostics;
 using Hugo;
-using YARPCore.Core;
-using YARPCore.Core.Middleware;
-using YARPCore.Core.Peers;
-using YARPCore.Core.Transport;
-using YARPCore.Dispatcher;
-using YARPCore.Errors;
-using YARPCore.Samples.Quickstart;
-using YARPCore.Transport.Grpc;
-using YARPCore.Transport.Http;
+using OmniRelay.Core;
+using OmniRelay.Core.Middleware;
+using OmniRelay.Core.Peers;
+using OmniRelay.Core.Transport;
+using OmniRelay.Dispatcher;
+using OmniRelay.Errors;
+using OmniRelay.Samples.Quickstart;
+using OmniRelay.Transport.Grpc;
+using OmniRelay.Transport.Http;
 using static Hugo.Go;
 
 var runtime = SampleBootstrap.Build();
@@ -41,7 +41,7 @@ Console.WriteLine("Stopping dispatcher...");
 await runtime.Dispatcher.StopAsync().ConfigureAwait(false);
 Console.WriteLine("Dispatcher stopped.");
 
-namespace YARPCore.Samples.Quickstart
+namespace OmniRelay.Samples.Quickstart
 {
     internal static class SampleBootstrap
     {

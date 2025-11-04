@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>OmniRelay.Cli</AssemblyName>
+    <RootNamespace>OmniRelay.Cli</RootNamespace>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>yarpcore</ToolCommandName>
+    <PackageId>OmniRelay.Cli</PackageId>
+    <Description>OmniRelay operator CLI for validations, introspection, smoke tests, and benchmarking.</Description>
+    <PackageTags>omnirelay;yarpc;cli;grpc;http</PackageTags>
+    <PackageReadmeFile>docs/reference/cli-tool-readme.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OmniRelay.Configuration\OmniRelay.Configuration.csproj" />
+    <ProjectReference Include="..\OmniRelay\OmniRelay.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\docs\reference\cli-tool-readme.md" Pack="true" PackagePath="docs/reference/cli-tool-readme.md" />
+    <PackageReference Include="Google.Protobuf" />
+    <PackageReference Include="System.CommandLine" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
+  </ItemGroup>
+</Project>

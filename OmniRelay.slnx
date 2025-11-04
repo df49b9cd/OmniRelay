@@ -1,0 +1,18 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/OmniRelay.Cli/OmniRelay.Cli.csproj" />
+    <Project Path="src/OmniRelay.Codegen.Protobuf.Core/OmniRelay.Codegen.Protobuf.Core.csproj" />
+    <Project Path="src/OmniRelay.Codegen.Protobuf.Generator/OmniRelay.Codegen.Protobuf.Generator.csproj" />
+    <Project Path="src/OmniRelay.Codegen.Protobuf/OmniRelay.Codegen.Protobuf.csproj" />
+    <Project Path="src/OmniRelay.Configuration/OmniRelay.Configuration.csproj" />
+    <Project Path="src/OmniRelay/OmniRelay.csproj" />
+  </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/Quickstart.Server/Quickstart.Server.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/OmniRelay.Tests/OmniRelay.Tests.csproj" />
+    <Project Path="tests/OmniRelay.Tests/Projects/ProtobufIncrementalSample/ProtobufIncrementalSample.csproj" />
+    <Project Path="tests/OmniRelay.YabInterop/OmniRelay.YabInterop.csproj" />
+  </Folder>
+</Solution>
