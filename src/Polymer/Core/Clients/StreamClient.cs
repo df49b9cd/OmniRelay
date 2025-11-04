@@ -42,7 +42,8 @@ public sealed class StreamClient<TRequest, TResponse>
             throw PolymerErrors.FromError(streamResult.Error!, options.Direction.ToString());
         }
 
-        await using (var call = streamResult.Value) {
+        await using (streamResult.Value.AsAsyncDisposable(out var call))
+        {
             await foreach (var payload in call.Responses.ReadAllAsync(cancellationToken).ConfigureAwait(false))
             {
                 var decodeResult = _codec.DecodeResponse(payload, call.ResponseMeta);

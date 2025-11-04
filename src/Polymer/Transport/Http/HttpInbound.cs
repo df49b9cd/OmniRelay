@@ -426,7 +426,7 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
                 return;
             }
 
-            await using (var call = streamResult.Value)
+            await using (streamResult.Value.AsAsyncDisposable(out var call))
             {
                 context.Response.StatusCode = StatusCodes.Status200OK;
                 context.Response.Headers[HttpTransportHeaders.Transport] = transport;

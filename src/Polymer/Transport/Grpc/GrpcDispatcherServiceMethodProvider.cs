@@ -187,7 +187,7 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                     throw rpcException;
                 }
 
-                await using (var streamCall = streamResult.Value)
+                await using (streamResult.Value.AsAsyncDisposable(out var streamCall))
                 {
                     var cancellationToken = callContext.CancellationToken;
                     var headersSent = false;
@@ -327,7 +327,7 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                     throw rpcException;
                 }
 
-                await using (var clientStreamCall = callResult.Value)
+                await using (callResult.Value.AsAsyncDisposable(out var clientStreamCall))
                 {
                     var cancellationToken = callContext.CancellationToken;
 
@@ -496,14 +496,14 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                     throw rpcException;
                 }
 
-                await using (var duplexCall = callResult.Value)
+                await using (callResult.Value.AsAsyncDisposable(out var duplexCall))
                 {
                     var cancellationToken = callContext.CancellationToken;
 
-                var requestPump = PumpRequestsAsync();
-                var responsePump = PumpResponsesAsync();
+                    var requestPump = PumpRequestsAsync();
+                    var responsePump = PumpResponsesAsync();
 
-                await Task.WhenAll(requestPump, responsePump).ConfigureAwait(false);
+                    await Task.WhenAll(requestPump, responsePump).ConfigureAwait(false);
 
                     async Task PumpRequestsAsync()
                     {
@@ -628,7 +628,7 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                         RecordServerDuplexMetrics(StatusCode.OK);
                         GrpcTransportDiagnostics.SetStatus(activity, StatusCode.OK);
                     }
-                }   
+                }
             }
 
             context.AddDuplexStreamingMethod(method, [], handler);

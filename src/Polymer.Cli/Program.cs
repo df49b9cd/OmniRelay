@@ -531,7 +531,7 @@ public static class Program
                 return 1;
             }
 
-            await using (var stream = await response.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false))
+            await using ((await response.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false)).AsAsyncDisposable(out var stream))
             {
                 var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
                 {
