@@ -39,7 +39,10 @@
       <_AnalyzerDependency Include="$(TargetPath)">
         <TargetPath>analyzers/dotnet/cs/$(TargetFileName)</TargetPath>
       </_AnalyzerDependency>
-      <_AnalyzerDependency Include="@(ReferenceCopyLocalPaths)" Condition="%(ReferenceCopyLocalPaths.Extension) == '.dll' and (%(ReferenceCopyLocalPaths.FileName) == 'Google.Protobuf' or %(ReferenceCopyLocalPaths.FileName) == 'OmniRelay.Codegen.Protobuf.Core' or %(ReferenceCopyLocalPaths.FileName) == 'OmniRelay')">
+      <_AnalyzerDependency Include="$(TargetDir)$(TargetName).pdb" Condition="Exists('$(TargetDir)$(TargetName).pdb')">
+        <TargetPath>analyzers/dotnet/cs/$(TargetName).pdb</TargetPath>
+      </_AnalyzerDependency>
+      <_AnalyzerDependency Include="@(ReferenceCopyLocalPaths)" Condition="(%(ReferenceCopyLocalPaths.Extension) == '.dll' or %(ReferenceCopyLocalPaths.Extension) == '.pdb') and (%(ReferenceCopyLocalPaths.FileName) == 'Google.Protobuf' or %(ReferenceCopyLocalPaths.FileName) == 'OmniRelay.Codegen.Protobuf.Core' or %(ReferenceCopyLocalPaths.FileName) == 'OmniRelay')">
         <TargetPath>analyzers/dotnet/cs/%(ReferenceCopyLocalPaths.FileName)%(ReferenceCopyLocalPaths.Extension)</TargetPath>
       </_AnalyzerDependency>
     </ItemGroup>
