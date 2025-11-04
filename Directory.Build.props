@@ -4,7 +4,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <OmniRelayVersion>0.2.0</OmniRelayVersion>
-    <RepositoryUrl>https://github.com/df49b9cd/Polymer</RepositoryUrl>
+    <RepositoryUrl>https://github.com/df49b9cd/OmniRelay</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
   </PropertyGroup>
 
@@ -14,7 +14,7 @@
     <Authors>OmniRelay maintainers</Authors>
     <Company>OmniRelay</Company>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageProjectUrl>https://github.com/df49b9cd/Polymer</PackageProjectUrl>
+    <PackageProjectUrl>https://github.com/df49b9cd/OmniRelay</PackageProjectUrl>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
