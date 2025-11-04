@@ -129,6 +129,37 @@ Each workflow measurement includes metric tags for `workflow.namespace`, `workfl
 
 These endpoints appear alongside `/polymer/introspect` on every HTTP inbound when `runtime.enableControlPlane` is true.
 
+### Control-plane quickstart
+
+With the `appsettings.json` above and a Polymer HTTP inbound listening on `http://localhost:8080`, the following commands exercise the runtime controls end-to-end:
+
+```bash
+# Check the current minimum log level
+curl http://localhost:8080/polymer/control/logging
+
+# Raise log level to Warning
+curl -X POST \
+  -H 'Content-Type: application/json' \
+  -d '{ "level": "Warning" }' \
+  http://localhost:8080/polymer/control/logging
+
+# Reset to the configuration default
+curl -X POST \
+  -H 'Content-Type: application/json' \
+  -d '{ "level": null }' \
+  http://localhost:8080/polymer/control/logging
+
+# Inspect and adjust tracing sampling probability
+curl http://localhost:8080/polymer/control/tracing
+curl -X POST \
+  -H 'Content-Type: application/json' \
+  -d '{ "probability": 0.25 }' \
+  http://localhost:8080/polymer/control/tracing
+
+# Scrape Prometheus metrics exposed by the HTTP inbound
+curl http://localhost:8080/polymer/metrics
+```
+
 ## Usage guidelines
 
 - Register the meter before creating wait groups or channels to ensure counters record the full lifecycle.
