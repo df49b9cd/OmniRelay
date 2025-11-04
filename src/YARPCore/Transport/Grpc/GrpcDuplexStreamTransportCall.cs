@@ -151,6 +151,15 @@ internal sealed class GrpcDuplexStreamTransportCall : IDuplexStreamCall
             await _inner.CompleteResponsesAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
             RecordCompletion(StatusCode.OK);
         }
+        catch (OperationCanceledException)
+        {
+            var error = PolymerErrorAdapter.FromStatus(
+                PolymerStatusCode.Cancelled,
+                "The gRPC duplex call was cancelled.",
+                transport: GrpcTransportConstants.TransportName);
+            await _inner.CompleteResponsesAsync(error, cancellationToken).ConfigureAwait(false);
+            RecordCompletion(StatusCode.Cancelled);
+        }
         catch (RpcException rpcEx)
         {
             var error = MapRpcException(rpcEx);

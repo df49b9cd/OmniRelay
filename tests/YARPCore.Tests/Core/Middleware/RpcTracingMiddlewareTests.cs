@@ -15,7 +15,7 @@ public sealed class RpcTracingMiddlewareTests
     public async Task UnaryInbound_CreatesServerSpanWithTags()
     {
         var activities = new List<Activity>();
-        using var source = new ActivitySource("test.polymer.tracing");
+        using var source = new ActivitySource("test.yarpcore.tracing");
         using var listener = CreateListener(source.Name, activities);
         var options = new RpcTracingOptions { ActivitySource = source };
         var middleware = new RpcTracingMiddleware(options: options);
@@ -47,7 +47,7 @@ public sealed class RpcTracingMiddlewareTests
         Assert.True(result.IsSuccess);
         var activity = Assert.Single(activities);
         Assert.Equal(ActivityKind.Server, activity.Kind);
-        Assert.Equal("polymer.rpc.inbound.unary", activity.DisplayName);
+        Assert.Equal("yarpcore.rpc.inbound.unary", activity.DisplayName);
         Assert.Equal(ActivityStatusCode.Ok, activity.Status);
         Assert.Equal(parent.TraceId, activity.TraceId);
         Assert.Equal("svc", activity.GetTagItem("rpc.service"));
@@ -60,7 +60,7 @@ public sealed class RpcTracingMiddlewareTests
     public async Task UnaryOutbound_Failure_InjectsTraceContextAndSetsError()
     {
         var activities = new List<Activity>();
-        using var source = new ActivitySource("test.polymer.tracing");
+        using var source = new ActivitySource("test.yarpcore.tracing");
         using var listener = CreateListener(source.Name, activities);
         var options = new RpcTracingOptions { ActivitySource = source };
         var middleware = new RpcTracingMiddleware(options: options);

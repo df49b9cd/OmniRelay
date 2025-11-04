@@ -68,12 +68,12 @@ public class PolymerErrorsTests
     {
         var exception = PolymerErrors.FromException(new TimeoutException("deadline"), transport: "http");
         Assert.Equal("http", exception.Transport);
-        Assert.True(exception.Error.TryGetMetadata("polymer.transport", out string? transport));
+        Assert.True(exception.Error.TryGetMetadata("yarpcore.transport", out string? transport));
         Assert.Equal("http", transport);
 
         var rewritten = PolymerErrors.FromException(exception, transport: "grpc");
         Assert.Equal("grpc", rewritten.Transport);
-        Assert.True(rewritten.Error.TryGetMetadata("polymer.transport", out string? newTransport));
+        Assert.True(rewritten.Error.TryGetMetadata("yarpcore.transport", out string? newTransport));
         Assert.Equal("grpc", newTransport);
     }
 

@@ -14,7 +14,7 @@ public sealed class RpcMetricsMiddlewareTests
     [Fact]
     public async Task UnaryInbound_Success_RecordsMetrics()
     {
-        using var meter = new Meter("test.polymer.metrics");
+        using var meter = new Meter("test.yarpcore.metrics");
         var options = new RpcMetricsOptions { Meter = meter, MetricPrefix = "test.rpc" };
         var middleware = new RpcMetricsMiddleware(options);
 
@@ -43,7 +43,7 @@ public sealed class RpcMetricsMiddlewareTests
     [Fact]
     public async Task UnaryOutbound_Failure_IncrementsFailureCounter()
     {
-        using var meter = new Meter("test.polymer.metrics");
+        using var meter = new Meter("test.yarpcore.metrics");
         var options = new RpcMetricsOptions { Meter = meter, MetricPrefix = "test.rpc" };
         var middleware = new RpcMetricsMiddleware(options);
 

@@ -47,7 +47,7 @@ public class GeneratedServiceIntegrationTests
     public async Task Unary_Grpc_Roundtrips()
     {
         var grpcPort = TestPortAllocator.GetRandomPort();
-        var serviceName = "polymer.tests.codegen";
+        var serviceName = "yarpcore.tests.codegen";
         var address = new Uri($"http://127.0.0.1:{grpcPort}");
 
         var options = new DispatcherOptions(serviceName);

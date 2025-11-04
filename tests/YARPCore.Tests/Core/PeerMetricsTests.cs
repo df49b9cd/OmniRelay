@@ -18,14 +18,14 @@ public sealed class PeerMetricsTests : IDisposable
     private readonly ConcurrentBag<MetricMeasurement> _measurements = [];
     private static readonly string[] InstrumentsToTrack =
     [
-        "polymer.peer.inflight",
-        "polymer.peer.successes",
-        "polymer.peer.failures",
-        "polymer.peer.lease_rejected",
-        "polymer.peer.pool_exhausted",
-        "polymer.retry.scheduled",
-        "polymer.retry.exhausted",
-        "polymer.retry.succeeded"
+        "yarpcore.peer.inflight",
+        "yarpcore.peer.successes",
+        "yarpcore.peer.failures",
+        "yarpcore.peer.lease_rejected",
+        "yarpcore.peer.pool_exhausted",
+        "yarpcore.retry.scheduled",
+        "yarpcore.retry.exhausted",
+        "yarpcore.retry.succeeded"
     ];
 
     public PeerMetricsTests()
@@ -53,13 +53,13 @@ public sealed class PeerMetricsTests : IDisposable
 
         await lease.DisposeAsync();
 
-        var inflight = GetMeasurements("polymer.peer.inflight");
+        var inflight = GetMeasurements("yarpcore.peer.inflight");
         Assert.Contains(inflight, m => m.Value == 1 && HasTag(m, "rpc.peer", "peer-1"));
         Assert.Contains(inflight, m => m.Value == -1 && HasTag(m, "rpc.peer", "peer-1"));
 
-        var successes = GetMeasurements("polymer.peer.successes");
+        var successes = GetMeasurements("yarpcore.peer.successes");
         Assert.Contains(successes, m => m.Value == 1 && HasTag(m, "rpc.peer", "peer-1"));
-        Assert.DoesNotContain(GetMeasurements("polymer.peer.failures"), m => HasTag(m, "rpc.peer", "peer-1"));
+        Assert.DoesNotContain(GetMeasurements("yarpcore.peer.failures"), m => HasTag(m, "rpc.peer", "peer-1"));
     }
 
     [Fact]
@@ -76,7 +76,7 @@ public sealed class PeerMetricsTests : IDisposable
         // Do not mark success so the lease reports failure on dispose.
         await lease.DisposeAsync();
 
-        var failures = GetMeasurements("polymer.peer.failures");
+        var failures = GetMeasurements("yarpcore.peer.failures");
         Assert.Contains(failures, m => m.Value == 1 && HasTag(m, "rpc.peer", "peer-fail"));
     }
 
@@ -90,8 +90,8 @@ public sealed class PeerMetricsTests : IDisposable
         var leaseResult = await chooser.AcquireAsync(meta, TestContext.Current.CancellationToken);
         Assert.True(leaseResult.IsFailure);
 
-        Assert.Contains(GetMeasurements("polymer.peer.lease_rejected"), m => HasTag(m, "rpc.peer", "peer-busy"));
-        Assert.Contains(GetMeasurements("polymer.peer.pool_exhausted"), m => HasTag(m, "rpc.transport", "grpc"));
+        Assert.Contains(GetMeasurements("yarpcore.peer.lease_rejected"), m => HasTag(m, "rpc.peer", "peer-busy"));
+        Assert.Contains(GetMeasurements("yarpcore.peer.pool_exhausted"), m => HasTag(m, "rpc.transport", "grpc"));
     }
 
     [Fact]
@@ -126,8 +126,8 @@ public sealed class PeerMetricsTests : IDisposable
 
         Assert.True(result.IsSuccess);
 
-        Assert.Contains(GetMeasurements("polymer.retry.scheduled"), m => HasTag(m, "error.status", PolymerStatusCode.Unavailable.ToString()));
-        Assert.Contains(GetMeasurements("polymer.retry.succeeded"), m => HasTag(m, "retry.attempts", 2));
+        Assert.Contains(GetMeasurements("yarpcore.retry.scheduled"), m => HasTag(m, "error.status", PolymerStatusCode.Unavailable.ToString()));
+        Assert.Contains(GetMeasurements("yarpcore.retry.succeeded"), m => HasTag(m, "retry.attempts", 2));
     }
 
     private IReadOnlyList<MetricMeasurement> GetMeasurements(string instrument) =>
@@ -161,7 +161,7 @@ public sealed class PeerMetricsTests : IDisposable
             {
                 InstrumentPublished = (instrument, listener) =>
                 {
-                    if (instrument.Meter.Name == "Polymer.Core.Peers" &&
+                    if (instrument.Meter.Name == "YARPCore.Core.Peers" &&
                         _instruments.Contains(instrument.Name))
                     {
                         listener.EnableMeasurementEvents(instrument);

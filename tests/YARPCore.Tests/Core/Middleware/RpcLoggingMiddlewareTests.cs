@@ -29,7 +29,7 @@ public sealed class RpcLoggingMiddlewareTests
             (UnaryInboundDelegate)((req, token) => ValueTask.FromResult(Ok(response))));
 
         Assert.True(result.IsSuccess);
-        TestLogger<A>.LogEntry entry = Assert.Single(logger.Entries);
+        TestLogger<RpcLoggingMiddleware>.LogEntry entry = Assert.Single(logger.Entries);
         Assert.Equal(LogLevel.Information, entry.LogLevel);
         Assert.Contains("inbound unary", entry.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("svc", entry.Message, StringComparison.OrdinalIgnoreCase);
@@ -53,7 +53,7 @@ public sealed class RpcLoggingMiddlewareTests
             (UnaryOutboundDelegate)((req, token) => ValueTask.FromResult(Err<Response<ReadOnlyMemory<byte>>>(error))));
 
         Assert.True(result.IsFailure);
-        TestLogger<A>.LogEntry entry = Assert.Single(logger.Entries);
+        TestLogger<RpcLoggingMiddleware>.LogEntry entry = Assert.Single(logger.Entries);
         Assert.Equal(LogLevel.Warning, entry.LogLevel);
         Assert.Contains("failed", entry.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("boom", entry.Message, StringComparison.OrdinalIgnoreCase);
@@ -124,7 +124,7 @@ public sealed class RpcLoggingMiddlewareTests
         activity.Stop();
 
         Assert.True(result.IsSuccess);
-        TestLogger<A>.LogEntry entry = Assert.Single(logger.Entries);
+        TestLogger<RpcLoggingMiddleware>.LogEntry entry = Assert.Single(logger.Entries);
 
         Assert.NotNull(entry.Scope);
         var scope = entry.Scope!;

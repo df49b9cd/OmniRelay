@@ -21,8 +21,8 @@ public class ProtobufCodeGeneratorTests
 
         Assert.Single(response.File);
         var generated = response.File[0].Content.Replace("\r\n", "\n");
-        var goldenPath = TestPath.Combine("tests", "Polymer.Tests", "Generated", "TestService.Polymer.g.cs");
-        File.WriteAllText(TestPath.Combine("tests", "Polymer.Tests", "Generated", "TestService.actual.g.cs"), response.File[0].Content);
+        var goldenPath = TestPath.Combine("tests", "YARPCore.Tests", "Generated", "TestService.YARPCore.g.cs");
+        File.WriteAllText(TestPath.Combine("tests", "YARPCore.Tests", "Generated", "TestService.actual.g.cs"), response.File[0].Content);
         var expected = File.ReadAllText(goldenPath).Replace("\r\n", "\n");
 
         Assert.Equal(expected, generated);
@@ -32,7 +32,7 @@ public class ProtobufCodeGeneratorTests
     public void IncrementalGenerator_Produces_Golden_File()
     {
         var descriptorSet = CodeGeneratorRequestFactory.CreateDescriptorSet();
-        var tempDirectory = Path.Combine(Path.GetTempPath(), "polymer-tests", Guid.NewGuid().ToString("N"));
+        var tempDirectory = Path.Combine(Path.GetTempPath(), "yarpcore-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDirectory);
         var descriptorPath = Path.Combine(tempDirectory, "test_service.pb");
 
@@ -47,7 +47,7 @@ public class ProtobufCodeGeneratorTests
             var driver = CSharpGeneratorDriver.Create([generator.AsSourceGenerator()], additionalTexts: additionalTexts);
 
             var compilation = CSharpCompilation.Create(
-                assemblyName: "Polymer.Codegen.Tests",
+                assemblyName: "YARPCore.Codegen.Tests",
                 references: [MetadataReference.CreateFromFile(typeof(object).Assembly.Location)],
                 options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
@@ -57,9 +57,9 @@ public class ProtobufCodeGeneratorTests
             Assert.True(runResult.GeneratedTrees.Length > 0, "Generator did not produce any output.");
 
             var generatedRaw = runResult.GeneratedTrees[0].GetText(TestContext.Current.CancellationToken).ToString();
-            File.WriteAllText(TestPath.Combine("tests", "Polymer.Tests", "Generated", "TestService.incremental.g.cs"), generatedRaw);
+            File.WriteAllText(TestPath.Combine("tests", "YARPCore.Tests", "Generated", "TestService.incremental.g.cs"), generatedRaw);
             var generatedText = generatedRaw.Replace("\r\n", "\n");
-            var expected = File.ReadAllText(TestPath.Combine("tests", "Polymer.Tests", "Generated", "TestService.Polymer.g.cs")).Replace("\r\n", "\n");
+            var expected = File.ReadAllText(TestPath.Combine("tests", "YARPCore.Tests", "Generated", "TestService.YARPCore.g.cs")).Replace("\r\n", "\n");
 
             Assert.Equal(expected, generatedText);
         }
@@ -94,9 +94,9 @@ public class ProtobufCodeGeneratorTests
         {
             var file = new FileDescriptorProto
             {
-                Name = "tests/Polymer.Tests/Protos/test_service.proto",
-                Package = "polymer.tests.codegen",
-                Options = new FileOptions { CsharpNamespace = "Polymer.Tests.Protos" }
+                Name = "tests/YARPCore.Tests/Protos/test_service.proto",
+                Package = "yarpcore.tests.codegen",
+                Options = new FileOptions { CsharpNamespace = "YARPCore.Tests.Protos" }
             };
 
             file.MessageType.Add(CreateMessage("UnaryRequest", ("message", FieldDescriptorProto.Types.Type.String)));
@@ -108,28 +108,28 @@ public class ProtobufCodeGeneratorTests
             service.Method.Add(new MethodDescriptorProto
             {
                 Name = "UnaryCall",
-                InputType = ".polymer.tests.codegen.UnaryRequest",
-                OutputType = ".polymer.tests.codegen.UnaryResponse"
+                InputType = ".yarpcore.tests.codegen.UnaryRequest",
+                OutputType = ".yarpcore.tests.codegen.UnaryResponse"
             });
             service.Method.Add(new MethodDescriptorProto
             {
                 Name = "ServerStream",
-                InputType = ".polymer.tests.codegen.StreamRequest",
-                OutputType = ".polymer.tests.codegen.StreamResponse",
+                InputType = ".yarpcore.tests.codegen.StreamRequest",
+                OutputType = ".yarpcore.tests.codegen.StreamResponse",
                 ServerStreaming = true
             });
             service.Method.Add(new MethodDescriptorProto
             {
                 Name = "ClientStream",
-                InputType = ".polymer.tests.codegen.StreamRequest",
-                OutputType = ".polymer.tests.codegen.UnaryResponse",
+                InputType = ".yarpcore.tests.codegen.StreamRequest",
+                OutputType = ".yarpcore.tests.codegen.UnaryResponse",
                 ClientStreaming = true
             });
             service.Method.Add(new MethodDescriptorProto
             {
                 Name = "DuplexStream",
-                InputType = ".polymer.tests.codegen.StreamRequest",
-                OutputType = ".polymer.tests.codegen.StreamResponse",
+                InputType = ".yarpcore.tests.codegen.StreamRequest",
+                OutputType = ".yarpcore.tests.codegen.StreamResponse",
                 ClientStreaming = true,
                 ServerStreaming = true
             });
@@ -194,7 +194,7 @@ public class ProtobufCodeGeneratorTests
         private static string LocatePluginAssembly()
         {
             var solutionRoot = TestPath.Root;
-            var pluginDirectory = Path.Combine(solutionRoot, "src", "Polymer.Codegen.Protobuf", "bin");
+            var pluginDirectory = Path.Combine(solutionRoot, "src", "YARPCore.Codegen.Protobuf", "bin");
             if (!Directory.Exists(pluginDirectory))
             {
                 throw new DirectoryNotFoundException($"Plug-in build directory not found: {pluginDirectory}");
@@ -202,8 +202,8 @@ public class ProtobufCodeGeneratorTests
 
             var candidates = new[]
             {
-                Path.Combine(pluginDirectory, "Debug", "net10.0", "Polymer.Codegen.Protobuf.dll"),
-                Path.Combine(pluginDirectory, "Release", "net10.0", "Polymer.Codegen.Protobuf.dll")
+                Path.Combine(pluginDirectory, "Debug", "net10.0", "YARPCore.Codegen.Protobuf.dll"),
+                Path.Combine(pluginDirectory, "Release", "net10.0", "YARPCore.Codegen.Protobuf.dll")
             };
 
             foreach (var candidate in candidates)
@@ -214,14 +214,14 @@ public class ProtobufCodeGeneratorTests
                 }
             }
 
-            var matches = Directory.EnumerateFiles(pluginDirectory, "Polymer.Codegen.Protobuf.dll", SearchOption.AllDirectories)
+            var matches = Directory.EnumerateFiles(pluginDirectory, "YARPCore.Codegen.Protobuf.dll", SearchOption.AllDirectories)
                 .Where(path => path.Contains($"{Path.DirectorySeparatorChar}net10.0{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
                 .OrderByDescending(File.GetLastWriteTimeUtc)
                 .ToList();
 
             if (matches.Count == 0)
             {
-                throw new FileNotFoundException("Unable to locate Polymer.Codegen.Protobuf.dll. Ensure the project was built.");
+                throw new FileNotFoundException("Unable to locate YARPCore.Codegen.Protobuf.dll. Ensure the project was built.");
             }
 
             return matches[0];

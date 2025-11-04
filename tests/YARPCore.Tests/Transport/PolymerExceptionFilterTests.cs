@@ -33,7 +33,7 @@ public sealed class PolymerExceptionFilterTests
         Assert.Equal(PolymerStatusCode.DeadlineExceeded.ToString(), payload["status"]);
         Assert.Equal(PolymerErrorAdapter.GetStatusName(PolymerStatusCode.DeadlineExceeded), payload["code"]);
         var metadata = Assert.IsAssignableFrom<IReadOnlyDictionary<string, object?>>(payload["metadata"]);
-        Assert.Equal("http", metadata["polymer.transport"]);
+        Assert.Equal("http", metadata["yarpcore.transport"]);
         Assert.True(metadata.TryGetValue(PolymerErrorAdapter.RetryableMetadataKey, out var retryable));
         Assert.Equal(true, retryable);
 

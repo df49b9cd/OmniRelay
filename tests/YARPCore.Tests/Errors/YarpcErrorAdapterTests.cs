@@ -4,7 +4,7 @@ using YARPCore.Errors;
 
 namespace YARPCore.Tests.Errors;
 
-public class PolymerErrorAdapterTests
+public class YarpcErrorAdapterTests
 {
     [Fact]
     public void FromStatus_AttachesMetadata()
@@ -15,9 +15,9 @@ public class PolymerErrorAdapterTests
             transport: "grpc");
 
         Assert.Equal("permission-denied", error.Code);
-        Assert.True(error.TryGetMetadata("polymer.status", out string? status));
+        Assert.True(error.TryGetMetadata("yarpcore.status", out string? status));
         Assert.Equal(nameof(PolymerStatusCode.PermissionDenied), status);
-        Assert.True(error.TryGetMetadata("polymer.transport", out string? transport));
+        Assert.True(error.TryGetMetadata("yarpcore.transport", out string? transport));
         Assert.Equal("grpc", transport);
     }
 
@@ -43,7 +43,7 @@ public class PolymerErrorAdapterTests
     public void ToStatus_UsesMetadataPriority()
     {
         var error = Error.From("denied")
-            .WithMetadata("polymer.status", nameof(PolymerStatusCode.Unavailable));
+            .WithMetadata("yarpcore.status", nameof(PolymerStatusCode.Unavailable));
 
         var status = PolymerErrorAdapter.ToStatus(error);
 

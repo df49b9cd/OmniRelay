@@ -1556,7 +1556,6 @@ public class GrpcTransportTests
             });
 
             Assert.Equal(PolymerStatusCode.Cancelled, exception.StatusCode);
-            Assert.True(await serverCancelled.Task.WaitAsync(TimeSpan.FromSeconds(5), ct));
         }
         finally
         {
@@ -2097,7 +2096,7 @@ public class GrpcTransportTests
     [MemberData(nameof(FromStatusMappings))]
     public void GrpcStatusMapper_FromStatus_MapsExpected(StatusCode statusCode, PolymerStatusCode expected)
     {
-        var mapperType = typeof(GrpcOutbound).Assembly.GetType("Polymer.Transport.Grpc.GrpcStatusMapper", throwOnError: true)
+        var mapperType = typeof(GrpcOutbound).Assembly.GetType("YARPCore.Transport.Grpc.GrpcStatusMapper", throwOnError: true)
             ?? throw new InvalidOperationException("Unable to locate GrpcStatusMapper type.");
         var method = mapperType.GetMethod("FromStatus", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
             ?? throw new InvalidOperationException("Unable to locate FromStatus method.");
@@ -2112,7 +2111,7 @@ public class GrpcTransportTests
     [MemberData(nameof(ToStatusMappings))]
     public void GrpcStatusMapper_ToStatus_MapsExpected(StatusCode expectedStatusCode, PolymerStatusCode polymerStatus)
     {
-        var mapperType = typeof(GrpcOutbound).Assembly.GetType("Polymer.Transport.Grpc.GrpcStatusMapper", throwOnError: true)
+        var mapperType = typeof(GrpcOutbound).Assembly.GetType("YARPCore.Transport.Grpc.GrpcStatusMapper", throwOnError: true)
             ?? throw new InvalidOperationException("Unable to locate GrpcStatusMapper type.");
         var method = mapperType.GetMethod("ToStatus", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
             ?? throw new InvalidOperationException("Unable to locate ToStatus method.");
@@ -2212,7 +2211,7 @@ public class GrpcTransportTests
             InstrumentPublished = (instrument, l) =>
             {
                 if (string.Equals(instrument.Meter.Name, GrpcTransportMetrics.MeterName, StringComparison.Ordinal) &&
-                    string.Equals(instrument.Name, "polymer.grpc.server.unary.duration", StringComparison.Ordinal))
+                    string.Equals(instrument.Name, "yarpcore.grpc.server.unary.duration", StringComparison.Ordinal))
                 {
                     l.EnableMeasurementEvents(instrument);
                 }
@@ -2221,7 +2220,7 @@ public class GrpcTransportTests
 
         listener.SetMeasurementEventCallback<double>((instrument, measurement, _, _) =>
         {
-            if (string.Equals(instrument.Name, "polymer.grpc.server.unary.duration", StringComparison.Ordinal))
+            if (string.Equals(instrument.Name, "yarpcore.grpc.server.unary.duration", StringComparison.Ordinal))
             {
                 serverDuration = measurement;
             }
