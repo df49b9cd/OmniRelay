@@ -60,7 +60,7 @@ public class PolymerConfigurationTests
                     rule.LogLevel == LogLevel.Trace);
 
         var hostedServices = provider.GetServices<IHostedService>().ToList();
-        Assert.Single(hostedServices);
+        Assert.Contains(hostedServices, service => service is Polymer.Configuration.DispatcherHostedService);
     }
 
     [Fact]

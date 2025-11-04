@@ -1,10 +1,15 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using OpenTelemetry.Exporter;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
 using Polymer.Configuration.Internal;
 using Polymer.Configuration.Models;
+using Polymer.Core.Diagnostics;
 
 namespace Polymer.Configuration;
 
@@ -23,6 +28,8 @@ public static class PolymerServiceCollectionExtensions
         var (minimumLevel, overrides) = ParseLoggingConfiguration(snapshot.Logging);
 
         services.Configure<PolymerConfigurationOptions>(configuration);
+
+        ConfigureDiagnostics(services, snapshot);
 
         if (minimumLevel.HasValue || overrides.Count > 0)
         {
@@ -57,6 +64,130 @@ public static class PolymerServiceCollectionExtensions
         });
 
         return services;
+    }
+
+    private static void ConfigureDiagnostics(IServiceCollection services, PolymerConfigurationOptions options)
+    {
+        var diagnostics = options.Diagnostics;
+        if (diagnostics is null)
+        {
+            return;
+        }
+
+        ConfigureRuntimeDiagnostics(services, diagnostics);
+
+        var otel = diagnostics.OpenTelemetry ?? new OpenTelemetryConfiguration();
+
+        var prometheusEnabled = otel.Prometheus.Enabled ?? true;
+        var otlpEnabled = otel.Otlp.Enabled ?? false;
+        var metricsEnabled = otel.EnableMetrics ?? (prometheusEnabled || otlpEnabled);
+
+        if (!metricsEnabled)
+        {
+            prometheusEnabled = false;
+            otlpEnabled = false;
+        }
+
+        var otelEnabled = otel.Enabled ?? metricsEnabled;
+        if (!otelEnabled)
+        {
+            return;
+        }
+
+        var serviceName = string.IsNullOrWhiteSpace(otel.ServiceName) ? options.Service ?? "polymer" : otel.ServiceName!;
+
+        var openTelemetryBuilder = services.AddOpenTelemetry();
+        openTelemetryBuilder.ConfigureResource(resource => resource.AddService(serviceName: serviceName));
+
+        if (metricsEnabled)
+        {
+            openTelemetryBuilder.WithMetrics(builder =>
+            {
+                builder.AddMeter("Polymer.Core.Peers", "Polymer.Transport.Grpc", "Polymer.Rpc", "Hugo.Go");
+
+                if (prometheusEnabled)
+                {
+                    builder.AddPrometheusExporter(options =>
+                    {
+                        options.ScrapeEndpointPath = NormalizeScrapeEndpointPath(otel.Prometheus.ScrapeEndpointPath);
+                    });
+                }
+
+                if (otlpEnabled)
+                {
+                    builder.AddOtlpExporter(options =>
+                    {
+                        options.Protocol = ParseOtlpProtocol(otel.Otlp.Protocol);
+                        if (!string.IsNullOrWhiteSpace(otel.Otlp.Endpoint))
+                        {
+                            if (!Uri.TryCreate(otel.Otlp.Endpoint, UriKind.Absolute, out var endpoint))
+                            {
+                                throw new PolymerConfigurationException($"OTLP endpoint '{otel.Otlp.Endpoint}' is not a valid absolute URI.");
+                            }
+
+                            options.Endpoint = endpoint;
+                        }
+                    });
+                }
+            });
+
+            services.AddHostedService<DiagnosticsRegistrationHostedService>();
+        }
+    }
+
+    private static void ConfigureRuntimeDiagnostics(
+        IServiceCollection services,
+        DiagnosticsConfiguration diagnostics)
+    {
+        var runtime = diagnostics.Runtime;
+        if (runtime is null)
+        {
+            return;
+        }
+
+        var enableLoggingToggle = runtime.EnableLoggingLevelToggle ?? false;
+        var enableSamplingToggle = runtime.EnableTraceSamplingToggle ?? false;
+        var enableControlPlane = runtime.EnableControlPlane ?? (enableLoggingToggle || enableSamplingToggle);
+
+        if (!enableControlPlane && !enableLoggingToggle && !enableSamplingToggle)
+        {
+            return;
+        }
+
+        services.TryAddSingleton<DiagnosticsRuntimeState>();
+        services.TryAddSingleton<IDiagnosticsRuntime>(sp => sp.GetRequiredService<DiagnosticsRuntimeState>());
+    }
+
+    private static string NormalizeScrapeEndpointPath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return "/polymer/metrics";
+        }
+
+        var normalized = path.Trim();
+        if (!normalized.StartsWith('/'))
+        {
+            normalized = "/" + normalized;
+        }
+
+        return normalized;
+    }
+
+    private static OtlpExportProtocol ParseOtlpProtocol(string? protocol)
+    {
+        if (string.IsNullOrWhiteSpace(protocol))
+        {
+            return OtlpExportProtocol.Grpc;
+        }
+
+        if (Enum.TryParse<OtlpExportProtocol>(protocol, ignoreCase: true, out var parsed))
+        {
+            return parsed;
+        }
+
+        throw new PolymerConfigurationException(
+            $"OTLP protocol '{protocol}' is not valid. Supported values: {string.Join(", ", Enum.GetNames(typeof(OtlpExportProtocol)))}.");
     }
 
     private static void ValidateBasicConfiguration(PolymerConfigurationOptions options)

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
+using Polymer.Core;
 
 namespace Polymer.Transport.Http.Middleware;
 
@@ -20,6 +21,8 @@ public sealed class HttpClientLoggingMiddleware : IHttpClientMiddleware
         CancellationToken cancellationToken,
         HttpClientMiddlewareDelegate next)
     {
+        using var scope = RequestLoggingScope.Begin(_logger, context.RequestMeta);
+
         if (!_logger.IsEnabled(LogLevel.Information))
         {
             return await next(context, cancellationToken).ConfigureAwait(false);

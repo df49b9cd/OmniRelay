@@ -17,7 +17,7 @@ public sealed class RpcTracingMiddlewareTests
         using var source = new ActivitySource("test.polymer.tracing");
         using var listener = CreateListener(source.Name, activities);
         var options = new RpcTracingOptions { ActivitySource = source };
-        var middleware = new RpcTracingMiddleware(options);
+        var middleware = new RpcTracingMiddleware(options: options);
 
         var parent = new Activity("parent");
         parent.SetIdFormat(ActivityIdFormat.W3C);
@@ -62,7 +62,7 @@ public sealed class RpcTracingMiddlewareTests
         using var source = new ActivitySource("test.polymer.tracing");
         using var listener = CreateListener(source.Name, activities);
         var options = new RpcTracingOptions { ActivitySource = source };
-        var middleware = new RpcTracingMiddleware(options);
+        var middleware = new RpcTracingMiddleware(options: options);
 
         RequestMeta? capturedMeta = null;
         var error = PolymerErrorAdapter.FromStatus(PolymerStatusCode.Internal, "boom", transport: "grpc");

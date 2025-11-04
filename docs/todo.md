@@ -197,9 +197,9 @@ Comprehensive backlog tracking the remaining work needed to reach feature parity
   - ~~Include scripting/automation examples.~~ *(Documented in `docs/reference/cli.md` with `polymer-smoke.sh` helper.)*
 
 - **Diagnostics**
-  - Expose metrics via OpenTelemetry exporters (Prometheus OTLP).
-  - Add logging enrichers (request id, peer info).
-  - Implement runtime toggles (e.g., log level, sampling) via control plane endpoint or config reload.
+  - ~~Expose metrics via OpenTelemetry exporters (Prometheus OTLP).~~
+  - ~~Add logging enrichers (request id, peer info).~~
+  - ~~Implement runtime toggles (e.g., log level, sampling) via control plane endpoint or config reload.~~
 
 - **Examples & Samples**
   - Provide sample services demonstrating:

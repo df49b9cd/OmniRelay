@@ -87,6 +87,47 @@ Each workflow measurement includes metric tags for `workflow.namespace`, `workfl
 - Invoke `GoDiagnostics.Reset()` (typically in unit tests) to dispose existing meters before registering new ones.
 - Pass `GrpcTelemetryOptions` to `GrpcInbound`/`GrpcOutbound` so the built-in logging/metrics interceptors attach automatically without bespoke interceptor wiring.
 - Peer metrics emitted by `Polymer.Core.Peers` include `polymer.peer.inflight`, `polymer.peer.successes`, `polymer.peer.failures`, and `polymer.peer.lease.duration` (histogram). Pair these with the `/polymer/introspect` endpoint, which now surfaces per-peer success/failure counts and latency percentiles, to build health dashboards.
+- Logging middleware and transport interceptors now attach request scopes (`rpc.request_id`, `rpc.peer`, activity id tags) so any structured log emitted during a call inherits trace-aware correlation metadata.
+
+## Polymer Diagnostics Configuration
+
+`AddPolymerDispatcher` understands a `diagnostics` section that wires OpenTelemetry exporters and runtime controls without additional code. Metrics default to enabled and are exported through OTLP and an optional Prometheus scrape endpoint hosted by every HTTP inbound.
+
+```json
+{
+  "polymer": {
+    "service": "gateway",
+    "diagnostics": {
+      "openTelemetry": {
+        "enabled": true,
+        "enableMetrics": true,
+        "prometheus": {
+          "enabled": true,
+          "scrapeEndpointPath": "/polymer/metrics"
+        },
+        "otlp": {
+          "enabled": true,
+          "endpoint": "http://localhost:4317"
+        }
+      },
+      "runtime": {
+        "enableControlPlane": true,
+        "enableLoggingLevelToggle": true,
+        "enableTraceSamplingToggle": true
+      }
+    }
+  }
+}
+```
+
+- `openTelemetry.prometheus.enabled` exposes `/polymer/metrics`, which returns the Prometheus text format scraped directly from OpenTelemetry.
+- `openTelemetry.otlp.*` configures the standard OTLP exporter (`protocol` defaults to gRPC; omit the endpoint to use the SDK default).
+- `runtime` enables lightweight control-plane endpoints:
+  - `GET /polymer/control/logging` returns `{ "minimumLevel": "Information" }`.
+  - `POST /polymer/control/logging` accepts `{ "level": "Warning" }` (or `null` to reset) and updates `LoggerFilterOptions.MinLevel` on the fly.
+  - `GET /polymer/control/tracing` reports the active sampling probability, and `POST /polymer/control/tracing` accepts `{ "probability": 0.25 }` to throttle new `Activity` creation in `RpcTracingMiddleware` unless an upstream span forces sampling.
+
+These endpoints appear alongside `/polymer/introspect` on every HTTP inbound when `runtime.enableControlPlane` is true.
 
 ## Usage guidelines
 

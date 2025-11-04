@@ -1,7 +1,10 @@
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using Grpc.Core;
 using Grpc.Core.Interceptors;
 using Microsoft.Extensions.Logging;
+using Polymer.Core;
 
 namespace Polymer.Transport.Grpc;
 
@@ -16,6 +19,9 @@ public sealed class GrpcClientLoggingInterceptor(ILogger<GrpcClientLoggingInterc
     {
         var methodName = context.Method.FullName;
         var startTimestamp = Stopwatch.GetTimestamp();
+
+        var requestMeta = GrpcLoggingScopeHelper.CreateClientRequestMeta(context);
+        using var scope = RequestLoggingScope.Begin(_logger, requestMeta);
 
         if (_logger.IsEnabled(LogLevel.Information))
         {
@@ -104,6 +110,9 @@ public sealed class GrpcServerLoggingInterceptor(ILogger<GrpcServerLoggingInterc
         var methodName = context.Method;
         var startTimestamp = Stopwatch.GetTimestamp();
 
+        var requestMeta = GrpcLoggingScopeHelper.CreateServerRequestMeta(context);
+        using var scope = RequestLoggingScope.Begin(_logger, requestMeta);
+
         if (_logger.IsEnabled(LogLevel.Information))
         {
             _logger.LogInformation("Handling gRPC server unary call {Method}", methodName);
@@ -163,5 +172,70 @@ public sealed class GrpcServerLoggingInterceptor(ILogger<GrpcServerLoggingInterc
                 statusCode,
                 detail);
         }
+    }
+
+}
+
+internal static class GrpcLoggingScopeHelper
+{
+    internal static RequestMeta CreateClientRequestMeta<TRequest, TResponse>(ClientInterceptorContext<TRequest, TResponse> context)
+        where TRequest : class
+        where TResponse : class
+    {
+        var (service, procedure) = ParseMethodName(context.Method.FullName);
+        var headers = ExtractHeaders(context.Options.Headers);
+        return new RequestMeta(
+            service: service,
+            procedure: procedure,
+            transport: GrpcTransportConstants.TransportName,
+            headers: headers);
+    }
+
+    internal static RequestMeta CreateServerRequestMeta(ServerCallContext context)
+    {
+        var (service, procedure) = ParseMethodName(context.Method);
+        var headers = ExtractHeaders(context.RequestHeaders);
+
+        if (!string.IsNullOrWhiteSpace(context.Peer))
+        {
+            headers = headers.Append(new KeyValuePair<string, string>("rpc.peer", context.Peer));
+        }
+
+        return new RequestMeta(
+            service: service,
+            procedure: procedure,
+            transport: GrpcTransportConstants.TransportName,
+            headers: headers);
+    }
+
+    private static (string Service, string Procedure) ParseMethodName(string? fullName)
+    {
+        if (string.IsNullOrWhiteSpace(fullName))
+        {
+            return ("unknown", string.Empty);
+        }
+
+        var trimmed = fullName[0] == '/' ? fullName[1..] : fullName;
+        var separatorIndex = trimmed.IndexOf('/');
+        if (separatorIndex <= 0)
+        {
+            return (trimmed, trimmed);
+        }
+
+        var service = trimmed[..separatorIndex];
+        var method = trimmed[(separatorIndex + 1)..];
+        return (service, method);
+    }
+
+    private static IEnumerable<KeyValuePair<string, string>> ExtractHeaders(Metadata? metadata)
+    {
+        if (metadata is null)
+        {
+            return Enumerable.Empty<KeyValuePair<string, string>>();
+        }
+
+        return metadata
+            .Where(entry => !entry.IsBinary)
+            .Select(entry => new KeyValuePair<string, string>(entry.Key, entry.Value ?? string.Empty));
     }
 }

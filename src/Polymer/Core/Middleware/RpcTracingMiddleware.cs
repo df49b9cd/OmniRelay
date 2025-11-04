@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Threading.Channels;
 using Hugo;
+using Polymer.Core.Diagnostics;
 using Polymer.Core.Transport;
 using static Hugo.Go;
 
@@ -22,9 +23,11 @@ public sealed class RpcTracingMiddleware :
 
     private readonly ActivitySource _activitySource;
     private readonly RpcTracingOptions _options;
+    private readonly IDiagnosticsRuntime? _diagnosticsRuntime;
 
-    public RpcTracingMiddleware(RpcTracingOptions? options = null)
+    public RpcTracingMiddleware(IDiagnosticsRuntime? diagnosticsRuntime = null, RpcTracingOptions? options = null)
     {
+        _diagnosticsRuntime = diagnosticsRuntime;
         _options = options ?? new RpcTracingOptions();
         _activitySource = _options.ActivitySource ?? DefaultActivitySource;
     }
@@ -407,16 +410,37 @@ public sealed class RpcTracingMiddleware :
         RequestMeta meta,
         bool allowParentExtraction)
     {
-        Activity? activity;
+        ActivityContext? parentContext = null;
 
-        if (allowParentExtraction && _options.ExtractIncomingContext && TryExtractContext(meta, out var parentContext))
+        if (allowParentExtraction && _options.ExtractIncomingContext && TryExtractContext(meta, out var extractedContext))
         {
-            activity = _activitySource.StartActivity(spanName, kind, parentContext);
+            parentContext = extractedContext;
         }
-        else
+
+        if (_diagnosticsRuntime is { TraceSamplingProbability: double probability })
         {
-            activity = _activitySource.StartActivity(spanName, kind);
+            if (probability <= 0d)
+            {
+                return (null, meta);
+            }
+
+            if (probability < 1d)
+            {
+                var parentRecorded = parentContext.HasValue && parentContext.Value.TraceFlags.HasFlag(ActivityTraceFlags.Recorded);
+                if (!parentRecorded)
+                {
+                    var sample = Random.Shared.NextDouble();
+                    if (sample > probability)
+                    {
+                        return (null, meta);
+                    }
+                }
+            }
         }
+
+        Activity? activity = parentContext.HasValue
+            ? _activitySource.StartActivity(spanName, kind, parentContext.Value)
+            : _activitySource.StartActivity(spanName, kind);
 
         if (activity is null)
         {

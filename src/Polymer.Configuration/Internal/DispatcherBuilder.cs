@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Globalization;
 using System.Net.Security;
@@ -6,6 +7,8 @@ using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Grpc.Core.Interceptors;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -14,6 +17,7 @@ using Microsoft.Extensions.Hosting;
 using Polymer.Configuration.Models;
 using Polymer.Core;
 using Polymer.Core.Peers;
+using Polymer.Core.Diagnostics;
 using Polymer.Dispatcher;
 using Polymer.Transport.Grpc;
 using Polymer.Transport.Http;
@@ -110,7 +114,8 @@ internal sealed class DispatcherBuilder
                 ? $"http-inbound:{index}"
                 : inbound.Name!;
 
-            dispatcherOptions.AddLifecycle(name, new HttpInbound(urls));
+            var configureApp = CreateHttpInboundAppConfigurator();
+            dispatcherOptions.AddLifecycle(name, new HttpInbound(urls, configureApp: configureApp));
             index++;
         }
     }
@@ -665,6 +670,140 @@ internal sealed class DispatcherBuilder
 
         return resolved;
     }
+
+    private Action<WebApplication>? CreateHttpInboundAppConfigurator()
+    {
+        var actions = new List<Action<WebApplication>>();
+
+        if (ShouldExposePrometheusMetrics())
+        {
+            actions.Add(app => app.MapPrometheusScrapingEndpoint());
+        }
+
+        if (TryGetDiagnosticsControlPlaneOptions(out var controlPlaneOptions))
+        {
+            actions.Add(app => ConfigureDiagnosticsControlPlane(app, controlPlaneOptions));
+        }
+
+        if (actions.Count == 0)
+        {
+            return null;
+        }
+
+        return app =>
+        {
+            foreach (var action in actions)
+            {
+                action(app);
+            }
+        };
+    }
+
+    private bool ShouldExposePrometheusMetrics()
+    {
+        var otel = _options.Diagnostics?.OpenTelemetry;
+        if (otel is null)
+        {
+            return false;
+        }
+
+        var promEnabled = otel.Prometheus.Enabled ?? true;
+        var otlpEnabled = otel.Otlp.Enabled ?? false;
+        var metricsEnabled = otel.EnableMetrics ?? (promEnabled || otlpEnabled);
+        var otelEnabled = otel.Enabled ?? metricsEnabled;
+
+        return otelEnabled && metricsEnabled && promEnabled;
+    }
+
+    private bool TryGetDiagnosticsControlPlaneOptions(out DiagnosticsControlPlaneOptions options)
+    {
+        var runtime = _options.Diagnostics?.Runtime;
+        if (runtime is null)
+        {
+            options = default;
+            return false;
+        }
+
+        var enableLogging = runtime.EnableLoggingLevelToggle ?? false;
+        var enableSampling = runtime.EnableTraceSamplingToggle ?? false;
+        var enableControlPlane = runtime.EnableControlPlane ?? (enableLogging || enableSampling);
+
+        if (!enableControlPlane)
+        {
+            options = default;
+            return false;
+        }
+
+        options = new DiagnosticsControlPlaneOptions(enableLogging, enableSampling);
+        return enableLogging || enableSampling;
+    }
+
+    private static void ConfigureDiagnosticsControlPlane(WebApplication app, DiagnosticsControlPlaneOptions options)
+    {
+        if (options.EnableLoggingToggle)
+        {
+            app.MapGet("/polymer/control/logging", (IDiagnosticsRuntime runtime) =>
+            {
+                var level = runtime.MinimumLogLevel?.ToString();
+                return Results.Json(new { minimumLevel = level });
+            });
+
+            app.MapPost("/polymer/control/logging", (DiagnosticsLogLevelRequest request, IDiagnosticsRuntime runtime) =>
+            {
+                if (request is null)
+                {
+                    return Results.BadRequest(new { error = "Request body required." });
+                }
+
+                if (string.IsNullOrWhiteSpace(request.Level))
+                {
+                    runtime.SetMinimumLogLevel(null);
+                    return Results.NoContent();
+                }
+
+                if (!Enum.TryParse<LogLevel>(request.Level, ignoreCase: true, out var parsed))
+                {
+                    return Results.BadRequest(new { error = $"Invalid log level '{request.Level}'." });
+                }
+
+                runtime.SetMinimumLogLevel(parsed);
+                return Results.NoContent();
+            });
+        }
+
+        if (options.EnableSamplingToggle)
+        {
+            app.MapGet("/polymer/control/tracing", (IDiagnosticsRuntime runtime) =>
+            {
+                return Results.Json(new { samplingProbability = runtime.TraceSamplingProbability });
+            });
+
+            app.MapPost("/polymer/control/tracing", (DiagnosticsSamplingRequest request, IDiagnosticsRuntime runtime) =>
+            {
+                if (request is null)
+                {
+                    return Results.BadRequest(new { error = "Request body required." });
+                }
+
+                try
+                {
+                    runtime.SetTraceSamplingProbability(request.Probability);
+                }
+                catch (ArgumentOutOfRangeException ex)
+                {
+                    return Results.BadRequest(new { error = ex.Message });
+                }
+
+                return Results.NoContent();
+            });
+        }
+    }
+
+    private readonly record struct DiagnosticsControlPlaneOptions(bool EnableLoggingToggle, bool EnableSamplingToggle);
+
+    private sealed record DiagnosticsLogLevelRequest(string? Level);
+
+    private sealed record DiagnosticsSamplingRequest(double? Probability);
 
     private GrpcServerRuntimeOptions? BuildGrpcServerRuntimeOptions(GrpcServerRuntimeConfiguration configuration)
     {

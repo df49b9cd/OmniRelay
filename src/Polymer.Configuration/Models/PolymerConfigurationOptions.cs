@@ -14,6 +14,8 @@ public sealed class PolymerConfigurationOptions
     public LoggingConfiguration Logging { get; init; } = new();
 
     public EncodingsConfiguration Encodings { get; init; } = new();
+
+    public DiagnosticsConfiguration Diagnostics { get; init; } = new();
 }
 
 public sealed class InboundsConfiguration
