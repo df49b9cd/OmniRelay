@@ -56,4 +56,8 @@
   <Target Name="EnsureTestProtoDescriptorDirectory" BeforeTargets="ProtobufCompile">
     <MakeDir Directories="$(IntermediateOutputPath)protos" />
   </Target>
+
+  <Target Name="GenerateTestDescriptorSetManual" BeforeTargets="CoreCompile" DependsOnTargets="EnsureTestProtoDescriptorDirectory;Protobuf_ResolvePlatform">
+    <Exec Command="&quot;$(Protobuf_ProtocFullPath)&quot; --proto_path=&quot;$(ProjectDir)Protos&quot; --descriptor_set_out=&quot;$(IntermediateOutputPath)protos/test_service.pb&quot; --include_imports &quot;$(ProjectDir)Protos/test_service.proto&quot;" />
+  </Target>
 </Project>
