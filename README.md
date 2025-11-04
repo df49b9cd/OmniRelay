@@ -34,6 +34,10 @@ dotnet test tests/OmniRelay.Tests/OmniRelay.Tests.csproj
 
 OmniRelay targets `.NET 10` and pulls Hugo, gRPC, and JsonSchema.Net from NuGet. Tests expect loopback HTTP/2 support for gRPC scenarios.
 
+## Samples
+
+The `samples/` directory contains runnable projects that focus on different runtime features (manual bootstrap, configuration-driven hosting, tee/shadow outbounds). See `docs/reference/samples.md` for a tour and usage guide.
+
 ## Hosting A Dispatcher
 
 ### Manual wiring

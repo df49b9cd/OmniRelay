@@ -160,6 +160,8 @@ curl -X POST \
 curl http://localhost:8080/polymer/metrics
 ```
 
+> **Example:** `samples/Configuration.Server` enables both Prometheus scraping and runtime toggles purely through configuration and exposes the `/polymer/control/*` endpoints automatically on its HTTP inbound.
+
 ## Usage guidelines
 
 - Register the meter before creating wait groups or channels to ensure counters record the full lifecycle.

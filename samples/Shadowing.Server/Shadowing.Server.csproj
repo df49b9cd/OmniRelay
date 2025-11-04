@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>OmniRelay.Samples.Shadowing</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OmniRelay\OmniRelay.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Hugo" />
+  </ItemGroup>
+</Project>

@@ -19,6 +19,8 @@ var teeOptions = new TeeOptions
 dispatcherOptions.AddTeeUnaryOutbound("users", null, primary, shadow, teeOptions);
 ```
 
+> **Example:** `samples/Shadowing.Server` wires these tee outbounds into a runnable dispatcher, including logging middleware and JSON clients.
+
 When the dispatcher starts, the tee outbound starts both child outbounds. Each call flows to the primary outbound first; the shadow invocation runs in the background without influencing the response returned to the caller. Failures in the shadow path are logged at debug level and never bubble up to the caller.
 
 ## TeeOptions
