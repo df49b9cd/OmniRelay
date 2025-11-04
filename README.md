@@ -2,7 +2,7 @@
 
 OmniRelay is the .NET port of Uber's YARPC runtime, layered on top of Hugo concurrency primitives. It targets transport, middleware, and tooling parity with `yarpc-go` while embracing .NET idioms (Generic Host, System.CommandLine, Roslyn generators).
 
-> Namespaces live under `OmniRelay.*` (previously `Polymer.*`). NuGet packages, tooling, and assemblies publish as `OmniRelay.*`.
+> Namespaces live under `OmniRelay.*`. NuGet packages, tooling, and assemblies publish as `OmniRelay.*`.
 
 ## Current Status
 
