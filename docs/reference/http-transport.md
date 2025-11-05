@@ -176,6 +176,41 @@ Remember that HTTP/3 still falls back to HTTP/2/1.1 when clients or middleboxes
 block UDP 443. Keep your existing HTTP/2 observability in place and monitor the
 startup logs for any HTTP/3 prerequisites that fail validation.
 
+### Runbook: Graceful shutdown with HTTP/3
+
+When a node begins draining (for example, during a rolling deployment), OmniRelay
+waits for in-flight work to complete and rejects new HTTP/3 requests with the
+same `Retry-After: 1` semantics used for HTTP/1.1 and HTTP/2. Use the following
+checks when validating a drain:
+
+1. Issue a baseline request before the drain:
+   ```bash
+   curl --http3 -i https://omnirelay.example.test/rpc -X POST \
+     -H 'X-YARPC-Procedure: health::ping'
+   ```
+   Expect `200 OK` and `HTTP/3` in the status line.
+2. Trigger your normal drain mechanism (for example, signal the host to stop or
+   remove the instance from the load balancer) and immediately probe again:
+   ```bash
+   curl --http3 -i https://omnirelay.example.test/rpc -X POST \
+     -H 'X-YARPC-Procedure: health::ping'
+   ```
+   During the drain window the response switches to `HTTP/1.1 503 Service Unavailable`
+   or `HTTP/3 503`, and includes `Retry-After: 1`. Existing requests continue to
+   completion.
+3. gRPC listeners exhibit the same behaviour. Using the OmniRelay CLI:
+   ```bash
+   omnirelay request grpc health::ping \
+     --addresses https://omnirelay.example.test:9090 \
+     --grpc-http3
+   ```
+   While draining, the CLI reports `StatusCode.Unavailable` and prints the
+   `retry-after: 1` trailer.
+
+Operators should monitor application logs for the `server shutting down` warning
+that accompanies drained gRPC calls and watch readiness probes flip to
+`503 Service Unavailable` until the dispatcher finishes all in-flight work.
+
 ## Server-sent events
 
 Server-stream RPCs use SSE with hardened defaults:

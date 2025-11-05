@@ -53,10 +53,10 @@
   - [x] Design configuration structure mapping MsQuic options to OmniRelay runtime settings.
   - [x] Implement wiring in Http/Grpc inbound/outbound components.
   - [x] Provide documentation describing recommended defaults and tuning guidance.
-- [ ] Ensure graceful shutdown/drain logic works for QUIC transports and still signals retry metadata (`retry-after`) consistently.
-  - [ ] Extend draining logic tests to cover HTTP/3 requests/calls.
-  - [ ] Validate `retry-after` headers/metadata appear for QUIC clients.
-  - [ ] Update runbooks describing graceful shutdown expectations under HTTP/3.
+- [x] Ensure graceful shutdown/drain logic works for QUIC transports and still signals retry metadata (`retry-after`) consistently.
+  - [x] Extend draining logic tests to cover HTTP/3 requests/calls.
+  - [x] Validate `retry-after` headers/metadata appear for QUIC clients.
+  - [x] Update runbooks describing graceful shutdown expectations under HTTP/3.
 
 ## Feature Parity: HTTP Surface
 
