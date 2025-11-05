@@ -59,6 +59,57 @@ When you run behind proxies like NGINX, add the usual forwarding headers
 endpoints (`proxy_buffering off;`). OmniRelay sets `X-Accel-Buffering: no`
 automatically, but the upstream proxy must honour it.
 
+## Runtime limits and backpressure
+
+The HTTP inbound exposes Kestrel limits and transport-specific guards through
+`inbounds.http[].runtime`. Configure these to match the traffic profile and the
+capacity of downstream dependencies:
+
+| Setting | Purpose |
+| --- | --- |
+| `maxRequestBodySize` | Caps the ASP.NET request body length (bytes). |
+| `maxInMemoryDecodeBytes` | Stops unary bodies from being buffered entirely in memory. |
+| `maxRequestLineSize` / `maxRequestHeadersTotalSize` | Harden request-line and header totals against abuse. |
+| `keepAliveTimeout` | Overrides Kestrel’s idle connection timeout. |
+| `requestHeadersTimeout` | Limits how long clients can take to finish sending headers. |
+| `serverStreamMaxMessageBytes` | Rejects server-sent event frames above the threshold. |
+| `serverStreamWriteTimeout` | Aborts SSE responses when writes stall (slow or dead clients). |
+| `duplexMaxFrameBytes` | Caps WebSocket frame payloads for duplex streams. |
+| `duplexWriteTimeout` | Cancels WebSocket sends that cannot drain in time. |
+
+All sizes are integers (bytes); timeouts accept standard `TimeSpan` strings
+(`"00:00:05"`), ISO 8601 durations, or millisecond integers.
+
+Example configuration:
+
+```jsonc
+"inbounds": {
+  "http": [
+    {
+      "urls": [ "http://0.0.0.0:8080" ],
+      "runtime": {
+        "maxRequestBodySize": 8388608,
+        "maxInMemoryDecodeBytes": 1048576,
+        "maxRequestLineSize": 16384,
+        "maxRequestHeadersTotalSize": 32768,
+        "keepAliveTimeout": "00:02:00",
+        "requestHeadersTimeout": "00:00:15",
+        "serverStreamMaxMessageBytes": 65536,
+        "serverStreamWriteTimeout": "00:00:10",
+        "duplexMaxFrameBytes": 262144,
+        "duplexWriteTimeout": "00:00:05"
+      }
+    }
+  ]
+}
+```
+
+`serverStreamMaxMessageBytes` and `duplexMaxFrameBytes` protect the dispatcher
+from unbounded payloads and surface `RESOURCE_EXHAUSTED` to the client. The
+write timeouts ensure slow consumers are cancelled rather than buffering
+indefinitely in `PipeWriter` or WebSocket queues. Tune the limits alongside the
+gateway/proxy buffer policies referenced above.
+
 ## Server-sent events
 
 Server-stream RPCs use SSE with hardened defaults:
@@ -91,4 +142,3 @@ options.UnaryOutboundMiddleware.Add(new RpcTracingMiddleware());
 `Rpc-Trace-*` metadata. Pair it with `AddOmniRelayDispatcher().AddOpenTelemetry`
 configuration so the runtime exports HTTP metrics and spans that share the same
 `Resource` attributes.
-
