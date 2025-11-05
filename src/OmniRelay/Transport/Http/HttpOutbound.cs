@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Globalization;
+using System.Linq;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Mime;
@@ -241,6 +242,11 @@ public sealed class HttpOutbound : IUnaryOutbound, IOnewayOutbound, IOutboundDia
             headers.Add(new KeyValuePair<string, string>(header.Key, string.Join(",", header.Value)));
         }
 
+        if (!headers.Any(static header => string.Equals(header.Key, HttpTransportHeaders.Protocol, StringComparison.OrdinalIgnoreCase)))
+        {
+            headers.Add(new KeyValuePair<string, string>(HttpTransportHeaders.Protocol, FormatProtocol(response.Version)));
+        }
+
         response.Headers.TryGetValues(HttpTransportHeaders.Encoding, out var encodingValues);
         var encoding = encodingValues?.FirstOrDefault() ?? response.Content.Headers.ContentType?.MediaType;
         encoding = ProtobufEncoding.Normalize(encoding);
@@ -249,6 +255,31 @@ public sealed class HttpOutbound : IUnaryOutbound, IOnewayOutbound, IOutboundDia
             encoding: encoding,
             transport: "http",
             headers: headers);
+    }
+
+    private static string FormatProtocol(Version version)
+    {
+        if (version is null)
+        {
+            return "HTTP/1.1";
+        }
+
+        if (version.Major >= 3)
+        {
+            return "HTTP/3";
+        }
+
+        if (version.Major == 2)
+        {
+            return "HTTP/2";
+        }
+
+        if (version.Major == 1)
+        {
+            return version.Minor <= 0 ? "HTTP/1.0" : "HTTP/1.1";
+        }
+
+        return $"HTTP/{version}";
     }
 
     private static async Task<Error> ReadErrorAsync(HttpResponseMessage response, string transport, CancellationToken cancellationToken)

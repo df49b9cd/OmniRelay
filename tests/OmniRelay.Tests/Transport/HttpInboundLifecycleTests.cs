@@ -145,6 +145,83 @@ public class HttpInboundLifecycleTests
     }
 
     [Fact(Timeout = 45_000)]
+    public async Task StopAsync_WithHttp3Fallback_PropagatesRetryAfter()
+    {
+        if (!QuicListener.IsSupported)
+        {
+            return;
+        }
+
+        using var certificate = CreateSelfSignedCertificate("CN=omnirelay-http3-fallback-drain");
+
+        var port = TestPortAllocator.GetRandomPort();
+        var baseAddress = new Uri($"https://127.0.0.1:{port}/");
+
+        var runtime = new HttpServerRuntimeOptions { EnableHttp3 = false };
+        var tls = new HttpServerTlsOptions { Certificate = certificate };
+
+        var options = new DispatcherOptions("lifecycle-http3-fallback");
+        var httpInbound = new HttpInbound([baseAddress.ToString()], serverRuntimeOptions: runtime, serverTlsOptions: tls);
+        options.AddLifecycle("http-inbound-http3-fallback", httpInbound);
+
+        var dispatcher = new OmniRelay.Dispatcher.Dispatcher(options);
+
+        var requestStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseRequest = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        dispatcher.Register(new UnaryProcedureSpec(
+            "lifecycle-http3-fallback",
+            "test::slow",
+            async (request, token) =>
+            {
+                requestStarted.TrySetResult();
+                await releaseRequest.Task.WaitAsync(token);
+                return Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty, new ResponseMeta()));
+            }));
+
+        var ct = TestContext.Current.CancellationToken;
+        await dispatcher.StartAsync(ct);
+
+        using var handler = CreateHttp3Handler();
+        using var httpClient = new HttpClient(handler) { BaseAddress = baseAddress };
+        httpClient.DefaultRequestVersion = HttpVersion.Version30;
+        httpClient.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrLower;
+
+        using var initialRequest = CreateRpcRequest("test::slow");
+        initialRequest.Version = HttpVersion.Version30;
+        initialRequest.VersionPolicy = HttpVersionPolicy.RequestVersionOrLower;
+        var inFlightTask = httpClient.SendAsync(initialRequest, HttpCompletionOption.ResponseHeadersRead, ct);
+
+        await requestStarted.Task.WaitAsync(ct);
+
+        var stopTask = dispatcher.StopAsync(ct);
+        await Task.Delay(100, ct);
+
+        using var rejectedRequest = CreateRpcRequest("test::slow");
+        rejectedRequest.Version = HttpVersion.Version30;
+        rejectedRequest.VersionPolicy = HttpVersionPolicy.RequestVersionOrLower;
+        using var rejectedResponse = await httpClient.SendAsync(rejectedRequest, ct);
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, rejectedResponse.StatusCode);
+        Assert.True(rejectedResponse.Headers.TryGetValues("Retry-After", out var retryAfterValues));
+        Assert.Contains("1", retryAfterValues);
+        Assert.Equal(2, rejectedResponse.Version.Major);
+        Assert.True(rejectedResponse.Headers.TryGetValues(HttpTransportHeaders.Protocol, out var protocolValues));
+        Assert.Contains("HTTP/2", protocolValues);
+        Assert.False(stopTask.IsCompleted);
+
+        releaseRequest.TrySetResult();
+
+        using var response = await inFlightTask;
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(2, response.Version.Major);
+        Assert.True(response.Headers.TryGetValues(HttpTransportHeaders.Protocol, out var inflightProtocolValues));
+        Assert.Contains("HTTP/2", inflightProtocolValues);
+
+        await stopTask;
+    }
+
+    [Fact(Timeout = 45_000)]
     public async Task HttpInbound_WithHttp3_ExposesObservabilityEndpoints()
     {
         if (!QuicListener.IsSupported)

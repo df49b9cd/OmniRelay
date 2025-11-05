@@ -110,6 +110,14 @@ write timeouts ensure slow consumers are cancelled rather than buffering
 indefinitely in `PipeWriter` or WebSocket queues. Tune the limits alongside the
 gateway/proxy buffer policies referenced above.
 
+HTTP/3 listeners inherit the same guard rails. OmniRelay mirrors
+`maxRequestHeadersTotalSize` into `KestrelServerOptions.Limits.Http3.MaxRequestHeaderFieldSize`
+and, unless you override `runtime.http3.idleTimeout`, reuses the general
+`keepAliveTimeout` as the QUIC idle timeout. When the current MsQuic shim cannot
+honour those tunables, the startup log emits a structured warning
+(`http inbound: transport=http protocol=http3 ...`) so you can fall back to the
+platform defaults.
+
 ## HTTP/3
 
 OmniRelay ships HTTP/3 support behind an explicit feature flag. Enabling it
@@ -162,7 +170,11 @@ Key behaviours:
   directly to MsQuic stream limits and are applied during listener startup.
 - `http3.idleTimeout` configures the connection idle timeout enforced by MsQuic.
   Values below 30 seconds tend to evict long-polling callers; we recommend
-  60-120 seconds for HTTP workloads that expect bursty traffic.
+  60-120 seconds for HTTP workloads that expect bursty traffic. If you omit the
+  setting, OmniRelay falls back to `runtime.keepAliveTimeout` so HTTP/1.1, HTTP/2
+  and HTTP/3 share the same idle policy. MsQuic implementations that do not
+  expose this knob trigger a startup warning with
+  `transport=http protocol=http3` in the log context.
 - `http3.keepAliveInterval` sends MsQuic pings for otherwise idle connections.
   Start with 20-30 seconds when you run behind load balancers that recycle idle
   UDP flows and avoid values below 10 seconds unless downstream requires them.
@@ -175,6 +187,11 @@ to the platform defaults.
 Remember that HTTP/3 still falls back to HTTP/2/1.1 when clients or middleboxes
 block UDP 443. Keep your existing HTTP/2 observability in place and monitor the
 startup logs for any HTTP/3 prerequisites that fail validation.
+
+Every response now publishes the negotiated protocol via the `Rpc-Protocol`
+header alongside the existing `Rpc-Transport` metadata. Use the pair to align
+metrics across HTTP versions and to confirm downgrade scenarios continue to
+return the standard JSON error envelope and `Retry-After` semantics.
 
 ### Runbook: Graceful shutdown with HTTP/3
 

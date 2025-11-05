@@ -11,6 +11,7 @@ public static class HttpTransportHeaders
     public const string TtlMs = "Rpc-Ttl-Ms";
     public const string Deadline = "Rpc-Deadline";
     public const string Transport = "Rpc-Transport";
+    public const string Protocol = "Rpc-Protocol";
     public const string Status = "Rpc-Status";
     public const string ErrorCode = "Rpc-Error-Code";
     public const string ErrorMessage = "Rpc-Error-Message";

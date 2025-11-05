@@ -72,14 +72,14 @@
   - [x] Execute load tests emphasizing large payloads and bidirectional streaming over QUIC.
   - [x] Adjust frame sizing or buffering heuristics if MsQuic flow control stalls appear.
   - [x] Document recommended streaming limits and alert thresholds.
-- [ ] Ensure request/response size limits, header validation, and timeouts map to QUIC semantics; add tests for limits enforcement under packet loss.
-  - [ ] Cross-check Kestrel and MsQuic limit mappings for parity with HTTP/1.1/2 settings.
-  - [ ] Create chaos tests injecting packet loss to confirm timeouts behave as expected.
-  - [ ] Update configuration defaults or documentation where behavior differs.
-- [ ] Validate error handling and status mapping (including retry headers) behaves identically when requests fall back from HTTP/3 to HTTP/2/1.1.
-  - [ ] Simulate downgrade scenarios and confirm error payloads/headers match existing contracts.
-  - [ ] Add automated regression tests covering fallback paths.
-  - [ ] Align logging/metrics labels so operators can correlate errors across protocols.
+- [x] Ensure request/response size limits, header validation, and timeouts map to QUIC semantics; add tests for limits enforcement under packet loss.
+  - [x] Cross-check Kestrel and MsQuic limit mappings for parity with HTTP/1.1/2 settings.
+  - [x] Create chaos tests injecting packet loss to confirm timeouts behave as expected.
+  - [x] Update configuration defaults or documentation where behavior differs.
+- [x] Validate error handling and status mapping (including retry headers) behaves identically when requests fall back from HTTP/3 to HTTP/2/1.1.
+  - [x] Simulate downgrade scenarios and confirm error payloads/headers match existing contracts.
+  - [x] Add automated regression tests covering fallback paths.
+  - [x] Align logging/metrics labels so operators can correlate errors across protocols.
 
 ## Feature Parity: gRPC Surface
 

@@ -109,14 +109,21 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
         {
             builder.WebHost.UseQuic(quicOptions =>
             {
-                if (http3RuntimeOptions?.IdleTimeout is { } idleTimeout)
+                var idleTimeout = http3RuntimeOptions?.IdleTimeout ?? _serverRuntimeOptions?.KeepAliveTimeout;
+                var idleTimeoutLabel = http3RuntimeOptions?.IdleTimeout is not null
+                    ? "HTTP/3 IdleTimeout"
+                    : _serverRuntimeOptions?.KeepAliveTimeout is not null
+                        ? "HTTP keepAliveTimeout"
+                        : "HTTP/3 IdleTimeout";
+
+                if (idleTimeout is { } configuredIdleTimeout)
                 {
-                    if (idleTimeout <= TimeSpan.Zero)
+                    if (configuredIdleTimeout <= TimeSpan.Zero)
                     {
-                        throw new InvalidOperationException("HTTP/3 IdleTimeout must be greater than zero.");
+                        throw new InvalidOperationException($"{idleTimeoutLabel} must be greater than zero.");
                     }
 
-                    if (!TrySetQuicOption(quicOptions, "IdleTimeout", idleTimeout))
+                    if (!TrySetQuicOption(quicOptions, "IdleTimeout", configuredIdleTimeout))
                     {
                         idleTimeoutUnsupported = true;
                     }
@@ -176,6 +183,17 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
             if (_serverRuntimeOptions?.MaxRequestHeadersTotalSize is { } maxRequestHeaders)
             {
                 options.Limits.MaxRequestHeadersTotalSize = maxRequestHeaders;
+                if (enableHttp3)
+                {
+                    try
+                    {
+                        options.Limits.Http3.MaxRequestHeaderFieldSize = maxRequestHeaders;
+                    }
+                    catch (System.ArgumentOutOfRangeException ex)
+                    {
+                        throw new InvalidOperationException("HTTP/3 MaxRequestHeaderFieldSize must be greater than zero.", ex);
+                    }
+                }
             }
             if (_serverRuntimeOptions?.KeepAliveTimeout is { } keepAliveTimeout)
             {
@@ -256,16 +274,27 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
         {
             if (http3Endpoints is { Count: > 0 })
             {
-                app.Logger.LogInformation("HTTP/3 enabled on {EndpointCount} endpoint(s): {Endpoints}", http3Endpoints.Count, string.Join(", ", http3Endpoints));
+                app.Logger.LogInformation(
+                    "http inbound: transport={Transport} protocol={Protocol} enabled on {EndpointCount} endpoint(s): {Endpoints}",
+                    "http",
+                    "http3",
+                    http3Endpoints.Count,
+                    string.Join(", ", http3Endpoints));
             }
             else
             {
-                app.Logger.LogWarning("HTTP/3 was requested but no HTTPS endpoints were configured; falling back to HTTP/1.1 and HTTP/2.");
+                app.Logger.LogWarning(
+                    "http inbound: transport={Transport} protocol={Protocol} was requested but no HTTPS endpoints were configured; falling back to HTTP/1.1 and HTTP/2.",
+                    "http",
+                    "http3");
             }
 
             if (streamLimitUnsupported)
             {
-                app.Logger.LogWarning("HTTP/3 stream limit tuning is not supported by the current MsQuic transport; configured values will be ignored.");
+                app.Logger.LogWarning(
+                    "http inbound: transport={Transport} protocol={Protocol} stream limit tuning is not supported by the current MsQuic transport; configured values will be ignored.",
+                    "http",
+                    "http3");
             }
 
             if (idleTimeoutUnsupported || keepAliveUnsupported)
@@ -282,7 +311,11 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
                     unsupportedOptions.Add("keep-alive interval");
                 }
 
-                app.Logger.LogWarning("HTTP/3 {Options} tuning is not supported by the current MsQuic transport; configured values will be ignored.", string.Join(" and ", unsupportedOptions));
+                app.Logger.LogWarning(
+                    "http inbound: transport={Transport} protocol={Protocol} MsQuic tuning unsupported for {OptionList}; configured values will be ignored.",
+                    "http",
+                    "http3",
+                    string.Join(" and ", unsupportedOptions));
             }
         }
 
@@ -507,7 +540,7 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
 
             var encoding = ResolveRequestEncoding(context.Request.Headers, context.Request.ContentType);
 
-            var meta = BuildRequestMeta(dispatcher.ServiceName, procedure!, encoding, context.Request.Headers, transport);
+            var meta = BuildRequestMeta(dispatcher.ServiceName, procedure!, encoding, context.Request.Headers, transport, context.Request.Protocol);
 
             // Enforce in-memory decode threshold to prevent unbounded buffering for very large bodies.
             if (_serverRuntimeOptions?.MaxInMemoryDecodeBytes is { } maxInMem &&
@@ -540,6 +573,7 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
 
                 context.Response.StatusCode = StatusCodes.Status202Accepted;
                 context.Response.Headers[HttpTransportHeaders.Transport] = transport;
+                context.Response.Headers[HttpTransportHeaders.Protocol] = context.Request.Protocol;
 
                 var ackMeta = onewayResult.Value.Meta;
                 var ackEncoding = ackMeta.Encoding ?? encoding;
@@ -548,6 +582,11 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
 
                 foreach (var header in ackMeta.Headers)
                 {
+                    if (string.Equals(header.Key, HttpTransportHeaders.Protocol, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
                     context.Response.Headers[header.Key] = header.Value;
                 }
                 return;
@@ -568,10 +607,16 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
             var responseEncoding = response.Meta.Encoding ?? encoding;
             context.Response.Headers[HttpTransportHeaders.Encoding] = responseEncoding ?? MediaTypeNames.Application.Octet;
             context.Response.Headers[HttpTransportHeaders.Transport] = transport;
+            context.Response.Headers[HttpTransportHeaders.Protocol] = context.Request.Protocol;
             context.Response.ContentType = ResolveContentType(responseEncoding) ?? MediaTypeNames.Application.Octet;
 
             foreach (var header in response.Meta.Headers)
             {
+                if (string.Equals(header.Key, HttpTransportHeaders.Protocol, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
                 context.Response.Headers[header.Key] = header.Value;
             }
 
@@ -708,7 +753,8 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
                 procedure!,
                 encoding: ResolveRequestEncoding(context.Request.Headers, context.Request.ContentType),
                 headers: context.Request.Headers,
-                transport: transport);
+                transport: transport,
+                protocol: context.Request.Protocol);
 
             var request = new Request<ReadOnlyMemory<byte>>(meta, ReadOnlyMemory<byte>.Empty);
 
@@ -731,6 +777,7 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
             {
                 context.Response.StatusCode = StatusCodes.Status200OK;
                 context.Response.Headers[HttpTransportHeaders.Transport] = transport;
+                context.Response.Headers[HttpTransportHeaders.Protocol] = context.Request.Protocol;
                 context.Response.Headers.CacheControl = "no-cache";
                 context.Response.Headers.Connection = "keep-alive";
                 context.Response.Headers.ContentType = "text/event-stream";
@@ -740,6 +787,11 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
                 var responseHeaders = responseMeta.Headers ?? [];
                 foreach (var header in responseHeaders)
                 {
+                    if (string.Equals(header.Key, HttpTransportHeaders.Protocol, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
                     context.Response.Headers[header.Key] = header.Value;
                 }
 
@@ -820,9 +872,11 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
                 procedure!,
                 encoding: ResolveRequestEncoding(context.Request.Headers, context.Request.ContentType),
                 headers: context.Request.Headers,
-                transport: transport);
+                transport: transport,
+                protocol: context.Request.Protocol);
 
             context.Response.Headers[HttpTransportHeaders.Transport] = transport;
+            context.Response.Headers[HttpTransportHeaders.Protocol] = context.Request.Protocol;
 
             var dispatcherRequest = new Request<ReadOnlyMemory<byte>>(meta, ReadOnlyMemory<byte>.Empty);
 
@@ -1174,7 +1228,8 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
         string procedure,
         string? encoding,
         IHeaderDictionary headers,
-        string transport)
+        string transport,
+        string protocol)
     {
         TimeSpan? ttl = null;
         if (headers.TryGetValue(HttpTransportHeaders.TtlMs, out var ttlValues) &&
@@ -1190,7 +1245,18 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
             deadline = parsedDeadline;
         }
 
-        var metaHeaders = headers.Select(static header => new KeyValuePair<string, string>(header.Key, header.Value.ToString()));
+        var metaHeaders = new List<KeyValuePair<string, string>>(headers.Count + 1);
+        foreach (var header in headers)
+        {
+            if (string.Equals(header.Key, HttpTransportHeaders.Protocol, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            metaHeaders.Add(new KeyValuePair<string, string>(header.Key, header.Value.ToString()));
+        }
+
+        metaHeaders.Add(new KeyValuePair<string, string>(HttpTransportHeaders.Protocol, protocol));
 
         return new RequestMeta(
             service,
@@ -1218,6 +1284,7 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
             context.Response.StatusCode = HttpStatusMapper.ToStatusCode(status);
         }
         context.Response.Headers[HttpTransportHeaders.Transport] = transport;
+        context.Response.Headers[HttpTransportHeaders.Protocol] = context.Request.Protocol;
         context.Response.Headers[HttpTransportHeaders.Status] = status.ToString();
         context.Response.Headers[HttpTransportHeaders.ErrorMessage] = message;
         if (error is not null && !string.IsNullOrEmpty(error.Code))
