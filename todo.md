@@ -117,7 +117,7 @@
 - [ ] Allow `HttpOutbound` and other client stacks to request HTTP/3 (`HttpVersion.Version30` or `HttpVersionPolicy.RequestVersionOrHigher`) with configurable fallback.
   - [x] Introduce configuration knobs for outbound transports choosing desired HTTP version policy.
   - [x] Implement fallback strategy when upstream HTTP/3 negotiation fails.
-  - [ ] Add integration tests covering all version modes.
+  - [x] Add integration tests covering all version modes.
 - [ ] Extend service discovery / routing metadata to prefer HTTP/3 endpoints when available and handle negotiation failures cleanly.
   - [ ] Update discovery schema to record per-endpoint protocol support.
   - [ ] Modify routing logic to prioritize HTTP/3 while retaining HTTP/2/1.1 fallback.
