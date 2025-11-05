@@ -1136,6 +1136,18 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
             }
         }
 
+        // If a specific HTTP version/policy is requested, add a delegating handler to enforce it per-request.
+        if (runtimeOptions.RequestVersion is not null || runtimeOptions.VersionPolicy is not null || runtimeOptions.EnableHttp3)
+        {
+            var version = runtimeOptions.RequestVersion ?? (runtimeOptions.EnableHttp3 ? HttpVersion.Version30 : null);
+            var versionPolicy = runtimeOptions.VersionPolicy ?? (runtimeOptions.EnableHttp3 ? HttpVersionPolicy.RequestVersionOrHigher : null);
+
+            if (version is not null || versionPolicy is not null)
+            {
+                channelOptions.HttpHandler = new HttpVersionHandler(channelOptions.HttpHandler ?? handler, version, versionPolicy);
+            }
+        }
+
         if (runtimeOptions.KeepAlivePingDelay is { } delay)
         {
             handler.KeepAlivePingDelay = delay;
@@ -1149,6 +1161,34 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         if (runtimeOptions.KeepAlivePingPolicy is { } policy)
         {
             handler.KeepAlivePingPolicy = policy;
+        }
+    }
+
+    private sealed class HttpVersionHandler : DelegatingHandler
+    {
+        private readonly Version? _version;
+        private readonly HttpVersionPolicy? _policy;
+
+        public HttpVersionHandler(HttpMessageHandler innerHandler, Version? version, HttpVersionPolicy? policy)
+            : base(innerHandler)
+        {
+            _version = version;
+            _policy = policy;
+        }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (_version is not null)
+            {
+                request.Version = _version;
+            }
+
+            if (_policy.HasValue)
+            {
+                request.VersionPolicy = _policy.Value;
+            }
+
+            return base.SendAsync(request, cancellationToken);
         }
     }
 

@@ -223,6 +223,10 @@ public sealed class GrpcClientRuntimeConfiguration
 {
     public bool? EnableHttp3 { get; set; }
 
+    public string? RequestVersion { get; set; }
+
+    public string? VersionPolicy { get; set; }
+
     public int? MaxReceiveMessageSize { get; set; }
 
     public int? MaxSendMessageSize { get; set; }

@@ -704,9 +704,13 @@ internal sealed class DispatcherBuilder
 
         var interceptors = ResolveClientInterceptors(configuration.Interceptors);
         var enableHttp3 = configuration.EnableHttp3 ?? false;
+        var version = ParseHttpVersion(configuration.RequestVersion);
+        var policy = ParseHttpVersionPolicy(configuration.VersionPolicy);
 
         var hasValues =
             enableHttp3 ||
+            version is not null ||
+            policy is not null ||
             configuration.MaxReceiveMessageSize.HasValue ||
             configuration.MaxSendMessageSize.HasValue ||
             configuration.KeepAlivePingDelay.HasValue ||
@@ -721,6 +725,8 @@ internal sealed class DispatcherBuilder
         return new GrpcClientRuntimeOptions
         {
             EnableHttp3 = enableHttp3,
+            RequestVersion = version,
+            VersionPolicy = policy,
             MaxReceiveMessageSize = configuration.MaxReceiveMessageSize,
             MaxSendMessageSize = configuration.MaxSendMessageSize,
             KeepAlivePingDelay = configuration.KeepAlivePingDelay,

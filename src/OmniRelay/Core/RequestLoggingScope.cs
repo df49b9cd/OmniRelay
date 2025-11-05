@@ -70,6 +70,16 @@ internal static class RequestLoggingScope
                 }
 
                 scopeItems.Add(new KeyValuePair<string, object?>("network.protocol.name", "http"));
+
+                // Infer transport for HTTP protocol variants
+                if (version.StartsWith("3", StringComparison.Ordinal))
+                {
+                    scopeItems.Add(new KeyValuePair<string, object?>("network.transport", "quic"));
+                }
+                else
+                {
+                    scopeItems.Add(new KeyValuePair<string, object?>("network.transport", "tcp"));
+                }
             }
         }
 

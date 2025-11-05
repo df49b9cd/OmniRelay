@@ -7,6 +7,10 @@ public sealed record GrpcClientRuntimeOptions
 {
     public bool EnableHttp3 { get; init; }
 
+    public Version? RequestVersion { get; init; }
+
+    public HttpVersionPolicy? VersionPolicy { get; init; }
+
     public int? MaxReceiveMessageSize { get; init; }
 
     public int? MaxSendMessageSize { get; init; }

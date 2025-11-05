@@ -148,6 +148,19 @@ internal static class GrpcTransportDiagnostics
             {
                 activity.SetTag("network.protocol.version", protocolVersion);
             }
+
+            // Map transport for HTTP variants. HTTP/3 implies QUIC (UDP). Others are typically TCP.
+            if (string.Equals(protocolName, "http", StringComparison.OrdinalIgnoreCase))
+            {
+                if (string.Equals(protocolVersion, "3", StringComparison.Ordinal))
+                {
+                    activity.SetTag("network.transport", "quic");
+                }
+                else
+                {
+                    activity.SetTag("network.transport", "tcp");
+                }
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(context.Peer))

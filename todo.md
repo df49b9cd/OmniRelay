@@ -88,11 +88,11 @@
   - [ ] Verify compression negotiation and message sizes behave the same as HTTP/2 baseline.
   - [ ] Confirm telemetry spans/logs from interceptors include protocol data.
 - [ ] Update `GrpcOutbound`/gRPC-dotnet client construction to opt into HTTP/3 per https://learn.microsoft.com/en-us/aspnet/core/grpc/troubleshoot?view=aspnetcore-9.0#configure-grpc-client-to-use-http3 and expose configuration for disabling when peers lack QUIC.
-  - [ ] Implement HTTP/3-aware channel factory with opt-in flags and fallback logic.
-  - [ ] Expose configuration through appsettings/CLI and ensure defaults remain HTTP/2 for compatibility.
+  - [x] Implement HTTP/3-aware channel factory with opt-in flags and fallback logic.
+  - [x] Expose configuration through appsettings/CLI and ensure defaults remain HTTP/2 for compatibility.
   - [ ] Add unit tests verifying correct handler configuration for each mode.
 - [ ] Confirm client handlers set `HttpRequestMessage.VersionPolicy = RequestVersionOrHigher` (or stricter policies) and tune `SocketsHttpHandler` HTTP/3 settings (keep-alive, connection pooling) so call concurrency matches HTTP/2 parity targets.
-  - [ ] Audit existing handler construction and update to set version policies explicitly.
+  - [x] Audit existing handler construction and update to set version policies explicitly.
   - [ ] Validate connection pooling and keep-alive tuning under load using benchmark suite.
   - [ ] Document recommended handler overrides for high-concurrency workloads.
 - [ ] Exercise server keep-alive settings under HTTP/3 and expose MsQuic keep-alive knobs alongside current HTTP/2 configuration.
@@ -115,8 +115,8 @@
 ## Outbound Calls & YARP Integrations
 
 - [ ] Allow `HttpOutbound` and other client stacks to request HTTP/3 (`HttpVersion.Version30` or `HttpVersionPolicy.RequestVersionOrHigher`) with configurable fallback.
-  - [ ] Introduce configuration knobs for outbound transports choosing desired HTTP version policy.
-  - [ ] Implement fallback strategy when upstream HTTP/3 negotiation fails.
+  - [x] Introduce configuration knobs for outbound transports choosing desired HTTP version policy.
+  - [x] Implement fallback strategy when upstream HTTP/3 negotiation fails.
   - [ ] Add integration tests covering all version modes.
 - [ ] Extend service discovery / routing metadata to prefer HTTP/3 endpoints when available and handle negotiation failures cleanly.
   - [ ] Update discovery schema to record per-endpoint protocol support.
@@ -161,7 +161,7 @@
   - [ ] Add percentile latency/throughput views split by protocol.
   - [ ] Integrate metrics into performance regression alerts.
 - [ ] Wire up distributed tracing spans to capture HTTP/3 attributes (QUIC connection id, protocol version) for correlation.
-  - [ ] Extend tracing middleware to annotate spans with protocol metadata.
+  - [x] Extend tracing middleware to annotate spans with protocol metadata.
   - [ ] Verify tracing exporters handle added attributes without schema drift.
   - [ ] Update tracing documentation/examples to highlight the new fields.
 - [ ] Track fallback rates (HTTP/3 → HTTP/2/1.1) and QUIC-specific failure codes in dashboards to monitor parity drift.
