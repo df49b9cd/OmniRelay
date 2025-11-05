@@ -41,18 +41,18 @@
   - [x] Modify listener setup to request multi-protocol support and add TLS capability checks.
   - [x] Add integration tests covering HTTP/1.1, HTTP/2, and HTTP/3 negotiation.
   - [x] Gate feature behind the new configuration flag.
-- [ ] Update `GrpcInbound` listeners to allow HTTP/3 (ensure MsQuic handshake succeeds when TLS callbacks are configured).
+- [x] Update `GrpcInbound` listeners to allow HTTP/3 (ensure MsQuic handshake succeeds when TLS callbacks are configured).
   - [x] Adjust listener options to include HTTP/3 and audit TLS callbacks for unsupported settings.
-  - [ ] Verify MsQuic handshake success with existing interceptors and auth flows.
-  - [ ] Add regression tests ensuring HTTP/2-only deployments remain unaffected.
+  - [x] Verify MsQuic handshake success with existing interceptors and auth flows.
+  - [x] Add regression tests ensuring HTTP/2-only deployments remain unaffected.
 - [ ] Confirm endpoint configuration sets `ListenOptions.Protocols` and `EnableAltSvc` equivalents so HTTP/3 advertises correctly across all bindings.
   - [x] Audit all current listener definitions for missing protocol declarations or alt-svc settings.
   - [x] Add validation to startup logging highlighting misconfigured endpoints.
-  - [ ] Update configuration samples/templates to include the correct options.
-- [ ] Surface MsQuic-specific tuning knobs (connection idle timeout, stream limits, keep-alive) via runtime options with sensible defaults.
+  - [x] Update configuration samples/templates to include the correct options.
+- [x] Surface MsQuic-specific tuning knobs (connection idle timeout, stream limits, keep-alive) via runtime options with sensible defaults.
   - [x] Design configuration structure mapping MsQuic options to OmniRelay runtime settings.
-  - [ ] Implement wiring in Http/Grpc inbound/outbound components.
-  - [ ] Provide documentation describing recommended defaults and tuning guidance.
+  - [x] Implement wiring in Http/Grpc inbound/outbound components.
+  - [x] Provide documentation describing recommended defaults and tuning guidance.
 - [ ] Ensure graceful shutdown/drain logic works for QUIC transports and still signals retry metadata (`retry-after`) consistently.
   - [ ] Extend draining logic tests to cover HTTP/3 requests/calls.
   - [ ] Validate `retry-after` headers/metadata appear for QUIC clients.

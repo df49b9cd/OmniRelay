@@ -136,6 +136,8 @@ Enable the transport per listener via configuration:
         "enableHttp3": true,
         "http3": {
           "enableAltSvc": true,
+          "idleTimeout": "00:01:00",
+          "keepAliveInterval": "00:00:20",
           "maxBidirectionalStreams": 128,
           "maxUnidirectionalStreams": 32
         }
@@ -158,9 +160,17 @@ Key behaviours:
   by default so HTTP/1.1 and HTTP/2 clients learn about the HTTP/3 endpoint.
 - `http3.maxBidirectionalStreams` / `http3.maxUnidirectionalStreams` map
   directly to MsQuic stream limits and are applied during listener startup.
-- `http3.idleTimeout` and `http3.keepAliveInterval` are accepted for parity
-  with upstream docs. MsQuic does not currently expose those knobs so OmniRelay
-  logs a warning and ignores the values.
+- `http3.idleTimeout` configures the connection idle timeout enforced by MsQuic.
+  Values below 30 seconds tend to evict long-polling callers; we recommend
+  60-120 seconds for HTTP workloads that expect bursty traffic.
+- `http3.keepAliveInterval` sends MsQuic pings for otherwise idle connections.
+  Start with 20-30 seconds when you run behind load balancers that recycle idle
+  UDP flows and avoid values below 10 seconds unless downstream requires them.
+
+OmniRelay applies these options to both HTTP and gRPC inbounds. If the running
+framework rejects a setting (for example, due to an outdated MsQuic shim),
+startup succeeds but the dispatcher logs a warning so operators can fall back
+to the platform defaults.
 
 Remember that HTTP/3 still falls back to HTTP/2/1.1 when clients or middleboxes
 block UDP 443. Keep your existing HTTP/2 observability in place and monitor the

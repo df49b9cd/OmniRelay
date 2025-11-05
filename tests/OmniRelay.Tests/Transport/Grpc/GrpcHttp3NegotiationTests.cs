@@ -92,6 +92,83 @@ public class GrpcHttp3NegotiationTests
     }
 
     [Fact(Timeout = 45_000)]
+    public async Task GrpcInbound_WithHttp3Enabled_RunsTransportInterceptorsOverHttp3()
+    {
+        if (!QuicListener.IsSupported)
+        {
+            return;
+        }
+
+        using var certificate = CreateSelfSignedCertificate("CN=omnirelay-grpc-http3-transport");
+
+        var port = TestPortAllocator.GetRandomPort();
+        var address = new Uri($"https://127.0.0.1:{port}");
+
+        var runtimeProtocols = new ConcurrentQueue<string>();
+        var transportProtocols = new ConcurrentQueue<string>();
+
+        var runtimeOptions = new GrpcServerRuntimeOptions
+        {
+            EnableHttp3 = true,
+            Interceptors = new[] { typeof(AuthorizationInterceptor), typeof(GrpcServerLoggingInterceptor) }
+        };
+
+        var tls = new GrpcServerTlsOptions { Certificate = certificate };
+        var options = new DispatcherOptions("grpc-http3-transport");
+
+        var inbound = new GrpcInbound(
+            [address.ToString()],
+            configureServices: services =>
+            {
+                services.AddSingleton(runtimeProtocols);
+                services.AddSingleton<AuthorizationInterceptor>();
+            },
+            serverTlsOptions: tls,
+            serverRuntimeOptions: runtimeOptions);
+
+        var interceptorBuilder = new GrpcTransportInterceptorBuilder();
+        interceptorBuilder.UseServer(new TransportProtocolInterceptor(transportProtocols));
+        var transportRegistry = interceptorBuilder.BuildServerRegistry();
+        ((IGrpcServerInterceptorSink)inbound).AttachGrpcServerInterceptors(transportRegistry!);
+
+        options.AddLifecycle("grpc-http3-transport-inbound", inbound);
+
+        var dispatcher = new OmniRelay.Dispatcher.Dispatcher(options);
+        dispatcher.Register(new UnaryProcedureSpec(
+            "grpc-http3-transport",
+            "grpc-http3-transport::ping",
+            (request, _) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty, new ResponseMeta())))));
+
+        var ct = TestContext.Current.CancellationToken;
+        await dispatcher.StartAsync(ct);
+        await WaitForGrpcReadyAsync(address, ct);
+
+        using var handler = CreateHttp3SocketsHandler();
+        using var client = CreateHttp3Client(handler, HttpVersionPolicy.RequestVersionExact);
+        using var channel = GrpcChannel.ForAddress(address, new GrpcChannelOptions { HttpClient = client });
+        var invoker = channel.CreateCallInvoker();
+        var method = new Method<byte[], byte[]>(MethodType.Unary, "grpc-http3-transport", "grpc-http3-transport::ping", GrpcMarshallerCache.ByteMarshaller, GrpcMarshallerCache.ByteMarshaller);
+        var metadata = new Metadata { { "authorization", "Bearer test-token" } };
+
+        try
+        {
+            var call = invoker.AsyncUnaryCall(method, null, new CallOptions(headers: metadata), []);
+            var response = await call.ResponseAsync.WaitAsync(ct);
+            Assert.Empty(response);
+        }
+        finally
+        {
+            await dispatcher.StopAsync(ct);
+        }
+
+        Assert.True(runtimeProtocols.TryDequeue(out var runtimeProtocol), "No HTTP protocol was observed by the runtime interceptor.");
+        Assert.StartsWith("HTTP/3", runtimeProtocol, StringComparison.Ordinal);
+
+        Assert.True(transportProtocols.TryDequeue(out var transportProtocol), "No HTTP protocol was observed by the transport interceptor.");
+        Assert.StartsWith("HTTP/3", transportProtocol, StringComparison.Ordinal);
+    }
+
+    [Fact(Timeout = 45_000)]
     public async Task GrpcInbound_WithHttp3Disabled_FallsBackToHttp2()
     {
         if (!QuicListener.IsSupported)
@@ -105,6 +182,7 @@ public class GrpcHttp3NegotiationTests
         var address = new Uri($"https://127.0.0.1:{port}");
 
         var observedProtocols = new ConcurrentQueue<string>();
+        var transportProtocols = new ConcurrentQueue<string>();
         var runtime = new GrpcServerRuntimeOptions
         {
             EnableHttp3 = false,
@@ -123,6 +201,12 @@ public class GrpcHttp3NegotiationTests
             },
             serverTlsOptions: tls,
             serverRuntimeOptions: runtime);
+
+        var interceptorBuilder = new GrpcTransportInterceptorBuilder();
+        interceptorBuilder.UseServer(new TransportProtocolInterceptor(transportProtocols));
+        var transportRegistry = interceptorBuilder.BuildServerRegistry();
+        ((IGrpcServerInterceptorSink)inbound).AttachGrpcServerInterceptors(transportRegistry!);
+
         options.AddLifecycle("grpc-http2-inbound", inbound);
 
         var dispatcher = new OmniRelay.Dispatcher.Dispatcher(options);
@@ -155,6 +239,9 @@ public class GrpcHttp3NegotiationTests
 
         Assert.True(observedProtocols.TryDequeue(out var protocol), "No HTTP protocol was observed by the interceptor.");
         Assert.StartsWith("HTTP/2", protocol, StringComparison.Ordinal);
+
+        Assert.True(transportProtocols.TryDequeue(out var transportProtocol), "No HTTP protocol was observed by the transport interceptor.");
+        Assert.StartsWith("HTTP/2", transportProtocol, StringComparison.Ordinal);
     }
 
     [Fact(Timeout = 45_000)]
@@ -360,6 +447,28 @@ public class GrpcHttp3NegotiationTests
                 !string.Equals(authorization.Value, "Bearer test-token", StringComparison.Ordinal))
             {
                 throw new RpcException(new Status(StatusCode.Unauthenticated, "missing authorization header"));
+            }
+
+            return await continuation(request, context).ConfigureAwait(false);
+        }
+    }
+
+    private sealed class TransportProtocolInterceptor(ConcurrentQueue<string> observedProtocols) : Interceptor
+    {
+        private readonly ConcurrentQueue<string> _observedProtocols = observedProtocols ?? throw new ArgumentNullException(nameof(observedProtocols));
+
+        public override async Task<TResponse> UnaryServerHandler<TRequest, TResponse>(
+            TRequest request,
+            ServerCallContext context,
+            UnaryServerMethod<TRequest, TResponse> continuation)
+        {
+            ArgumentNullException.ThrowIfNull(context);
+            ArgumentNullException.ThrowIfNull(continuation);
+
+            var httpContext = context.GetHttpContext();
+            if (httpContext is not null)
+            {
+                _observedProtocols.Enqueue(httpContext.Request.Protocol);
             }
 
             return await continuation(request, context).ConfigureAwait(false);

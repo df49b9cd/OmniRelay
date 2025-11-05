@@ -102,14 +102,39 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
         var http3Endpoints = enableHttp3 ? new List<string>() : null;
         var http3RuntimeOptions = _serverRuntimeOptions?.Http3;
         var streamLimitUnsupported = false;
-        var hasUnsupportedHttp3Tunables =
-            http3RuntimeOptions?.IdleTimeout is not null ||
-            http3RuntimeOptions?.KeepAliveInterval is not null;
+        var idleTimeoutUnsupported = false;
+        var keepAliveUnsupported = false;
 
         if (enableHttp3)
         {
             builder.WebHost.UseQuic(quicOptions =>
             {
+                if (http3RuntimeOptions?.IdleTimeout is { } idleTimeout)
+                {
+                    if (idleTimeout <= TimeSpan.Zero)
+                    {
+                        throw new InvalidOperationException("HTTP/3 IdleTimeout must be greater than zero.");
+                    }
+
+                    if (!TrySetQuicOption(quicOptions, "IdleTimeout", idleTimeout))
+                    {
+                        idleTimeoutUnsupported = true;
+                    }
+                }
+
+                if (http3RuntimeOptions?.KeepAliveInterval is { } keepAliveInterval)
+                {
+                    if (keepAliveInterval <= TimeSpan.Zero)
+                    {
+                        throw new InvalidOperationException("HTTP/3 KeepAliveInterval must be greater than zero.");
+                    }
+
+                    if (!TrySetQuicOption(quicOptions, "KeepAliveInterval", keepAliveInterval))
+                    {
+                        keepAliveUnsupported = true;
+                    }
+                }
+
                 if (http3RuntimeOptions?.MaxBidirectionalStreams is { } maxBidirectionalStreams)
                 {
                     if (maxBidirectionalStreams <= 0)
@@ -117,7 +142,10 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
                         throw new InvalidOperationException("HTTP/3 MaxBidirectionalStreams must be greater than zero.");
                     }
 
-                    streamLimitUnsupported |= !TrySetQuicStreamLimit(quicOptions, "MaxBidirectionalStreamCount", maxBidirectionalStreams);
+                    if (!TrySetQuicOption(quicOptions, "MaxBidirectionalStreamCount", maxBidirectionalStreams))
+                    {
+                        streamLimitUnsupported = true;
+                    }
                 }
 
                 if (http3RuntimeOptions?.MaxUnidirectionalStreams is { } maxUnidirectionalStreams)
@@ -127,7 +155,10 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
                         throw new InvalidOperationException("HTTP/3 MaxUnidirectionalStreams must be greater than zero.");
                     }
 
-                    streamLimitUnsupported |= !TrySetQuicStreamLimit(quicOptions, "MaxUnidirectionalStreamCount", maxUnidirectionalStreams);
+                    if (!TrySetQuicOption(quicOptions, "MaxUnidirectionalStreamCount", maxUnidirectionalStreams))
+                    {
+                        streamLimitUnsupported = true;
+                    }
                 }
             });
         }
@@ -237,9 +268,21 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
                 app.Logger.LogWarning("HTTP/3 stream limit tuning is not supported by the current MsQuic transport; configured values will be ignored.");
             }
 
-            if (hasUnsupportedHttp3Tunables)
+            if (idleTimeoutUnsupported || keepAliveUnsupported)
             {
-                app.Logger.LogWarning("HTTP/3 idle timeout or keep-alive tuning is not yet supported by the current MsQuic transport; configured values will be ignored.");
+                var unsupportedOptions = new List<string>(capacity: 2);
+
+                if (idleTimeoutUnsupported)
+                {
+                    unsupportedOptions.Add("idle timeout");
+                }
+
+                if (keepAliveUnsupported)
+                {
+                    unsupportedOptions.Add("keep-alive interval");
+                }
+
+                app.Logger.LogWarning("HTTP/3 {Options} tuning is not supported by the current MsQuic transport; configured values will be ignored.", string.Join(" and ", unsupportedOptions));
             }
         }
 
@@ -318,7 +361,7 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
     private static TaskCompletionSource<bool> CreateDrainTcs() =>
         new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    private static bool TrySetQuicStreamLimit(QuicTransportOptions options, string propertyName, int value)
+    private static bool TrySetQuicOption(QuicTransportOptions options, string propertyName, object value)
     {
         var property = typeof(QuicTransportOptions).GetProperty(propertyName);
         if (property is null || !property.CanWrite)
