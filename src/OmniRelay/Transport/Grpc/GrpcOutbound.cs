@@ -1141,15 +1141,28 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
 
             if (runtimeOptions.EnableHttp3 && runtimeOptions.RequestVersion is null)
             {
-                // Default for gRPC: request HTTP/3 and allow downgrade to HTTP/2 when unavailable.
-                // Use 3.0 + RequestVersionOrLower unless Exact/OrLower was explicitly specified.
-                version = HttpVersion.Version30;
-                versionPolicy = runtimeOptions.VersionPolicy switch
+                // Map defaults by policy when HTTP/3 is enabled but no explicit RequestVersion is provided.
+                // - Exact    => 3.0 exact (force HTTP/3)
+                // - OrHigher => 1.1 + OrHigher (negotiate up to HTTP/2/3, fallback compatible)
+                // - OrLower  => 3.0 + OrLower (prefer HTTP/3 but allow downgrade to HTTP/2)
+                switch (runtimeOptions.VersionPolicy)
                 {
-                    HttpVersionPolicy.RequestVersionExact => HttpVersionPolicy.RequestVersionExact,
-                    HttpVersionPolicy.RequestVersionOrLower => HttpVersionPolicy.RequestVersionOrLower,
-                    _ => HttpVersionPolicy.RequestVersionOrLower
-                };
+                    case HttpVersionPolicy.RequestVersionExact:
+                        version = HttpVersion.Version30;
+                        versionPolicy = HttpVersionPolicy.RequestVersionExact;
+                        break;
+
+                    case HttpVersionPolicy.RequestVersionOrHigher:
+                        version = HttpVersion.Version11;
+                        versionPolicy = HttpVersionPolicy.RequestVersionOrHigher;
+                        break;
+
+                    case HttpVersionPolicy.RequestVersionOrLower:
+                    default:
+                        version = HttpVersion.Version30;
+                        versionPolicy = HttpVersionPolicy.RequestVersionOrLower;
+                        break;
+                }
             }
             else
             {
