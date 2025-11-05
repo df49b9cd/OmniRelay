@@ -3,8 +3,14 @@ using System.Collections.Immutable;
 using System.Diagnostics.Metrics;
 using System.Globalization;
 using System.IO.Compression;
+using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Net.Security;
 using System.Net.Sockets;
 using System.Reflection;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using Grpc.Core;
 using Grpc.Core.Interceptors;
@@ -102,6 +108,16 @@ public class GrpcTransportTests
         Assert.Equal("identity", acceptEncoding);
     }
 
+    [Fact]
+    public async Task GrpcOutbound_CallBeforeStart_Throws()
+    {
+        var outbound = new GrpcOutbound(new Uri("http://127.0.0.1:5000"), "echo");
+        var requestMeta = new RequestMeta(service: "echo", procedure: "echo::ping", transport: TransportName);
+        var request = new Request<ReadOnlyMemory<byte>>(requestMeta, ReadOnlyMemory<byte>.Empty);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await outbound.CallAsync(request, CancellationToken.None));
+    }
+
     [Fact(Timeout = 30_000)]
     public async Task ServerStreaming_OverGrpcTransport()
     {
@@ -185,6 +201,57 @@ public class GrpcTransportTests
         }
         finally
         {
+            await dispatcher.StopAsync(ct);
+        }
+    }
+
+    [Fact(Timeout = 30_000)]
+    public async Task GrpcInbound_BindsConfiguredHttp2EndpointsOnly()
+    {
+        var port = TestPortAllocator.GetRandomPort();
+        var address = new Uri($"http://127.0.0.1:{port}");
+
+        var options = new DispatcherOptions("binding");
+        var grpcInbound = new GrpcInbound([address.ToString()]);
+        options.AddLifecycle("grpc-inbound", grpcInbound);
+
+        var dispatcher = new OmniRelay.Dispatcher.Dispatcher(options);
+
+        dispatcher.Register(new UnaryProcedureSpec(
+            "binding",
+            "binding::ping",
+            (request, cancellationToken) =>
+                ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty, new ResponseMeta())))));
+
+        var ct = TestContext.Current.CancellationToken;
+        await dispatcher.StartAsync(ct);
+        await WaitForGrpcReadyAsync(address, ct);
+
+        var outbound = new GrpcOutbound(address, "binding");
+        await outbound.StartAsync(ct);
+
+        try
+        {
+            var requestMeta = new RequestMeta(
+                service: "binding",
+                procedure: "binding::ping",
+                transport: TransportName);
+            var request = new Request<ReadOnlyMemory<byte>>(requestMeta, ReadOnlyMemory<byte>.Empty);
+            var response = await outbound.CallAsync(request, ct);
+            Assert.True(response.IsSuccess, response.Error?.Message);
+
+            await Assert.ThrowsAsync<SocketException>(async () =>
+            {
+                var unusedPort = TestPortAllocator.GetRandomPort();
+                using var unusedClient = new TcpClient();
+                await unusedClient.ConnectAsync("127.0.0.1", unusedPort)
+                    .WaitAsync(TimeSpan.FromMilliseconds(200), ct)
+                    .ConfigureAwait(false);
+            });
+        }
+        finally
+        {
+            await outbound.StopAsync(ct);
             await dispatcher.StopAsync(ct);
         }
     }
@@ -285,6 +352,55 @@ public class GrpcTransportTests
         releaseRequest.TrySetResult();
 
         await Assert.ThrowsAsync<RpcException>(async () => await inFlightCall.ResponseAsync);
+    }
+
+    [Fact(Timeout = 30_000)]
+    public async Task GrpcInbound_WithTlsCertificate_BindsAndServes()
+    {
+        var port = TestPortAllocator.GetRandomPort();
+        var address = new Uri($"https://127.0.0.1:{port}");
+
+        using var certificate = CreateSelfSignedCertificate("CN=omnirelay-grpc-test");
+
+        var options = new DispatcherOptions("tls");
+        var tlsOptions = new GrpcServerTlsOptions { Certificate = certificate };
+        var grpcInbound = new GrpcInbound([address.ToString()], serverTlsOptions: tlsOptions);
+        options.AddLifecycle("grpc-inbound", grpcInbound);
+
+        var dispatcher = new OmniRelay.Dispatcher.Dispatcher(options);
+
+        dispatcher.Register(new UnaryProcedureSpec(
+            "tls",
+            "tls::ping",
+            (request, cancellationToken) =>
+                ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty, new ResponseMeta())))));
+
+        var ct = TestContext.Current.CancellationToken;
+        await dispatcher.StartAsync(ct);
+        await WaitForGrpcReadyAsync(address, ct);
+
+        var clientTls = new GrpcClientTlsOptions
+        {
+            ServerCertificateValidationCallback = static (_, _, _, _) => true
+        };
+        var outbound = new GrpcOutbound(address, "tls", clientTlsOptions: clientTls);
+        await outbound.StartAsync(ct);
+
+        try
+        {
+            var requestMeta = new RequestMeta(
+                service: "tls",
+                procedure: "tls::ping",
+                transport: TransportName);
+            var request = new Request<ReadOnlyMemory<byte>>(requestMeta, ReadOnlyMemory<byte>.Empty);
+            var response = await outbound.CallAsync(request, ct);
+            Assert.True(response.IsSuccess, response.Error?.Message);
+        }
+        finally
+        {
+            await outbound.StopAsync(ct);
+            await dispatcher.StopAsync(ct);
+        }
     }
 
     [Fact(Timeout = 30_000)]
@@ -2200,6 +2316,82 @@ public class GrpcTransportTests
     }
 
     [Fact(Timeout = 30_000)]
+    public async Task GrpcInbound_ServerLoggingInterceptor_WritesLogs()
+    {
+        var port = TestPortAllocator.GetRandomPort();
+        var address = new Uri($"http://127.0.0.1:{port}");
+
+        var loggerProvider = new CaptureLoggerProvider();
+
+        var options = new DispatcherOptions("logging");
+        var grpcInbound = new GrpcInbound(
+            [address.ToString()],
+            configureServices: services =>
+            {
+                services.AddLogging(builder =>
+                {
+                    builder.ClearProviders();
+                    builder.AddProvider(loggerProvider);
+                    builder.SetMinimumLevel(LogLevel.Information);
+                });
+            },
+            telemetryOptions: new GrpcTelemetryOptions { EnableServerLogging = true });
+        options.AddLifecycle("grpc-inbound", grpcInbound);
+
+        var dispatcher = new OmniRelay.Dispatcher.Dispatcher(options);
+        var codec = new JsonCodec<EchoRequest, EchoResponse>(new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+        dispatcher.Register(new UnaryProcedureSpec(
+            "logging",
+            "logging::ping",
+            (request, cancellationToken) =>
+            {
+                var decode = codec.DecodeRequest(request.Body, request.Meta);
+                if (decode.IsFailure)
+                {
+                    return ValueTask.FromResult(Err<Response<ReadOnlyMemory<byte>>>(decode.Error!));
+                }
+
+                var responseMeta = new ResponseMeta(encoding: "application/json");
+                var encode = codec.EncodeResponse(new EchoResponse { Message = decode.Value.Message }, responseMeta);
+                return encode.IsSuccess
+                    ? ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(encode.Value, responseMeta)))
+                    : ValueTask.FromResult(Err<Response<ReadOnlyMemory<byte>>>(encode.Error!));
+            }));
+
+        var ct = TestContext.Current.CancellationToken;
+        await dispatcher.StartAsync(ct);
+        await WaitForGrpcReadyAsync(address, ct);
+
+        var outbound = new GrpcOutbound(address, "logging");
+        await outbound.StartAsync(ct);
+
+        try
+        {
+            var requestMeta = new RequestMeta(
+                service: "logging",
+                procedure: "logging::ping",
+                encoding: "application/json",
+                transport: TransportName);
+            var payload = codec.EncodeRequest(new EchoRequest("hello"), requestMeta);
+            Assert.True(payload.IsSuccess);
+
+            var request = new Request<ReadOnlyMemory<byte>>(requestMeta, payload.Value);
+            var responseResult = await outbound.CallAsync(request, ct);
+            Assert.True(responseResult.IsSuccess, responseResult.Error?.Message);
+        }
+        finally
+        {
+            await outbound.StopAsync(ct);
+            await dispatcher.StopAsync(ct);
+        }
+
+        Assert.Contains(loggerProvider.Entries, entry =>
+            string.Equals(entry.CategoryName, typeof(GrpcServerLoggingInterceptor).FullName, StringComparison.Ordinal) &&
+            entry.Message.Contains("Completed gRPC server unary call", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact(Timeout = 30_000)]
     public async Task GrpcInbound_TelemetryOptions_RegistersServerLoggingInterceptor()
     {
         var port = TestPortAllocator.GetRandomPort();
@@ -2360,6 +2552,22 @@ public class GrpcTransportTests
         }
 
         throw new TimeoutException("The gRPC inbound failed to bind within the allotted time.");
+    }
+
+    private static X509Certificate2 CreateSelfSignedCertificate(string subjectName)
+    {
+        using var rsa = RSA.Create(2048);
+        var request = new CertificateRequest(subjectName, rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        request.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, false));
+        request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, false));
+        request.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(request.PublicKey, false));
+
+        var sanBuilder = new SubjectAlternativeNameBuilder();
+        sanBuilder.AddDnsName("localhost");
+        sanBuilder.AddIpAddress(IPAddress.Loopback);
+        request.CertificateExtensions.Add(sanBuilder.Build());
+
+        return request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(1));
     }
 
     private sealed class ServerTaskTracker : IAsyncDisposable

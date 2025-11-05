@@ -120,7 +120,7 @@ Each workflow measurement includes metric tags for `workflow.namespace`, `workfl
 }
 ```
 
-- `openTelemetry.prometheus.enabled` exposes `/omnirelay/metrics`, which returns the Prometheus text format scraped directly from OpenTelemetry.
+- `openTelemetry.prometheus.enabled` exposes `/omnirelay/metrics`, which returns the Prometheus text format scraped directly from OpenTelemetry. gRPC inbounds do not host a scrape endpoint—plan to scrape the HTTP inbound even when the RPC traffic of interest flows over gRPC.
 - `openTelemetry.otlp.*` configures the standard OTLP exporter (`protocol` defaults to gRPC; omit the endpoint to use the SDK default).
 - `runtime` enables lightweight control-plane endpoints:
   - `GET /omnirelay/control/logging` returns `{ "minimumLevel": "Information" }`.

@@ -122,6 +122,27 @@ public class OmniRelayConfigurationTests
     }
 
     [Fact]
+    public void AddOmniRelayDispatcher_InvalidGrpcTlsCertificatePath_Throws()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["polymer:service"] = "gateway",
+                ["polymer:inbounds:grpc:0:urls:0"] = "https://127.0.0.1:9090",
+                ["polymer:inbounds:grpc:0:tls:certificatePath"] = "/tmp/omnirelay-grpc-missing.pfx"
+            }!)
+            .Build();
+
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddOmniRelayDispatcher(configuration.GetSection("polymer"));
+
+        using var provider = services.BuildServiceProvider();
+        var ex = Assert.Throws<OmniRelayConfigurationException>(() => provider.GetRequiredService<OmniRelayDispatcher>());
+        Assert.Contains("gRPC server certificate", ex.Message);
+    }
+
+    [Fact]
     public void AddOmniRelayDispatcher_UsesCustomTransportSpecs()
     {
         var configuration = new ConfigurationBuilder()
