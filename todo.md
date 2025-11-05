@@ -60,10 +60,10 @@
 
 ## Feature Parity: HTTP Surface
 
-- [ ] Verify `/omnirelay/introspect`, `/healthz`, `/readyz`, and other existing HTTP endpoints work over HTTP/3 and remain backward compatible with HTTP/1.1/2.
-  - [ ] Build automated test suite hitting endpoints over all supported protocols.
-  - [ ] Ensure observability endpoints continue to function without additional client configuration.
-  - [ ] Record any protocol-specific limitations and create mitigation issues if required.
+- [x] Verify `/omnirelay/introspect`, `/healthz`, `/readyz`, and other existing HTTP endpoints work over HTTP/3 and remain backward compatible with HTTP/1.1/2.
+  - [x] Build automated test suite hitting endpoints over all supported protocols.
+  - [x] Ensure observability endpoints continue to function without additional client configuration.
+  - [x] Record any protocol-specific limitations and create mitigation issues if required.
 - [ ] Revisit WebSocket usage in `HttpInbound`: document that classic WebSockets stay on HTTP/1.1 and confirm duplex scenarios have an HTTP/3-friendly alternative (e.g., HTTP/3 streams or keep HTTP/1.1 fallback).
   - [ ] Review current WebSocket consumers and identify ones needing QUIC-compatible alternatives.
   - [ ] Prototype HTTP/3 streaming fallback or document mandatory HTTP/1.1 usage where appropriate.

@@ -144,6 +144,78 @@ public class HttpInboundLifecycleTests
         await stopTask;
     }
 
+    [Fact(Timeout = 45_000)]
+    public async Task HttpInbound_WithHttp3_ExposesObservabilityEndpoints()
+    {
+        if (!QuicListener.IsSupported)
+        {
+            return;
+        }
+
+        using var certificate = CreateSelfSignedCertificate("CN=omnirelay-http3-observability");
+
+        var port = TestPortAllocator.GetRandomPort();
+        var baseAddress = new Uri($"https://127.0.0.1:{port}/");
+
+        var runtime = new HttpServerRuntimeOptions { EnableHttp3 = true };
+        var tls = new HttpServerTlsOptions { Certificate = certificate };
+
+        var options = new DispatcherOptions("http3-observability");
+        var httpInbound = new HttpInbound([baseAddress.ToString()], serverRuntimeOptions: runtime, serverTlsOptions: tls);
+        options.AddLifecycle("http3-observability-inbound", httpInbound);
+
+        var dispatcher = new OmniRelay.Dispatcher.Dispatcher(options);
+        dispatcher.Register(new UnaryProcedureSpec(
+            "http3-observability",
+            "health::ping",
+            (request, _) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty, new ResponseMeta())))));
+
+        var ct = TestContext.Current.CancellationToken;
+        await dispatcher.StartAsync(ct);
+
+        try
+        {
+            using var http3Handler = CreateHttp3Handler();
+            using var http3Client = new HttpClient(http3Handler) { BaseAddress = baseAddress };
+            http3Client.DefaultRequestVersion = HttpVersion.Version30;
+            http3Client.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionExact;
+
+            using var introspectResponse = await http3Client.GetAsync("/omnirelay/introspect", ct);
+            Assert.Equal(HttpStatusCode.OK, introspectResponse.StatusCode);
+            Assert.Equal(3, introspectResponse.Version.Major);
+            var payload = await introspectResponse.Content.ReadAsStringAsync(ct);
+            using (var document = JsonDocument.Parse(payload))
+            {
+                Assert.Equal("http3-observability", document.RootElement.GetProperty("service").GetString());
+                Assert.Equal("Running", document.RootElement.GetProperty("status").GetString());
+            }
+
+            using var healthResponse = await http3Client.GetAsync("/healthz", ct);
+            Assert.Equal(HttpStatusCode.OK, healthResponse.StatusCode);
+            Assert.Equal(3, healthResponse.Version.Major);
+
+            using var readyResponse = await http3Client.GetAsync("/readyz", ct);
+            Assert.Equal(HttpStatusCode.OK, readyResponse.StatusCode);
+            Assert.Equal(3, readyResponse.Version.Major);
+
+            using var http11Handler = CreateHttp11Handler();
+            using var http11Client = new HttpClient(http11Handler) { BaseAddress = baseAddress };
+
+            using var http11Request = new HttpRequestMessage(HttpMethod.Get, "/healthz")
+            {
+                Version = HttpVersion.Version11,
+                VersionPolicy = HttpVersionPolicy.RequestVersionExact
+            };
+            using var http11Response = await http11Client.SendAsync(http11Request, ct);
+            Assert.Equal(HttpStatusCode.OK, http11Response.StatusCode);
+            Assert.Equal(1, http11Response.Version.Major);
+        }
+        finally
+        {
+            await dispatcher.StopAsync(ct);
+        }
+    }
+
     [Fact(Timeout = 30_000)]
     public async Task StopAsync_WithCancellation_CompletesWithoutWaiting()
     {
@@ -308,6 +380,15 @@ public class HttpInboundLifecycleTests
         };
 
         return handler;
+    }
+
+    private static HttpClientHandler CreateHttp11Handler()
+    {
+        return new HttpClientHandler
+        {
+            AllowAutoRedirect = false,
+            ServerCertificateCustomValidationCallback = static (_, _, _, _) => true
+        };
     }
 
     private static X509Certificate2 CreateSelfSignedCertificate(string subjectName)

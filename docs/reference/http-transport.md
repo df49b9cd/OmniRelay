@@ -211,6 +211,11 @@ Operators should monitor application logs for the `server shutting down` warning
 that accompanies drained gRPC calls and watch readiness probes flip to
 `503 Service Unavailable` until the dispatcher finishes all in-flight work.
 
+> **Observability:** `/omnirelay/introspect`, `/healthz`, and `/readyz` respond
+> identically over HTTP/1.1, HTTP/2, and HTTP/3; no additional configuration is
+> required for HTTP/3 clients. Testing has not uncovered any protocol-specific
+> limitations for these endpoints.
+
 ## Server-sent events
 
 Server-stream RPCs use SSE with hardened defaults:
