@@ -21,8 +21,8 @@ public class ProtobufCodeGeneratorTests
 
         Assert.Single(response.File);
         var generated = response.File[0].Content.Replace("\r\n", "\n");
-        var goldenPath = TestPath.Combine("tests", "OmniRelay.Tests", "Generated", "TestService.OmniRelay.g.cs");
-        File.WriteAllText(TestPath.Combine("tests", "OmniRelay.Tests", "Generated", "TestService.actual.g.cs"), response.File[0].Content);
+        var goldenPath = TestPath.Combine("tests", "OmniRelay.Codegen.Tests", "Generated", "TestService.OmniRelay.g.cs");
+        File.WriteAllText(TestPath.Combine("tests", "OmniRelay.Codegen.Tests", "Generated", "TestService.actual.g.cs"), response.File[0].Content);
         var expected = File.ReadAllText(goldenPath).Replace("\r\n", "\n");
 
         Assert.Equal(expected, generated);
@@ -57,9 +57,9 @@ public class ProtobufCodeGeneratorTests
             Assert.True(runResult.GeneratedTrees.Length > 0, "Generator did not produce any output.");
 
             var generatedRaw = runResult.GeneratedTrees[0].GetText(TestContext.Current.CancellationToken).ToString();
-            File.WriteAllText(TestPath.Combine("tests", "OmniRelay.Tests", "Generated", "TestService.incremental.g.cs"), generatedRaw);
+            File.WriteAllText(TestPath.Combine("tests", "OmniRelay.Codegen.Tests", "Generated", "TestService.incremental.g.cs"), generatedRaw);
             var generatedText = generatedRaw.Replace("\r\n", "\n");
-            var expected = File.ReadAllText(TestPath.Combine("tests", "OmniRelay.Tests", "Generated", "TestService.OmniRelay.g.cs")).Replace("\r\n", "\n");
+            var expected = File.ReadAllText(TestPath.Combine("tests", "OmniRelay.Codegen.Tests", "Generated", "TestService.OmniRelay.g.cs")).Replace("\r\n", "\n");
 
             Assert.Equal(expected, generatedText);
         }
@@ -94,7 +94,7 @@ public class ProtobufCodeGeneratorTests
         {
             var file = new FileDescriptorProto
             {
-                Name = "tests/OmniRelay.Tests/Protos/test_service.proto",
+                Name = "tests/OmniRelay.Codegen.Tests/Protos/test_service.proto",
                 Package = "yarpcore.tests.codegen",
                 Options = new FileOptions { CsharpNamespace = "OmniRelay.Tests.Protos" }
             };

@@ -3,8 +3,10 @@ using System.Net;
 using System.Net.Http;
 using System.Threading.Tasks;
 using OmniRelay.Core;
+using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
 using OmniRelay.Transport.Http;
+using OmniRelay.Errors;
 using Xunit;
 
 namespace OmniRelay.Tests.Transport.Http;
@@ -12,7 +14,7 @@ namespace OmniRelay.Tests.Transport.Http;
 public class DuplexBadRequestTests
 {
     [Fact(Timeout = 30000)]
-    public async Task NonWebSocketGet_ForDuplex_Returns400()
+    public async Task NonWebSocketGet_ForDuplex_Returns406()
     {
         var port = TestPortAllocator.GetRandomPort();
         var baseAddress = new Uri($"http://127.0.0.1:{port}/");
@@ -34,7 +36,7 @@ public class DuplexBadRequestTests
         using var request = new HttpRequestMessage(HttpMethod.Get, "/");
         request.Headers.Add(HttpTransportHeaders.Procedure, "chat::echo");
         using var response = await httpClient.SendAsync(request, ct);
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(HttpStatusCode.NotAcceptable, response.StatusCode);
 
         await dispatcher.StopAsync(ct);
     }

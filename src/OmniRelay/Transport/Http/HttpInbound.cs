@@ -844,7 +844,10 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
         string transport,
         Error? error = null)
     {
-        context.Response.StatusCode = HttpStatusMapper.ToStatusCode(status);
+        if (context.Response.StatusCode == StatusCodes.Status200OK)
+        {
+            context.Response.StatusCode = HttpStatusMapper.ToStatusCode(status);
+        }
         context.Response.Headers[HttpTransportHeaders.Transport] = transport;
         context.Response.Headers[HttpTransportHeaders.Status] = status.ToString();
         context.Response.Headers[HttpTransportHeaders.ErrorMessage] = message;
