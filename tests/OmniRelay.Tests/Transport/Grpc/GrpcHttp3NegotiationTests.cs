@@ -9,9 +9,12 @@ using System.Net.Sockets;
 using System.Security.Authentication;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using System.Diagnostics;
+using System.IO.Compression;
 using Grpc.Core;
 using Grpc.Core.Interceptors;
 using Grpc.Net.Client;
+using Grpc.Net.Compression;
 using Microsoft.Extensions.DependencyInjection;
 using OmniRelay.Core;
 using OmniRelay.Core.Transport;
@@ -40,6 +43,17 @@ public class GrpcHttp3NegotiationTests
         var address = new Uri($"https://127.0.0.1:{port}");
 
         var observedProtocols = new ConcurrentQueue<string>();
+        var requestMetaProtocols = new ConcurrentQueue<string>();
+        var activities = new ConcurrentQueue<Activity>();
+
+        using var activityListener = new ActivityListener
+        {
+            ShouldListenTo = source => string.Equals(source.Name, GrpcTransportDiagnostics.ActivitySourceName, StringComparison.Ordinal),
+            Sample = (ref ActivityCreationOptions<ActivityContext> options) => ActivitySamplingResult.AllData,
+            ActivityStopped = activity => activities.Enqueue(activity)
+        };
+
+        ActivitySource.AddActivityListener(activityListener);
         var runtime = new GrpcServerRuntimeOptions
         {
             EnableHttp3 = true,
@@ -64,7 +78,15 @@ public class GrpcHttp3NegotiationTests
         dispatcher.Register(new UnaryProcedureSpec(
             "grpc-http3",
             "grpc-http3::ping",
-            (request, _) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty, new ResponseMeta())))));
+            (request, _) =>
+            {
+                if (request.Meta.Headers.TryGetValue("rpc.protocol", out var protocol) && !string.IsNullOrWhiteSpace(protocol))
+                {
+                    requestMetaProtocols.Enqueue(protocol);
+                }
+
+                return ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty, new ResponseMeta())));
+            }));
 
         var ct = TestContext.Current.CancellationToken;
         await dispatcher.StartAsync(ct);
@@ -88,8 +110,17 @@ public class GrpcHttp3NegotiationTests
             await dispatcher.StopAsync(ct);
         }
 
-        Assert.True(observedProtocols.TryDequeue(out var protocol), "No HTTP protocol was observed by the interceptor.");
-        Assert.StartsWith("HTTP/3", protocol, StringComparison.Ordinal);
+    Assert.True(observedProtocols.TryDequeue(out var protocol), "No HTTP protocol was observed by the interceptor.");
+    Assert.StartsWith("HTTP/3", protocol, StringComparison.Ordinal);
+
+    Assert.True(requestMetaProtocols.TryDequeue(out var metaProtocol), "No HTTP protocol was captured in request metadata.");
+    Assert.StartsWith("HTTP/3", metaProtocol, StringComparison.Ordinal);
+
+    var recordedActivity = activities.LastOrDefault(activity => string.Equals(activity.OperationName, "grpc.server.unary", StringComparison.Ordinal));
+    Assert.NotNull(recordedActivity);
+    Assert.Equal("http", recordedActivity!.GetTagItem("network.protocol.name"));
+    Assert.StartsWith("3", recordedActivity.GetTagItem("network.protocol.version")?.ToString(), StringComparison.Ordinal);
+    Assert.StartsWith("HTTP/3", recordedActivity.GetTagItem("rpc.protocol")?.ToString(), StringComparison.Ordinal);
     }
 
     [Fact(Timeout = 45_000)]
@@ -105,8 +136,9 @@ public class GrpcHttp3NegotiationTests
         var port = TestPortAllocator.GetRandomPort();
         var address = new Uri($"https://127.0.0.1:{port}");
 
-        var runtimeProtocols = new ConcurrentQueue<string>();
-        var transportProtocols = new ConcurrentQueue<string>();
+    var runtimeProtocols = new ConcurrentQueue<string>();
+    var transportProtocols = new ConcurrentQueue<string>();
+    var requestMetaProtocols = new ConcurrentQueue<string>();
 
         var runtimeOptions = new GrpcServerRuntimeOptions
         {
@@ -138,7 +170,15 @@ public class GrpcHttp3NegotiationTests
         dispatcher.Register(new UnaryProcedureSpec(
             "grpc-http3-transport",
             "grpc-http3-transport::ping",
-            (request, _) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty, new ResponseMeta())))));
+            (request, _) =>
+            {
+                if (request.Meta.Headers.TryGetValue("rpc.protocol", out var protocol) && !string.IsNullOrWhiteSpace(protocol))
+                {
+                    requestMetaProtocols.Enqueue(protocol);
+                }
+
+                return ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty, new ResponseMeta())));
+            }));
 
         var ct = TestContext.Current.CancellationToken;
         await dispatcher.StartAsync(ct);
@@ -167,6 +207,9 @@ public class GrpcHttp3NegotiationTests
 
         Assert.True(transportProtocols.TryDequeue(out var transportProtocol), "No HTTP protocol was observed by the transport interceptor.");
         Assert.StartsWith("HTTP/3", transportProtocol, StringComparison.Ordinal);
+
+    Assert.True(requestMetaProtocols.TryDequeue(out var metaProtocol), "No HTTP protocol was captured in request metadata.");
+    Assert.StartsWith("HTTP/3", metaProtocol, StringComparison.Ordinal);
     }
 
     [Fact(Timeout = 45_000)]
@@ -182,8 +225,9 @@ public class GrpcHttp3NegotiationTests
         var port = TestPortAllocator.GetRandomPort();
         var address = new Uri($"https://127.0.0.1:{port}");
 
-        var observedProtocols = new ConcurrentQueue<string>();
-        var transportProtocols = new ConcurrentQueue<string>();
+    var observedProtocols = new ConcurrentQueue<string>();
+    var transportProtocols = new ConcurrentQueue<string>();
+    var requestMetaProtocols = new ConcurrentQueue<string>();
         var runtime = new GrpcServerRuntimeOptions
         {
             EnableHttp3 = false,
@@ -214,7 +258,15 @@ public class GrpcHttp3NegotiationTests
         dispatcher.Register(new UnaryProcedureSpec(
             "grpc-http2",
             "grpc-http2::ping",
-            (request, _) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty, new ResponseMeta())))));
+            (request, _) =>
+            {
+                if (request.Meta.Headers.TryGetValue("rpc.protocol", out var protocol) && !string.IsNullOrWhiteSpace(protocol))
+                {
+                    requestMetaProtocols.Enqueue(protocol);
+                }
+
+                return ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty, new ResponseMeta())));
+            }));
 
         var ct = TestContext.Current.CancellationToken;
         await dispatcher.StartAsync(ct);
@@ -243,6 +295,9 @@ public class GrpcHttp3NegotiationTests
 
         Assert.True(transportProtocols.TryDequeue(out var transportProtocol), "No HTTP protocol was observed by the transport interceptor.");
         Assert.StartsWith("HTTP/2", transportProtocol, StringComparison.Ordinal);
+
+    Assert.True(requestMetaProtocols.TryDequeue(out var metaProtocol), "No HTTP protocol was captured in request metadata.");
+    Assert.StartsWith("HTTP/2", metaProtocol, StringComparison.Ordinal);
     }
 
     [Fact(Timeout = 45_000)]
@@ -261,9 +316,12 @@ public class GrpcHttp3NegotiationTests
         var port = TestPortAllocator.GetRandomPort();
         var address = new Uri($"https://127.0.0.1:{port}");
 
+        var acceptEncodings = new ConcurrentQueue<string>();
+
         var runtime = new GrpcServerRuntimeOptions
         {
-            EnableHttp3 = true
+            EnableHttp3 = true,
+            Interceptors = new[] { typeof(AcceptEncodingCaptureInterceptor) }
         };
 
         var tls = new GrpcServerTlsOptions { Certificate = certificate };
@@ -377,8 +435,8 @@ public class GrpcHttp3NegotiationTests
         try
         {
             var call = invoker.AsyncDuplexStreamingCall(method, null, new CallOptions());
-            await call.RequestStream.WriteAsync(payload);
-            await call.RequestStream.CompleteAsync();
+            await call.RequestStream.WriteAsync(payload, cancellationToken: ct);
+            await call.RequestStream.CompleteAsync().WaitAsync(ct);
 
             Assert.True(await call.ResponseStream.MoveNext(ct));
             var echo = call.ResponseStream.Current;
@@ -485,6 +543,183 @@ public class GrpcHttp3NegotiationTests
 
         Assert.True(observedProtocols.TryDequeue(out var protocol), "No HTTP protocol was observed by the interceptor.");
         Assert.StartsWith("HTTP/3", protocol, StringComparison.Ordinal);
+    }
+
+    [Fact(Timeout = 45_000)]
+    public async Task GrpcInbound_WithHttp3Enabled_CompressionNegotiatesGzip()
+    {
+        if (!QuicListener.IsSupported)
+        {
+            return;
+        }
+
+        using var certificate = CreateSelfSignedCertificate("CN=omnirelay-grpc-http3-compression");
+
+        var payload = new byte[128 * 1024];
+        RandomNumberGenerator.Fill(payload);
+
+        var port = TestPortAllocator.GetRandomPort();
+        var address = new Uri($"https://127.0.0.1:{port}");
+
+        var acceptEncodings = new ConcurrentQueue<string>();
+
+        var runtime = new GrpcServerRuntimeOptions
+        {
+            EnableHttp3 = true,
+            Interceptors = new[] { typeof(AcceptEncodingCaptureInterceptor) }
+        };
+
+        var compressionOptions = new GrpcCompressionOptions
+        {
+            Providers = new ICompressionProvider[] { new GzipCompressionProvider(CompressionLevel.Optimal) },
+            DefaultAlgorithm = "gzip",
+            DefaultCompressionLevel = CompressionLevel.Optimal
+        };
+
+        var tls = new GrpcServerTlsOptions { Certificate = certificate };
+        var options = new DispatcherOptions("grpc-http3-compression");
+
+        var inbound = new GrpcInbound(
+            [address.ToString()],
+            configureServices: services =>
+            {
+                services.AddSingleton(acceptEncodings);
+                services.AddSingleton<AcceptEncodingCaptureInterceptor>();
+            },
+            serverTlsOptions: tls,
+            serverRuntimeOptions: runtime,
+            compressionOptions: compressionOptions);
+        options.AddLifecycle("grpc-http3-compression-inbound", inbound);
+
+        var dispatcher = new OmniRelay.Dispatcher.Dispatcher(options);
+        dispatcher.Register(new UnaryProcedureSpec(
+            "grpc-http3-compression",
+            "grpc-http3-compression::compressed",
+            (request, _) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(payload, new ResponseMeta())))));
+
+        var ct = TestContext.Current.CancellationToken;
+        await dispatcher.StartAsync(ct);
+        await WaitForGrpcReadyAsync(address, ct);
+
+        using var handler = CreateHttp3SocketsHandler();
+        using var client = CreateHttp3Client(handler, HttpVersionPolicy.RequestVersionExact);
+        using var channel = GrpcChannel.ForAddress(address, new GrpcChannelOptions
+        {
+            HttpClient = client,
+            CompressionProviders = new ICompressionProvider[] { new GzipCompressionProvider(CompressionLevel.Optimal) }
+        });
+
+        var invoker = channel.CreateCallInvoker();
+        var method = new Method<byte[], byte[]>(MethodType.Unary, "grpc-http3-compression", "grpc-http3-compression::compressed", GrpcMarshallerCache.ByteMarshaller, GrpcMarshallerCache.ByteMarshaller);
+
+        try
+        {
+            using var call = invoker.AsyncUnaryCall(method, null, new CallOptions(), Array.Empty<byte>());
+            var response = await call.ResponseAsync.WaitAsync(ct);
+            Assert.Equal(payload.Length, response.Length);
+
+            var headers = await call.ResponseHeadersAsync.WaitAsync(ct);
+            var encoding = headers.GetValue("grpc-encoding") ?? call.GetTrailers().GetValue("grpc-encoding");
+            if (encoding is not null)
+            {
+                Assert.Equal("gzip", encoding);
+            }
+        }
+        finally
+        {
+            await dispatcher.StopAsync(ct);
+        }
+
+        Assert.True(acceptEncodings.TryDequeue(out var negotiated), "No grpc-accept-encoding header was observed.");
+        Assert.Contains(
+            negotiated.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries),
+            value => value.Equals("gzip", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact(Timeout = 45_000)]
+    public async Task GrpcInbound_WithHttp3Disabled_CompressionNegotiatesGzip()
+    {
+        using var certificate = CreateSelfSignedCertificate("CN=omnirelay-grpc-http2-compression");
+
+        var payload = new byte[128 * 1024];
+        RandomNumberGenerator.Fill(payload);
+
+        var port = TestPortAllocator.GetRandomPort();
+        var address = new Uri($"https://127.0.0.1:{port}");
+
+        var acceptEncodings = new ConcurrentQueue<string>();
+
+        var runtime = new GrpcServerRuntimeOptions
+        {
+            EnableHttp3 = false,
+            Interceptors = new[] { typeof(AcceptEncodingCaptureInterceptor) }
+        };
+
+        var compressionOptions = new GrpcCompressionOptions
+        {
+            Providers = new ICompressionProvider[] { new GzipCompressionProvider(CompressionLevel.Optimal) },
+            DefaultAlgorithm = "gzip",
+            DefaultCompressionLevel = CompressionLevel.Optimal
+        };
+
+        var tls = new GrpcServerTlsOptions { Certificate = certificate };
+        var options = new DispatcherOptions("grpc-http2-compression");
+
+        var inbound = new GrpcInbound(
+            [address.ToString()],
+            configureServices: services =>
+            {
+                services.AddSingleton(acceptEncodings);
+                services.AddSingleton<AcceptEncodingCaptureInterceptor>();
+            },
+            serverTlsOptions: tls,
+            serverRuntimeOptions: runtime,
+            compressionOptions: compressionOptions);
+        options.AddLifecycle("grpc-http2-compression-inbound", inbound);
+
+        var dispatcher = new OmniRelay.Dispatcher.Dispatcher(options);
+        dispatcher.Register(new UnaryProcedureSpec(
+            "grpc-http2-compression",
+            "grpc-http2-compression::compressed",
+            (request, _) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(payload, new ResponseMeta())))));
+
+        var ct = TestContext.Current.CancellationToken;
+        await dispatcher.StartAsync(ct);
+        await WaitForGrpcReadyAsync(address, ct);
+
+        using var handler = CreateHttp3SocketsHandler();
+        using var client = CreateHttp3Client(handler, HttpVersionPolicy.RequestVersionOrLower);
+        using var channel = GrpcChannel.ForAddress(address, new GrpcChannelOptions
+        {
+            HttpClient = client,
+            CompressionProviders = new ICompressionProvider[] { new GzipCompressionProvider(CompressionLevel.Optimal) }
+        });
+
+        var invoker = channel.CreateCallInvoker();
+        var method = new Method<byte[], byte[]>(MethodType.Unary, "grpc-http2-compression", "grpc-http2-compression::compressed", GrpcMarshallerCache.ByteMarshaller, GrpcMarshallerCache.ByteMarshaller);
+
+        try
+        {
+            using var call = invoker.AsyncUnaryCall(method, null, new CallOptions(), Array.Empty<byte>());
+            var response = await call.ResponseAsync.WaitAsync(ct);
+            Assert.Equal(payload.Length, response.Length);
+
+            var headers = await call.ResponseHeadersAsync.WaitAsync(ct);
+            var encoding = headers.GetValue("grpc-encoding") ?? call.GetTrailers().GetValue("grpc-encoding");
+            if (encoding is not null)
+            {
+                Assert.Equal("gzip", encoding);
+            }
+        }
+        finally
+        {
+            await dispatcher.StopAsync(ct);
+        }
+
+        Assert.True(acceptEncodings.TryDequeue(out var negotiated), "No grpc-accept-encoding header was observed.");
+        Assert.Contains(
+            negotiated.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries),
+            value => value.Equals("gzip", StringComparison.OrdinalIgnoreCase));
     }
 
     private static async Task WaitForGrpcReadyAsync(Uri address, CancellationToken cancellationToken)
@@ -620,6 +855,33 @@ public class GrpcHttp3NegotiationTests
             }
 
             return await continuation(request, context).ConfigureAwait(false);
+        }
+    }
+
+    private sealed class AcceptEncodingCaptureInterceptor(ConcurrentQueue<string> encodings) : Interceptor
+    {
+        private readonly ConcurrentQueue<string> _encodings = encodings ?? throw new ArgumentNullException(nameof(encodings));
+
+        public override Task<TResponse> UnaryServerHandler<TRequest, TResponse>(
+            TRequest request,
+            ServerCallContext context,
+            UnaryServerMethod<TRequest, TResponse> continuation)
+        {
+            ArgumentNullException.ThrowIfNull(context);
+            ArgumentNullException.ThrowIfNull(continuation);
+
+            var httpContext = context.GetHttpContext();
+            if (httpContext is not null &&
+                httpContext.Request.Headers.TryGetValue("grpc-accept-encoding", out var values))
+            {
+                var value = values.ToString();
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    _encodings.Enqueue(value);
+                }
+            }
+
+            return continuation(request, context);
         }
     }
 }

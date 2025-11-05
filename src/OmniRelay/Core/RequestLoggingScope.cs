@@ -57,6 +57,22 @@ internal static class RequestLoggingScope
             scopeItems.Add(new KeyValuePair<string, object?>("rpc.request_id", requestId));
         }
 
+        if (meta.Headers.TryGetValue("rpc.protocol", out var protocol) && !string.IsNullOrWhiteSpace(protocol))
+        {
+            scopeItems.Add(new KeyValuePair<string, object?>("rpc.protocol", protocol));
+
+            if (protocol.StartsWith("HTTP/", StringComparison.OrdinalIgnoreCase))
+            {
+                var version = protocol.Length > 5 ? protocol[5..] : string.Empty;
+                if (!string.IsNullOrWhiteSpace(version))
+                {
+                    scopeItems.Add(new KeyValuePair<string, object?>("network.protocol.version", version));
+                }
+
+                scopeItems.Add(new KeyValuePair<string, object?>("network.protocol.name", "http"));
+            }
+        }
+
         var currentActivity = activity ?? Activity.Current;
         if (TryGetPeer(meta, currentActivity, out var peerValue, out var peerPort))
         {

@@ -134,6 +134,22 @@ internal static class GrpcTransportDiagnostics
         activity.SetTag("rpc.service", service);
         activity.SetTag("rpc.method", procedure);
 
+        var httpContext = context.GetHttpContext();
+        if (httpContext is not null)
+        {
+            var (protocolName, protocolVersion) = ParseHttpProtocol(httpContext.Request.Protocol);
+            activity.SetTag("rpc.protocol", httpContext.Request.Protocol);
+            if (!string.IsNullOrEmpty(protocolName))
+            {
+                activity.SetTag("network.protocol.name", protocolName);
+            }
+
+            if (!string.IsNullOrEmpty(protocolVersion))
+            {
+                activity.SetTag("network.protocol.version", protocolVersion);
+            }
+        }
+
         if (!string.IsNullOrWhiteSpace(context.Peer))
         {
             var peer = context.Peer;
@@ -167,5 +183,21 @@ internal static class GrpcTransportDiagnostics
 
         var traceState = metadata.GetValue("tracestate");
         return ActivityContext.TryParse(traceParent, traceState, out var context) ? context : null;
+    }
+
+    private static (string? Name, string? Version) ParseHttpProtocol(string? protocol)
+    {
+        if (string.IsNullOrWhiteSpace(protocol))
+        {
+            return (null, null);
+        }
+
+        if (protocol.StartsWith("HTTP/", StringComparison.OrdinalIgnoreCase))
+        {
+            var version = protocol[5..];
+            return ("http", string.IsNullOrWhiteSpace(version) ? null : version);
+        }
+
+        return (protocol.ToLowerInvariant(), null);
     }
 }

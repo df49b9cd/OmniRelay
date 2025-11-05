@@ -15,7 +15,8 @@ internal static class GrpcMetadataAdapter
         string service,
         string procedure,
         Metadata metadata,
-        string? encoding)
+        string? encoding,
+        string? protocol = null)
     {
         var headers = metadata
             .Where(static entry => !entry.IsBinary)
@@ -42,6 +43,15 @@ internal static class GrpcMetadataAdapter
             deadline = parsedDeadline;
         }
 
+        var headerList = headers;
+        if (!string.IsNullOrWhiteSpace(protocol))
+        {
+            headerList = headerList.Concat(new[]
+            {
+                new KeyValuePair<string, string>("rpc.protocol", protocol!)
+            });
+        }
+
         return new RequestMeta(
             service,
             procedure,
@@ -53,7 +63,7 @@ internal static class GrpcMetadataAdapter
             routingDelegate: routingDelegate,
             timeToLive: ttl,
             deadline: deadline,
-            headers: headers);
+            headers: headerList);
     }
 
     public static Metadata CreateRequestMetadata(RequestMeta meta)

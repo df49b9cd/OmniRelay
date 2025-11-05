@@ -46,11 +46,14 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                     callContext,
                     "unary");
 
+                var httpProtocol = callContext.GetHttpContext()?.Request.Protocol;
+
                 var requestMeta = GrpcMetadataAdapter.BuildRequestMeta(
                     _dispatcher.ServiceName,
                     spec.Name,
                     metadata,
-                    encoding);
+                    encoding,
+                    httpProtocol);
 
                 var dispatcherRequest = new Request<ReadOnlyMemory<byte>>(requestMeta, request);
                 var result = await _dispatcher.InvokeUnaryAsync(spec.Name, dispatcherRequest, callContext.CancellationToken)
@@ -106,11 +109,14 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                     callContext,
                     "oneway");
 
+                var httpProtocol = callContext.GetHttpContext()?.Request.Protocol;
+
                 var requestMeta = GrpcMetadataAdapter.BuildRequestMeta(
                     _dispatcher.ServiceName,
                     spec.Name,
                     metadata,
-                    encoding);
+                    encoding,
+                    httpProtocol);
 
                 var dispatcherRequest = new Request<ReadOnlyMemory<byte>>(requestMeta, request);
                 var result = await _dispatcher.InvokeOnewayAsync(spec.Name, dispatcherRequest, callContext.CancellationToken)
@@ -165,11 +171,14 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                     callContext,
                     "server_stream");
 
+                var httpProtocol = callContext.GetHttpContext()?.Request.Protocol;
+
                 var requestMeta = GrpcMetadataAdapter.BuildRequestMeta(
                     _dispatcher.ServiceName,
                     spec.Name,
                     metadata,
-                    encoding);
+                    encoding,
+                    httpProtocol);
 
                 var dispatcherRequest = new Request<ReadOnlyMemory<byte>>(requestMeta, request);
                 var streamResult = await _dispatcher.InvokeStreamAsync(
@@ -319,11 +328,14 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                     callContext,
                     "client_stream");
 
+                var httpProtocol = callContext.GetHttpContext()?.Request.Protocol;
+
                 var requestMeta = GrpcMetadataAdapter.BuildRequestMeta(
                     _dispatcher.ServiceName,
                     spec.Name,
                     metadata,
-                    encoding);
+                    encoding,
+                    httpProtocol);
 
                 if (callContext.Deadline != DateTime.MaxValue)
                 {
@@ -488,11 +500,14 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                     "bidi_stream");
                 var activityHasError = false;
 
+                var httpProtocol = callContext.GetHttpContext()?.Request.Protocol;
+
                 var requestMeta = GrpcMetadataAdapter.BuildRequestMeta(
                     _dispatcher.ServiceName,
                     spec.Name,
                     metadata,
-                    encoding);
+                    encoding,
+                    httpProtocol);
 
                 if (callContext.Deadline != DateTime.MaxValue)
                 {

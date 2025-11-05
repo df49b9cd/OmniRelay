@@ -193,6 +193,11 @@ internal static class GrpcLoggingScopeHelper
     {
         var (service, procedure) = ParseMethodName(context.Method);
         var headers = ExtractHeaders(context.RequestHeaders);
+        var httpContext = context.GetHttpContext();
+        if (httpContext is not null && !string.IsNullOrWhiteSpace(httpContext.Request.Protocol))
+        {
+            headers = headers.Append(new KeyValuePair<string, string>("rpc.protocol", httpContext.Request.Protocol));
+        }
 
         if (!string.IsNullOrWhiteSpace(context.Peer))
         {

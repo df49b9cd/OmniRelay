@@ -89,22 +89,46 @@ internal static class GrpcTransportMetrics
 
     public static KeyValuePair<string, object?>[] CreateBaseTags(RequestMeta meta)
     {
+        List<KeyValuePair<string, object?>> tags;
+
         if (meta is null)
         {
-            return
+            tags =
             [
                 KeyValuePair.Create<string, object?>("rpc.system", "grpc"),
                 KeyValuePair.Create<string, object?>("rpc.service", string.Empty),
                 KeyValuePair.Create<string, object?>("rpc.method", string.Empty)
             ];
         }
+        else
+        {
+            tags =
+            [
+                KeyValuePair.Create<string, object?>("rpc.system", "grpc"),
+                KeyValuePair.Create<string, object?>("rpc.service", meta.Service ?? string.Empty),
+                KeyValuePair.Create<string, object?>("rpc.method", meta.Procedure ?? string.Empty)
+            ];
 
-        return
-        [
-            KeyValuePair.Create<string, object?>("rpc.system", "grpc"),
-            KeyValuePair.Create<string, object?>("rpc.service", meta.Service ?? string.Empty),
-            KeyValuePair.Create<string, object?>("rpc.method", meta.Procedure ?? string.Empty)
-        ];
+            if (meta.Headers.TryGetValue("rpc.protocol", out var protocol) && !string.IsNullOrWhiteSpace(protocol))
+            {
+                tags.Add(KeyValuePair.Create<string, object?>("rpc.protocol", protocol));
+
+                if (TryParseHttpProtocol(protocol, out var name, out var version))
+                {
+                    if (!string.IsNullOrEmpty(name))
+                    {
+                        tags.Add(KeyValuePair.Create<string, object?>("network.protocol.name", name));
+                    }
+
+                    if (!string.IsNullOrEmpty(version))
+                    {
+                        tags.Add(KeyValuePair.Create<string, object?>("network.protocol.version", version));
+                    }
+                }
+            }
+        }
+
+        return [.. tags];
     }
 
     public static KeyValuePair<string, object?>[] AppendStatus(KeyValuePair<string, object?>[] baseTags, StatusCode statusCode)
@@ -113,5 +137,19 @@ internal static class GrpcTransportMetrics
         Array.Copy(baseTags, tags, baseTags.Length);
         tags[^1] = KeyValuePair.Create<string, object?>("rpc.grpc.status_code", statusCode);
         return tags;
+    }
+
+    private static bool TryParseHttpProtocol(string protocol, out string? name, out string? version)
+    {
+        if (protocol.StartsWith("HTTP/", StringComparison.OrdinalIgnoreCase))
+        {
+            name = "http";
+            version = protocol.Length > 5 ? protocol[5..] : null;
+            return true;
+        }
+
+        name = null;
+        version = null;
+        return false;
     }
 }
