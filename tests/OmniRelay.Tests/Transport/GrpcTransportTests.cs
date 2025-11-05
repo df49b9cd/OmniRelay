@@ -751,6 +751,69 @@ public class GrpcTransportTests
     }
 
     [Fact(Timeout = 30_000)]
+    public async Task ServerStreaming_PayloadAboveLimit_FaultsStream()
+    {
+        var port = TestPortAllocator.GetRandomPort();
+        var address = new Uri($"http://127.0.0.1:{port}");
+
+        var options = new DispatcherOptions("stream-limit");
+        var runtime = new GrpcServerRuntimeOptions { ServerStreamMaxMessageBytes = 8 };
+        var grpcInbound = new GrpcInbound([address.ToString()], serverRuntimeOptions: runtime);
+        options.AddLifecycle("grpc-inbound", grpcInbound);
+        var grpcOutbound = new GrpcOutbound(address, "stream-limit");
+        options.AddStreamOutbound("stream-limit", null, grpcOutbound);
+
+        var dispatcher = new OmniRelay.Dispatcher.Dispatcher(options);
+
+        dispatcher.Register(new StreamProcedureSpec(
+            "stream-limit",
+            "stream::oversized",
+            (request, callOptions, cancellationToken) =>
+            {
+                _ = callOptions;
+                var streamCall = GrpcServerStreamCall.Create(request.Meta, new ResponseMeta());
+
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var payload = Enumerable.Repeat((byte)0x42, 32).ToArray();
+                        await streamCall.WriteAsync(payload, cancellationToken).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // ignore cancellation from aborted response
+                    }
+                }, cancellationToken);
+
+                return ValueTask.FromResult(Ok<IStreamCall>(streamCall));
+            }));
+
+        var ct = TestContext.Current.CancellationToken;
+        await dispatcher.StartAsync(ct);
+        await WaitForGrpcReadyAsync(address, ct);
+
+        var rawCodec = new RawCodec();
+        var client = dispatcher.CreateStreamClient<byte[], byte[]>("stream-limit", rawCodec);
+        var requestMeta = new RequestMeta(
+            service: "stream-limit",
+            procedure: "stream::oversized",
+            encoding: RawCodec.DefaultEncoding,
+            transport: TransportName);
+        var request = new Request<byte[]>(requestMeta, Array.Empty<byte>());
+
+        var exception = await Assert.ThrowsAsync<OmniRelayException>(async () =>
+        {
+            await using var enumerator = client.CallAsync(request, new StreamCallOptions(StreamDirection.Server), ct).GetAsyncEnumerator(ct);
+            await enumerator.MoveNextAsync();
+        });
+
+        Assert.Equal(OmniRelayStatusCode.ResourceExhausted, exception.StatusCode);
+
+        await dispatcher.StopAsync(ct);
+    }
+
+    [Fact(Timeout = 30_000)]
     public async Task ClientStreaming_OverGrpcTransport()
     {
         var port = TestPortAllocator.GetRandomPort();
@@ -1459,6 +1522,70 @@ public class GrpcTransportTests
         {
             await dispatcher.StopAsync(ct);
         }
+    }
+
+    [Fact(Timeout = 30_000)]
+    public async Task DuplexStreaming_ResponseAboveLimit_FaultsStream()
+    {
+        var port = TestPortAllocator.GetRandomPort();
+        var address = new Uri($"http://127.0.0.1:{port}");
+
+        var options = new DispatcherOptions("chat-limit");
+        var runtime = new GrpcServerRuntimeOptions { DuplexMaxMessageBytes = 16 };
+        var grpcInbound = new GrpcInbound([address.ToString()], serverRuntimeOptions: runtime);
+        options.AddLifecycle("grpc-inbound", grpcInbound);
+
+        var grpcOutbound = new GrpcOutbound(address, "chat-limit");
+        options.AddDuplexOutbound("chat-limit", null, grpcOutbound);
+
+        var dispatcher = new OmniRelay.Dispatcher.Dispatcher(options);
+
+        dispatcher.Register(new DuplexProcedureSpec(
+            "chat-limit",
+            "chat::oversized",
+            (request, cancellationToken) =>
+            {
+                var call = DuplexStreamCall.Create(request.Meta, new ResponseMeta());
+
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var payload = Enumerable.Repeat((byte)0x7A, 64).ToArray();
+                        await call.ResponseWriter.WriteAsync(payload, cancellationToken).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // ignore cancellation when response is aborted
+                    }
+                }, cancellationToken);
+
+                return ValueTask.FromResult(Ok<IDuplexStreamCall>(call));
+            }));
+
+        var ct = TestContext.Current.CancellationToken;
+        await dispatcher.StartAsync(ct);
+        await WaitForGrpcReadyAsync(address, ct);
+
+        var rawCodec = new RawCodec();
+        var client = dispatcher.CreateDuplexStreamClient<byte[], byte[]>("chat-limit", rawCodec);
+        var requestMeta = new RequestMeta(
+            service: "chat-limit",
+            procedure: "chat::oversized",
+            encoding: RawCodec.DefaultEncoding,
+            transport: TransportName);
+
+        await using var call = await client.StartAsync(requestMeta, ct);
+
+        var exception = await Assert.ThrowsAsync<OmniRelayException>(async () =>
+        {
+            await using var enumerator = call.ReadResponsesAsync(ct).GetAsyncEnumerator(ct);
+            await enumerator.MoveNextAsync();
+        });
+
+        Assert.Equal(OmniRelayStatusCode.ResourceExhausted, exception.StatusCode);
+
+        await dispatcher.StopAsync(ct);
     }
 
     [Fact(Timeout = 30_000)]

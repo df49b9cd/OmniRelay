@@ -30,4 +30,12 @@ public sealed record GrpcServerRuntimeOptions
     public bool? EnableDetailedErrors { get; init; }
 
     public IReadOnlyList<Type> Interceptors { get; init; } = [];
+
+    public TimeSpan? ServerStreamWriteTimeout { get; init; }
+
+    public TimeSpan? DuplexWriteTimeout { get; init; }
+
+    public int? ServerStreamMaxMessageBytes { get; init; }
+
+    public int? DuplexMaxMessageBytes { get; init; }
 }

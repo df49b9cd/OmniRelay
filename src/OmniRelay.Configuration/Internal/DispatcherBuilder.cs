@@ -1009,6 +1009,10 @@ internal sealed class DispatcherBuilder
             configuration.EnableDetailedErrors.HasValue ||
             configuration.KeepAlivePingDelay.HasValue ||
             configuration.KeepAlivePingTimeout.HasValue ||
+            configuration.ServerStreamWriteTimeout.HasValue ||
+            configuration.DuplexWriteTimeout.HasValue ||
+            configuration.ServerStreamMaxMessageBytes.HasValue ||
+            configuration.DuplexMaxMessageBytes.HasValue ||
             interceptors.Count > 0;
 
         if (!hasValues)
@@ -1023,7 +1027,11 @@ internal sealed class DispatcherBuilder
             KeepAlivePingDelay = configuration.KeepAlivePingDelay,
             KeepAlivePingTimeout = configuration.KeepAlivePingTimeout,
             EnableDetailedErrors = configuration.EnableDetailedErrors,
-            Interceptors = interceptors
+            Interceptors = interceptors,
+            ServerStreamWriteTimeout = configuration.ServerStreamWriteTimeout,
+            DuplexWriteTimeout = configuration.DuplexWriteTimeout,
+            ServerStreamMaxMessageBytes = configuration.ServerStreamMaxMessageBytes,
+            DuplexMaxMessageBytes = configuration.DuplexMaxMessageBytes
         };
     }
 

@@ -62,6 +62,14 @@ public sealed class GrpcServerRuntimeConfiguration
     public TimeSpan? KeepAlivePingTimeout { get; set; }
 
     public IList<string> Interceptors { get; } = [];
+
+    public TimeSpan? ServerStreamWriteTimeout { get; set; }
+
+    public TimeSpan? DuplexWriteTimeout { get; set; }
+
+    public int? ServerStreamMaxMessageBytes { get; set; }
+
+    public int? DuplexMaxMessageBytes { get; set; }
 }
 
 public sealed class GrpcServerTlsConfiguration

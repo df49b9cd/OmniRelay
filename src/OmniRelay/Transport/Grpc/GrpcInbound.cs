@@ -251,6 +251,8 @@ public sealed class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcServerInter
 
     internal bool IsDraining => _isDraining;
 
+    internal GrpcServerRuntimeOptions? RuntimeOptions => _serverRuntimeOptions;
+
     internal bool TryEnterCall(ServerCallContext context, out IDisposable? scope, out RpcException? rejection)
     {
         if (_isDraining)

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Threading;
 using Grpc.AspNetCore.Server.Model;
 using Grpc.Core;
 using Hugo;
@@ -190,7 +191,12 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                 await using (streamResult.Value.AsAsyncDisposable(out var streamCall))
                 {
                     var cancellationToken = callContext.CancellationToken;
+                    using var pumpCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                    var pumpToken = pumpCts.Token;
                     var headersSent = false;
+                    var runtime = _inbound.RuntimeOptions;
+                    var maxMessageBytes = runtime?.ServerStreamMaxMessageBytes;
+                    var writeTimeout = runtime?.ServerStreamWriteTimeout;
 
                     async Task EnsureHeadersAsync()
                     {
@@ -212,13 +218,42 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                     {
                         await foreach (var payload in streamCall.Responses.ReadAllAsync(cancellationToken).ConfigureAwait(false))
                         {
+                            if (maxMessageBytes is { } maxBytes && payload.Length > maxBytes)
+                            {
+                                var error = OmniRelayErrorAdapter.FromStatus(
+                                    OmniRelayStatusCode.ResourceExhausted,
+                                    "The server stream payload exceeds the configured limit.",
+                                    transport: GrpcTransportConstants.TransportName);
+                                await streamCall.CompleteAsync(error, CancellationToken.None).ConfigureAwait(false);
+
+                                var status = GrpcStatusMapper.ToStatus(OmniRelayStatusCode.ResourceExhausted, "The server stream payload exceeds the configured limit.");
+                                var trailers = GrpcMetadataAdapter.CreateErrorTrailers(error);
+                                var rpcException = new RpcException(status, trailers);
+                                GrpcTransportDiagnostics.RecordException(activity, rpcException, status.StatusCode, status.Detail);
+                                throw rpcException;
+                            }
+
                             await EnsureHeadersAsync().ConfigureAwait(false);
                             cancellationToken.ThrowIfCancellationRequested();
-                            await responseStream.WriteAsync(payload.ToArray()).ConfigureAwait(false);
+                            await WriteGrpcMessageAsync(responseStream, payload, cancellationToken, writeTimeout).ConfigureAwait(false);
                         }
 
                         await EnsureHeadersAsync().ConfigureAwait(false);
                         ApplySuccessTrailers(callContext, streamCall.ResponseMeta);
+                    }
+                    catch (TimeoutException)
+                    {
+                        var error = OmniRelayErrorAdapter.FromStatus(
+                            OmniRelayStatusCode.DeadlineExceeded,
+                            "The server stream write timed out.",
+                            transport: GrpcTransportConstants.TransportName);
+                        await streamCall.CompleteAsync(error, CancellationToken.None).ConfigureAwait(false);
+
+                        var status = GrpcStatusMapper.ToStatus(OmniRelayStatusCode.DeadlineExceeded, "The server stream write timed out.");
+                        var trailers = GrpcMetadataAdapter.CreateErrorTrailers(error);
+                        var rpcException = new RpcException(status, trailers);
+                        GrpcTransportDiagnostics.RecordException(activity, rpcException, status.StatusCode, status.Detail);
+                        throw rpcException;
                     }
                     catch (OperationCanceledException)
                     {
@@ -233,6 +268,10 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                         var rpcException = new RpcException(status, trailers);
                         GrpcTransportDiagnostics.RecordException(activity, rpcException, status.StatusCode, status.Detail);
                         throw rpcException;
+                    }
+                    catch (RpcException)
+                    {
+                        throw;
                     }
                     catch (Exception ex)
                     {
@@ -499,6 +538,11 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                 await using (callResult.Value.AsAsyncDisposable(out var duplexCall))
                 {
                     var cancellationToken = callContext.CancellationToken;
+                    var runtime = _inbound.RuntimeOptions;
+                    var duplexMaxMessageBytes = runtime?.DuplexMaxMessageBytes;
+                    var duplexWriteTimeout = runtime?.DuplexWriteTimeout;
+                    using var pumpCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                    var pumpToken = pumpCts.Token;
 
                     var requestPump = PumpRequestsAsync();
                     var responsePump = PumpResponsesAsync();
@@ -509,15 +553,15 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                     {
                         try
                         {
-                            await foreach (var payload in requestStream.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+                            await foreach (var payload in requestStream.ReadAllAsync(pumpToken).ConfigureAwait(false))
                             {
-                                cancellationToken.ThrowIfCancellationRequested();
+                                pumpToken.ThrowIfCancellationRequested();
                                 Interlocked.Increment(ref requestCount);
                                 GrpcTransportMetrics.ServerDuplexRequestMessages.Add(1, metricTags);
-                                await duplexCall.RequestWriter.WriteAsync(payload, cancellationToken).ConfigureAwait(false);
+                                await duplexCall.RequestWriter.WriteAsync(payload, pumpToken).ConfigureAwait(false);
                             }
 
-                            await duplexCall.CompleteRequestsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+                            await duplexCall.CompleteRequestsAsync(cancellationToken: pumpToken).ConfigureAwait(false);
                         }
                         catch (OperationCanceledException ex)
                         {
@@ -525,10 +569,11 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                                 OmniRelayStatusCode.Cancelled,
                                 "The client cancelled the request.",
                                 transport: GrpcTransportConstants.TransportName);
-                            await duplexCall.CompleteRequestsAsync(error, cancellationToken).ConfigureAwait(false);
+                            await duplexCall.CompleteRequestsAsync(error, CancellationToken.None).ConfigureAwait(false);
                             activityHasError = true;
                             GrpcTransportDiagnostics.RecordException(activity, ex, StatusCode.Cancelled, ex.Message);
                             RecordServerDuplexMetrics(StatusCode.Cancelled);
+                            pumpCts.Cancel();
                         }
                         catch (RpcException rpcEx)
                         {
@@ -536,10 +581,11 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                                 GrpcStatusMapper.FromStatus(rpcEx.Status),
                                 string.IsNullOrWhiteSpace(rpcEx.Status.Detail) ? rpcEx.Status.StatusCode.ToString() : rpcEx.Status.Detail,
                                 transport: GrpcTransportConstants.TransportName);
-                            await duplexCall.CompleteRequestsAsync(error, cancellationToken).ConfigureAwait(false);
+                            await duplexCall.CompleteRequestsAsync(error, CancellationToken.None).ConfigureAwait(false);
                             activityHasError = true;
                             GrpcTransportDiagnostics.RecordException(activity, rpcEx, rpcEx.Status.StatusCode, rpcEx.Status.Detail);
                             RecordServerDuplexMetrics(rpcEx.Status.StatusCode);
+                            pumpCts.Cancel();
                         }
                         catch (Exception ex)
                         {
@@ -548,10 +594,11 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                                 ex.Message ?? "An error occurred while reading the duplex request stream.",
                                 transport: GrpcTransportConstants.TransportName,
                                 inner: Error.FromException(ex));
-                            await duplexCall.CompleteRequestsAsync(error, cancellationToken).ConfigureAwait(false);
+                            await duplexCall.CompleteRequestsAsync(error, CancellationToken.None).ConfigureAwait(false);
                             activityHasError = true;
                             GrpcTransportDiagnostics.RecordException(activity, ex, StatusCode.Internal, ex.Message);
                             RecordServerDuplexMetrics(StatusCode.Internal);
+                            pumpCts.Cancel();
                         }
                     }
 
@@ -577,19 +624,57 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
 
                         try
                         {
-                            await foreach (var payload in duplexCall.ResponseReader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+                            await foreach (var payload in duplexCall.ResponseReader.ReadAllAsync(pumpToken).ConfigureAwait(false))
                             {
                                 await EnsureHeadersAsync().ConfigureAwait(false);
-                                cancellationToken.ThrowIfCancellationRequested();
+                                pumpToken.ThrowIfCancellationRequested();
+                                if (duplexMaxMessageBytes is { } maxBytes && payload.Length > maxBytes)
+                                {
+                                    var error = OmniRelayErrorAdapter.FromStatus(
+                                        OmniRelayStatusCode.ResourceExhausted,
+                                        "The duplex response payload exceeds the configured limit.",
+                                        transport: GrpcTransportConstants.TransportName);
+                                    await duplexCall.CompleteResponsesAsync(error, CancellationToken.None).ConfigureAwait(false);
+                                    await duplexCall.CompleteRequestsAsync(error, CancellationToken.None).ConfigureAwait(false);
+
+                                    var status = GrpcStatusMapper.ToStatus(OmniRelayStatusCode.ResourceExhausted, "The duplex response payload exceeds the configured limit.");
+                                    var trailers = GrpcMetadataAdapter.CreateErrorTrailers(error);
+                                    var rpcException = new RpcException(status, trailers);
+                                    activityHasError = true;
+                                    GrpcTransportDiagnostics.RecordException(activity, rpcException, status.StatusCode, status.Detail);
+                                    RecordServerDuplexMetrics(status.StatusCode);
+                                    pumpCts.Cancel();
+                                    throw rpcException;
+                                }
+
                                 Interlocked.Increment(ref responseCount);
                                 GrpcTransportMetrics.ServerDuplexResponseMessages.Add(1, metricTags);
-                                await responseStream.WriteAsync(payload.ToArray()).ConfigureAwait(false);
+                                await WriteGrpcMessageAsync(responseStream, payload, pumpToken, duplexWriteTimeout).ConfigureAwait(false);
                             }
 
                             await EnsureHeadersAsync().ConfigureAwait(false);
                             ApplySuccessTrailers(callContext, duplexCall.ResponseMeta);
-                            await duplexCall.CompleteResponsesAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+                            await duplexCall.CompleteResponsesAsync(cancellationToken: pumpToken).ConfigureAwait(false);
                             RecordServerDuplexMetrics(StatusCode.OK);
+                        }
+                        catch (TimeoutException)
+                        {
+                            var error = OmniRelayErrorAdapter.FromStatus(
+                                OmniRelayStatusCode.DeadlineExceeded,
+                                "The duplex response stream write timed out.",
+                                transport: GrpcTransportConstants.TransportName);
+
+                            await duplexCall.CompleteResponsesAsync(error, CancellationToken.None).ConfigureAwait(false);
+                            await duplexCall.CompleteRequestsAsync(error, CancellationToken.None).ConfigureAwait(false);
+
+                            var status = GrpcStatusMapper.ToStatus(OmniRelayStatusCode.DeadlineExceeded, "The duplex response stream write timed out.");
+                            var trailers = GrpcMetadataAdapter.CreateErrorTrailers(error);
+                            var rpcException = new RpcException(status, trailers);
+                            activityHasError = true;
+                            GrpcTransportDiagnostics.RecordException(activity, rpcException, status.StatusCode, status.Detail);
+                            RecordServerDuplexMetrics(status.StatusCode);
+                            pumpCts.Cancel();
+                            throw rpcException;
                         }
                         catch (OperationCanceledException)
                         {
@@ -598,7 +683,7 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                                 "The client cancelled the request.",
                                 transport: GrpcTransportConstants.TransportName);
 
-                            await duplexCall.CompleteResponsesAsync(error, cancellationToken).ConfigureAwait(false);
+                            await duplexCall.CompleteResponsesAsync(error, CancellationToken.None).ConfigureAwait(false);
 
                             var status = GrpcStatusMapper.ToStatus(OmniRelayStatusCode.Cancelled, "The client cancelled the request.");
                             var trailers = GrpcMetadataAdapter.CreateErrorTrailers(error);
@@ -606,12 +691,18 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                             activityHasError = true;
                             GrpcTransportDiagnostics.RecordException(activity, rpcException, status.StatusCode, status.Detail);
                             RecordServerDuplexMetrics(status.StatusCode);
+                            pumpCts.Cancel();
                             throw rpcException;
+                        }
+                        catch (RpcException)
+                        {
+                            pumpCts.Cancel();
+                            throw;
                         }
                         catch (Exception ex)
                         {
                             var polymerException = OmniRelayErrors.FromException(ex, GrpcTransportConstants.TransportName);
-                            await duplexCall.CompleteResponsesAsync(polymerException.Error, cancellationToken).ConfigureAwait(false);
+                            await duplexCall.CompleteResponsesAsync(polymerException.Error, CancellationToken.None).ConfigureAwait(false);
 
                             var status = GrpcStatusMapper.ToStatus(polymerException.StatusCode, polymerException.Message);
                             var trailers = GrpcMetadataAdapter.CreateErrorTrailers(polymerException.Error);
@@ -619,6 +710,7 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                             activityHasError = true;
                             GrpcTransportDiagnostics.RecordException(activity, rpcException, status.StatusCode, status.Detail);
                             RecordServerDuplexMetrics(status.StatusCode);
+                            pumpCts.Cancel();
                             throw rpcException;
                         }
                     }
@@ -632,6 +724,33 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
             }
 
             context.AddDuplexStreamingMethod(method, [], handler);
+        }
+    }
+
+    private static async Task WriteGrpcMessageAsync(
+        IServerStreamWriter<byte[]> responseStream,
+        ReadOnlyMemory<byte> payload,
+        CancellationToken cancellationToken,
+        TimeSpan? timeout)
+    {
+        var buffer = payload.ToArray();
+
+        if (timeout is null)
+        {
+            await responseStream.WriteAsync(buffer).ConfigureAwait(false);
+            return;
+        }
+
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(timeout.Value);
+
+        try
+        {
+            await responseStream.WriteAsync(buffer).WaitAsync(timeoutCts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && timeoutCts.IsCancellationRequested)
+        {
+            throw new TimeoutException("The write operation timed out.");
         }
     }
 

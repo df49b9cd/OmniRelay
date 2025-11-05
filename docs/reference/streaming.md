@@ -166,6 +166,19 @@ await foreach (var evt in chat.ReadResponsesAsync(ct))
 - `StreamCallOptions` identifies the stream direction and flows through middleware.
 - Client helpers automatically compose outbound middleware (`IStreamOutboundMiddleware`, `IClientStreamOutboundMiddleware`, `IDuplexOutboundMiddleware`) and translate codec errors into `OmniRelayException`.
 
+## Transport Runtime Guardrails
+
+Both HTTP and gRPC transports expose runtime options that enforce backpressure and limit oversized payloads. HTTP settings live under `inbounds.http[].runtime`. gRPC mirrors the critical streaming controls through `inbounds.grpc[].runtime`:
+
+| Setting | Purpose |
+| --- | --- |
+| `serverStreamMaxMessageBytes` | Rejects server-stream responses above the limit before they reach the wire. |
+| `serverStreamWriteTimeout` | Aborts server-stream writes that stall (slow or disconnected clients). |
+| `duplexMaxMessageBytes` | Caps per-message payload size for duplex responses. |
+| `duplexWriteTimeout` | Cancels duplex response writes that cannot drain in time. |
+
+Timeouts accept `TimeSpan` strings (`"00:00:05"`), ISO 8601 durations, or millisecond integers. Pair the runtime limits with transport middleware (rate limiting, deadlines, retries) to keep long-lived streams healthy.
+
 ## Metadata, Deadlines, and Completion
 
 - `RequestMeta` carries caller, service, procedure, encoding, TTL, and deadline fields. Transports convert TTL/deadline into native timeouts.
