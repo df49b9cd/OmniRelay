@@ -14,15 +14,24 @@ using static Hugo.Go;
 
 namespace OmniRelay.Transport.Http;
 
-public sealed class HttpOutbound(HttpClient httpClient, Uri requestUri, bool disposeClient = false) : IUnaryOutbound, IOnewayOutbound, IOutboundDiagnostic, IHttpOutboundMiddlewareSink
+public sealed class HttpOutbound : IUnaryOutbound, IOnewayOutbound, IOutboundDiagnostic, IHttpOutboundMiddlewareSink
 {
-    private readonly HttpClient _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
-    private readonly Uri _requestUri = requestUri ?? throw new ArgumentNullException(nameof(requestUri));
-    private readonly bool _disposeClient = disposeClient;
+    private readonly HttpClient _httpClient;
+    private readonly Uri _requestUri;
+    private readonly bool _disposeClient;
+    private readonly HttpClientRuntimeOptions? _runtimeOptions;
     private HttpOutboundMiddlewareRegistry? _middlewareRegistry;
     private string? _middlewareService;
     private int _middlewareConfigured;
     private ConcurrentDictionary<string, HttpClientMiddlewareDelegate>? _middlewarePipelines;
+
+    public HttpOutbound(HttpClient httpClient, Uri requestUri, bool disposeClient = false, HttpClientRuntimeOptions? runtimeOptions = null)
+    {
+        _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+        _requestUri = requestUri ?? throw new ArgumentNullException(nameof(requestUri));
+        _disposeClient = disposeClient;
+        _runtimeOptions = runtimeOptions;
+    }
 
     public ValueTask StartAsync(CancellationToken cancellationToken = default) =>
         ValueTask.CompletedTask;
@@ -105,6 +114,8 @@ public sealed class HttpOutbound(HttpClient httpClient, Uri requestUri, bool dis
         var httpRequest = new HttpRequestMessage(HttpMethod.Post, _requestUri);
         var content = new ByteArrayContent(request.Body.ToArray());
 
+        ApplyHttpClientRuntimeOptions(httpRequest);
+
         var encoding = request.Meta.Encoding;
         var contentType = ResolveContentType(encoding);
 
@@ -162,6 +173,31 @@ public sealed class HttpOutbound(HttpClient httpClient, Uri requestUri, bool dis
         }
 
         return httpRequest;
+    }
+
+    private void ApplyHttpClientRuntimeOptions(HttpRequestMessage httpRequest)
+    {
+        if (_runtimeOptions is null)
+        {
+            return;
+        }
+
+        if (_runtimeOptions.EnableHttp3)
+        {
+            httpRequest.Version = _runtimeOptions.RequestVersion ?? new Version(3, 0);
+            httpRequest.VersionPolicy = _runtimeOptions.VersionPolicy ?? HttpVersionPolicy.RequestVersionOrHigher;
+            return;
+        }
+
+        if (_runtimeOptions.RequestVersion is { } version)
+        {
+            httpRequest.Version = version;
+        }
+
+        if (_runtimeOptions.VersionPolicy is { } versionPolicy)
+        {
+            httpRequest.VersionPolicy = versionPolicy;
+        }
     }
 
     private static string? ResolveContentType(string? encoding)

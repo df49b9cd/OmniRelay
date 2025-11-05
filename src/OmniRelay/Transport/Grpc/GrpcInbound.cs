@@ -92,13 +92,28 @@ public sealed class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcServerInter
                 }
             }
 
+            var enableHttp3 = _serverRuntimeOptions?.EnableHttp3 == true;
+
             foreach (var url in _urls)
             {
                 var uri = new Uri(url, UriKind.Absolute);
                 var host = string.Equals(uri.Host, "*", StringComparison.Ordinal) ? IPAddress.Any : IPAddress.Parse(uri.Host);
                 options.Listen(host, uri.Port, listenOptions =>
                 {
-                    listenOptions.Protocols = HttpProtocols.Http2;
+                    if (enableHttp3)
+                    {
+                        if (!uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+                        {
+                            throw new InvalidOperationException($"HTTP/3 requires HTTPS. Update inbound URL '{url}' to use https:// or disable HTTP/3 for this listener.");
+                        }
+
+                        listenOptions.Protocols = HttpProtocols.Http2 | HttpProtocols.Http3;
+                    }
+                    else
+                    {
+                        listenOptions.Protocols = HttpProtocols.Http2;
+                    }
+
                     if (_serverTlsOptions is { } tlsOptions)
                     {
                         var httpsOptions = new HttpsConnectionAdapterOptions

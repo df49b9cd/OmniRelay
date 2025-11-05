@@ -1,5 +1,7 @@
+using System;
 using System.Collections.Immutable;
 using System.Globalization;
+using System.Net;
 using System.Net.Security;
 using System.Reflection;
 using System.Security.Cryptography.X509Certificates;
@@ -420,9 +422,12 @@ internal sealed class DispatcherBuilder
         }
 
         var uri = ValidateHttpUrl(configuration.Url!, $"http outbound for service '{service}'");
-        var cacheKey = string.Create(
-            CultureInfo.InvariantCulture,
-            $"{service}|{configuration.Key ?? OutboundCollection.DefaultKey}|{uri}|{configuration.ClientName ?? string.Empty}");
+        var runtimeOptions = BuildHttpClientRuntimeOptions(configuration.Runtime);
+        var runtimeKey = runtimeOptions is null
+            ? "default"
+            : FormattableString.Invariant($"http3={runtimeOptions.EnableHttp3};ver={runtimeOptions.RequestVersion?.ToString() ?? "null"};policy={runtimeOptions.VersionPolicy?.ToString() ?? "null"}");
+
+        var cacheKey = FormattableString.Invariant($"{service}|{configuration.Key ?? OutboundCollection.DefaultKey}|{uri}|{configuration.ClientName ?? string.Empty}|{runtimeKey}");
 
         if (_httpOutboundCache.TryGetValue(cacheKey, out var cached))
         {
@@ -430,7 +435,7 @@ internal sealed class DispatcherBuilder
         }
 
         var (client, dispose) = CreateHttpClient(configuration.ClientName);
-        var outbound = new HttpOutbound(client, new Uri(uri, UriKind.Absolute), dispose);
+        var outbound = new HttpOutbound(client, new Uri(uri, UriKind.Absolute), dispose, runtimeOptions);
         _httpOutboundCache[cacheKey] = outbound;
         return outbound;
     }
@@ -448,6 +453,61 @@ internal sealed class DispatcherBuilder
         }
 
         return (new HttpClient(), true);
+    }
+
+    private static HttpClientRuntimeOptions? BuildHttpClientRuntimeOptions(HttpClientRuntimeConfiguration configuration)
+    {
+        if (configuration is null)
+        {
+            return null;
+        }
+
+        var enableHttp3 = configuration.EnableHttp3 ?? false;
+        var version = ParseHttpVersion(configuration.RequestVersion);
+        var policy = ParseHttpVersionPolicy(configuration.VersionPolicy);
+
+        if (!enableHttp3 && version is null && policy is null)
+        {
+            return null;
+        }
+
+        return new HttpClientRuntimeOptions
+        {
+            EnableHttp3 = enableHttp3,
+            RequestVersion = version,
+            VersionPolicy = policy
+        };
+    }
+
+    private static Version? ParseHttpVersion(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        if (Version.TryParse(value, out var parsed))
+        {
+            return parsed;
+        }
+
+        throw new OmniRelayConfigurationException($"Unrecognized HTTP version '{value}'.");
+    }
+
+    private static HttpVersionPolicy? ParseHttpVersionPolicy(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return value.Trim().ToLowerInvariant() switch
+        {
+            "requestversionexact" or "request-version-exact" or "exact" => HttpVersionPolicy.RequestVersionExact,
+            "requestversionorhigher" or "request-version-or-higher" or "orhigher" or "higher" => HttpVersionPolicy.RequestVersionOrHigher,
+            "requestversionlower" or "request-version-lower" or "orlower" or "lower" => HttpVersionPolicy.RequestVersionOrLower,
+            _ => throw new OmniRelayConfigurationException($"Unrecognized HTTP version policy '{value}'.")
+        };
     }
 
     private GrpcOutbound CreateGrpcOutbound(string service, GrpcOutboundTargetConfiguration configuration, IConfigurationSection? configurationSection)
@@ -475,9 +535,7 @@ internal sealed class DispatcherBuilder
 
         if (configuration.Peer?.Spec is null)
         {
-            var cacheKey = string.Create(
-                CultureInfo.InvariantCulture,
-                $"{service}|{configuration.Key ?? OutboundCollection.DefaultKey}|{remoteService}|{string.Join(",", uris.Select(u => u.ToString()))}|{configuration.PeerChooser ?? "round-robin"}");
+            var cacheKey = FormattableString.Invariant($"{service}|{configuration.Key ?? OutboundCollection.DefaultKey}|{remoteService}|{string.Join(",", uris.Select(u => u.ToString()))}|{configuration.PeerChooser ?? "round-robin"}");
 
             if (_grpcOutboundCache.TryGetValue(cacheKey, out var cachedOutbound))
             {
@@ -645,8 +703,10 @@ internal sealed class DispatcherBuilder
         }
 
         var interceptors = ResolveClientInterceptors(configuration.Interceptors);
+        var enableHttp3 = configuration.EnableHttp3 ?? false;
 
         var hasValues =
+            enableHttp3 ||
             configuration.MaxReceiveMessageSize.HasValue ||
             configuration.MaxSendMessageSize.HasValue ||
             configuration.KeepAlivePingDelay.HasValue ||
@@ -660,6 +720,7 @@ internal sealed class DispatcherBuilder
 
         return new GrpcClientRuntimeOptions
         {
+            EnableHttp3 = enableHttp3,
             MaxReceiveMessageSize = configuration.MaxReceiveMessageSize,
             MaxSendMessageSize = configuration.MaxSendMessageSize,
             KeepAlivePingDelay = configuration.KeepAlivePingDelay,
@@ -804,6 +865,10 @@ internal sealed class DispatcherBuilder
         }
 
         var options = new OmniRelay.Transport.Http.HttpServerRuntimeOptions();
+        if (configuration.EnableHttp3 is { } enableHttp3)
+        {
+            options.EnableHttp3 = enableHttp3;
+        }
         if (configuration.MaxRequestBodySize is { } max)
         {
             options.MaxRequestBodySize = max;
@@ -845,7 +910,8 @@ internal sealed class DispatcherBuilder
             options.DuplexMaxFrameBytes = duplexMaxFrameBytes;
         }
 
-        return (options.MaxRequestBodySize.HasValue ||
+        return (options.EnableHttp3 ||
+                options.MaxRequestBodySize.HasValue ||
                 options.MaxInMemoryDecodeBytes.HasValue ||
                 options.MaxRequestLineSize.HasValue ||
                 options.MaxRequestHeadersTotalSize.HasValue ||
@@ -1003,7 +1069,9 @@ internal sealed class DispatcherBuilder
         }
 
         var interceptors = ResolveServerInterceptorTypes(configuration.Interceptors);
+        var enableHttp3 = configuration.EnableHttp3 ?? false;
         var hasValues =
+            enableHttp3 ||
             configuration.MaxReceiveMessageSize.HasValue ||
             configuration.MaxSendMessageSize.HasValue ||
             configuration.EnableDetailedErrors.HasValue ||
@@ -1022,6 +1090,7 @@ internal sealed class DispatcherBuilder
 
         return new GrpcServerRuntimeOptions
         {
+            EnableHttp3 = enableHttp3,
             MaxReceiveMessageSize = configuration.MaxReceiveMessageSize,
             MaxSendMessageSize = configuration.MaxSendMessageSize,
             KeepAlivePingDelay = configuration.KeepAlivePingDelay,

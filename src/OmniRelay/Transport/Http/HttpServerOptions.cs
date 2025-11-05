@@ -15,6 +15,8 @@ public sealed class HttpServerTlsOptions
 
 public sealed class HttpServerRuntimeOptions
 {
+    public bool EnableHttp3 { get; set; }
+
     public long? MaxRequestBodySize { get; set; }
 
     public long? MaxInMemoryDecodeBytes { get; set; }

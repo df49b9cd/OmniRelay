@@ -11,6 +11,7 @@ using Hugo;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Primitives;
@@ -116,12 +117,24 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
                 options.Limits.RequestHeadersTimeout = requestHeadersTimeout;
             }
 
+            var enableHttp3 = _serverRuntimeOptions?.EnableHttp3 == true;
+
             foreach (var url in _urls)
             {
                 var uri = new Uri(url, UriKind.Absolute);
                 var host = string.Equals(uri.Host, "*", StringComparison.Ordinal) ? System.Net.IPAddress.Any : System.Net.IPAddress.Parse(uri.Host);
                 options.Listen(host, uri.Port, listenOptions =>
                 {
+                    if (enableHttp3)
+                    {
+                        if (!uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+                        {
+                            throw new InvalidOperationException($"HTTP/3 requires HTTPS. Update inbound URL '{url}' to use https:// or disable HTTP/3 for this listener.");
+                        }
+
+                        listenOptions.Protocols = HttpProtocols.Http1AndHttp2AndHttp3;
+                    }
+
                     if (uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
                     {
                         if (_serverTlsOptions?.Certificate is null)

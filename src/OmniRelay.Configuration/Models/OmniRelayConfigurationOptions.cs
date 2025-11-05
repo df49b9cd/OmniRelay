@@ -51,6 +51,8 @@ public sealed class GrpcInboundConfiguration
 
 public sealed class GrpcServerRuntimeConfiguration
 {
+    public bool? EnableHttp3 { get; set; }
+
     public int? MaxReceiveMessageSize { get; set; }
 
     public int? MaxSendMessageSize { get; set; }
@@ -92,6 +94,8 @@ public sealed class GrpcTelemetryConfiguration
 
 public sealed class HttpServerRuntimeConfiguration
 {
+    public bool? EnableHttp3 { get; set; }
+
     public long? MaxRequestBodySize { get; set; }
 
     public long? MaxInMemoryDecodeBytes { get; set; }
@@ -151,6 +155,17 @@ public sealed class HttpOutboundTargetConfiguration
     public string? Url { get; set; }
 
     public string? ClientName { get; set; }
+
+    public HttpClientRuntimeConfiguration Runtime { get; init; } = new();
+}
+
+public sealed class HttpClientRuntimeConfiguration
+{
+    public bool? EnableHttp3 { get; set; }
+
+    public string? RequestVersion { get; set; }
+
+    public string? VersionPolicy { get; set; }
 }
 
 public sealed class GrpcOutboundTargetConfiguration
@@ -189,6 +204,8 @@ public sealed class PeerCircuitBreakerConfiguration
 
 public sealed class GrpcClientRuntimeConfiguration
 {
+    public bool? EnableHttp3 { get; set; }
+
     public int? MaxReceiveMessageSize { get; set; }
 
     public int? MaxSendMessageSize { get; set; }

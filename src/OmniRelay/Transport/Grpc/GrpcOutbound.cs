@@ -1,5 +1,8 @@
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
+using System.Net;
+using System.Net.Http;
+using System.Net.Security;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading.Channels;
 using Grpc.Core;
@@ -1100,6 +1103,27 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         }
 
         var handler = GetOrCreateSocketsHandler(channelOptions);
+
+        if (!handler.EnableMultipleHttp2Connections)
+        {
+            handler.EnableMultipleHttp2Connections = true;
+        }
+
+        if (runtimeOptions.EnableHttp3)
+        {
+            handler.EnableMultipleHttp3Connections = true;
+
+            var applicationProtocols = handler.SslOptions.ApplicationProtocols;
+            if (!applicationProtocols.Any(protocol => protocol.Equals(SslApplicationProtocol.Http3)))
+            {
+                applicationProtocols.Add(SslApplicationProtocol.Http3);
+            }
+
+            if (!applicationProtocols.Any(protocol => protocol.Equals(SslApplicationProtocol.Http2)))
+            {
+                applicationProtocols.Add(SslApplicationProtocol.Http2);
+            }
+        }
 
         if (runtimeOptions.KeepAlivePingDelay is { } delay)
         {

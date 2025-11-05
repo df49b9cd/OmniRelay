@@ -307,6 +307,16 @@ public static class Program
             Description = "HTTP endpoint to invoke."
         };
 
+        var http3Option = new Option<bool>("--http3")
+        {
+            Description = "Request HTTP/3 when supported by the server."
+        };
+
+        var grpcHttp3Option = new Option<bool>("--grpc-http3")
+        {
+            Description = "Request HTTP/3 when invoking gRPC services."
+        };
+
         var addressOption = new Option<string[]>("--address")
         {
             Description = "gRPC address(es) to dial.",
@@ -333,6 +343,8 @@ public static class Program
         command.Add(bodyFileOption);
         command.Add(bodyBase64Option);
         command.Add(httpUrlOption);
+        command.Add(http3Option);
+        command.Add(grpcHttp3Option);
         command.Add(addressOption);
 
         command.SetAction(parseResult =>
@@ -356,6 +368,8 @@ public static class Program
             var bodyFile = parseResult.GetValue(bodyFileOption);
             var bodyBase64 = parseResult.GetValue(bodyBase64Option);
             var httpUrl = parseResult.GetValue(httpUrlOption);
+            var http3 = parseResult.GetValue(http3Option);
+            var grpcHttp3 = parseResult.GetValue(grpcHttp3Option);
             var addresses = parseResult.GetValue(addressOption) ?? [];
 
             return RunRequestAsync(
@@ -378,7 +392,9 @@ public static class Program
                     bodyFile,
                     bodyBase64,
                     httpUrl,
-                    addresses)
+                    addresses,
+                    http3,
+                    grpcHttp3)
                 .GetAwaiter()
                 .GetResult();
         });
@@ -494,6 +510,16 @@ public static class Program
             Description = "HTTP endpoint to invoke."
         };
 
+        var http3Option = new Option<bool>("--http3")
+        {
+            Description = "Request HTTP/3 when supported by the server."
+        };
+
+        var grpcHttp3Option = new Option<bool>("--grpc-http3")
+        {
+            Description = "Request HTTP/3 when invoking gRPC services."
+        };
+
         var addressOption = new Option<string[]>("--address")
         {
             Description = "gRPC address(es) to dial.",
@@ -550,6 +576,8 @@ public static class Program
         command.Add(bodyFileOption);
         command.Add(bodyBase64Option);
         command.Add(httpUrlOption);
+        command.Add(http3Option);
+        command.Add(grpcHttp3Option);
         command.Add(addressOption);
         command.Add(concurrencyOption);
         command.Add(requestsOption);
@@ -578,6 +606,8 @@ public static class Program
             var bodyFileValue = parseResult.GetValue(bodyFileOption);
             var bodyBase64Value = parseResult.GetValue(bodyBase64Option);
             var httpUrlValue = parseResult.GetValue(httpUrlOption);
+            var http3Value = parseResult.GetValue(http3Option);
+            var grpcHttp3Value = parseResult.GetValue(grpcHttp3Option);
             var addressesValue = parseResult.GetValue(addressOption) ?? [];
             var concurrencyValue = parseResult.GetValue(concurrencyOption);
             var requestsValue = parseResult.GetValue(requestsOption);
@@ -606,6 +636,8 @@ public static class Program
                     bodyBase64Value,
                     httpUrlValue,
                     addressesValue,
+                    http3Value,
+                    grpcHttp3Value,
                     concurrencyValue,
                     requestsValue,
                     durationValue,
@@ -834,7 +866,9 @@ public static class Program
         string? bodyFile,
         string? bodyBase64,
         string? httpUrl,
-        string[] addresses)
+        string[] addresses,
+        bool enableHttp3,
+        bool enableGrpcHttp3)
     {
         if (!TryBuildRequestInvocation(
                 transport,
@@ -857,6 +891,8 @@ public static class Program
                 bodyBase64,
                 httpUrl,
                 addresses ?? [],
+                enableHttp3,
+                enableGrpcHttp3,
                 out var invocation,
                 out var error))
         {
@@ -870,8 +906,8 @@ public static class Program
 
         return invocation.Transport switch
         {
-            "http" => await ExecuteHttpRequestAsync(invocation.HttpUrl, invocation.Request, cts.Token).ConfigureAwait(false),
-            "grpc" => await ExecuteGrpcRequestAsync(invocation.Addresses, invocation.Request.Meta.Service, invocation.Request, cts.Token).ConfigureAwait(false),
+            "http" => await ExecuteHttpRequestAsync(invocation.HttpUrl, invocation.Request, invocation.HttpClientRuntime, cts.Token).ConfigureAwait(false),
+            "grpc" => await ExecuteGrpcRequestAsync(invocation.Addresses, invocation.Request.Meta.Service, invocation.Request, invocation.GrpcClientRuntime, cts.Token).ConfigureAwait(false),
             _ => 1
         };
     }
@@ -897,6 +933,8 @@ public static class Program
         string? bodyBase64,
         string? httpUrl,
         string[] addresses,
+        bool enableHttp3,
+        bool enableGrpcHttp3,
         out RequestInvocation invocation,
         out string? error)
     {
@@ -992,6 +1030,27 @@ public static class Program
             return false;
         }
 
+        if (enableHttp3 && normalizedTransport == "http")
+        {
+            if (string.IsNullOrWhiteSpace(httpUrl) || !Uri.TryCreate(httpUrl, UriKind.Absolute, out var httpUri) || !httpUri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+            {
+                error = "HTTP/3 requires an HTTPS --url.";
+                return false;
+            }
+        }
+
+        if (enableGrpcHttp3 && normalizedTransport == "grpc")
+        {
+            foreach (var address in normalizedAddresses)
+            {
+                if (!Uri.TryCreate(address, UriKind.Absolute, out var grpcUri) || !grpcUri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+                {
+                    error = $"HTTP/3 requires HTTPS gRPC addresses. Address '{address}' is not HTTPS.";
+                    return false;
+                }
+            }
+        }
+
         var meta = new RequestMeta(
             service: service ?? string.Empty,
             procedure: procedure,
@@ -1005,12 +1064,33 @@ public static class Program
             deadline: deadline,
             headers: headerPairs);
 
+        HttpClientRuntimeOptions? httpRuntime = null;
+        GrpcClientRuntimeOptions? grpcRuntime = null;
+
+        if (enableHttp3 && normalizedTransport == "http")
+        {
+            httpRuntime = new HttpClientRuntimeOptions
+            {
+                EnableHttp3 = true
+            };
+        }
+
+        if (enableGrpcHttp3 && normalizedTransport == "grpc")
+        {
+            grpcRuntime = new GrpcClientRuntimeOptions
+            {
+                EnableHttp3 = true
+            };
+        }
+
         invocation = new RequestInvocation(
             normalizedTransport,
             new Request<ReadOnlyMemory<byte>>(meta, payload),
             timeout,
             httpUrl,
-            normalizedAddresses);
+            normalizedAddresses,
+            httpRuntime,
+            grpcRuntime);
 
         return true;
     }
@@ -1036,6 +1116,8 @@ public static class Program
         string? bodyBase64,
         string? httpUrl,
         string[] addresses,
+        bool enableHttp3,
+        bool enableGrpcHttp3,
         int concurrency,
         int requestLimit,
         string? durationOption,
@@ -1063,6 +1145,8 @@ public static class Program
                 bodyBase64,
                 httpUrl,
                 addresses ?? [],
+                enableHttp3,
+                enableGrpcHttp3,
                 out var invocation,
                 out var buildError))
         {
@@ -1153,7 +1237,7 @@ public static class Program
         return summary.Successes > 0 ? 0 : 1;
     }
 
-    private static async Task<int> ExecuteHttpRequestAsync(string? url, Request<ReadOnlyMemory<byte>> request, CancellationToken cancellationToken)
+    private static async Task<int> ExecuteHttpRequestAsync(string? url, Request<ReadOnlyMemory<byte>> request, HttpClientRuntimeOptions? runtimeOptions, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(url))
         {
@@ -1168,7 +1252,7 @@ public static class Program
         }
 
         using var httpClient = new HttpClient();
-        var outbound = new HttpOutbound(httpClient, requestUri);
+        var outbound = new HttpOutbound(httpClient, requestUri, runtimeOptions: runtimeOptions);
 
         try
         {
@@ -1196,7 +1280,7 @@ public static class Program
         }
     }
 
-    private static async Task<int> ExecuteGrpcRequestAsync(string[] addresses, string remoteService, Request<ReadOnlyMemory<byte>> request, CancellationToken cancellationToken)
+    private static async Task<int> ExecuteGrpcRequestAsync(string[] addresses, string remoteService, Request<ReadOnlyMemory<byte>> request, GrpcClientRuntimeOptions? runtimeOptions, CancellationToken cancellationToken)
     {
         if (addresses.Length == 0)
         {
@@ -1216,7 +1300,7 @@ public static class Program
             uris.Add(uri);
         }
 
-        var outbound = new GrpcOutbound(uris, remoteService);
+        var outbound = new GrpcOutbound(uris, remoteService, clientRuntimeOptions: runtimeOptions);
 
         try
         {

@@ -4,6 +4,8 @@ namespace OmniRelay.Transport.Grpc;
 
 public sealed record GrpcClientRuntimeOptions
 {
+    public bool EnableHttp3 { get; init; }
+
     public int? MaxReceiveMessageSize { get; init; }
 
     public int? MaxSendMessageSize { get; init; }
@@ -19,6 +21,8 @@ public sealed record GrpcClientRuntimeOptions
 
 public sealed record GrpcServerRuntimeOptions
 {
+    public bool EnableHttp3 { get; init; }
+
     public int? MaxReceiveMessageSize { get; init; }
 
     public int? MaxSendMessageSize { get; init; }

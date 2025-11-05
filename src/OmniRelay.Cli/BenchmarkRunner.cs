@@ -14,7 +14,9 @@ internal sealed record RequestInvocation(
     Request<ReadOnlyMemory<byte>> Request,
     TimeSpan? Timeout,
     string? HttpUrl,
-    string[] Addresses);
+    string[] Addresses,
+    HttpClientRuntimeOptions? HttpClientRuntime,
+    GrpcClientRuntimeOptions? GrpcClientRuntime);
 
 internal static class BenchmarkRunner
 {
@@ -126,7 +128,7 @@ internal static class BenchmarkRunner
             throw new InvalidOperationException($"Invalid HTTP url '{invocation.HttpUrl}'.");
         }
 
-        return new HttpRequestInvoker(uri);
+        return new HttpRequestInvoker(uri, invocation.HttpClientRuntime);
     }
 
     private static IRequestInvoker CreateGrpcInvoker(RequestInvocation invocation)
@@ -148,7 +150,7 @@ internal static class BenchmarkRunner
             uris[index] = uri;
         }
 
-        return new GrpcRequestInvoker(uris, invocation.Request.Meta.Service);
+        return new GrpcRequestInvoker(uris, invocation.Request.Meta.Service, invocation.GrpcClientRuntime);
     }
 
     private static async Task<StageResult> RunStageAsync(
@@ -388,10 +390,10 @@ internal static class BenchmarkRunner
         private readonly HttpOutbound _outbound;
         private readonly IUnaryOutbound _unaryOutbound;
 
-        public HttpRequestInvoker(Uri requestUri)
+        public HttpRequestInvoker(Uri requestUri, HttpClientRuntimeOptions? runtimeOptions)
         {
             _httpClient = new HttpClient();
-            _outbound = new HttpOutbound(_httpClient, requestUri);
+            _outbound = new HttpOutbound(_httpClient, requestUri, runtimeOptions: runtimeOptions);
             _unaryOutbound = _outbound;
         }
 
@@ -421,9 +423,9 @@ internal static class BenchmarkRunner
         private readonly GrpcOutbound _outbound;
         private readonly IUnaryOutbound _unaryOutbound;
 
-        public GrpcRequestInvoker(IReadOnlyList<Uri> addresses, string service)
+        public GrpcRequestInvoker(IReadOnlyList<Uri> addresses, string service, GrpcClientRuntimeOptions? runtimeOptions)
         {
-            _outbound = new GrpcOutbound(addresses, service);
+            _outbound = new GrpcOutbound(addresses, service, clientRuntimeOptions: runtimeOptions);
             _unaryOutbound = _outbound;
         }
 
