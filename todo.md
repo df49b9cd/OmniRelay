@@ -83,14 +83,14 @@
 
 ## Feature Parity: gRPC Surface
 
-- [ ] Validate gRPC interceptors, compression providers, and telemetry hooks operate identically when the transport upgrades to HTTP/3.
-  - [ ] Run interceptor pipeline tests using HTTP/3-enabled test harnesses.
-  - [ ] Verify compression negotiation and message sizes behave the same as HTTP/2 baseline.
-  - [ ] Confirm telemetry spans/logs from interceptors include protocol data.
+- [x] Validate gRPC interceptors, compression providers, and telemetry hooks operate identically when the transport upgrades to HTTP/3.
+  - [x] Run interceptor pipeline tests using HTTP/3-enabled test harnesses.
+  - [x] Verify compression negotiation and message sizes behave the same as HTTP/2 baseline.
+  - [x] Confirm telemetry spans/logs from interceptors include protocol data.
 - [ ] Update `GrpcOutbound`/gRPC-dotnet client construction to opt into HTTP/3 per https://learn.microsoft.com/en-us/aspnet/core/grpc/troubleshoot?view=aspnetcore-9.0#configure-grpc-client-to-use-http3 and expose configuration for disabling when peers lack QUIC.
   - [x] Implement HTTP/3-aware channel factory with opt-in flags and fallback logic.
   - [x] Expose configuration through appsettings/CLI and ensure defaults remain HTTP/2 for compatibility.
-  - [ ] Add unit tests verifying correct handler configuration for each mode.
+  - [x] Add unit tests verifying correct handler configuration for each mode.
 - [ ] Confirm client handlers set `HttpRequestMessage.VersionPolicy = RequestVersionOrHigher` (or stricter policies) and tune `SocketsHttpHandler` HTTP/3 settings (keep-alive, connection pooling) so call concurrency matches HTTP/2 parity targets.
   - [x] Audit existing handler construction and update to set version policies explicitly.
   - [ ] Validate connection pooling and keep-alive tuning under load using benchmark suite.
