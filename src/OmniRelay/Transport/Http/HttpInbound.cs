@@ -610,6 +610,8 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
                 headers: context.Request.Headers,
                 transport: transport);
 
+            context.Response.Headers[HttpTransportHeaders.Transport] = transport;
+
             var dispatcherRequest = new Request<ReadOnlyMemory<byte>>(meta, ReadOnlyMemory<byte>.Empty);
 
             var callResult = await dispatcher.InvokeDuplexAsync(procedure!, dispatcherRequest, context.RequestAborted).ConfigureAwait(false);
@@ -624,7 +626,6 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
             }
 
             var socket = await context.WebSockets.AcceptWebSocketAsync().ConfigureAwait(false);
-            context.Response.Headers[HttpTransportHeaders.Transport] = transport;
 
             var call = callResult.Value;
             var requestBuffer = new byte[32 * 1024];
