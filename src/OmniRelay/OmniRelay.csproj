@@ -16,6 +16,7 @@
     <PackageReference Include="Grpc.HealthCheck" />
     <PackageReference Include="Google.Protobuf" />
     <PackageReference Include="JsonSchema.Net" />
+    <PackageReference Include="OpenTelemetry" />
   </ItemGroup>
 
   <ItemGroup>

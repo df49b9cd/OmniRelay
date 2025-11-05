@@ -86,6 +86,7 @@ Each workflow measurement includes metric tags for `workflow.namespace`, `workfl
 - Create a schema-aware activity source with `GoDiagnostics.CreateActivitySource(string? name = GoDiagnostics.ActivitySourceName)` and optionally throttle spans via `GoDiagnostics.UseRateLimitedSampling(...)` when your workload emits high volumes of internal activities.
 - Invoke `GoDiagnostics.Reset()` (typically in unit tests) to dispose existing meters before registering new ones.
 - Pass `GrpcTelemetryOptions` to `GrpcInbound`/`GrpcOutbound` so the built-in logging/metrics interceptors attach automatically without bespoke interceptor wiring.
+- `AddOmniRelayDispatcher` reuses the host’s `ILoggerFactory` for every inbound transport. Runtime logging toggles (`/omnirelay/control/logging`) immediately adjust HTTP middleware output, gRPC interceptors (e.g., `GrpcServerLoggingInterceptor`), and any custom logging inside registered procedures.
 - Peer metrics emitted by `OmniRelay.Core.Peers` include `polymer.peer.inflight`, `polymer.peer.successes`, `polymer.peer.failures`, and `polymer.peer.lease.duration` (histogram). Pair these with the `/omnirelay/introspect` endpoint, which now surfaces per-peer success/failure counts and latency percentiles, to build health dashboards.
 - Logging middleware and transport interceptors now attach request scopes (`rpc.request_id`, `rpc.peer`, activity id tags) so any structured log emitted during a call inherits trace-aware correlation metadata.
 
@@ -125,7 +126,8 @@ Each workflow measurement includes metric tags for `workflow.namespace`, `workfl
 - `runtime` enables lightweight control-plane endpoints:
   - `GET /omnirelay/control/logging` returns `{ "minimumLevel": "Information" }`.
   - `POST /omnirelay/control/logging` accepts `{ "level": "Warning" }` (or `null` to reset) and updates `LoggerFilterOptions.MinLevel` on the fly.
-  - `GET /omnirelay/control/tracing` reports the active sampling probability, and `POST /omnirelay/control/tracing` accepts `{ "probability": 0.25 }` to throttle new `Activity` creation in `RpcTracingMiddleware` unless an upstream span forces sampling.
+-  - `GET /omnirelay/control/tracing` reports the active sampling probability, and `POST /omnirelay/control/tracing` accepts `{ "probability": 0.25 }` to throttle new `Activity` creation in `RpcTracingMiddleware` unless an upstream span forces sampling.
+- Sampling changes take effect immediately through `DiagnosticsRuntimeSampler`, which wraps the OpenTelemetry pipeline and honours parent/linked spans while applying the requested probability.
 
 These endpoints appear alongside `/omnirelay/introspect` on every HTTP inbound when `runtime.enableControlPlane` is true.
 

@@ -145,6 +145,11 @@ public static class OmniRelayServiceCollectionExtensions
             openTelemetryBuilder.WithTracing(builder =>
             {
                 builder.AddSource("OmniRelay.Rpc", "OmniRelay.Transport.Grpc");
+                builder.SetSampler(provider =>
+                {
+                    var runtime = provider.GetService<IDiagnosticsRuntime>();
+                    return new DiagnosticsRuntimeSampler(runtime, new AlwaysOnSampler());
+                });
 
                 if (otlpEnabled)
                 {
