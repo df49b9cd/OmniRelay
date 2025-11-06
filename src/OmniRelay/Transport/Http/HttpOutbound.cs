@@ -69,6 +69,23 @@ public sealed class HttpOutbound : IUnaryOutbound, IOnewayOutbound, IOutboundDia
             var responseMeta = BuildResponseMeta(response);
             var payload = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
 
+            // Fallback metric: if HTTP/3 was desired but response protocol < HTTP/3
+            if (_runtimeOptions?.EnableHttp3 == true)
+            {
+                var observed = responseMeta.Headers.FirstOrDefault(h => string.Equals(h.Key, HttpTransportHeaders.Protocol, StringComparison.OrdinalIgnoreCase)).Value
+                               ?? FormatProtocol(response.Version);
+                if (!string.IsNullOrWhiteSpace(observed) && !observed.StartsWith("HTTP/3", StringComparison.OrdinalIgnoreCase))
+                {
+                    var baseTags = HttpTransportMetrics.CreateBaseTags(
+                        request.Meta.Service ?? string.Empty,
+                        request.Meta.Procedure ?? string.Empty,
+                        httpRequest.Method.Method,
+                        observed);
+                    var tags = HttpTransportMetrics.AppendObservedProtocol(baseTags, observed);
+                    HttpTransportMetrics.ClientProtocolFallbacks.Add(1, tags);
+                }
+            }
+
             if (response.IsSuccessStatusCode)
             {
                 return Ok(Response<ReadOnlyMemory<byte>>.Create(payload, responseMeta));
@@ -97,6 +114,23 @@ public sealed class HttpOutbound : IUnaryOutbound, IOnewayOutbound, IOutboundDia
                     HttpCompletionOption.ResponseContentRead,
                     cancellationToken)
                 .ConfigureAwait(false);
+            // Fallback metric for oneway
+            if (_runtimeOptions?.EnableHttp3 == true)
+            {
+                var observed = response.Headers.TryGetValues(HttpTransportHeaders.Protocol, out var protoValues)
+                    ? protoValues.FirstOrDefault()
+                    : FormatProtocol(response.Version);
+                if (!string.IsNullOrWhiteSpace(observed) && !observed.StartsWith("HTTP/3", StringComparison.OrdinalIgnoreCase))
+                {
+                    var baseTags = HttpTransportMetrics.CreateBaseTags(
+                        request.Meta.Service ?? string.Empty,
+                        request.Meta.Procedure ?? string.Empty,
+                        httpRequest.Method.Method,
+                        observed);
+                    var tags = HttpTransportMetrics.AppendObservedProtocol(baseTags, observed);
+                    HttpTransportMetrics.ClientProtocolFallbacks.Add(1, tags);
+                }
+            }
 
             if (response.StatusCode == HttpStatusCode.Accepted ||
                 response.StatusCode == (HttpStatusCode)StatusCodes.Status202Accepted)

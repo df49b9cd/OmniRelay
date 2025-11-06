@@ -243,7 +243,7 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
             return Err<Response<ReadOnlyMemory<byte>>>(acquireResult.Error!);
         }
 
-        var (lease, peer, usedPreferred) = acquireResult.Value;
+    var (lease, peer, usedPreferred) = acquireResult.Value;
         await using var _ = lease.ConfigureAwait(false);
 
         using var activity = GrpcTransportDiagnostics.StartClientActivity(_remoteService, procedure, peer.Address, "unary");
@@ -253,6 +253,13 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
             var supportsH3 = _endpointHttp3Support?.TryGetValue(peer.Address, out var s) == true && s;
             activity.SetTag("omnirelay.peer.supports_h3", supportsH3);
             activity.SetTag("omnirelay.discovery.selection", usedPreferred ? "preferred" : "fallback");
+        }
+
+        // Metrics: record fallback if HTTP/3 desired but preferred peer not used
+        if (_clientRuntimeOptions?.EnableHttp3 == true && !usedPreferred)
+        {
+            var metaForTags = request.Meta;
+            GrpcTransportMetrics.RecordClientFallback(metaForTags, http3Desired: true);
         }
 
         var method = _unaryMethods.GetOrAdd(procedure, CreateUnaryMethod);
@@ -305,6 +312,13 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
                         var fallbackInvoker = fallbackChannel.CreateCallInvoker();
                         var retryCall = fallbackInvoker.AsyncUnaryCall(method, null, callOptions, request.Body.ToArray());
                         var retryResponse = await retryCall.ResponseAsync.ConfigureAwait(false);
+
+                        // Metrics: count explicit OrHigher fallback to HTTP/2
+                        if (_clientRuntimeOptions?.EnableHttp3 == true)
+                        {
+                            var metaForTags = request.Meta;
+                            GrpcTransportMetrics.RecordClientFallback(metaForTags, http3Desired: true);
+                        }
 
                         var retryHeaders = await retryCall.ResponseHeadersAsync.ConfigureAwait(false);
                         var retryTrailers = retryCall.GetTrailers();

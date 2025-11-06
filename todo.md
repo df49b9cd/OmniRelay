@@ -160,14 +160,14 @@
   - [x] Update metrics instrumentation to tag protocol version on requests.
   - [x] Add percentile latency/throughput views split by protocol.
   - [x] Integrate metrics into performance regression alerts.
-- [ ] Wire up distributed tracing spans to capture HTTP/3 attributes (QUIC connection id, protocol version) for correlation.
+- [x] Wire up distributed tracing spans to capture HTTP/3 attributes (QUIC connection id, protocol version) for correlation.
   - [x] Extend tracing middleware to annotate spans with protocol metadata.
-  - [ ] Verify tracing exporters handle added attributes without schema drift.
-  - [ ] Update tracing documentation/examples to highlight the new fields.
-- [ ] Track fallback rates (HTTP/3 → HTTP/2/1.1) and QUIC-specific failure codes in dashboards to monitor parity drift.
-  - [ ] Capture fallback events in logging/metrics pipeline.
-  - [ ] Build dashboards with historical trend lines for fallback and failure codes.
-  - [ ] Establish alerting thresholds for unacceptable fallback frequency.
+  - [x] Verify tracing exporters handle added attributes without schema drift.
+  - [x] Update tracing documentation/examples to highlight the new fields.
+- [x] Track fallback rates (HTTP/3 → HTTP/2/1.1) and QUIC-specific failure codes in dashboards to monitor parity drift.
+  - [x] Capture fallback events in logging/metrics pipeline.
+  - [x] Build dashboards with historical trend lines for fallback and failure codes.
+  - [x] Establish alerting thresholds for unacceptable fallback frequency.
 
 ## Testing & Validation
 

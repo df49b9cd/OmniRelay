@@ -87,6 +87,10 @@ internal static class GrpcTransportMetrics
     public static readonly Counter<long> ServerDuplexResponseMessages =
         Meter.CreateCounter<long>("yarpcore.grpc.server.duplex.response_messages", description: "Total response messages emitted by gRPC server duplex handlers.");
 
+    // Protocol fallback tracking when HTTP/3 is enabled but we selected a non-H3 endpoint
+    public static readonly Counter<long> ClientProtocolFallbacks =
+        Meter.CreateCounter<long>("omnirelay.grpc.client.fallbacks", description: "gRPC client fallbacks when HTTP/3 is enabled but a non-H3 endpoint is selected.");
+
     public static KeyValuePair<string, object?>[] CreateBaseTags(RequestMeta meta)
     {
         List<KeyValuePair<string, object?>> tags;
@@ -137,6 +141,17 @@ internal static class GrpcTransportMetrics
         Array.Copy(baseTags, tags, baseTags.Length);
         tags[^1] = KeyValuePair.Create<string, object?>("rpc.grpc.status_code", statusCode);
         return tags;
+    }
+
+    public static void RecordClientFallback(RequestMeta meta, bool http3Desired)
+    {
+        if (!http3Desired)
+        {
+            return;
+        }
+
+        var tags = CreateBaseTags(meta);
+        ClientProtocolFallbacks.Add(1, tags);
     }
 
     private static bool TryParseHttpProtocol(string protocol, out string? name, out string? version)

@@ -17,6 +17,10 @@ internal static class HttpTransportMetrics
     public static readonly Histogram<double> RequestDuration =
         Meter.CreateHistogram<double>("omnirelay.http.request.duration", unit: "ms", description: "HTTP request duration in milliseconds measured at OmniRelay inbound.");
 
+    // Client-side: count when HTTP/3 was desired but a lower protocol was used
+    public static readonly Counter<long> ClientProtocolFallbacks =
+        Meter.CreateCounter<long>("omnirelay.http.client.fallbacks", description: "HTTP client fallbacks when HTTP/3 was desired but a lower protocol was used.");
+
     public static KeyValuePair<string, object?>[] CreateBaseTags(
         string service,
         string procedure,
@@ -65,6 +69,21 @@ internal static class HttpTransportMetrics
             tags[index++] = KeyValuePair.Create<string, object?>("http.response.status_code", httpStatus.Value);
         }
         tags[index] = KeyValuePair.Create<string, object?>("outcome", outcome);
+        return tags;
+    }
+
+    public static KeyValuePair<string, object?>[] AppendObservedProtocol(
+        KeyValuePair<string, object?>[] baseTags,
+        string? observedProtocol)
+    {
+        if (string.IsNullOrWhiteSpace(observedProtocol))
+        {
+            return baseTags;
+        }
+
+        var tags = new KeyValuePair<string, object?>[baseTags.Length + 1];
+        Array.Copy(baseTags, tags, baseTags.Length);
+        tags[^1] = KeyValuePair.Create<string, object?>("http.observed_protocol", observedProtocol);
         return tags;
     }
 }

@@ -542,6 +542,26 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
 
             var meta = BuildRequestMeta(dispatcher.ServiceName, procedure!, encoding, context.Request.Headers, transport, context.Request.Protocol);
 
+            // Tracing: enrich current Activity with protocol attributes for correlation
+            var activity = Activity.Current;
+            if (activity is not null)
+            {
+                activity.SetTag("rpc.system", "http");
+                activity.SetTag("rpc.service", dispatcher.ServiceName);
+                activity.SetTag("rpc.method", procedure!);
+                activity.SetTag("rpc.protocol", context.Request.Protocol);
+                if (context.Request.Protocol.StartsWith("HTTP/", StringComparison.OrdinalIgnoreCase))
+                {
+                    activity.SetTag("network.protocol.name", "http");
+                    var version = context.Request.Protocol.Length > 5 ? context.Request.Protocol[5..] : string.Empty;
+                    if (!string.IsNullOrEmpty(version))
+                    {
+                        activity.SetTag("network.protocol.version", version);
+                    }
+                    activity.SetTag("network.transport", version.StartsWith("3", StringComparison.Ordinal) ? "quic" : "tcp");
+                }
+            }
+
             // Metrics: request started
             var baseTags = HttpTransportMetrics.CreateBaseTags(dispatcher.ServiceName, procedure!, context.Request.Method, context.Request.Protocol);
             HttpTransportMetrics.RequestsStarted.Add(1, baseTags);
@@ -790,6 +810,26 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
 
             var request = new Request<ReadOnlyMemory<byte>>(meta, ReadOnlyMemory<byte>.Empty);
 
+            // Tracing: enrich current Activity
+            var activity = Activity.Current;
+            if (activity is not null)
+            {
+                activity.SetTag("rpc.system", "http");
+                activity.SetTag("rpc.service", dispatcher.ServiceName);
+                activity.SetTag("rpc.method", procedure!);
+                activity.SetTag("rpc.protocol", context.Request.Protocol);
+                if (context.Request.Protocol.StartsWith("HTTP/", StringComparison.OrdinalIgnoreCase))
+                {
+                    activity.SetTag("network.protocol.name", "http");
+                    var version = context.Request.Protocol.Length > 5 ? context.Request.Protocol[5..] : string.Empty;
+                    if (!string.IsNullOrEmpty(version))
+                    {
+                        activity.SetTag("network.protocol.version", version);
+                    }
+                    activity.SetTag("network.transport", version.StartsWith("3", StringComparison.Ordinal) ? "quic" : "tcp");
+                }
+            }
+
             // Metrics: request started (server-stream)
             var baseTags = HttpTransportMetrics.CreateBaseTags(dispatcher.ServiceName, procedure!, context.Request.Method, context.Request.Protocol);
             HttpTransportMetrics.RequestsStarted.Add(1, baseTags);
@@ -927,6 +967,26 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
             context.Response.Headers[HttpTransportHeaders.Protocol] = context.Request.Protocol;
 
             var dispatcherRequest = new Request<ReadOnlyMemory<byte>>(meta, ReadOnlyMemory<byte>.Empty);
+
+            // Tracing: enrich current Activity
+            var activity = Activity.Current;
+            if (activity is not null)
+            {
+                activity.SetTag("rpc.system", "http");
+                activity.SetTag("rpc.service", dispatcher.ServiceName);
+                activity.SetTag("rpc.method", procedure!);
+                activity.SetTag("rpc.protocol", context.Request.Protocol);
+                if (context.Request.Protocol.StartsWith("HTTP/", StringComparison.OrdinalIgnoreCase))
+                {
+                    activity.SetTag("network.protocol.name", "http");
+                    var version = context.Request.Protocol.Length > 5 ? context.Request.Protocol[5..] : string.Empty;
+                    if (!string.IsNullOrEmpty(version))
+                    {
+                        activity.SetTag("network.protocol.version", version);
+                    }
+                    activity.SetTag("network.transport", version.StartsWith("3", StringComparison.Ordinal) ? "quic" : "tcp");
+                }
+            }
 
             // Metrics: request started (duplex)
             var baseTags = HttpTransportMetrics.CreateBaseTags(dispatcher.ServiceName, procedure!, context.Request.Method, context.Request.Protocol);
