@@ -23,27 +23,27 @@ Example: enable HTTP/3 for a gRPC outbound and request HTTP/3-or-higher per call
 
 ```json
 {
-	"polymer": {
-		"outbounds": {
-			"ledger": {
-				"unary": {
-					"grpc": [
-						{
-							"addresses": [ "https://ledger.internal:9091" ],
-							"remoteService": "ledger",
-							"runtime": {
-								"enableHttp3": true,
-								"requestVersion": "3.0",
-								"versionPolicy": "request-version-or-higher",
-								"keepAlivePingDelay": "00:00:45",
-								"keepAlivePingTimeout": "00:00:10"
-							}
-						}
-					]
-				}
-			}
-		}
-	}
+ "polymer": {
+  "outbounds": {
+   "ledger": {
+    "unary": {
+     "grpc": [
+      {
+       "addresses": [ "https://ledger.internal:9091" ],
+       "remoteService": "ledger",
+       "runtime": {
+        "enableHttp3": true,
+        "requestVersion": "3.0",
+        "versionPolicy": "request-version-or-higher",
+        "keepAlivePingDelay": "00:00:45",
+        "keepAlivePingTimeout": "00:00:10"
+       }
+      }
+     ]
+    }
+   }
+  }
+ }
 }
 ```
 
@@ -59,24 +59,24 @@ Enable HTTP/3 for `HttpOutbound` with a permissive version policy to allow fallb
 
 ```json
 {
-	"polymer": {
-		"outbounds": {
-			"audit": {
-				"oneway": {
-					"http": [
-						{
-							"url": "https://audit.internal:8443/yarpc/v1/audit::record",
-							"runtime": {
-								"enableHttp3": true,
-								"requestVersion": "3.0",
-								"versionPolicy": "request-version-or-higher"
-							}
-						}
-					]
-				}
-			}
-		}
-	}
+ "polymer": {
+  "outbounds": {
+   "audit": {
+    "oneway": {
+     "http": [
+      {
+       "url": "https://audit.internal:8443/yarpc/v1/audit::record",
+       "runtime": {
+        "enableHttp3": true,
+        "requestVersion": "3.0",
+        "versionPolicy": "request-version-or-higher"
+       }
+      }
+     ]
+    }
+   }
+  }
+ }
 }
 ```
 
