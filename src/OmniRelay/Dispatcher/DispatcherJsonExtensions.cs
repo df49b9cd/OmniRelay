@@ -14,6 +14,9 @@ namespace OmniRelay.Dispatcher;
 /// </summary>
 public static class DispatcherJsonExtensions
 {
+    /// <summary>
+    /// Registers a JSON unary procedure with a typed handler and optional codec/procedure configuration.
+    /// </summary>
     public static void RegisterJsonUnary<TRequest, TResponse>(
         this Dispatcher dispatcher,
         string name,
@@ -79,6 +82,9 @@ public static class DispatcherJsonExtensions
         }
     }
 
+    /// <summary>
+    /// Registers a JSON unary procedure with a typed handler that returns a response body only.
+    /// </summary>
     public static void RegisterJsonUnary<TRequest, TResponse>(
         this Dispatcher dispatcher,
         string name,
@@ -99,6 +105,9 @@ public static class DispatcherJsonExtensions
             configureProcedure);
     }
 
+    /// <summary>
+    /// Creates a JSON unary client for a service/procedure, optionally customizing the codec and outbound key.
+    /// </summary>
     public static UnaryClient<TRequest, TResponse> CreateJsonClient<TRequest, TResponse>(
         this Dispatcher dispatcher,
         string service,

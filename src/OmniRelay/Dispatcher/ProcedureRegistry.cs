@@ -1,5 +1,8 @@
 namespace OmniRelay.Dispatcher;
 
+/// <summary>
+/// Thread-safe registry for procedures and their alias mappings (including wildcard aliases).
+/// </summary>
 internal sealed class ProcedureRegistry
 {
     private readonly Dictionary<string, ProcedureSpec> _procedures = new(StringComparer.OrdinalIgnoreCase);
@@ -7,6 +10,9 @@ internal sealed class ProcedureRegistry
     private readonly List<WildcardAlias> _wildcardAliases = [];
     private readonly Lock _gate = new();
 
+    /// <summary>
+    /// Registers a procedure and its aliases, validating conflicts and wildcard patterns.
+    /// </summary>
     public void Register(ProcedureSpec spec)
     {
         ArgumentNullException.ThrowIfNull(spec);
@@ -68,6 +74,9 @@ internal sealed class ProcedureRegistry
         }
     }
 
+    /// <summary>
+    /// Attempts to resolve a procedure by name and kind, evaluating direct and wildcard aliases.
+    /// </summary>
     public bool TryGet(string service, string name, ProcedureKind kind, out ProcedureSpec spec)
     {
         var key = CreateKey(service, name, kind);
@@ -97,6 +106,9 @@ internal sealed class ProcedureRegistry
         }
     }
 
+    /// <summary>
+    /// Returns a snapshot of all registered procedures.
+    /// </summary>
     public IReadOnlyCollection<ProcedureSpec> Snapshot()
     {
         lock (_gate)

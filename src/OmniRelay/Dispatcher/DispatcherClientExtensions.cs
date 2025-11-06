@@ -3,8 +3,14 @@ using OmniRelay.Core.Clients;
 
 namespace OmniRelay.Dispatcher;
 
+/// <summary>
+/// Factory helpers to create typed RPC clients from a configured <see cref="Dispatcher"/>.
+/// </summary>
 public static class DispatcherClientExtensions
 {
+    /// <summary>
+    /// Creates a typed unary client using an explicit codec and an optional outbound key.
+    /// </summary>
     public static UnaryClient<TRequest, TResponse> CreateUnaryClient<TRequest, TResponse>(
         this Dispatcher dispatcher,
         string service,
@@ -24,6 +30,9 @@ public static class DispatcherClientExtensions
         return new UnaryClient<TRequest, TResponse>(outbound, codec, configuration.UnaryMiddleware);
     }
 
+    /// <summary>
+    /// Creates a typed unary client by resolving a registered outbound codec for a procedure.
+    /// </summary>
     public static UnaryClient<TRequest, TResponse> CreateUnaryClient<TRequest, TResponse>(
         this Dispatcher dispatcher,
         string service,
@@ -40,6 +49,9 @@ public static class DispatcherClientExtensions
         return dispatcher.CreateUnaryClient(service, codec, outboundKey);
     }
 
+    /// <summary>
+    /// Creates a typed oneway client using an explicit codec and an optional outbound key.
+    /// </summary>
     public static OnewayClient<TRequest> CreateOnewayClient<TRequest>(
         this Dispatcher dispatcher,
         string service,
@@ -59,6 +71,9 @@ public static class DispatcherClientExtensions
         return new OnewayClient<TRequest>(outbound, codec, configuration.OnewayMiddleware);
     }
 
+    /// <summary>
+    /// Creates a typed oneway client by resolving a registered outbound codec for a procedure.
+    /// </summary>
     public static OnewayClient<TRequest> CreateOnewayClient<TRequest>(
         this Dispatcher dispatcher,
         string service,
@@ -75,6 +90,9 @@ public static class DispatcherClientExtensions
         return dispatcher.CreateOnewayClient(service, codec, outboundKey);
     }
 
+    /// <summary>
+    /// Creates a typed server-stream client using an explicit codec and an optional outbound key.
+    /// </summary>
     public static StreamClient<TRequest, TResponse> CreateStreamClient<TRequest, TResponse>(
         this Dispatcher dispatcher,
         string service,
@@ -94,6 +112,9 @@ public static class DispatcherClientExtensions
         return new StreamClient<TRequest, TResponse>(outbound, codec, configuration.StreamMiddleware);
     }
 
+    /// <summary>
+    /// Creates a typed server-stream client by resolving a registered outbound codec for a procedure.
+    /// </summary>
     public static StreamClient<TRequest, TResponse> CreateStreamClient<TRequest, TResponse>(
         this Dispatcher dispatcher,
         string service,
@@ -110,6 +131,9 @@ public static class DispatcherClientExtensions
         return dispatcher.CreateStreamClient(service, codec, outboundKey);
     }
 
+    /// <summary>
+    /// Creates a typed client-stream client using an explicit codec and an optional outbound key.
+    /// </summary>
     public static ClientStreamClient<TRequest, TResponse> CreateClientStreamClient<TRequest, TResponse>(
         this Dispatcher dispatcher,
         string service,
@@ -129,6 +153,9 @@ public static class DispatcherClientExtensions
         return new ClientStreamClient<TRequest, TResponse>(outbound, codec, configuration.ClientStreamMiddleware);
     }
 
+    /// <summary>
+    /// Creates a typed client-stream client by resolving a registered outbound codec for a procedure.
+    /// </summary>
     public static ClientStreamClient<TRequest, TResponse> CreateClientStreamClient<TRequest, TResponse>(
         this Dispatcher dispatcher,
         string service,
@@ -145,6 +172,9 @@ public static class DispatcherClientExtensions
         return dispatcher.CreateClientStreamClient(service, codec, outboundKey);
     }
 
+    /// <summary>
+    /// Creates a typed duplex-stream client using an explicit codec and an optional outbound key.
+    /// </summary>
     public static DuplexStreamClient<TRequest, TResponse> CreateDuplexStreamClient<TRequest, TResponse>(
         this Dispatcher dispatcher,
         string service,
@@ -164,6 +194,9 @@ public static class DispatcherClientExtensions
         return new DuplexStreamClient<TRequest, TResponse>(outbound, codec, configuration.DuplexMiddleware);
     }
 
+    /// <summary>
+    /// Creates a typed duplex-stream client by resolving a registered outbound codec for a procedure.
+    /// </summary>
     public static DuplexStreamClient<TRequest, TResponse> CreateDuplexStreamClient<TRequest, TResponse>(
         this Dispatcher dispatcher,
         string service,

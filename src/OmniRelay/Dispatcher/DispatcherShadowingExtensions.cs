@@ -2,8 +2,14 @@ using OmniRelay.Core.Transport;
 
 namespace OmniRelay.Dispatcher;
 
+/// <summary>
+/// Helpers to configure tee (shadow) outbounds in dispatcher options.
+/// </summary>
 public static class DispatcherShadowingExtensions
 {
+    /// <summary>
+    /// Adds a tee unary outbound that forwards to a primary and shadows to a secondary outbound.
+    /// </summary>
     public static void AddTeeUnaryOutbound(
         this DispatcherOptions options,
         string service,
@@ -18,6 +24,9 @@ public static class DispatcherShadowingExtensions
         options.AddUnaryOutbound(service, key, outbound);
     }
 
+    /// <summary>
+    /// Adds a tee oneway outbound that forwards to a primary and shadows to a secondary outbound.
+    /// </summary>
     public static void AddTeeOnewayOutbound(
         this DispatcherOptions options,
         string service,

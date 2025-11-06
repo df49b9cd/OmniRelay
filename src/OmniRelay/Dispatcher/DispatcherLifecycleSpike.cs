@@ -3,8 +3,14 @@ using Hugo;
 
 namespace OmniRelay.Dispatcher;
 
+/// <summary>
+/// Experimental helper to run start/stop steps and observe their completion order.
+/// </summary>
 public static class DispatcherLifecycleSpike
 {
+    /// <summary>
+    /// Runs start steps concurrently, reports their completion order, then runs stop steps sequentially.
+    /// </summary>
     public static async Task<(IReadOnlyList<string> Started, IReadOnlyList<string> Stopped)> RunAsync(
         IReadOnlyList<Func<CancellationToken, Task>> startSteps,
         IReadOnlyList<Func<CancellationToken, Task>> stopSteps,
