@@ -184,8 +184,8 @@
   - [x] Add tests that instantiate generated clients configured for HTTP/3.
   - [x] Verify fallbacks to HTTP/2 remain functional when HTTP/3 is disabled.
 - [ ] Run soak/performance tests focusing on high connection churn, packet loss, and mobile-like IP migration scenarios.
-  - [ ] Expand load test scripts to include QUIC-specific scenarios (packet loss, connection migration).
-  - [ ] Monitor resource utilization and latency to establish new baselines.
+  - [x] Expand load test scripts to include QUIC-specific scenarios (packet loss, connection migration).
+  - [x] Monitor resource utilization and latency to establish new baselines.
   - [ ] Document findings and adjust configuration limits where needed.
 - [ ] Include automated canary validation (curl `--http3`, browser devtools) in deployment pipelines to confirm `alt-svc` advertisement and successful upgrades.
   - [ ] Add pipeline steps that issue HTTP/3 requests via CLI and browser automation.
