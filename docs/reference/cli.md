@@ -39,7 +39,7 @@ Run `omnirelay <command> --help` for a detailed option list.
 omnirelay config validate \
   --config docs/reference/configuration/appsettings.json \
   --config docs/reference/configuration/appsettings.Development.json \
-  --set polymer:outbounds:ledger:unary:http:0:url=http://127.0.0.1:8081
+  --set omnirelay:outbounds:ledger:unary:http:0:url=http://127.0.0.1:8081
 ```
 
 The command prints the resolved service name, dispatcher status, procedure counts, and registered lifecycle components. Any schema or binding errors from `AddOmniRelayDispatcher` halt the run with a non-zero exit code.
