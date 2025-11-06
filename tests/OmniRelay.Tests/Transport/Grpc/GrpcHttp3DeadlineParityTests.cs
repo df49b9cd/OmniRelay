@@ -79,7 +79,7 @@ public class GrpcHttp3DeadlineParityTests
             {
                 RemoteCertificateValidationCallback = static (_, _, _, _) => true,
                 EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
-                ApplicationProtocols = { SslApplicationProtocol.Http2 }
+                ApplicationProtocols = new List<SslApplicationProtocol> { SslApplicationProtocol.Http2 }
             }
         };
         using var h2Client = new HttpClient(h2Handler, disposeHandler: false)
@@ -129,7 +129,7 @@ public class GrpcHttp3DeadlineParityTests
         {
             RemoteCertificateValidationCallback = static (_, _, _, _) => true,
             EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
-            ApplicationProtocols = { SslApplicationProtocol.Http3, SslApplicationProtocol.Http2 }
+            ApplicationProtocols = [SslApplicationProtocol.Http3, SslApplicationProtocol.Http2]
         }
     };
 

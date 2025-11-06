@@ -857,11 +857,11 @@ public class GrpcHttp3NegotiationTests
             {
                 RemoteCertificateValidationCallback = static (_, _, _, _) => true,
                 EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
-                ApplicationProtocols = new List<SslApplicationProtocol>
-                {
+                ApplicationProtocols =
+                [
                     SslApplicationProtocol.Http3,
                     SslApplicationProtocol.Http2
-                }
+                ]
             }
         };
 

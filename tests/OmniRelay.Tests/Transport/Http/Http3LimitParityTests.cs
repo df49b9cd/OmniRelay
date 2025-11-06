@@ -93,11 +93,11 @@ public class Http3LimitParityTests
                 RemoteCertificateValidationCallback = static (_, _, _, _) => true,
                 EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
                 ApplicationProtocols =
-                {
+                [
                     SslApplicationProtocol.Http3,
                     SslApplicationProtocol.Http2,
                     SslApplicationProtocol.Http11
-                }
+                ]
             }
     };
 

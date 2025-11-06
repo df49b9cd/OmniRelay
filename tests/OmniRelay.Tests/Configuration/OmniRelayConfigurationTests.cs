@@ -360,7 +360,7 @@ public class OmniRelayConfigurationTests
 
     private sealed class RecordingHttpClientFactory : IHttpClientFactory
     {
-        public List<string> CreatedNames { get; } = new();
+        public List<string> CreatedNames { get; } = [];
 
         public HttpClient CreateClient(string name = "")
         {
