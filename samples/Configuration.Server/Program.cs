@@ -50,6 +50,8 @@ internal sealed class OmniRelayRegistrationHostedService(
 {
     public Task StartAsync(CancellationToken cancellationToken)
     {
+        // Touch DI-constructed WeatherService to avoid CS9113 (parameter is unread) and ensure instantiation in samples.
+        _ = weather;
         RegisterWeatherEndpoints();
         RegisterTelemetryEndpoint();
 

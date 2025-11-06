@@ -65,6 +65,8 @@ public sealed class HttpOutboundMiddlewareBuilder
 
     internal sealed class ServiceBuilder(string service)
     {
+        // Store and reference the primary constructor parameter to avoid CS9113 (Parameter is unread).
+        private readonly string _service = service;
         private readonly List<IHttpClientMiddleware> _serviceMiddleware = [];
         private readonly Dictionary<string, List<IHttpClientMiddleware>> _procedures = new(StringComparer.OrdinalIgnoreCase);
 
@@ -116,6 +118,8 @@ public sealed class HttpOutboundMiddlewareBuilder
 
             return new HttpOutboundMiddlewareRegistry.ServiceEntry(basePipeline, procedures.ToImmutable());
         }
+
+        public override string ToString() => $"HttpOutboundService({_service})";
     }
 
     private static ImmutableArray<IHttpClientMiddleware> Combine(

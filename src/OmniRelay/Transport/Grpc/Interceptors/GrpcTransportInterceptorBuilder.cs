@@ -125,6 +125,8 @@ public sealed class GrpcTransportInterceptorBuilder
 
     internal sealed class ClientServiceBuilder(string service)
     {
+        // Store and reference the primary constructor parameter to avoid CS9113 (Parameter is unread).
+        private readonly string _service = service;
         private readonly List<Interceptor> _serviceInterceptors = [];
         private readonly Dictionary<string, List<Interceptor>> _procedures = new(StringComparer.OrdinalIgnoreCase);
 
@@ -176,6 +178,8 @@ public sealed class GrpcTransportInterceptorBuilder
 
             return new GrpcClientInterceptorRegistry.ServiceEntry(basePipeline, procedures.ToImmutable());
         }
+
+        public override string ToString() => $"GrpcClientService({_service})";
     }
 }
 
