@@ -43,7 +43,7 @@ internal sealed class GrpcClientStreamTransportCall : IClientStreamTransportCall
 
     public async ValueTask WriteAsync(ReadOnlyMemory<byte> payload, CancellationToken cancellationToken = default)
     {
-        ObjectDisposedException.ThrowIf(_disposed,nameof(GrpcClientStreamTransportCall));
+        ObjectDisposedException.ThrowIf(_disposed, nameof(GrpcClientStreamTransportCall));
 
         cancellationToken.ThrowIfCancellationRequested();
 

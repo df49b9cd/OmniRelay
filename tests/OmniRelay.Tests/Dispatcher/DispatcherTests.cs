@@ -1,10 +1,10 @@
 using Hugo;
-using Xunit;
 using OmniRelay.Core;
 using OmniRelay.Core.Middleware;
 using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
 using OmniRelay.Errors;
+using Xunit;
 using static Hugo.Go;
 
 namespace OmniRelay.Tests.Dispatcher;

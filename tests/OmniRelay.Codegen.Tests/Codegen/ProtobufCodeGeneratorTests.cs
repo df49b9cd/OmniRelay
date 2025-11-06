@@ -5,8 +5,8 @@ using Google.Protobuf.Reflection;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
-using Xunit;
 using OmniRelay.Codegen.Protobuf.Generator;
+using Xunit;
 using FileOptions = Google.Protobuf.Reflection.FileOptions;
 
 namespace OmniRelay.Tests.Codegen;

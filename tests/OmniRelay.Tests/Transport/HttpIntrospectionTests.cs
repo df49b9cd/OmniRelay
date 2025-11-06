@@ -1,10 +1,9 @@
 using System.Net.Sockets;
 using System.Text.Json;
-using Xunit;
 using OmniRelay.Core;
 using OmniRelay.Dispatcher;
 using OmniRelay.Transport.Http;
-
+using Xunit;
 using static Hugo.Go;
 
 namespace OmniRelay.Tests.Transport;

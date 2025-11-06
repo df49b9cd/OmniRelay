@@ -11,7 +11,7 @@ public sealed class TwoRandomPeerChooser : IPeerChooser
     private readonly Random _random;
 
     public TwoRandomPeerChooser(params IPeer[] peers)
-        : this(peers is null ? throw new ArgumentNullException(nameof(peers)) : [..peers], null)
+        : this(peers is null ? throw new ArgumentNullException(nameof(peers)) : [.. peers], null)
     {
     }
 

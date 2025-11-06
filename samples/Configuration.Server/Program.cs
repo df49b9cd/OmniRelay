@@ -159,7 +159,7 @@ internal sealed class OmniRelayRegistrationHostedService(
         return Ok((IStreamCall)call);
     }
 
-    private async Task PumpWeatherStreamAsync(
+    private static async Task PumpWeatherStreamAsync(
         ICodec<WeatherStreamRequest, WeatherObservation> codec,
         ServerStreamCall call,
         WeatherStreamRequest streamRequest,
@@ -168,7 +168,7 @@ internal sealed class OmniRelayRegistrationHostedService(
     {
         try
         {
-            await foreach (var observation in WeatherService.StreamObservationsAsync(streamRequest, cancellationToken))
+            await foreach (var observation in WeatherService.StreamObservationsAsync(streamRequest, cancellationToken).ConfigureAwait(false))
             {
                 var encode = codec.EncodeResponse(observation, call.ResponseMeta);
                 if (encode.IsFailure)

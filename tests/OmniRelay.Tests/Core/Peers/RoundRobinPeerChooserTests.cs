@@ -1,7 +1,7 @@
-using Xunit;
 using OmniRelay.Core;
 using OmniRelay.Core.Peers;
 using OmniRelay.Errors;
+using Xunit;
 
 namespace OmniRelay.Tests.Core.Peers;
 

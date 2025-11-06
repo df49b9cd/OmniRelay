@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Xunit;
 using OmniRelay.Configuration.Internal;
+using Xunit;
 
 namespace OmniRelay.Tests.Configuration;
 

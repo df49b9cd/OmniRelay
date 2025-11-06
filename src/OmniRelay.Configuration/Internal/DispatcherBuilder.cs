@@ -1,7 +1,5 @@
-using System;
 using System.Collections.Immutable;
 using System.Globalization;
-using System.Net;
 using System.Net.Security;
 using System.Reflection;
 using System.Security.Cryptography.X509Certificates;

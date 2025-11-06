@@ -1,5 +1,5 @@
-using OmniRelay.Tests.Protos;
 using OmniRelay.Dispatcher;
+using OmniRelay.Tests.Protos;
 
 namespace ProtobufIncrementalSample;
 

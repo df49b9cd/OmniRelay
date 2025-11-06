@@ -1,7 +1,6 @@
 using DistributedDemo.Inventory.Protos;
 using Hugo;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.Extensions.Logging;
 using OmniRelay.Core;
 using OmniRelay.Core.Middleware;
 using OmniRelay.Core.Transport;

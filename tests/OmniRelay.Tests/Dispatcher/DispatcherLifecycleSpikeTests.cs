@@ -1,5 +1,5 @@
-using Xunit;
 using OmniRelay.Dispatcher;
+using Xunit;
 
 namespace OmniRelay.Tests.Dispatcher;
 

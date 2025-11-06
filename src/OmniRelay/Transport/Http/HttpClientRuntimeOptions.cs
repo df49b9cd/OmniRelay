@@ -1,6 +1,3 @@
-using System;
-using System.Net;
-
 namespace OmniRelay.Transport.Http;
 
 public sealed class HttpClientRuntimeOptions

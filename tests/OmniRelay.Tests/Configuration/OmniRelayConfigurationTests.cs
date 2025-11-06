@@ -9,7 +9,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Xunit;
 using OmniRelay.Configuration;
 using OmniRelay.Core;
 using OmniRelay.Core.Peers;
@@ -17,9 +16,9 @@ using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
 using OmniRelay.Errors;
 using OmniRelay.Transport.Http;
-using OmniRelayDispatcher = OmniRelay.Dispatcher.Dispatcher;
-
+using Xunit;
 using static Hugo.Go;
+using OmniRelayDispatcher = OmniRelay.Dispatcher.Dispatcher;
 
 namespace OmniRelay.Tests.Configuration;
 

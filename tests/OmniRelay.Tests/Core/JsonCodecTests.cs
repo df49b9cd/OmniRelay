@@ -2,9 +2,9 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Json.Schema;
-using Xunit;
 using OmniRelay.Core;
 using OmniRelay.Errors;
+using Xunit;
 
 namespace OmniRelay.Tests.Core;
 

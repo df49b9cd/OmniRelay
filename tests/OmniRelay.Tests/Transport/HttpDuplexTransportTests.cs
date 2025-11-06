@@ -1,12 +1,11 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Mime;
-using Xunit;
 using OmniRelay.Core;
 using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
 using OmniRelay.Transport.Http;
-
+using Xunit;
 using static Hugo.Go;
 
 namespace OmniRelay.Tests.Transport;

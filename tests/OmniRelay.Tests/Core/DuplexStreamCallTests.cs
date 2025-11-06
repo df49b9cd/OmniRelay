@@ -1,8 +1,8 @@
 using System.Threading.Channels;
-using Xunit;
 using OmniRelay.Core;
 using OmniRelay.Core.Transport;
 using OmniRelay.Errors;
+using Xunit;
 
 namespace OmniRelay.Tests.Core;
 

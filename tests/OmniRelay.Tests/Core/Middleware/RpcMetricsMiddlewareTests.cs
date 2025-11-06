@@ -1,10 +1,9 @@
 using System.Diagnostics.Metrics;
-using Xunit;
 using OmniRelay.Core;
 using OmniRelay.Core.Middleware;
 using OmniRelay.Core.Transport;
 using OmniRelay.Errors;
-
+using Xunit;
 using static Hugo.Go;
 
 namespace OmniRelay.Tests.Core.Middleware;

@@ -1,11 +1,6 @@
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Collections.Immutable;
-using System.Linq;
 using System.Net;
-using System.Net.Http;
-using System.Net.Security;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading.Channels;
 using Grpc.Core;
@@ -111,8 +106,8 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
             }
         }
         _compressionOptions = compressionOptions;
-    _telemetryOptions = telemetryOptions;
-    _endpointHttp3Support = endpointHttp3Support;
+        _telemetryOptions = telemetryOptions;
+        _endpointHttp3Support = endpointHttp3Support;
         _peerBreakerOptions = peerCircuitBreakerOptions ?? new PeerCircuitBreakerOptions();
         _channelOptions = channelOptions ?? new GrpcChannelOptions
         {

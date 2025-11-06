@@ -1,10 +1,9 @@
 using Hugo;
 using Microsoft.Extensions.Logging.Abstractions;
-using Xunit;
 using OmniRelay.Core;
 using OmniRelay.Core.Transport;
 using OmniRelay.Errors;
-
+using Xunit;
 using static Hugo.Go;
 
 namespace OmniRelay.Tests.Core.Transport;

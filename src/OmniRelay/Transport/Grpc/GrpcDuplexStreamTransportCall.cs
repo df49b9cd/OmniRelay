@@ -82,7 +82,7 @@ internal sealed class GrpcDuplexStreamTransportCall : IDuplexStreamCall
 
     public async ValueTask DisposeAsync()
     {
-        await _cts.CancelAsync();
+        await _cts.CancelAsync().ConfigureAwait(false);
 
         try
         {

@@ -1,5 +1,5 @@
-using Xunit;
 using OmniRelay.Core.Peers;
+using Xunit;
 
 namespace OmniRelay.Tests.Core.Peers;
 

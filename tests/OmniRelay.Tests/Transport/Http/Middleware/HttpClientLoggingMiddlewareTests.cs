@@ -1,8 +1,8 @@
 using System.Net;
-using Xunit;
 using OmniRelay.Core;
 using OmniRelay.Tests.Support;
 using OmniRelay.Transport.Http.Middleware;
+using Xunit;
 
 namespace OmniRelay.Tests.Transport.Http.Middleware;
 

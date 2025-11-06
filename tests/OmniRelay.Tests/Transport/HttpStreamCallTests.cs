@@ -1,8 +1,8 @@
-using Xunit;
 using OmniRelay.Core;
 using OmniRelay.Core.Transport;
 using OmniRelay.Errors;
 using OmniRelay.Transport.Http;
+using Xunit;
 
 namespace OmniRelay.Tests.Transport;
 

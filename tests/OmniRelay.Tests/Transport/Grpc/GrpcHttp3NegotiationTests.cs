@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO.Compression;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -9,8 +11,6 @@ using System.Net.Sockets;
 using System.Security.Authentication;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
-using System.Diagnostics;
-using System.IO.Compression;
 using Grpc.Core;
 using Grpc.Core.Interceptors;
 using Grpc.Net.Client;
@@ -22,7 +22,6 @@ using OmniRelay.Dispatcher;
 using OmniRelay.Transport.Grpc;
 using OmniRelay.Transport.Grpc.Interceptors;
 using Xunit;
-
 using static Hugo.Go;
 
 namespace OmniRelay.Tests.Transport.Grpc;
@@ -110,17 +109,17 @@ public class GrpcHttp3NegotiationTests
             await dispatcher.StopAsync(ct);
         }
 
-    Assert.True(observedProtocols.TryDequeue(out var protocol), "No HTTP protocol was observed by the interceptor.");
-    Assert.StartsWith("HTTP/3", protocol, StringComparison.Ordinal);
+        Assert.True(observedProtocols.TryDequeue(out var protocol), "No HTTP protocol was observed by the interceptor.");
+        Assert.StartsWith("HTTP/3", protocol, StringComparison.Ordinal);
 
-    Assert.True(requestMetaProtocols.TryDequeue(out var metaProtocol), "No HTTP protocol was captured in request metadata.");
-    Assert.StartsWith("HTTP/3", metaProtocol, StringComparison.Ordinal);
+        Assert.True(requestMetaProtocols.TryDequeue(out var metaProtocol), "No HTTP protocol was captured in request metadata.");
+        Assert.StartsWith("HTTP/3", metaProtocol, StringComparison.Ordinal);
 
-    var recordedActivity = activities.LastOrDefault(activity => string.Equals(activity.OperationName, "grpc.server.unary", StringComparison.Ordinal));
-    Assert.NotNull(recordedActivity);
-    Assert.Equal("http", recordedActivity!.GetTagItem("network.protocol.name"));
-    Assert.StartsWith("3", recordedActivity.GetTagItem("network.protocol.version")?.ToString(), StringComparison.Ordinal);
-    Assert.StartsWith("HTTP/3", recordedActivity.GetTagItem("rpc.protocol")?.ToString(), StringComparison.Ordinal);
+        var recordedActivity = activities.LastOrDefault(activity => string.Equals(activity.OperationName, "grpc.server.unary", StringComparison.Ordinal));
+        Assert.NotNull(recordedActivity);
+        Assert.Equal("http", recordedActivity!.GetTagItem("network.protocol.name"));
+        Assert.StartsWith("3", recordedActivity.GetTagItem("network.protocol.version")?.ToString(), StringComparison.Ordinal);
+        Assert.StartsWith("HTTP/3", recordedActivity.GetTagItem("rpc.protocol")?.ToString(), StringComparison.Ordinal);
     }
 
     [Fact(Timeout = 45_000)]
@@ -136,9 +135,9 @@ public class GrpcHttp3NegotiationTests
         var port = TestPortAllocator.GetRandomPort();
         var address = new Uri($"https://127.0.0.1:{port}");
 
-    var runtimeProtocols = new ConcurrentQueue<string>();
-    var transportProtocols = new ConcurrentQueue<string>();
-    var requestMetaProtocols = new ConcurrentQueue<string>();
+        var runtimeProtocols = new ConcurrentQueue<string>();
+        var transportProtocols = new ConcurrentQueue<string>();
+        var requestMetaProtocols = new ConcurrentQueue<string>();
 
         var runtimeOptions = new GrpcServerRuntimeOptions
         {
@@ -208,8 +207,8 @@ public class GrpcHttp3NegotiationTests
         Assert.True(transportProtocols.TryDequeue(out var transportProtocol), "No HTTP protocol was observed by the transport interceptor.");
         Assert.StartsWith("HTTP/3", transportProtocol, StringComparison.Ordinal);
 
-    Assert.True(requestMetaProtocols.TryDequeue(out var metaProtocol), "No HTTP protocol was captured in request metadata.");
-    Assert.StartsWith("HTTP/3", metaProtocol, StringComparison.Ordinal);
+        Assert.True(requestMetaProtocols.TryDequeue(out var metaProtocol), "No HTTP protocol was captured in request metadata.");
+        Assert.StartsWith("HTTP/3", metaProtocol, StringComparison.Ordinal);
     }
 
     [Fact(Timeout = 45_000)]
@@ -225,9 +224,9 @@ public class GrpcHttp3NegotiationTests
         var port = TestPortAllocator.GetRandomPort();
         var address = new Uri($"https://127.0.0.1:{port}");
 
-    var observedProtocols = new ConcurrentQueue<string>();
-    var transportProtocols = new ConcurrentQueue<string>();
-    var requestMetaProtocols = new ConcurrentQueue<string>();
+        var observedProtocols = new ConcurrentQueue<string>();
+        var transportProtocols = new ConcurrentQueue<string>();
+        var requestMetaProtocols = new ConcurrentQueue<string>();
         var runtime = new GrpcServerRuntimeOptions
         {
             EnableHttp3 = false,
@@ -296,8 +295,8 @@ public class GrpcHttp3NegotiationTests
         Assert.True(transportProtocols.TryDequeue(out var transportProtocol), "No HTTP protocol was observed by the transport interceptor.");
         Assert.StartsWith("HTTP/2", transportProtocol, StringComparison.Ordinal);
 
-    Assert.True(requestMetaProtocols.TryDequeue(out var metaProtocol), "No HTTP protocol was captured in request metadata.");
-    Assert.StartsWith("HTTP/2", metaProtocol, StringComparison.Ordinal);
+        Assert.True(requestMetaProtocols.TryDequeue(out var metaProtocol), "No HTTP protocol was captured in request metadata.");
+        Assert.StartsWith("HTTP/2", metaProtocol, StringComparison.Ordinal);
     }
 
     [Fact(Timeout = 45_000)]

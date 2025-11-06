@@ -1,6 +1,6 @@
-using Xunit;
 using OmniRelay.Core;
 using OmniRelay.Errors;
+using Xunit;
 
 namespace OmniRelay.Tests.Core;
 

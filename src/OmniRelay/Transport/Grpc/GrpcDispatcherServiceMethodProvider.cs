@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Threading;
 using Grpc.AspNetCore.Server.Model;
 using Grpc.Core;
 using Hugo;

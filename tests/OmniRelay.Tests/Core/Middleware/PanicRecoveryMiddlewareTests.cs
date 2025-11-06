@@ -1,10 +1,10 @@
 using Microsoft.Extensions.Logging;
-using Xunit;
 using OmniRelay.Core;
 using OmniRelay.Core.Middleware;
 using OmniRelay.Core.Transport;
 using OmniRelay.Errors;
 using OmniRelay.Tests.Support;
+using Xunit;
 
 namespace OmniRelay.Tests.Core.Middleware;
 

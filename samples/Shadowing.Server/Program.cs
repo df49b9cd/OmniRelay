@@ -1,14 +1,12 @@
 using System.Diagnostics;
 using Hugo;
 using OmniRelay.Core;
-using OmniRelay.Core.Clients;
 using OmniRelay.Core.Middleware;
 using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
 using OmniRelay.Errors;
 using OmniRelay.Transport.Grpc;
 using OmniRelay.Transport.Http;
-using static Hugo.Go;
 
 namespace OmniRelay.Samples.Shadowing;
 

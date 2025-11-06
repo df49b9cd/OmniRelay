@@ -1,6 +1,6 @@
 using Hugo;
-using Xunit;
 using OmniRelay.Errors;
+using Xunit;
 
 namespace OmniRelay.Tests.Errors;
 

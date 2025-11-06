@@ -3,15 +3,14 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Quic;
 using System.Net.Security;
-using System.Text.Json;
 using System.Security.Authentication;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
-using Xunit;
+using System.Text.Json;
 using OmniRelay.Core;
 using OmniRelay.Dispatcher;
 using OmniRelay.Transport.Http;
-
+using Xunit;
 using static Hugo.Go;
 
 namespace OmniRelay.Tests.Transport;

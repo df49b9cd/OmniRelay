@@ -1,9 +1,8 @@
 using Hugo;
-using Xunit;
 using OmniRelay.Core;
 using OmniRelay.Core.Middleware;
 using OmniRelay.Core.Transport;
-
+using Xunit;
 using static Hugo.Go;
 
 namespace OmniRelay.Tests.Core;

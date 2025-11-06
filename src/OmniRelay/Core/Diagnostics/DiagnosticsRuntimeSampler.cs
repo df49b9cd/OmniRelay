@@ -1,6 +1,4 @@
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Threading;
 using OpenTelemetry.Trace;
 
 namespace OmniRelay.Core.Diagnostics;

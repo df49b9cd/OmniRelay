@@ -7,9 +7,7 @@ using Microsoft.Extensions.Logging;
 using OmniRelay.Configuration;
 using OmniRelay.Core;
 using OmniRelay.Core.Clients;
-using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
-using OmniRelay.Errors;
 using static Hugo.Go;
 using OmniDispatcher = OmniRelay.Dispatcher.Dispatcher;
 

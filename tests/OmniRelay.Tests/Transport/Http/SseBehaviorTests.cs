@@ -3,9 +3,9 @@ using System.Net;
 using System.Net.Http;
 using System.Threading.Tasks;
 using OmniRelay.Core;
+using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
 using OmniRelay.Transport.Http;
-using OmniRelay.Core.Transport;
 using Xunit;
 
 namespace OmniRelay.Tests.Transport.Http;

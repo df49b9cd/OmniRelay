@@ -1,7 +1,7 @@
 using Grpc.Core;
-using Xunit;
 using OmniRelay.Errors;
 using OmniRelay.Transport.Grpc;
+using Xunit;
 
 namespace OmniRelay.Tests.Transport;
 

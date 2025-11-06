@@ -1,10 +1,10 @@
 using System.Net.Sockets;
-using OmniRelay.Tests.Protos;
-using Xunit;
 using OmniRelay.Core;
 using OmniRelay.Dispatcher;
+using OmniRelay.Tests.Protos;
 using OmniRelay.Transport.Grpc;
 using OmniRelay.Transport.Http;
+using Xunit;
 
 namespace OmniRelay.Tests.Codegen;
 

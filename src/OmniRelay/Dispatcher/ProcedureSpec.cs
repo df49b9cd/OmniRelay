@@ -24,7 +24,7 @@ public abstract record ProcedureSpec
         Encoding = encoding;
         Aliases = aliases is null
             ? []
-            : [..aliases];
+            : [.. aliases];
 
         if (Aliases.Any(static alias => string.IsNullOrWhiteSpace(alias)))
         {

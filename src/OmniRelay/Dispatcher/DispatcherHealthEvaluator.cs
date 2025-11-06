@@ -27,7 +27,7 @@ public static class DispatcherHealthEvaluator
             EvaluateBindings(outbound.Service, "duplex", outbound.Duplex, issues);
         }
 
-        return new DispatcherReadinessResult(issues.Count == 0, [..issues]);
+        return new DispatcherReadinessResult(issues.Count == 0, [.. issues]);
     }
 
     private static void EvaluateBindings(

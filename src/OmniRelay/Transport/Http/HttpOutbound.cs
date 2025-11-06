@@ -1,7 +1,5 @@
-using System;
 using System.Collections.Concurrent;
 using System.Globalization;
-using System.Linq;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Mime;
@@ -34,10 +32,10 @@ public sealed class HttpOutbound : IUnaryOutbound, IOnewayOutbound, IOutboundDia
         _disposeClient = disposeClient;
         _runtimeOptions = runtimeOptions;
 
-    if (_runtimeOptions?.EnableHttp3 == true && !_requestUri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
-    {
-        throw new InvalidOperationException("HTTP/3 requests require HTTPS endpoints. Update the request URI or disable HTTP/3 for this outbound.");
-    }
+        if (_runtimeOptions?.EnableHttp3 == true && !_requestUri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("HTTP/3 requests require HTTPS endpoints. Update the request URI or disable HTTP/3 for this outbound.");
+        }
     }
 
     public ValueTask StartAsync(CancellationToken cancellationToken = default) =>

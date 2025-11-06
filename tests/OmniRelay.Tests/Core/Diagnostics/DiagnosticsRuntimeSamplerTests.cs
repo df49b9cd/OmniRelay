@@ -1,8 +1,8 @@
 using System.Diagnostics;
-using OpenTelemetry.Trace;
-using OmniRelay.Core.Diagnostics;
-using Xunit;
 using Microsoft.Extensions.Logging;
+using OmniRelay.Core.Diagnostics;
+using OpenTelemetry.Trace;
+using Xunit;
 
 namespace OmniRelay.Tests.Core.Diagnostics;
 

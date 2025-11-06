@@ -1,10 +1,10 @@
 using System.Net;
 using System.Text;
-using Xunit;
 using OmniRelay.Core;
 using OmniRelay.Core.Transport;
 using OmniRelay.Transport.Http;
 using OmniRelay.Transport.Http.Middleware;
+using Xunit;
 
 namespace OmniRelay.Tests.Transport;
 

@@ -12,8 +12,8 @@ public class ConfigScaffoldTests
         Directory.CreateDirectory(tempDir);
         var output = Path.Combine(tempDir, "appsettings.json");
 
-    var exit = await global::OmniRelay.Cli.Program.Main(new[]
-        {
+        var exit = await global::OmniRelay.Cli.Program.Main(new[]
+            {
             "config", "scaffold",
             "--output", output,
             "--section", "polymer",
@@ -27,7 +27,7 @@ public class ConfigScaffoldTests
         Assert.Equal(0, exit);
         Assert.True(File.Exists(output), $"Expected scaffold file at '{output}'.");
 
-    var json = await File.ReadAllTextAsync(output, TestContext.Current.CancellationToken);
+        var json = await File.ReadAllTextAsync(output, TestContext.Current.CancellationToken);
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
         Assert.True(root.TryGetProperty("polymer", out var polymer));

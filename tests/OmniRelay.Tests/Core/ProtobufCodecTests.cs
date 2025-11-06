@@ -1,8 +1,8 @@
 using System.Text;
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
-using Xunit;
 using OmniRelay.Core;
+using Xunit;
 
 namespace OmniRelay.Tests.Core;
 

@@ -4,13 +4,13 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using OpenTelemetry.Exporter;
-using OpenTelemetry.Metrics;
-using OpenTelemetry.Trace;
-using OpenTelemetry.Resources;
 using OmniRelay.Configuration.Internal;
 using OmniRelay.Configuration.Models;
 using OmniRelay.Core.Diagnostics;
+using OpenTelemetry.Exporter;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 
 namespace OmniRelay.Configuration;
 
@@ -30,8 +30,8 @@ public static class OmniRelayServiceCollectionExtensions
 
         services.Configure<OmniRelayConfigurationOptions>(configuration);
 
-    // Ensure HttpClientFactory is available so named HTTP outbounds can be used if configured.
-    services.AddHttpClient();
+        // Ensure HttpClientFactory is available so named HTTP outbounds can be used if configured.
+        services.AddHttpClient();
 
         ConfigureDiagnostics(services, snapshot);
 

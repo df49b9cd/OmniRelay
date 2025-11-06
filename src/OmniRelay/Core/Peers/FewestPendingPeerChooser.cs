@@ -19,7 +19,7 @@ public sealed class FewestPendingPeerChooser : IPeerChooser
             throw new ArgumentException("At least one peer must be provided.", nameof(peers));
         }
 
-        _peers = [..peers];
+        _peers = [.. peers];
     }
 
     public FewestPendingPeerChooser(ImmutableArray<IPeer> peers)

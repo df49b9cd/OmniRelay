@@ -93,7 +93,7 @@ internal sealed class GrpcClientStreamCall : IStreamCall
 
     public async ValueTask DisposeAsync()
     {
-        await _cts.CancelAsync();
+        await _cts.CancelAsync().ConfigureAwait(false);
         _call.Dispose();
         _responses.Writer.TryComplete();
         _requests.Writer.TryComplete();

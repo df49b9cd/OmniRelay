@@ -1,7 +1,7 @@
 using Grpc.Core;
 using Grpc.Core.Interceptors;
-using Xunit;
 using OmniRelay.Transport.Grpc.Interceptors;
+using Xunit;
 
 namespace OmniRelay.Tests.Transport;
 

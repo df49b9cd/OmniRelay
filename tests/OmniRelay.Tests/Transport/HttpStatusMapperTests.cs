@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Http;
-using Xunit;
 using OmniRelay.Errors;
 using OmniRelay.Transport.Http;
+using Xunit;
 
 namespace OmniRelay.Tests.Transport;
 

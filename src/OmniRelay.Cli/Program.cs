@@ -1443,9 +1443,7 @@ public static class Program
             return 1;
         }
 
-        var perRequestTimeout = invocation.Timeout.HasValue
-            ? invocation.Timeout.Value
-            : TimeSpan.FromSeconds(30);
+        var perRequestTimeout = invocation.Timeout ?? TimeSpan.FromSeconds(30);
 
         var options = new BenchmarkRunner.BenchmarkExecutionOptions(
             concurrency,

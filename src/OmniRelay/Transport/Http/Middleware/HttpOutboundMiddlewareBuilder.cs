@@ -56,7 +56,6 @@ public sealed class HttpOutboundMiddlewareBuilder
 
     internal sealed class ServiceBuilder(string service)
     {
-        private readonly string _service = service;
         private readonly List<IHttpClientMiddleware> _serviceMiddleware = [];
         private readonly Dictionary<string, List<IHttpClientMiddleware>> _procedures = new(StringComparer.OrdinalIgnoreCase);
 
@@ -127,7 +126,7 @@ public sealed class HttpOutboundMiddlewareBuilder
         var combined = new IHttpClientMiddleware[left.Length + right.Length];
         left.CopyTo(combined);
         right.CopyTo(combined.AsSpan(left.Length));
-        return [..combined];
+        return [.. combined];
     }
 
 }

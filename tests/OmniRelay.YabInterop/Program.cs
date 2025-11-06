@@ -2,14 +2,13 @@ using System.Text.Json;
 using Google.Protobuf;
 using Google.Protobuf.Reflection;
 using Hugo;
-using OmniRelay.YabInterop.Protos;
 using OmniRelay.Core;
 using OmniRelay.Dispatcher;
 using OmniRelay.Errors;
 using OmniRelay.Transport.Grpc;
 using OmniRelay.Transport.Http;
 using OmniRelay.YabInterop;
-
+using OmniRelay.YabInterop.Protos;
 using static Hugo.Go;
 
 var httpPort = 8080;

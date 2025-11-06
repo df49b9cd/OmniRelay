@@ -120,12 +120,11 @@ public sealed class GrpcTransportInterceptorBuilder
         var combined = new Interceptor[left.Length + right.Length];
         left.CopyTo(combined);
         right.CopyTo(combined.AsSpan(left.Length));
-        return [..combined];
+        return [.. combined];
     }
 
     internal sealed class ClientServiceBuilder(string service)
     {
-        private readonly string _service = service;
         private readonly List<Interceptor> _serviceInterceptors = [];
         private readonly Dictionary<string, List<Interceptor>> _procedures = new(StringComparer.OrdinalIgnoreCase);
 

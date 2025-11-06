@@ -20,14 +20,13 @@ using Grpc.Net.Compression;
 using Hugo;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Xunit;
 using OmniRelay.Core;
 using OmniRelay.Core.Peers;
 using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
 using OmniRelay.Errors;
 using OmniRelay.Transport.Grpc;
-
+using Xunit;
 using static Hugo.Go;
 
 namespace OmniRelay.Tests.Transport;

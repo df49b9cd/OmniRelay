@@ -1,12 +1,11 @@
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
-using Xunit;
 using OmniRelay.Core;
 using OmniRelay.Core.Middleware;
 using OmniRelay.Core.Transport;
 using OmniRelay.Errors;
 using OmniRelay.Tests.Support;
-
+using Xunit;
 using static Hugo.Go;
 
 namespace OmniRelay.Tests.Core.Middleware;
