@@ -23,7 +23,7 @@ public class QuicKestrelEventBridgeTests
             _minLevel = minLevel;
         }
 
-        public IDisposable BeginScope<TState>(TState state)
+        public IDisposable BeginScope<TState>(TState state) where TState : notnull
         {
             var prior = _currentScope.Value;
             _currentScope.Value = state;
@@ -95,7 +95,7 @@ public class QuicKestrelEventBridgeTests
 
         src.HandshakeError("handshake failure: cert error");
 
-        await AssertEventuallyAsync(() => logger.Entries.Count > 0);
+    await AssertEventuallyAsync(() => !logger.Entries.IsEmpty);
         Assert.True(logger.Entries.TryDequeue(out var entry));
         Assert.Equal(LogLevel.Warning, entry.level);
         Assert.Contains("handshake_failure", entry.message);
@@ -110,7 +110,7 @@ public class QuicKestrelEventBridgeTests
 
         src.PathValidated("path_validated: new path");
 
-        await AssertEventuallyAsync(() => logger.Entries.Count > 0);
+    await AssertEventuallyAsync(() => !logger.Entries.IsEmpty);
         Assert.True(logger.Entries.TryDequeue(out var entry));
         Assert.Equal(LogLevel.Information, entry.level);
         Assert.Contains("migration", entry.message);
@@ -124,7 +124,7 @@ public class QuicKestrelEventBridgeTests
 
         src.Http3Connection("started");
 
-        await AssertEventuallyAsync(() => logger.Entries.Count > 0);
+    await AssertEventuallyAsync(() => !logger.Entries.IsEmpty);
         Assert.True(logger.Entries.TryDequeue(out var entry));
         Assert.Equal(LogLevel.Debug, entry.level);
         Assert.Contains("http3", entry.message);
