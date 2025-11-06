@@ -2,7 +2,6 @@
 
 This harness uses OmniRelay CLI and Linux `tc netem` to simulate QUIC conditions (packet loss, latency, burst) and run HTTP/3 and gRPC-over-HTTP/3 soaks.
 
-
 ## Prerequisites
 
 - Linux host with sudo permissions
@@ -25,6 +24,7 @@ bash samples/DistributedDemo/cli-scripts/quic-soak.sh
 ```
 
 The script runs two phases:
+
 1. HTTP/3 unary RPCs
 2. gRPC unary RPCs over HTTP/3 (`--grpc-http3`)
 
