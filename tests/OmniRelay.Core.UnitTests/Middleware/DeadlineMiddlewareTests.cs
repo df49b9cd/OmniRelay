@@ -109,11 +109,11 @@ public class DeadlineMiddlewareTests
     public async Task ExceptionPath_AddsExceptionMetadata()
     {
         var mw = new DeadlineMiddleware();
-        var meta = new RequestMeta(service: "svc", procedure: "proc", timeToLive: TimeSpan.FromMilliseconds(30));
+        var meta = new RequestMeta(service: "svc", procedure: "proc", timeToLive: TimeSpan.FromMilliseconds(250));
 
         UnaryInboundDelegate next = async (req, ct) =>
         {
-            await Task.Delay(TimeSpan.FromMilliseconds(100), ct);
+            await Task.Delay(TimeSpan.FromSeconds(5), ct);
             return Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty));
         };
 
