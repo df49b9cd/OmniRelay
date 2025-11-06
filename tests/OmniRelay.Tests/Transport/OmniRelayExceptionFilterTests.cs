@@ -33,7 +33,7 @@ public sealed class OmniRelayExceptionFilterTests
         Assert.Equal(OmniRelayStatusCode.DeadlineExceeded.ToString(), payload["status"]);
         Assert.Equal(OmniRelayErrorAdapter.GetStatusName(OmniRelayStatusCode.DeadlineExceeded), payload["code"]);
         var metadata = Assert.IsAssignableFrom<IReadOnlyDictionary<string, object?>>(payload["metadata"]);
-        Assert.Equal("http", metadata["yarpcore.transport"]);
+        Assert.Equal("http", metadata["omnirelay.transport"]);
         Assert.True(metadata.TryGetValue(OmniRelayErrorAdapter.RetryableMetadataKey, out var retryable));
         Assert.Equal(true, retryable);
 

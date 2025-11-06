@@ -65,12 +65,12 @@ public class OmniRelayErrorsTests
     {
         var exception = OmniRelayErrors.FromException(new TimeoutException("deadline"), transport: "http");
         Assert.Equal("http", exception.Transport);
-        Assert.True(exception.Error.TryGetMetadata("yarpcore.transport", out string? transport));
+        Assert.True(exception.Error.TryGetMetadata("omnirelay.transport", out string? transport));
         Assert.Equal("http", transport);
 
         var rewritten = OmniRelayErrors.FromException(exception, transport: "grpc");
         Assert.Equal("grpc", rewritten.Transport);
-        Assert.True(rewritten.Error.TryGetMetadata("yarpcore.transport", out string? newTransport));
+        Assert.True(rewritten.Error.TryGetMetadata("omnirelay.transport", out string? newTransport));
         Assert.Equal("grpc", newTransport);
     }
 

@@ -4,7 +4,7 @@ using Xunit;
 
 namespace OmniRelay.Tests.Errors;
 
-public class YarpcErrorAdapterTests
+public class OmniRelayErrorAdapterTests
 {
     [Fact]
     public void FromStatus_AttachesMetadata()
@@ -15,9 +15,9 @@ public class YarpcErrorAdapterTests
             transport: "grpc");
 
         Assert.Equal("permission-denied", error.Code);
-        Assert.True(error.TryGetMetadata("yarpcore.status", out string? status));
+        Assert.True(error.TryGetMetadata("omnirelay.status", out string? status));
         Assert.Equal(nameof(OmniRelayStatusCode.PermissionDenied), status);
-        Assert.True(error.TryGetMetadata("yarpcore.transport", out string? transport));
+        Assert.True(error.TryGetMetadata("omnirelay.transport", out string? transport));
         Assert.Equal("grpc", transport);
     }
 
@@ -43,7 +43,7 @@ public class YarpcErrorAdapterTests
     public void ToStatus_UsesMetadataPriority()
     {
         var error = Error.From("denied")
-            .WithMetadata("yarpcore.status", nameof(OmniRelayStatusCode.Unavailable));
+            .WithMetadata("omnirelay.status", nameof(OmniRelayStatusCode.Unavailable));
 
         var status = OmniRelayErrorAdapter.ToStatus(error);
 

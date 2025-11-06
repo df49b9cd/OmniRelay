@@ -22,6 +22,7 @@ public class OutboundErrorMappingTests
     [Fact(Timeout = 30000)]
     public async Task JsonErrorBody_IsMappedToOmniRelayError()
     {
+        var ct = TestContext.Current.CancellationToken;
         var json = "{\"message\":\"bad request\",\"status\":\"InvalidArgument\",\"code\":\"E_BAD\"}";
         var response = new HttpResponseMessage(HttpStatusCode.BadRequest)
         {
@@ -30,10 +31,10 @@ public class OutboundErrorMappingTests
         response.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
         using var client = new HttpClient(new StubHandler(response));
         var outbound = new HttpOutbound(client, new Uri("http://example/yarpc"));
-        await outbound.StartAsync();
+        await outbound.StartAsync(ct);
 
         var meta = new RequestMeta(service: "svc", procedure: "proc::unary", transport: "http");
-        var call = await ((IUnaryOutbound)outbound).CallAsync(new Request<ReadOnlyMemory<byte>>(meta, ReadOnlyMemory<byte>.Empty), CancellationToken.None);
+    var call = await ((IUnaryOutbound)outbound).CallAsync(new Request<ReadOnlyMemory<byte>>(meta, ReadOnlyMemory<byte>.Empty), ct);
         Assert.True(call.IsFailure);
         var err = call.Error!;
         Assert.Equal(OmniRelayStatusCode.InvalidArgument, OmniRelayErrorAdapter.ToStatus(err));
@@ -44,16 +45,17 @@ public class OutboundErrorMappingTests
     [Fact(Timeout = 30000)]
     public async Task NonJsonError_FallsBackToStatusMapping()
     {
+        var ct = TestContext.Current.CancellationToken;
         var response = new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
         {
             Content = new StringContent("Unavailable")
         };
         using var client = new HttpClient(new StubHandler(response));
         var outbound = new HttpOutbound(client, new Uri("http://example/yarpc"));
-        await outbound.StartAsync();
+        await outbound.StartAsync(ct);
 
         var meta = new RequestMeta(service: "svc", procedure: "proc::unary", transport: "http");
-        var call = await ((IUnaryOutbound)outbound).CallAsync(new Request<ReadOnlyMemory<byte>>(meta, ReadOnlyMemory<byte>.Empty), CancellationToken.None);
+        var call = await ((IUnaryOutbound)outbound).CallAsync(new Request<ReadOnlyMemory<byte>>(meta, ReadOnlyMemory<byte>.Empty), ct);
         Assert.True(call.IsFailure);
         Assert.Equal(OmniRelayStatusCode.Unavailable, OmniRelayErrorAdapter.ToStatus(call.Error!));
     }
