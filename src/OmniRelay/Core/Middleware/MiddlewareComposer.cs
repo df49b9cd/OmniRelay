@@ -2,8 +2,12 @@ using OmniRelay.Core.Transport;
 
 namespace OmniRelay.Core.Middleware;
 
+/// <summary>
+/// Utility to compose middleware lists into executable delegate pipelines for each RPC shape.
+/// </summary>
 public static class MiddlewareComposer
 {
+    /// <summary>Composes a unary outbound middleware pipeline.</summary>
     public static UnaryOutboundDelegate ComposeUnaryOutbound(
         IReadOnlyList<IUnaryOutboundMiddleware>? middleware,
         UnaryOutboundDelegate terminal)
@@ -27,6 +31,7 @@ public static class MiddlewareComposer
         return next;
     }
 
+    /// <summary>Composes a unary inbound middleware pipeline.</summary>
     public static UnaryInboundDelegate ComposeUnaryInbound(
         IReadOnlyList<IUnaryInboundMiddleware>? middleware,
         UnaryInboundDelegate terminal)
@@ -50,6 +55,7 @@ public static class MiddlewareComposer
         return next;
     }
 
+    /// <summary>Composes an oneway outbound middleware pipeline.</summary>
     public static OnewayOutboundDelegate ComposeOnewayOutbound(
         IReadOnlyList<IOnewayOutboundMiddleware>? middleware,
         OnewayOutboundDelegate terminal)
@@ -73,6 +79,7 @@ public static class MiddlewareComposer
         return next;
     }
 
+    /// <summary>Composes an oneway inbound middleware pipeline.</summary>
     public static OnewayInboundDelegate ComposeOnewayInbound(
         IReadOnlyList<IOnewayInboundMiddleware>? middleware,
         OnewayInboundDelegate terminal)
@@ -96,6 +103,7 @@ public static class MiddlewareComposer
         return next;
     }
 
+    /// <summary>Composes a server-streaming outbound middleware pipeline.</summary>
     public static StreamOutboundDelegate ComposeStreamOutbound(
         IReadOnlyList<IStreamOutboundMiddleware>? middleware,
         StreamOutboundDelegate terminal)
@@ -119,6 +127,7 @@ public static class MiddlewareComposer
         return next;
     }
 
+    /// <summary>Composes a server-streaming inbound middleware pipeline.</summary>
     public static StreamInboundDelegate ComposeStreamInbound(
         IReadOnlyList<IStreamInboundMiddleware>? middleware,
         StreamInboundDelegate terminal)
@@ -142,6 +151,7 @@ public static class MiddlewareComposer
         return next;
     }
 
+    /// <summary>Composes a client-stream inbound middleware pipeline.</summary>
     public static ClientStreamInboundDelegate ComposeClientStreamInbound(
         IReadOnlyList<IClientStreamInboundMiddleware>? middleware,
         ClientStreamInboundDelegate terminal)
@@ -165,6 +175,7 @@ public static class MiddlewareComposer
         return next;
     }
 
+    /// <summary>Composes a client-stream outbound middleware pipeline.</summary>
     public static ClientStreamOutboundDelegate ComposeClientStreamOutbound(
         IReadOnlyList<IClientStreamOutboundMiddleware>? middleware,
         ClientStreamOutboundDelegate terminal)
@@ -188,6 +199,7 @@ public static class MiddlewareComposer
         return next;
     }
 
+    /// <summary>Composes a duplex inbound middleware pipeline.</summary>
     public static DuplexInboundDelegate ComposeDuplexInbound(
         IReadOnlyList<IDuplexInboundMiddleware>? middleware,
         DuplexInboundDelegate terminal)
@@ -211,6 +223,7 @@ public static class MiddlewareComposer
         return next;
     }
 
+    /// <summary>Composes a duplex outbound middleware pipeline.</summary>
     public static DuplexOutboundDelegate ComposeDuplexOutbound(
         IReadOnlyList<IDuplexOutboundMiddleware>? middleware,
         DuplexOutboundDelegate terminal)

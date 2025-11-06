@@ -5,6 +5,10 @@ using static Hugo.Go;
 
 namespace OmniRelay.Core.Middleware;
 
+/// <summary>
+/// Applies deadlines from request metadata (absolute or TTL) by linking a cancellation token.
+/// Works for unary, oneway, server/client/duplex streaming in both inbound and outbound directions.
+/// </summary>
 public sealed class DeadlineMiddleware(DeadlineOptions? options = null) :
     IUnaryOutboundMiddleware,
     IOnewayOutboundMiddleware,
@@ -19,6 +23,7 @@ public sealed class DeadlineMiddleware(DeadlineOptions? options = null) :
 {
     private readonly DeadlineOptions _options = options ?? new DeadlineOptions();
 
+    /// <inheritdoc />
     public ValueTask<Result<Response<ReadOnlyMemory<byte>>>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
@@ -28,6 +33,7 @@ public sealed class DeadlineMiddleware(DeadlineOptions? options = null) :
             cancellationToken,
             (_, linked) => next(request, linked));
 
+    /// <inheritdoc />
     public ValueTask<Result<Response<ReadOnlyMemory<byte>>>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
@@ -37,6 +43,7 @@ public sealed class DeadlineMiddleware(DeadlineOptions? options = null) :
             cancellationToken,
             (_, linked) => next(request, linked));
 
+    /// <inheritdoc />
     public ValueTask<Result<OnewayAck>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
@@ -46,6 +53,7 @@ public sealed class DeadlineMiddleware(DeadlineOptions? options = null) :
             cancellationToken,
             (_, linked) => next(request, linked));
 
+    /// <inheritdoc />
     public ValueTask<Result<OnewayAck>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
@@ -55,6 +63,7 @@ public sealed class DeadlineMiddleware(DeadlineOptions? options = null) :
             cancellationToken,
             (_, linked) => next(request, linked));
 
+    /// <inheritdoc />
     public ValueTask<Result<IStreamCall>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         StreamCallOptions options,
@@ -65,6 +74,7 @@ public sealed class DeadlineMiddleware(DeadlineOptions? options = null) :
             cancellationToken,
             (_, linked) => next(request, options, linked));
 
+    /// <inheritdoc />
     public ValueTask<Result<IStreamCall>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         StreamCallOptions options,
@@ -75,6 +85,7 @@ public sealed class DeadlineMiddleware(DeadlineOptions? options = null) :
             cancellationToken,
             (_, linked) => next(request, options, linked));
 
+    /// <inheritdoc />
     public ValueTask<Result<Response<ReadOnlyMemory<byte>>>> InvokeAsync(
         ClientStreamRequestContext context,
         CancellationToken cancellationToken,
@@ -84,6 +95,7 @@ public sealed class DeadlineMiddleware(DeadlineOptions? options = null) :
             cancellationToken,
             (_, linked) => next(context, linked));
 
+    /// <inheritdoc />
     public ValueTask<Result<IClientStreamTransportCall>> InvokeAsync(
         RequestMeta requestMeta,
         CancellationToken cancellationToken,
@@ -93,6 +105,7 @@ public sealed class DeadlineMiddleware(DeadlineOptions? options = null) :
             cancellationToken,
             (_, linked) => next(requestMeta, linked));
 
+    /// <inheritdoc />
     public ValueTask<Result<IDuplexStreamCall>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
@@ -102,6 +115,7 @@ public sealed class DeadlineMiddleware(DeadlineOptions? options = null) :
             cancellationToken,
             (_, linked) => next(request, linked));
 
+    /// <inheritdoc />
     public ValueTask<Result<IDuplexStreamCall>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,

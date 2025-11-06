@@ -3,6 +3,9 @@ using Hugo.Policies;
 
 namespace OmniRelay.Core.Middleware;
 
+/// <summary>
+/// Configuration for the retry middleware, including policy and predicates.
+/// </summary>
 public sealed class RetryOptions
 {
     public ResultExecutionPolicy Policy { get; init; } = ResultExecutionPolicy.None.WithRetry(

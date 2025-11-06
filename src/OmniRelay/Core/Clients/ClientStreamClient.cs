@@ -4,11 +4,17 @@ using OmniRelay.Errors;
 
 namespace OmniRelay.Core.Clients;
 
+/// <summary>
+/// Typed client-streaming RPC client that applies middleware and uses an <see cref="ICodec{TRequest,TResponse}"/>.
+/// </summary>
 public sealed class ClientStreamClient<TRequest, TResponse>
 {
     private readonly ClientStreamOutboundDelegate _pipeline;
     private readonly ICodec<TRequest, TResponse> _codec;
 
+    /// <summary>
+    /// Creates a client-streaming client bound to an outbound and codec.
+    /// </summary>
     public ClientStreamClient(
         IClientStreamOutbound outbound,
         ICodec<TRequest, TResponse> codec,
@@ -21,6 +27,9 @@ public sealed class ClientStreamClient<TRequest, TResponse>
         _pipeline = MiddlewareComposer.ComposeClientStreamOutbound(middleware, terminal);
     }
 
+    /// <summary>
+    /// Starts a client-streaming session and returns a session wrapper to write messages and await the response.
+    /// </summary>
     public async ValueTask<ClientStreamSession> StartAsync(RequestMeta meta, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(meta);
@@ -36,6 +45,9 @@ public sealed class ClientStreamClient<TRequest, TResponse>
         return new ClientStreamSession(normalizedMeta, _codec, result.Value);
     }
 
+    /// <summary>
+    /// Represents an active client-streaming session with write and completion operations.
+    /// </summary>
     public sealed class ClientStreamSession : IAsyncDisposable
     {
         private readonly RequestMeta _meta;
@@ -54,13 +66,17 @@ public sealed class ClientStreamClient<TRequest, TResponse>
             _response = new Lazy<Task<Response<TResponse>>>(AwaitResponseAsync);
         }
 
-        public RequestMeta RequestMeta => _meta;
+    /// <summary>Gets the request metadata.</summary>
+    public RequestMeta RequestMeta => _meta;
 
-        public ResponseMeta ResponseMeta => _transportCall.ResponseMeta;
+    /// <summary>Gets the response metadata.</summary>
+    public ResponseMeta ResponseMeta => _transportCall.ResponseMeta;
 
-        public Task<Response<TResponse>> Response => _response.Value;
+    /// <summary>Gets the task that completes with the unary response.</summary>
+    public Task<Response<TResponse>> Response => _response.Value;
 
-        public async ValueTask WriteAsync(TRequest message, CancellationToken cancellationToken = default)
+    /// <summary>Writes a typed request message to the stream.</summary>
+    public async ValueTask WriteAsync(TRequest message, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -73,9 +89,11 @@ public sealed class ClientStreamClient<TRequest, TResponse>
             await _transportCall.WriteAsync(encodeResult.Value, cancellationToken).ConfigureAwait(false);
         }
 
+        /// <summary>Signals completion of the request stream.</summary>
         public ValueTask CompleteAsync(CancellationToken cancellationToken = default) =>
             _transportCall.CompleteAsync(cancellationToken);
 
+        /// <inheritdoc />
         public ValueTask DisposeAsync() => _transportCall.DisposeAsync();
 
         private async Task<Response<TResponse>> AwaitResponseAsync()

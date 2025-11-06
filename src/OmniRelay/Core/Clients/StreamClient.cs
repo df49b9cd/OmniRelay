@@ -5,11 +5,17 @@ using OmniRelay.Errors;
 
 namespace OmniRelay.Core.Clients;
 
+/// <summary>
+/// Typed server-streaming RPC client that applies middleware and uses an <see cref="ICodec{TRequest,TResponse}"/>.
+/// </summary>
 public sealed class StreamClient<TRequest, TResponse>
 {
     private readonly StreamOutboundDelegate _pipeline;
     private readonly ICodec<TRequest, TResponse> _codec;
 
+    /// <summary>
+    /// Creates a server-streaming client bound to an outbound and codec.
+    /// </summary>
     public StreamClient(
         IStreamOutbound outbound,
         ICodec<TRequest, TResponse> codec,
@@ -22,6 +28,9 @@ public sealed class StreamClient<TRequest, TResponse>
         _pipeline = MiddlewareComposer.ComposeStreamOutbound(middleware, terminal);
     }
 
+    /// <summary>
+    /// Performs a server-streaming RPC and yields typed responses.
+    /// </summary>
     public async IAsyncEnumerable<Response<TResponse>> CallAsync(
         Request<TRequest> request,
         StreamCallOptions options,

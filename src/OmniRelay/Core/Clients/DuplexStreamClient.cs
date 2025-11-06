@@ -7,11 +7,17 @@ using OmniRelay.Errors;
 
 namespace OmniRelay.Core.Clients;
 
+/// <summary>
+/// Typed duplex-streaming RPC client that applies middleware and uses an <see cref="ICodec{TRequest,TResponse}"/>.
+/// </summary>
 public sealed class DuplexStreamClient<TRequest, TResponse>
 {
     private readonly DuplexOutboundDelegate _pipeline;
     private readonly ICodec<TRequest, TResponse> _codec;
 
+    /// <summary>
+    /// Creates a duplex-streaming client bound to an outbound and codec.
+    /// </summary>
     public DuplexStreamClient(
         IDuplexOutbound outbound,
         ICodec<TRequest, TResponse> codec,
@@ -23,6 +29,9 @@ public sealed class DuplexStreamClient<TRequest, TResponse>
         _pipeline = MiddlewareComposer.ComposeDuplexOutbound(middleware, outbound.CallAsync);
     }
 
+    /// <summary>
+    /// Starts a duplex-streaming session and returns a session wrapper for writing and reading.
+    /// </summary>
     public async ValueTask<DuplexStreamSession> StartAsync(RequestMeta meta, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(meta);
@@ -39,6 +48,9 @@ public sealed class DuplexStreamClient<TRequest, TResponse>
         return new DuplexStreamSession(normalized, _codec, result.Value);
     }
 
+    /// <summary>
+    /// Represents an active duplex-streaming session with request/response operations.
+    /// </summary>
     public sealed class DuplexStreamSession : IAsyncDisposable
     {
         private readonly RequestMeta _meta;
@@ -52,15 +64,20 @@ public sealed class DuplexStreamClient<TRequest, TResponse>
             _call = call;
         }
 
-        public RequestMeta RequestMeta => _meta;
+    /// <summary>Gets the request metadata.</summary>
+    public RequestMeta RequestMeta => _meta;
 
-        public ResponseMeta ResponseMeta => _call.ResponseMeta;
+    /// <summary>Gets the response metadata.</summary>
+    public ResponseMeta ResponseMeta => _call.ResponseMeta;
 
-        public ChannelWriter<ReadOnlyMemory<byte>> RequestWriter => _call.RequestWriter;
+    /// <summary>Gets the raw request writer channel.</summary>
+    public ChannelWriter<ReadOnlyMemory<byte>> RequestWriter => _call.RequestWriter;
 
-        public ChannelReader<ReadOnlyMemory<byte>> ResponseReader => _call.ResponseReader;
+    /// <summary>Gets the raw response reader channel.</summary>
+    public ChannelReader<ReadOnlyMemory<byte>> ResponseReader => _call.ResponseReader;
 
-        public async ValueTask WriteAsync(TRequest message, CancellationToken cancellationToken = default)
+    /// <summary>Writes a typed request message to the request stream.</summary>
+    public async ValueTask WriteAsync(TRequest message, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -73,12 +90,17 @@ public sealed class DuplexStreamClient<TRequest, TResponse>
             await _call.RequestWriter.WriteAsync(encodeResult.Value, cancellationToken).ConfigureAwait(false);
         }
 
+        /// <summary>Signals completion of request writes, optionally with an error.</summary>
         public ValueTask CompleteRequestsAsync(Error? error = null, CancellationToken cancellationToken = default) =>
             _call.CompleteRequestsAsync(error, cancellationToken);
 
+        /// <summary>Signals completion of response reads, optionally with an error.</summary>
         public ValueTask CompleteResponsesAsync(Error? error = null, CancellationToken cancellationToken = default) =>
             _call.CompleteResponsesAsync(error, cancellationToken);
 
+        /// <summary>
+        /// Reads and decodes response messages from the duplex session as an async stream of typed responses.
+        /// </summary>
         public async IAsyncEnumerable<Response<TResponse>> ReadResponsesAsync([EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             await foreach (var payload in _call.ResponseReader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
@@ -94,6 +116,7 @@ public sealed class DuplexStreamClient<TRequest, TResponse>
             }
         }
 
+        /// <inheritdoc />
         public ValueTask DisposeAsync() => _call.DisposeAsync();
     }
 

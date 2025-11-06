@@ -6,6 +6,9 @@ using static Hugo.Go;
 
 namespace OmniRelay.Core.Middleware;
 
+/// <summary>
+/// Catches unhandled exceptions in RPC pipelines and converts them to OmniRelay errors, with optional logging.
+/// </summary>
 public sealed class PanicRecoveryMiddleware(ILogger<PanicRecoveryMiddleware>? logger = null) :
     IUnaryInboundMiddleware,
     IUnaryOutboundMiddleware,
@@ -20,6 +23,7 @@ public sealed class PanicRecoveryMiddleware(ILogger<PanicRecoveryMiddleware>? lo
 {
     private readonly ILogger? _logger = logger;
 
+    /// <inheritdoc />
     public async ValueTask<Result<Response<ReadOnlyMemory<byte>>>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
@@ -35,6 +39,7 @@ public sealed class PanicRecoveryMiddleware(ILogger<PanicRecoveryMiddleware>? lo
         }
     }
 
+    /// <inheritdoc />
     public async ValueTask<Result<Response<ReadOnlyMemory<byte>>>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
@@ -50,6 +55,7 @@ public sealed class PanicRecoveryMiddleware(ILogger<PanicRecoveryMiddleware>? lo
         }
     }
 
+    /// <inheritdoc />
     public async ValueTask<Result<OnewayAck>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
@@ -65,6 +71,7 @@ public sealed class PanicRecoveryMiddleware(ILogger<PanicRecoveryMiddleware>? lo
         }
     }
 
+    /// <inheritdoc />
     public async ValueTask<Result<OnewayAck>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
@@ -80,6 +87,7 @@ public sealed class PanicRecoveryMiddleware(ILogger<PanicRecoveryMiddleware>? lo
         }
     }
 
+    /// <inheritdoc />
     public async ValueTask<Result<IStreamCall>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         StreamCallOptions options,
@@ -96,6 +104,7 @@ public sealed class PanicRecoveryMiddleware(ILogger<PanicRecoveryMiddleware>? lo
         }
     }
 
+    /// <inheritdoc />
     public async ValueTask<Result<IStreamCall>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         StreamCallOptions options,
@@ -112,6 +121,7 @@ public sealed class PanicRecoveryMiddleware(ILogger<PanicRecoveryMiddleware>? lo
         }
     }
 
+    /// <inheritdoc />
     public async ValueTask<Result<Response<ReadOnlyMemory<byte>>>> InvokeAsync(
         ClientStreamRequestContext context,
         CancellationToken cancellationToken,
@@ -127,6 +137,7 @@ public sealed class PanicRecoveryMiddleware(ILogger<PanicRecoveryMiddleware>? lo
         }
     }
 
+    /// <inheritdoc />
     public async ValueTask<Result<IClientStreamTransportCall>> InvokeAsync(
         RequestMeta requestMeta,
         CancellationToken cancellationToken,
@@ -142,6 +153,7 @@ public sealed class PanicRecoveryMiddleware(ILogger<PanicRecoveryMiddleware>? lo
         }
     }
 
+    /// <inheritdoc />
     public async ValueTask<Result<IDuplexStreamCall>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
@@ -157,6 +169,7 @@ public sealed class PanicRecoveryMiddleware(ILogger<PanicRecoveryMiddleware>? lo
         }
     }
 
+    /// <inheritdoc />
     public async ValueTask<Result<IDuplexStreamCall>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,

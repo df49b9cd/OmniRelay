@@ -6,10 +6,14 @@ using OmniRelay.Errors;
 
 namespace OmniRelay.Core.Middleware;
 
+/// <summary>
+/// Retries failed unary outbound requests based on a configurable policy and predicates.
+/// </summary>
 public sealed class RetryMiddleware(RetryOptions? options = null) : IUnaryOutboundMiddleware
 {
     private readonly RetryOptions _options = options ?? new RetryOptions();
 
+    /// <inheritdoc />
     public ValueTask<Result<Response<ReadOnlyMemory<byte>>>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,

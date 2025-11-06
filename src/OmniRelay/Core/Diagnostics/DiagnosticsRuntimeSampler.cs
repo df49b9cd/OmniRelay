@@ -12,12 +12,16 @@ public sealed class DiagnosticsRuntimeSampler : Sampler
     private readonly Sampler _fallbackSampler;
     private CachedSampler? _cachedRatioSampler;
 
+    /// <summary>
+    /// Creates a sampler that uses the diagnostics runtime probability, falling back when unset or out of range.
+    /// </summary>
     public DiagnosticsRuntimeSampler(IDiagnosticsRuntime? diagnosticsRuntime, Sampler? fallbackSampler = null)
     {
         _diagnosticsRuntime = diagnosticsRuntime;
         _fallbackSampler = fallbackSampler ?? new AlwaysOnSampler();
     }
 
+    /// <inheritdoc />
     public override SamplingResult ShouldSample(in SamplingParameters samplingParameters)
     {
         var runtimeProbability = _diagnosticsRuntime?.TraceSamplingProbability;
