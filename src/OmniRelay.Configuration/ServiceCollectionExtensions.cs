@@ -103,7 +103,7 @@ public static class OmniRelayServiceCollectionExtensions
         {
             openTelemetryBuilder.WithMetrics(builder =>
             {
-                builder.AddMeter("OmniRelay.Core.Peers", "OmniRelay.Transport.Grpc", "OmniRelay.Rpc", "Hugo.Go");
+                builder.AddMeter("OmniRelay.Core.Peers", "OmniRelay.Transport.Grpc", "OmniRelay.Transport.Http", "OmniRelay.Rpc", "Hugo.Go");
 
                 if (prometheusEnabled)
                 {
@@ -135,6 +135,9 @@ public static class OmniRelayServiceCollectionExtensions
 
             services.AddHostedService<DiagnosticsRegistrationHostedService>();
         }
+
+        // Bridge QUIC/Kestrel events to the logging pipeline for structured observability
+        services.AddHostedService<QuicDiagnosticsHostedService>();
 
         // Enable tracing pipeline if explicitly enabled in configuration (primarily for OTLP export).
         var tracingEnabled = otelEnabled && (otlpEnabled || (diagnostics.Runtime.EnableTraceSamplingToggle ?? false));

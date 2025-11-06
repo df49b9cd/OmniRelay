@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Globalization;
+using System.Diagnostics;
 using System.IO.Pipelines;
 using System.Net.Mime;
 using System.Net.WebSockets;
@@ -518,6 +519,7 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
     {
         var dispatcher = _dispatcher!;
         var transport = "http";
+        var startTimestamp = Stopwatch.GetTimestamp();
 
         if (!TryBeginRequest(context))
         {
@@ -539,6 +541,10 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
             var encoding = ResolveRequestEncoding(context.Request.Headers, context.Request.ContentType);
 
             var meta = BuildRequestMeta(dispatcher.ServiceName, procedure!, encoding, context.Request.Headers, transport, context.Request.Protocol);
+
+            // Metrics: request started
+            var baseTags = HttpTransportMetrics.CreateBaseTags(dispatcher.ServiceName, procedure!, context.Request.Method, context.Request.Protocol);
+            HttpTransportMetrics.RequestsStarted.Add(1, baseTags);
 
             // Enforce in-memory decode threshold to prevent unbounded buffering for very large bodies.
             if (_serverRuntimeOptions?.MaxInMemoryDecodeBytes is { } maxInMem &&
@@ -566,6 +572,11 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
                     var error = onewayResult.Error!;
                     var exception = OmniRelayErrors.FromError(error, transport);
                     await WriteErrorAsync(context, exception.Message, exception.StatusCode, transport, error).ConfigureAwait(false);
+                    // Metrics: error completion for oneway
+                    var elapsedMs = Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds;
+                    var tags = HttpTransportMetrics.AppendOutcome(baseTags, context.Response.StatusCode, "error");
+                    HttpTransportMetrics.RequestDuration.Record(elapsedMs, tags);
+                    HttpTransportMetrics.RequestsCompleted.Add(1, tags);
                     return;
                 }
 
@@ -587,6 +598,13 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
 
                     context.Response.Headers[header.Key] = header.Value;
                 }
+                // Metrics: success completion for oneway
+                {
+                    var elapsedMs = Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds;
+                    var tags = HttpTransportMetrics.AppendOutcome(baseTags, context.Response.StatusCode, "success");
+                    HttpTransportMetrics.RequestDuration.Record(elapsedMs, tags);
+                    HttpTransportMetrics.RequestsCompleted.Add(1, tags);
+                }
                 return;
             }
 
@@ -597,6 +615,13 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
                 var error = result.Error!;
                 var exception = OmniRelayErrors.FromError(error, transport);
                 await WriteErrorAsync(context, exception.Message, exception.StatusCode, transport, error).ConfigureAwait(false);
+                // Metrics: error completion for unary
+                {
+                    var elapsedMs = Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds;
+                    var tags = HttpTransportMetrics.AppendOutcome(baseTags, context.Response.StatusCode, "error");
+                    HttpTransportMetrics.RequestDuration.Record(elapsedMs, tags);
+                    HttpTransportMetrics.RequestsCompleted.Add(1, tags);
+                }
                 return;
             }
 
@@ -621,6 +646,14 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
             if (!response.Body.IsEmpty)
             {
                 await context.Response.BodyWriter.WriteAsync(response.Body, context.RequestAborted).ConfigureAwait(false);
+            }
+
+            // Metrics: success completion for unary
+            {
+                var elapsedMs = Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds;
+                var tags = HttpTransportMetrics.AppendOutcome(baseTags, context.Response.StatusCode, "success");
+                HttpTransportMetrics.RequestDuration.Record(elapsedMs, tags);
+                HttpTransportMetrics.RequestsCompleted.Add(1, tags);
             }
         }
         finally
@@ -703,6 +736,7 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
     {
         var dispatcher = _dispatcher!;
         var transport = "http";
+        var startTimestamp = Stopwatch.GetTimestamp();
 
         if (context.WebSockets.IsWebSocketRequest)
         {
@@ -756,6 +790,10 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
 
             var request = new Request<ReadOnlyMemory<byte>>(meta, ReadOnlyMemory<byte>.Empty);
 
+            // Metrics: request started (server-stream)
+            var baseTags = HttpTransportMetrics.CreateBaseTags(dispatcher.ServiceName, procedure!, context.Request.Method, context.Request.Protocol);
+            HttpTransportMetrics.RequestsStarted.Add(1, baseTags);
+
             var streamResult = await dispatcher.InvokeStreamAsync(
                 procedure!,
                 request,
@@ -768,6 +806,10 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
                 var exception = OmniRelayErrors.FromError(error, transport);
                 context.Response.StatusCode = HttpStatusMapper.ToStatusCode(exception.StatusCode);
                 await WriteErrorAsync(context, exception.Message, exception.StatusCode, transport, error).ConfigureAwait(false);
+                var elapsedErr = Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds;
+                var tagsErr = HttpTransportMetrics.AppendOutcome(baseTags, context.Response.StatusCode, "error");
+                HttpTransportMetrics.RequestDuration.Record(elapsedErr, tagsErr);
+                HttpTransportMetrics.RequestsCompleted.Add(1, tagsErr);
                 return;
             }
 
@@ -828,6 +870,13 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
                     await call.CompleteAsync(error, CancellationToken.None).ConfigureAwait(false);
                     context.Abort();
                 }
+                finally
+                {
+                    var elapsed = Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds;
+                    var tags = HttpTransportMetrics.AppendOutcome(baseTags, context.Response.StatusCode, "success");
+                    HttpTransportMetrics.RequestDuration.Record(elapsed, tags);
+                    HttpTransportMetrics.RequestsCompleted.Add(1, tags);
+                }
             }
         }
         finally
@@ -840,6 +889,7 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
     {
         var dispatcher = _dispatcher!;
         const string transport = "http";
+        var startTimestamp = Stopwatch.GetTimestamp();
 
         if (!TryBeginRequest(context))
         {
@@ -878,6 +928,10 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
 
             var dispatcherRequest = new Request<ReadOnlyMemory<byte>>(meta, ReadOnlyMemory<byte>.Empty);
 
+            // Metrics: request started (duplex)
+            var baseTags = HttpTransportMetrics.CreateBaseTags(dispatcher.ServiceName, procedure!, context.Request.Method, context.Request.Protocol);
+            HttpTransportMetrics.RequestsStarted.Add(1, baseTags);
+
             var callResult = await dispatcher.InvokeDuplexAsync(procedure!, dispatcherRequest, context.RequestAborted).ConfigureAwait(false);
 
             if (callResult.IsFailure)
@@ -886,6 +940,10 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
                 var exception = OmniRelayErrors.FromError(error, transport);
                 context.Response.StatusCode = HttpStatusMapper.ToStatusCode(exception.StatusCode);
                 await WriteErrorAsync(context, exception.Message, exception.StatusCode, transport, error).ConfigureAwait(false);
+                var elapsedErr = Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds;
+                var tagsErr = HttpTransportMetrics.AppendOutcome(baseTags, context.Response.StatusCode, "error");
+                HttpTransportMetrics.RequestDuration.Record(elapsedErr, tagsErr);
+                HttpTransportMetrics.RequestsCompleted.Add(1, tagsErr);
                 return;
             }
 
@@ -929,6 +987,14 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
                 }
 
                 socket.Dispose();
+            }
+
+            // Metrics: success completion (duplex)
+            {
+                var elapsed = Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds;
+                var tags = HttpTransportMetrics.AppendOutcome(baseTags, context.Response.StatusCode, "success");
+                HttpTransportMetrics.RequestDuration.Record(elapsed, tags);
+                HttpTransportMetrics.RequestsCompleted.Add(1, tags);
             }
 
             async Task PumpRequestsAsync(WebSocket webSocket, IDuplexStreamCall streamCall, byte[] tempBuffer, int frameLimit, CancellationToken cancellationToken)

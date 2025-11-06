@@ -126,7 +126,7 @@ Each workflow measurement includes metric tags for `workflow.namespace`, `workfl
 - `runtime` enables lightweight control-plane endpoints:
   - `GET /omnirelay/control/logging` returns `{ "minimumLevel": "Information" }`.
   - `POST /omnirelay/control/logging` accepts `{ "level": "Warning" }` (or `null` to reset) and updates `LoggerFilterOptions.MinLevel` on the fly.
--  - `GET /omnirelay/control/tracing` reports the active sampling probability, and `POST /omnirelay/control/tracing` accepts `{ "probability": 0.25 }` to throttle new `Activity` creation in `RpcTracingMiddleware` unless an upstream span forces sampling.
+  - `GET /omnirelay/control/tracing` reports the active sampling probability, and `POST /omnirelay/control/tracing` accepts `{ "probability": 0.25 }` to throttle new `Activity` creation in `RpcTracingMiddleware` unless an upstream span forces sampling.
 - Sampling changes take effect immediately through `DiagnosticsRuntimeSampler`, which wraps the OpenTelemetry pipeline and honours parent/linked spans while applying the requested probability.
 
 These endpoints appear alongside `/omnirelay/introspect` on every HTTP inbound when `runtime.enableControlPlane` is true.

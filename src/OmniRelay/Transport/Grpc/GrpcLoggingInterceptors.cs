@@ -18,16 +18,17 @@ public sealed class GrpcClientLoggingInterceptor(ILogger<GrpcClientLoggingInterc
         var methodName = context.Method.FullName;
         var startTimestamp = Stopwatch.GetTimestamp();
 
-        var requestMeta = GrpcLoggingScopeHelper.CreateClientRequestMeta(context);
-        using var scope = RequestLoggingScope.Begin(_logger, requestMeta);
+    var requestMeta = GrpcLoggingScopeHelper.CreateClientRequestMeta(context);
+    using var scope = RequestLoggingScope.Begin(_logger, requestMeta);
+    var baseTags = GrpcTransportMetrics.CreateBaseTags(requestMeta);
 
         if (_logger.IsEnabled(LogLevel.Information))
         {
             _logger.LogInformation("Starting gRPC client unary call {Method}", methodName);
         }
 
-        var call = continuation(request, context);
-        var responseAsync = LogAsync(call.ResponseAsync, methodName, startTimestamp);
+    var call = continuation(request, context);
+    var responseAsync = LogAsync(call.ResponseAsync, methodName, startTimestamp, baseTags);
 
         return new AsyncUnaryCall<TResponse>(
             responseAsync,
@@ -37,34 +38,31 @@ public sealed class GrpcClientLoggingInterceptor(ILogger<GrpcClientLoggingInterc
             call.Dispose);
     }
 
-    private async Task<TResponse> LogAsync<TResponse>(Task<TResponse> responseTask, string methodName, long startTimestamp)
+    private async Task<TResponse> LogAsync<TResponse>(Task<TResponse> responseTask, string methodName, long startTimestamp, KeyValuePair<string, object?>[] baseTags)
     {
         try
         {
             var response = await responseTask.ConfigureAwait(false);
-            RecordSuccess(methodName, startTimestamp);
+            RecordSuccess(methodName, startTimestamp, baseTags);
             return response;
         }
         catch (RpcException rpcException)
         {
-            RecordFailure(methodName, startTimestamp, rpcException.Status.StatusCode, rpcException.Status.Detail);
+            RecordFailure(methodName, startTimestamp, baseTags, rpcException.Status.StatusCode, rpcException.Status.Detail);
             throw;
         }
         catch (Exception ex)
         {
-            RecordFailure(methodName, startTimestamp, StatusCode.Unknown, ex.Message);
+            RecordFailure(methodName, startTimestamp, baseTags, StatusCode.Unknown, ex.Message);
             throw;
         }
     }
 
-    private void RecordSuccess(string methodName, long startTimestamp)
+    private void RecordSuccess(string methodName, long startTimestamp, KeyValuePair<string, object?>[] baseTags)
     {
         var elapsed = Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds;
-        GrpcTransportMetrics.ClientUnaryDuration.Record(
-            elapsed,
-            KeyValuePair.Create<string, object?>("rpc.system", "grpc"),
-            KeyValuePair.Create<string, object?>("rpc.method", methodName),
-            KeyValuePair.Create<string, object?>("rpc.grpc.status_code", StatusCode.OK));
+        var tags = GrpcTransportMetrics.AppendStatus(baseTags, StatusCode.OK);
+        GrpcTransportMetrics.ClientUnaryDuration.Record(elapsed, tags);
 
         if (_logger.IsEnabled(LogLevel.Information))
         {
@@ -75,14 +73,11 @@ public sealed class GrpcClientLoggingInterceptor(ILogger<GrpcClientLoggingInterc
         }
     }
 
-    private void RecordFailure(string methodName, long startTimestamp, StatusCode statusCode, string? detail)
+    private void RecordFailure(string methodName, long startTimestamp, KeyValuePair<string, object?>[] baseTags, StatusCode statusCode, string? detail)
     {
         var elapsed = Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds;
-        GrpcTransportMetrics.ClientUnaryDuration.Record(
-            elapsed,
-            KeyValuePair.Create<string, object?>("rpc.system", "grpc"),
-            KeyValuePair.Create<string, object?>("rpc.method", methodName),
-            KeyValuePair.Create<string, object?>("rpc.grpc.status_code", statusCode));
+        var tags = GrpcTransportMetrics.AppendStatus(baseTags, statusCode);
+        GrpcTransportMetrics.ClientUnaryDuration.Record(elapsed, tags);
 
         if (_logger.IsEnabled(LogLevel.Warning))
         {
@@ -108,8 +103,9 @@ public sealed class GrpcServerLoggingInterceptor(ILogger<GrpcServerLoggingInterc
         var methodName = context.Method;
         var startTimestamp = Stopwatch.GetTimestamp();
 
-        var requestMeta = GrpcLoggingScopeHelper.CreateServerRequestMeta(context);
-        using var scope = RequestLoggingScope.Begin(_logger, requestMeta);
+    var requestMeta = GrpcLoggingScopeHelper.CreateServerRequestMeta(context);
+    using var scope = RequestLoggingScope.Begin(_logger, requestMeta);
+    var baseTags = GrpcTransportMetrics.CreateBaseTags(requestMeta);
 
         if (_logger.IsEnabled(LogLevel.Information))
         {
@@ -119,29 +115,26 @@ public sealed class GrpcServerLoggingInterceptor(ILogger<GrpcServerLoggingInterc
         try
         {
             var response = await continuation(request, context).ConfigureAwait(false);
-            RecordSuccess(methodName, startTimestamp);
+            RecordSuccess(methodName, startTimestamp, baseTags);
             return response;
         }
         catch (RpcException rpcException)
         {
-            RecordFailure(methodName, startTimestamp, rpcException.Status.StatusCode, rpcException.Status.Detail);
+            RecordFailure(methodName, startTimestamp, baseTags, rpcException.Status.StatusCode, rpcException.Status.Detail);
             throw;
         }
         catch (Exception ex)
         {
-            RecordFailure(methodName, startTimestamp, StatusCode.Unknown, ex.Message);
+            RecordFailure(methodName, startTimestamp, baseTags, StatusCode.Unknown, ex.Message);
             throw;
         }
     }
 
-    private void RecordSuccess(string methodName, long startTimestamp)
+    private void RecordSuccess(string methodName, long startTimestamp, KeyValuePair<string, object?>[] baseTags)
     {
         var elapsed = Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds;
-        GrpcTransportMetrics.ServerUnaryDuration.Record(
-            elapsed,
-            KeyValuePair.Create<string, object?>("rpc.system", "grpc"),
-            KeyValuePair.Create<string, object?>("rpc.method", methodName),
-            KeyValuePair.Create<string, object?>("rpc.grpc.status_code", StatusCode.OK));
+        var tags = GrpcTransportMetrics.AppendStatus(baseTags, StatusCode.OK);
+        GrpcTransportMetrics.ServerUnaryDuration.Record(elapsed, tags);
 
         if (_logger.IsEnabled(LogLevel.Information))
         {
@@ -152,14 +145,11 @@ public sealed class GrpcServerLoggingInterceptor(ILogger<GrpcServerLoggingInterc
         }
     }
 
-    private void RecordFailure(string methodName, long startTimestamp, StatusCode statusCode, string? detail)
+    private void RecordFailure(string methodName, long startTimestamp, KeyValuePair<string, object?>[] baseTags, StatusCode statusCode, string? detail)
     {
         var elapsed = Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds;
-        GrpcTransportMetrics.ServerUnaryDuration.Record(
-            elapsed,
-            KeyValuePair.Create<string, object?>("rpc.system", "grpc"),
-            KeyValuePair.Create<string, object?>("rpc.method", methodName),
-            KeyValuePair.Create<string, object?>("rpc.grpc.status_code", statusCode));
+        var tags = GrpcTransportMetrics.AppendStatus(baseTags, statusCode);
+        GrpcTransportMetrics.ServerUnaryDuration.Record(elapsed, tags);
 
         if (_logger.IsEnabled(LogLevel.Warning))
         {

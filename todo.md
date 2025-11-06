@@ -152,14 +152,14 @@
 
 ## Observability & Telemetry
 
-- [ ] Add structured logging for QUIC connection lifecycle (handshake failures, congestion, migration) and integrate with existing metrics.
-  - [ ] Instrument MsQuic/Kestrel events and forward them to logging pipeline.
-  - [ ] Create dashboards visualizing key QUIC lifecycle metrics.
-  - [ ] Train on-call staff on interpreting new logs/metrics.
-- [ ] Emit protocol-level metrics (per-protocol request counts, handshake RTT) so we can compare HTTP/3 vs HTTP/2/1.1 performance.
-  - [ ] Update metrics instrumentation to tag protocol version on requests.
-  - [ ] Add percentile latency/throughput views split by protocol.
-  - [ ] Integrate metrics into performance regression alerts.
+- [x] Add structured logging for QUIC connection lifecycle (handshake failures, congestion, migration) and integrate with existing metrics.
+  - [x] Instrument MsQuic/Kestrel events and forward them to logging pipeline.
+  - [x] Create dashboards visualizing key QUIC lifecycle metrics.
+  - [x] Train on-call staff on interpreting new logs/metrics.
+- [x] Emit protocol-level metrics (per-protocol request counts, handshake RTT) so we can compare HTTP/3 vs HTTP/2/1.1 performance.
+  - [x] Update metrics instrumentation to tag protocol version on requests.
+  - [x] Add percentile latency/throughput views split by protocol.
+  - [x] Integrate metrics into performance regression alerts.
 - [ ] Wire up distributed tracing spans to capture HTTP/3 attributes (QUIC connection id, protocol version) for correlation.
   - [x] Extend tracing middleware to annotate spans with protocol metadata.
   - [ ] Verify tracing exporters handle added attributes without schema drift.

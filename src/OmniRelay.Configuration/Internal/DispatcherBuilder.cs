@@ -858,7 +858,7 @@ internal sealed class DispatcherBuilder
                 otel.ConfigureResource(resource => resource.AddService(serviceName: serviceName));
                 otel.WithMetrics(builder =>
                 {
-                    builder.AddMeter("OmniRelay.Core.Peers", "OmniRelay.Transport.Grpc", "OmniRelay.Rpc", "Hugo.Go");
+                    builder.AddMeter("OmniRelay.Core.Peers", "OmniRelay.Transport.Grpc", "OmniRelay.Transport.Http", "OmniRelay.Rpc", "Hugo.Go");
                     builder.AddPrometheusExporter(options =>
                     {
                         options.ScrapeEndpointPath = scrapePath;
