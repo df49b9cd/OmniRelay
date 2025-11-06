@@ -53,6 +53,60 @@ public class TeeOutboundsTests
     }
 
     [Fact]
+    public async Task TeeUnary_Shadow_On_Failure_When_Allowed()
+    {
+        var primary = Substitute.For<IUnaryOutbound>();
+        primary.CallAsync(Arg.Any<IRequest<ReadOnlyMemory<byte>>>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ValueTask.FromResult(Err<Response<ReadOnlyMemory<byte>>>(Error.Canceled())));
+
+        var shadowInvoked = new TaskCompletionSource<IRequest<ReadOnlyMemory<byte>>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var shadow = Substitute.For<IUnaryOutbound>();
+        shadow.CallAsync(Arg.Any<IRequest<ReadOnlyMemory<byte>>>(), Arg.Any<CancellationToken>())
+            .Returns(ci =>
+            {
+                shadowInvoked.TrySetResult(ci.ArgAt<IRequest<ReadOnlyMemory<byte>>>(0));
+                return ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty)));
+            });
+
+        var options = new TeeOptions
+        {
+            SampleRate = 1.0,
+            ShadowOnSuccessOnly = false,
+            LoggerFactory = NullLoggerFactory.Instance
+        };
+        var tee = new TeeUnaryOutbound(primary, shadow, options);
+
+        var req = MakeRequest();
+        var res = await tee.CallAsync(req, TestContext.Current.CancellationToken);
+        Assert.True(res.IsFailure);
+
+        var captured = await shadowInvoked.Task.WaitAsync(TimeSpan.FromSeconds(1), TestContext.Current.CancellationToken);
+        Assert.Equal(req.Meta.Service, captured.Meta.Service);
+    }
+
+    [Fact]
+    public async Task TeeUnary_SampleRateZero_DisablesShadow()
+    {
+        var primary = Substitute.For<IUnaryOutbound>();
+        primary.CallAsync(Arg.Any<IRequest<ReadOnlyMemory<byte>>>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty))));
+
+        var shadow = Substitute.For<IUnaryOutbound>();
+        var options = new TeeOptions
+        {
+            SampleRate = 0.0,
+            LoggerFactory = NullLoggerFactory.Instance
+        };
+        var tee = new TeeUnaryOutbound(primary, shadow, options);
+
+        var req = MakeRequest();
+        await tee.CallAsync(req, TestContext.Current.CancellationToken);
+
+        await Task.Delay(30, TestContext.Current.CancellationToken);
+        await shadow.DidNotReceive().CallAsync(Arg.Any<IRequest<ReadOnlyMemory<byte>>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task TeeOneway_Shadow_Predicate_Blocks()
     {
         var primary = Substitute.For<IOnewayOutbound>();
@@ -89,5 +143,63 @@ public class TeeOutboundsTests
         Assert.NotNull(diag!.Primary);
         Assert.NotNull(diag.Shadow);
         Assert.Equal("rpc-shadow", diag.ShadowHeaderName);
+    }
+
+    [Fact]
+    public void TeeOptions_InvalidSampleRate_Throws()
+    {
+        var primary = Substitute.For<IUnaryOutbound>();
+        var shadow = Substitute.For<IUnaryOutbound>();
+        var options = new TeeOptions { SampleRate = 1.5, LoggerFactory = NullLoggerFactory.Instance };
+
+        var ex = Assert.Throws<ArgumentOutOfRangeException>(() => new TeeUnaryOutbound(primary, shadow, options));
+        Assert.Contains("Sample rate must be between 0.0 and 1.0 inclusive.", ex.Message);
+    }
+
+    [Fact]
+    public async Task TeeUnary_StartAsync_ShadowFails_PrimaryStopped()
+    {
+        var primary = Substitute.For<IUnaryOutbound>();
+        var shadow = Substitute.For<IUnaryOutbound>();
+
+        shadow.StartAsync(Arg.Any<CancellationToken>())
+            .Returns<ValueTask>(_ => throw new InvalidOperationException("fail"));
+
+        var tee = new TeeUnaryOutbound(primary, shadow, new TeeOptions { LoggerFactory = NullLoggerFactory.Instance });
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => tee.StartAsync(TestContext.Current.CancellationToken).AsTask());
+        await primary.Received(1).StopAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task TeeUnary_BlankHeaderName_DoesNotModifyHeaders()
+    {
+        var primary = Substitute.For<IUnaryOutbound>();
+        primary.CallAsync(Arg.Any<IRequest<ReadOnlyMemory<byte>>>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty))));
+
+        var shadowInvoked = new TaskCompletionSource<IRequest<ReadOnlyMemory<byte>>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var shadow = Substitute.For<IUnaryOutbound>();
+        shadow.CallAsync(Arg.Any<IRequest<ReadOnlyMemory<byte>>>(), Arg.Any<CancellationToken>())
+            .Returns(ci =>
+            {
+                shadowInvoked.TrySetResult(ci.ArgAt<IRequest<ReadOnlyMemory<byte>>>(0));
+                return ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty)));
+            });
+
+        var options = new TeeOptions
+        {
+            SampleRate = 1.0,
+            ShadowHeaderName = "",
+            LoggerFactory = NullLoggerFactory.Instance
+        };
+        var tee = new TeeUnaryOutbound(primary, shadow, options);
+
+        var request = MakeRequest();
+        await tee.CallAsync(request, TestContext.Current.CancellationToken);
+
+        var captured = await shadowInvoked.Task.WaitAsync(TimeSpan.FromSeconds(1), TestContext.Current.CancellationToken);
+        Assert.False(captured.Meta.Headers.ContainsKey("rpc-shadow"));
+        Assert.Same(request.Meta, captured.Meta);
     }
 }
