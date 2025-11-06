@@ -1,4 +1,4 @@
-name: Publish OmniRelay Packages
+name: Publish OmniRelay
 
 on:
   push:
