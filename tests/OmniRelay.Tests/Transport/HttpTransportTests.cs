@@ -477,12 +477,13 @@ public class HttpTransportTests
 
                 _ = Task.Run(async () =>
                 {
-                    await Task.Delay(TimeSpan.FromMilliseconds(20), cancellationToken).ConfigureAwait(false);
+                    // Avoid coupling to request cancellation to make test deterministic
+                    await Task.Delay(TimeSpan.FromMilliseconds(20), CancellationToken.None).ConfigureAwait(false);
                     await call.CompleteResponsesAsync(OmniRelayErrorAdapter.FromStatus(
                         OmniRelayStatusCode.Cancelled,
                         "cancelled",
-                        transport: "http"), cancellationToken).ConfigureAwait(false);
-                }, cancellationToken);
+                        transport: "http"), CancellationToken.None).ConfigureAwait(false);
+                }, CancellationToken.None);
 
                 return ValueTask.FromResult(Ok((IDuplexStreamCall)call));
             }));
