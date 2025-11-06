@@ -46,7 +46,8 @@ public class DispatcherTests
             builder.Use(new RecordingUnaryMiddleware("local", invocations));
         });
 
-        var result = await dispatcher.InvokeUnaryAsync("echo", TestHelpers.CreateRequest());
+        var ct = TestContext.Current.CancellationToken;
+        var result = await dispatcher.InvokeUnaryAsync("echo", TestHelpers.CreateRequest(), ct);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(new[] { "global", "local", "handler" }, invocations);
@@ -96,10 +97,11 @@ public class DispatcherTests
         Assert.Same(dispatcher, lifecycle.BoundDispatcher);
         Assert.Contains("bind", lifecycle.Events);
 
-        await dispatcher.StartAsync();
+        var ct = TestContext.Current.CancellationToken;
+        await dispatcher.StartAsync(ct);
         Assert.Equal(DispatcherStatus.Running, dispatcher.Status);
 
-        await dispatcher.StopAsync();
+        await dispatcher.StopAsync(ct);
         Assert.Equal(DispatcherStatus.Stopped, dispatcher.Status);
         Assert.Contains("start", lifecycle.Events);
         Assert.Contains("stop", lifecycle.Events);
@@ -128,7 +130,8 @@ public class DispatcherTests
     public async Task InvokeUnaryAsync_WhenMissing_ReturnsUnimplementedError()
     {
         var dispatcher = new Dispatcher(new DispatcherOptions("svc"));
-        var result = await dispatcher.InvokeUnaryAsync("missing", TestHelpers.CreateRequest());
+        var ct = TestContext.Current.CancellationToken;
+        var result = await dispatcher.InvokeUnaryAsync("missing", TestHelpers.CreateRequest(), ct);
 
         Assert.True(result.IsFailure);
         Assert.Equal(OmniRelayStatusCode.Unimplemented, OmniRelayErrorAdapter.ToStatus(result.Error!));
@@ -151,7 +154,8 @@ public class DispatcherTests
             });
         });
 
-        var result = await dispatcher.InvokeClientStreamAsync("collect", new RequestMeta());
+        var ct = TestContext.Current.CancellationToken;
+        var result = await dispatcher.InvokeClientStreamAsync("collect", new RequestMeta(), ct);
 
         Assert.True(result.IsSuccess);
         await result.Value.DisposeAsync();
