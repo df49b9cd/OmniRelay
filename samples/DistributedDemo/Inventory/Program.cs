@@ -1,6 +1,9 @@
 using DistributedDemo.Inventory.Protos;
 using Hugo;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.DependencyInjection;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
 using OmniRelay.Core;
 using OmniRelay.Core.Middleware;
 using OmniRelay.Core.Transport;
@@ -12,7 +15,12 @@ using static Hugo.Go;
 var instanceName = Environment.GetEnvironmentVariable("INSTANCE_NAME") ?? "primary";
 var random = new Random(instanceName.GetHashCode(StringComparison.OrdinalIgnoreCase));
 
-var httpInbound = new HttpInbound(["http://0.0.0.0:6080"], configureApp: app => app.MapPrometheusScrapingEndpoint("/omnirelay/metrics"));
+const string PrometheusPath = "/omnirelay/metrics";
+
+var httpInbound = new HttpInbound(
+    ["http://0.0.0.0:6080"],
+    configureServices: services => ConfigureInboundMetrics(services, $"inventory-{instanceName}", PrometheusPath),
+    configureApp: app => app.MapPrometheusScrapingEndpoint(PrometheusPath));
 var grpcInbound = new GrpcInbound(["http://0.0.0.0:6101"]);
 
 var options = new DispatcherOptions("inventory");
@@ -86,6 +94,23 @@ catch (OperationCanceledException)
 }
 
 await dispatcher.StopAsync().ConfigureAwait(false);
+
+static void ConfigureInboundMetrics(IServiceCollection services, string serviceName, string scrapePath)
+{
+    services.AddOpenTelemetry()
+        .ConfigureResource(resource => resource.AddService(serviceName: serviceName))
+        .WithMetrics(builder =>
+        {
+            builder.AddMeter(
+                "OmniRelay.Core.Peers",
+                "OmniRelay.Transport.Grpc",
+                "OmniRelay.Transport.Http",
+                "OmniRelay.Rpc",
+                "Hugo.Go");
+
+            builder.AddPrometheusExporter(options => options.ScrapeEndpointPath = scrapePath);
+        });
+}
 
 internal sealed class ConsoleUnaryLogger(string instance) : OmniRelay.Core.Middleware.IUnaryInboundMiddleware
 {

@@ -37,6 +37,16 @@
           "OpenTelemetry": "[1.13.1, 2.0.0)"
         }
       },
+      "OpenTelemetry.Extensions.Hosting": {
+        "type": "Direct",
+        "requested": "[1.14.0-rc.1, )",
+        "resolved": "1.14.0-rc.1",
+        "contentHash": "FlSAvkLUICPFn5DIFir+l4elDw2ZkNcZUuyK4fC0qPPtnk6BSoyvZd2w1dupW97yHbLH9GaEMDVa0PmNq6UGsw==",
+        "dependencies": {
+          "Microsoft.Extensions.Hosting.Abstractions": "10.0.0-rc.2.25502.107",
+          "OpenTelemetry": "1.14.0-rc.1"
+        }
+      },
       "Grpc.Core.Api": {
         "type": "Transitive",
         "resolved": "2.71.0",
@@ -94,6 +104,26 @@
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.0-rc.2.25502.107",
           "Microsoft.Extensions.Options": "10.0.0-rc.2.25502.107"
+        }
+      },
+      "Microsoft.Extensions.FileProviders.Abstractions": {
+        "type": "Transitive",
+        "resolved": "10.0.0-rc.2.25502.107",
+        "contentHash": "dOpmW14MkOZIwV6269iXhoMp6alCHBoxqCR4pJ37GLjFaBIyzsIy+Ra8tsGmjHtFvEHKq0JRDIsb1PUkrK+yxw==",
+        "dependencies": {
+          "Microsoft.Extensions.Primitives": "10.0.0-rc.2.25502.107"
+        }
+      },
+      "Microsoft.Extensions.Hosting.Abstractions": {
+        "type": "Transitive",
+        "resolved": "10.0.0-rc.2.25502.107",
+        "contentHash": "M6zqZFbqjdCx8g5Y2XZKTfYfS0gAh4uJkmdAq/ZRDrpIr3Nd+u74allmw15jX1kM61IXM49EnTbhMzlWw5pGVQ==",
+        "dependencies": {
+          "Microsoft.Extensions.Configuration.Abstractions": "10.0.0-rc.2.25502.107",
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.0-rc.2.25502.107",
+          "Microsoft.Extensions.Diagnostics.Abstractions": "10.0.0-rc.2.25502.107",
+          "Microsoft.Extensions.FileProviders.Abstractions": "10.0.0-rc.2.25502.107",
+          "Microsoft.Extensions.Logging.Abstractions": "10.0.0-rc.2.25502.107"
         }
       },
       "Microsoft.Extensions.Logging": {
