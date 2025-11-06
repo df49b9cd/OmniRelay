@@ -1257,10 +1257,20 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
         }
     }
 
-    private static Exception UnwrapChannelClosed(Exception exception) =>
-        exception is ChannelClosedException { InnerException: { } inner }
-            ? inner
-            : exception;
+    private static Exception UnwrapChannelClosed(Exception exception)
+    {
+        if (exception is ChannelClosedException channelClosed)
+        {
+            if (channelClosed.InnerException is { } inner)
+            {
+                return inner;
+            }
+
+            return new OperationCanceledException("The channel was closed.", channelClosed);
+        }
+
+        return exception;
+    }
 
     private static async ValueTask FlushPipeAsync(PipeWriter writer, CancellationToken baseToken, TimeSpan? timeout)
     {
