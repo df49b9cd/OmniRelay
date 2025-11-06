@@ -27,6 +27,7 @@
     <Project Path="src/OmniRelay/OmniRelay.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/OmniRelay.Core.UnitTests/OmniRelay.Core.UnitTests.csproj" />
     <Project Path="tests/OmniRelay.Tests/OmniRelay.Tests.csproj" />
     <Project Path="tests/OmniRelay.Codegen.Tests/OmniRelay.Codegen.Tests.csproj" />
     <Project Path="tests/OmniRelay.Codegen.Tests/Projects/ProtobufIncrementalSample/ProtobufIncrementalSample.csproj" />
