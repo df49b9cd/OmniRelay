@@ -6,10 +6,10 @@ Guidance for surfacing and interpreting errors consistently across transports wh
 
 - `OmniRelayException` wraps failures with a canonical `OmniRelayStatusCode`, the original `Hugo.Error`, and the transport that surfaced the issue.
 - `OmniRelayErrorAdapter` annotates errors with:
-  - `yarpcore.status`: string representation of the status code.
-  - `yarpcore.faultType`: `Client` or `Server` classification (when known).
-  - `yarpcore.retryable`: boolean hint to retry middleware and call sites.
-  - `yarpcore.transport`: transport identifier (`http`, `grpc`, …).
+  - `omnirelay.status`: string representation of the status code.
+  - `omnirelay.faultType`: `Client` or `Server` classification (when known).
+  - `omnirelay.retryable`: boolean hint to retry middleware and call sites.
+  - `omnirelay.transport`: transport identifier (`http`, `grpc`, …).
 - Helpers in `OmniRelayErrors` provide structured handling:
   - `OmniRelayErrors.FromException` → `OmniRelayException`.
   - `OmniRelayErrors.IsStatus` / `TryGetStatus`.
@@ -65,7 +65,7 @@ If you already throw `RpcException` with OmniRelay trailers, the interceptor lea
 
 - Unit tests can assert metadata via `OmniRelayErrorAdapter.FaultMetadataKey` / `RetryableMetadataKey`.
 - HTTP integration tests should verify the response headers/JSON mirror the filter output.
-- gRPC tests should inspect response trailers for `polymer-status` and `yarpcore.retryable` to confirm adapter wiring.
+- gRPC tests should inspect response trailers for `omnirelay-status` and `omnirelay.retryable` to confirm adapter wiring.
 
 ## Migration Checklist
 

@@ -8,10 +8,10 @@ namespace OmniRelay.Errors;
 /// </summary>
 public static class OmniRelayErrorAdapter
 {
-    internal const string StatusMetadataKey = "yarpcore.status";
-    internal const string TransportMetadataKey = "yarpcore.transport";
-    internal const string FaultMetadataKey = "yarpcore.faultType";
-    internal const string RetryableMetadataKey = "yarpcore.retryable";
+    internal const string StatusMetadataKey = "omnirelay.status";
+    internal const string TransportMetadataKey = "omnirelay.transport";
+    internal const string FaultMetadataKey = "omnirelay.faultType";
+    internal const string RetryableMetadataKey = "omnirelay.retryable";
     private static readonly ImmutableDictionary<OmniRelayStatusCode, string> StatusCodeNames = new[]
     {
         (OmniRelayStatusCode.Unknown, "unknown"),
