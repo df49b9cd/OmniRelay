@@ -6,25 +6,18 @@ namespace OmniRelay.Core.Diagnostics;
 /// <summary>
 /// A sampler that consults <see cref="IDiagnosticsRuntime.TraceSamplingProbability"/> at runtime.
 /// </summary>
-public sealed class DiagnosticsRuntimeSampler : Sampler
+/// <remarks>
+/// Creates a sampler that uses the diagnostics runtime probability, falling back when unset or out of range.
+/// </remarks>
+public sealed class DiagnosticsRuntimeSampler(IDiagnosticsRuntime? diagnosticsRuntime, Sampler? fallbackSampler = null) : Sampler
 {
-    private readonly IDiagnosticsRuntime? _diagnosticsRuntime;
-    private readonly Sampler _fallbackSampler;
+    private readonly Sampler _fallbackSampler = fallbackSampler ?? new AlwaysOnSampler();
     private CachedSampler? _cachedRatioSampler;
-
-    /// <summary>
-    /// Creates a sampler that uses the diagnostics runtime probability, falling back when unset or out of range.
-    /// </summary>
-    public DiagnosticsRuntimeSampler(IDiagnosticsRuntime? diagnosticsRuntime, Sampler? fallbackSampler = null)
-    {
-        _diagnosticsRuntime = diagnosticsRuntime;
-        _fallbackSampler = fallbackSampler ?? new AlwaysOnSampler();
-    }
 
     /// <inheritdoc />
     public override SamplingResult ShouldSample(in SamplingParameters samplingParameters)
     {
-        var runtimeProbability = _diagnosticsRuntime?.TraceSamplingProbability;
+        var runtimeProbability = diagnosticsRuntime?.TraceSamplingProbability;
         if (!runtimeProbability.HasValue)
         {
             return _fallbackSampler.ShouldSample(samplingParameters);

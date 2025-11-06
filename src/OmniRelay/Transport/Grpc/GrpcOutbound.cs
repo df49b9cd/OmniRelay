@@ -1399,28 +1399,18 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         }
     }
 
-    private sealed class HttpVersionHandler : DelegatingHandler
+    private sealed class HttpVersionHandler(HttpMessageHandler innerHandler, Version? version, HttpVersionPolicy? policy) : DelegatingHandler(innerHandler)
     {
-        private readonly Version? _version;
-        private readonly HttpVersionPolicy? _policy;
-
-        public HttpVersionHandler(HttpMessageHandler innerHandler, Version? version, HttpVersionPolicy? policy)
-            : base(innerHandler)
-        {
-            _version = version;
-            _policy = policy;
-        }
-
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            if (_version is not null)
+            if (version is not null)
             {
-                request.Version = _version;
+                request.Version = version;
             }
 
-            if (_policy.HasValue)
+            if (policy.HasValue)
             {
-                request.VersionPolicy = _policy.Value;
+                request.VersionPolicy = policy.Value;
             }
             try
             {

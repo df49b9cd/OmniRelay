@@ -8,17 +8,12 @@ namespace OmniRelay.Core.Diagnostics;
 /// Bridges QUIC/MsQuic and Kestrel EventSource events into structured logs so operators can observe
 /// connection lifecycle (handshake failures, migration, congestion) without external ETW tooling.
 /// </summary>
-internal sealed class QuicKestrelEventBridge : EventListener
+internal sealed class QuicKestrelEventBridge(ILogger<QuicKestrelEventBridge> logger) : EventListener
 {
-    private readonly ILogger<QuicKestrelEventBridge> _logger;
+    private readonly ILogger<QuicKestrelEventBridge> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
     private const string MsQuicEventSource = "Private.InternalDiagnostics.System.Net.Quic";
     private const string KestrelEventSource = "Microsoft-AspNetCore-Server-Kestrel";
-
-    public QuicKestrelEventBridge(ILogger<QuicKestrelEventBridge> logger)
-    {
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-    }
 
     protected override void OnEventSourceCreated(EventSource eventSource)
     {
@@ -127,14 +122,9 @@ internal sealed class QuicKestrelEventBridge : EventListener
 /// <summary>
 /// Hosted service to control the lifetime of the QuicKestrelEventBridge.
 /// </summary>
-internal sealed class QuicDiagnosticsHostedService : IHostedService
+internal sealed class QuicDiagnosticsHostedService(ILogger<QuicKestrelEventBridge> logger) : IHostedService
 {
-    private readonly QuicKestrelEventBridge _bridge;
-
-    public QuicDiagnosticsHostedService(ILogger<QuicKestrelEventBridge> logger)
-    {
-        _bridge = new QuicKestrelEventBridge(logger);
-    }
+    private readonly QuicKestrelEventBridge _bridge = new QuicKestrelEventBridge(logger);
 
     public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 

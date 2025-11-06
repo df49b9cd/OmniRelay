@@ -121,15 +121,10 @@ public class InMemoryThresholdTests
         await dispatcher.StopAsync(ct);
     }
 
-    private sealed class NonSeekableReadStream : Stream
+    private sealed class NonSeekableReadStream(byte[] buffer) : Stream
     {
-        private readonly ReadOnlyMemory<byte> _buffer;
+        private readonly ReadOnlyMemory<byte> _buffer = buffer;
         private int _position;
-
-        public NonSeekableReadStream(byte[] buffer)
-        {
-            _buffer = buffer;
-        }
 
         public override bool CanRead => true;
         public override bool CanSeek => false;
