@@ -1,9 +1,9 @@
 using System;
-using System;
 using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using OmniRelay.Core;
 using OmniRelay.Core.Transport;
@@ -475,14 +475,14 @@ public class HttpTransportTests
             {
                 var call = DuplexStreamCall.Create(request.Meta, new ResponseMeta(encoding: "application/json"));
 
-                _ = Task.Run(async () =>
+                _ = Task.Run(() =>
                 {
                     // Avoid coupling to request cancellation to make test deterministic
-                    await Task.Delay(TimeSpan.FromMilliseconds(20), CancellationToken.None);
-                    await call.CompleteResponsesAsync(OmniRelayErrorAdapter.FromStatus(
+                    Thread.Sleep(TimeSpan.FromMilliseconds(20));
+                    call.CompleteResponsesAsync(OmniRelayErrorAdapter.FromStatus(
                         OmniRelayStatusCode.Cancelled,
                         "cancelled",
-                        transport: "http"), CancellationToken.None);
+                        transport: "http"), CancellationToken.None).GetAwaiter().GetResult();
                 }, CancellationToken.None);
 
                 return ValueTask.FromResult(Ok((IDuplexStreamCall)call));
