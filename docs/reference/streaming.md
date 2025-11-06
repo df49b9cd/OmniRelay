@@ -186,9 +186,9 @@ Timeouts accept `TimeSpan` strings (`"00:00:05"`), ISO 8601 durations, or millis
 OmniRelay’s gRPC client (`GrpcOutbound`) can opt into HTTP/3 while preserving compatibility:
 
 - When `enableHttp3` is true, the client:
-    - Enables QUIC/HTTP/3 ALPN on `SocketsHttpHandler`.
-    - Sets `HttpRequestMessage.Version = 3.0` and `VersionPolicy = RequestVersionOrHigher` via a delegating handler so calls negotiate down to HTTP/2 if needed.
-    - Turns on `SocketsHttpHandler.EnableMultipleHttp3Connections` to avoid queueing at the HTTP/3 connection level under high concurrency.
+  - Enables QUIC/HTTP/3 ALPN on `SocketsHttpHandler`.
+  - Sets `HttpRequestMessage.Version = 3.0` and `VersionPolicy = RequestVersionOrHigher` via a delegating handler so calls negotiate down to HTTP/2 if needed.
+  - Turns on `SocketsHttpHandler.EnableMultipleHttp3Connections` to avoid queueing at the HTTP/3 connection level under high concurrency.
 - Keep-alive tuning: configure `keepAlivePingDelay` and `keepAlivePingTimeout` on the outbound runtime to keep pools warm during idle periods.
 
 Example appsettings excerpt for a gRPC outbound:
