@@ -10,6 +10,8 @@
 - `omnirelay benchmark` &mdash; drive load against HTTP/gRPC transports.
 - `omnirelay script run` &mdash; execute scripted smoke tests.
 
+HTTP/3 support: use `--http3` for HTTP requests and `--grpc-http3` for gRPC; see `docs/reference/cli.md` for details and examples.
+
 ## Installation
 
 ```bash

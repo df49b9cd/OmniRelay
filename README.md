@@ -12,7 +12,7 @@ OmniRelay is the .NET port of Uber's YARPC runtime, layered on top of Hugo concu
 - Peer management with round-robin, fewest-pending, and two-random-choice choosers, circuit breakers, and per-peer metrics.
 - Operator tooling: `/omnirelay/introspect`, `/healthz`, `/readyz`, the `omnirelay` CLI, and configuration binder for DI hosting.
 - Protobuf automation via a `protoc` plugin and Roslyn incremental generator that emit dispatcher registration helpers and typed clients.
-- Upcoming: richer diagnostics toggles, sample services, cross-language conformance harnesses, and CI matrix coverage (see `docs/todo.md`).
+- Upcoming: richer diagnostics toggles, sample services, cross-language conformance harnesses, and CI matrix coverage (see `todo.md`).
 
 ## Repository Layout
 
@@ -188,7 +188,7 @@ See `docs/reference/cli.md` for profiles, protobuf automation, and CI recipes.
 
 ## Roadmap
 
-Active backlog lives in `docs/todo.md`. Near-term focus:
+Active backlog lives in `todo.md`. Near-term focus:
 
 - OpenTelemetry exporter helpers and logging enrichers.
 - Sample services demonstrating configuration-driven wiring and middleware composition.
@@ -197,7 +197,8 @@ Active backlog lives in `docs/todo.md`. Near-term focus:
 
 ## Further Reading
 
-- `docs/plan.md` - architecture deep dive and parity milestones.
+- `docs/reference/index.md` - docs index for key topics.
+- Architecture and design notes are covered throughout `docs/reference/*` (HTTP transport, streaming, middleware, diagnostics). A dedicated architecture plan will be added in a future update.
 - `docs/reference/http-transport.md` - TLS, proxy placement, SSE behaviour, and tracing guidance for the HTTP transport.
 - `docs/reference/http3-developer-guide.md` - enabling HTTP/3 locally and in staging/production with prerequisites and troubleshooting.
 - `docs/reference/http3-faq.md` - HTTP/3/QUIC troubleshooting FAQ (ALPN, UDP, macOS, curl, etc.).
@@ -207,4 +208,4 @@ Active backlog lives in `docs/todo.md`. Near-term focus:
 - `docs/reference/shadowing.md` - tee/shadow outbounds and sampling controls.
 - `docs/reference/grpc-compatibility.md` - current status of gRPC client HTTP/3 support across languages.
 
-Contributions welcome - capture findings in `docs/todo.md` or open an issue when new gaps surface.
+Contributions welcome - capture findings in `todo.md` or open an issue when new gaps surface.

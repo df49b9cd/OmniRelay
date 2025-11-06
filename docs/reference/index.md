@@ -1,0 +1,39 @@
+# OmniRelay Docs Index
+
+Quick links to reference topics under `docs/reference/`.
+
+- Getting started
+  - `quickstart.md` — local run basics and first RPC.
+  - `samples.md` — tour of runnable sample projects.
+- CLI
+  - `cli.md` — commands, profiles, protobuf, and HTTP/3 flags.
+  - `cli-scripts/` — reusable automation scripts (request/introspect/delay flows).
+- Configuration
+  - `configuration/README.md` — configuration layering and samples.
+  - `configuration/appsettings.json` — baseline config example.
+  - `configuration/appsettings.Development.json` — local overrides.
+  - `configuration/appsettings.Production.json` — production-leaning defaults.
+- Transports
+  - `http-transport.md` — TLS, proxy placement, SSE behavior, tracing.
+  - `grpc-compatibility.md` — gRPC client HTTP/3 compatibility across languages.
+- HTTP/3 (QUIC)
+  - `http3-developer-guide.md` — prerequisites, enabling, and troubleshooting.
+  - `http3-faq.md` — HTTP/3/QUIC FAQ (ALPN, UDP, curl, macOS).
+  - `quic-observability.md` — metrics and logging for QUIC.
+- Streaming
+  - `streaming.md` — unary/server/client/duplex streaming guidance.
+- Middleware
+  - `middleware.md` — composition rules and builder APIs.
+- Errors
+  - `errors.md` — status mapping, adapters, and fault helpers.
+- Shadowing
+  - `shadowing.md` — tee/shadow outbounds and sampling controls.
+- Diagnostics & Concurrency
+  - `diagnostics.md` — diagnostics and instrumentation overview.
+  - `concurrency-primitives.md` — Hugo primitives overview.
+  - `deterministic-coordination.md` — guidance for deterministic flows.
+  - `result-pipelines.md` — composing results and error flows.
+- Code generation
+  - `codegen/protobuf.md` — protoc plugin and generator usage.
+- API reference
+  - `hugo-api-reference.md` — auxiliary reference material.
