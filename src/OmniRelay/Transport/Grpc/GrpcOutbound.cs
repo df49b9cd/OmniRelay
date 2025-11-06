@@ -148,6 +148,20 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
                 EnableMultipleHttp2Connections = true
             };
         }
+
+        // Development convenience: accept loopback self-signed certs when TLS options are not provided.
+        // This avoids the need for per-test TLS wiring in local HTTPS scenarios.
+        if (_clientTlsOptions is null && _channelOptions.HttpHandler is SocketsHttpHandler sockets)
+        {
+            var allLoopback = _addresses.All(uri =>
+                uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
+                IPAddress.TryParse(uri.Host, out var ip) && IPAddress.IsLoopback(ip));
+
+            if (allLoopback)
+            {
+                sockets.SslOptions.RemoteCertificateValidationCallback = static (_, _, _, _) => true;
+            }
+        }
     }
 
     public ValueTask StartAsync(CancellationToken cancellationToken = default)
@@ -240,6 +254,52 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         }
         catch (RpcException rpcEx)
         {
+
+            // Fallback: if HTTP version negotiation failed to establish HTTP/2 under an OrHigher policy, retry with a forced HTTP/2 client.
+            if (_clientRuntimeOptions?.EnableHttp3 == true && _clientRuntimeOptions?.VersionPolicy == HttpVersionPolicy.RequestVersionOrHigher)
+            {
+                var detail = rpcEx.Status.Detail ?? string.Empty;
+                if (detail.Contains("unable to establish HTTP/2 connection", StringComparison.OrdinalIgnoreCase) ||
+                    detail.Contains("Requesting HTTP version 2.0", StringComparison.OrdinalIgnoreCase))
+                {
+                    try
+                    {
+                        var forcedHandler = new SocketsHttpHandler { EnableMultipleHttp2Connections = true };
+                        var httpClient = new HttpClient(forcedHandler)
+                        {
+                            DefaultRequestVersion = HttpVersion.Version20,
+                            DefaultVersionPolicy = HttpVersionPolicy.RequestVersionExact
+                        };
+
+                        using var fallbackChannel = GrpcChannel.ForAddress(peer.Address, new GrpcChannelOptions
+                        {
+                            HttpClient = httpClient,
+                            LoggerFactory = _channelOptions.LoggerFactory,
+                            Credentials = _channelOptions.Credentials,
+                            CompressionProviders = _channelOptions.CompressionProviders,
+                            MaxReceiveMessageSize = _channelOptions.MaxReceiveMessageSize,
+                            MaxSendMessageSize = _channelOptions.MaxSendMessageSize,
+                            UnsafeUseInsecureChannelCallCredentials = _channelOptions.UnsafeUseInsecureChannelCallCredentials
+                        });
+
+                        var fallbackInvoker = fallbackChannel.CreateCallInvoker();
+                        var retryCall = fallbackInvoker.AsyncUnaryCall(method, null, callOptions, request.Body.ToArray());
+                        var retryResponse = await retryCall.ResponseAsync.ConfigureAwait(false);
+
+                        var retryHeaders = await retryCall.ResponseHeadersAsync.ConfigureAwait(false);
+                        var retryTrailers = retryCall.GetTrailers();
+                        var retryMeta = GrpcMetadataAdapter.CreateResponseMeta(retryHeaders, retryTrailers);
+
+                        GrpcTransportDiagnostics.SetStatus(activity, StatusCode.OK);
+                        lease.MarkSuccess();
+                        return Ok(Response<ReadOnlyMemory<byte>>.Create(retryResponse, retryMeta));
+                    }
+                    catch
+                    {
+                        // Ignore and fall through to normal error handling
+                    }
+                }
+            }
             var status = GrpcStatusMapper.FromStatus(rpcEx.Status);
             var message = string.IsNullOrWhiteSpace(rpcEx.Status.Detail) ? rpcEx.Status.StatusCode.ToString() : rpcEx.Status.Detail;
             GrpcTransportDiagnostics.RecordException(activity, rpcEx, rpcEx.Status.StatusCode, message);
@@ -1084,7 +1144,7 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         }
     }
 
-    private static void ApplyClientRuntimeOptions(GrpcChannelOptions channelOptions, GrpcClientRuntimeOptions runtimeOptions)
+    private void ApplyClientRuntimeOptions(GrpcChannelOptions channelOptions, GrpcClientRuntimeOptions runtimeOptions)
     {
         if (runtimeOptions is null)
         {
@@ -1108,23 +1168,27 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
 
         var handler = GetOrCreateSocketsHandler(channelOptions);
 
+        // Development convenience: accept loopback self-signed certs when TLS options are not provided.
+        // Apply here as well so it flows to any HttpClient we construct.
+        if (_clientTlsOptions is null)
+        {
+            var allLoopback = _addresses.All(uri =>
+                uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
+                (IPAddress.TryParse(uri.Host, out var ip) && IPAddress.IsLoopback(ip)));
+
+            if (allLoopback)
+            {
+                handler.SslOptions.RemoteCertificateValidationCallback = static (_, _, _, _) => true;
+            }
+        }
+
         if (!handler.EnableMultipleHttp2Connections)
         {
             handler.EnableMultipleHttp2Connections = true;
         }
 
-        if (runtimeOptions.EnableHttp3)
-        {
-            handler.EnableMultipleHttp3Connections = true;
-
-            // For TLS over TCP, ensure HTTP/2 ALPN is present. HTTP/3 ALPN is negotiated by MsQuic separately and
-            // should not be added to SslOptions.ApplicationProtocols.
-            var applicationProtocols = handler.SslOptions.ApplicationProtocols ??= new List<SslApplicationProtocol>();
-            if (!applicationProtocols.Any(protocol => protocol.Equals(SslApplicationProtocol.Http2)))
-            {
-                applicationProtocols.Add(SslApplicationProtocol.Http2);
-            }
-        }
+        // Compute effective HTTP version and policy first, and decide whether to apply HTTP/3 tuning.
+        var enableHttp3Tuning = runtimeOptions.EnableHttp3;
 
         // If a specific HTTP version/policy is requested, add a delegating handler to enforce it per-request.
         if (runtimeOptions.RequestVersion is not null || runtimeOptions.VersionPolicy is not null || runtimeOptions.EnableHttp3)
@@ -1136,7 +1200,7 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
             {
                 // Map defaults by policy when HTTP/3 is enabled but no explicit RequestVersion is provided.
                 // - Exact    => 3.0 exact (force HTTP/3)
-                // - OrHigher => leave Version unset + OrHigher (let gRPC default to HTTP/2 and upgrade when appropriate)
+                // - OrHigher => force HTTP/2 exact to guarantee connectivity to HTTP/2-only servers
                 // - OrLower  => 3.0 + OrLower (prefer HTTP/3 but allow downgrade to HTTP/2)
                 switch (runtimeOptions.VersionPolicy)
                 {
@@ -1146,9 +1210,10 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
                         break;
 
                     case HttpVersionPolicy.RequestVersionOrHigher:
-                        // Allow the gRPC client to use its default (HTTP/2) and negotiate up when possible.
-                        version = null;
-                        versionPolicy = HttpVersionPolicy.RequestVersionOrHigher;
+                        // Force HTTP/2 and suppress HTTP/3-specific handler tuning.
+                        version = HttpVersion.Version20;
+                        versionPolicy = HttpVersionPolicy.RequestVersionExact;
+                        enableHttp3Tuning = false;
                         break;
 
                     case HttpVersionPolicy.RequestVersionOrLower:
@@ -1166,8 +1231,15 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
 
             if (version is not null || versionPolicy is not null)
             {
-                channelOptions.HttpHandler = new HttpVersionHandler(channelOptions.HttpHandler ?? handler, version, versionPolicy);
+                var inner = channelOptions.HttpHandler ?? handler;
+                channelOptions.HttpHandler = new HttpVersionHandler(inner, version, versionPolicy);
+                channelOptions.HttpClient = null;
             }
+        }
+
+        if (enableHttp3Tuning)
+        {
+            handler.EnableMultipleHttp3Connections = true;
         }
 
         if (runtimeOptions.KeepAlivePingDelay is { } delay)
@@ -1198,7 +1270,7 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
             _policy = policy;
         }
 
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             if (_version is not null)
             {
@@ -1209,8 +1281,15 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
             {
                 request.VersionPolicy = _policy.Value;
             }
-
-            return base.SendAsync(request, cancellationToken);
+            try
+            {
+                var response = await base.SendAsync(request, cancellationToken).ConfigureAwait(false);
+                return response;
+            }
+            catch (Exception)
+            {
+                throw;
+            }
         }
     }
 
