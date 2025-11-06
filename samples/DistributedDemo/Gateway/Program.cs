@@ -51,31 +51,22 @@ public static class Program
 
                 services.AddOmniRelayDispatcher(context.Configuration.GetSection("omnirelay"));
                 services.AddSingleton<CheckoutWorkflow>();
-                services.AddHostedService<GatewayRegistrationHostedService>();
             })
             .Build();
 
+        RegisterGatewayProcedures(host.Services);
+
         await host.RunAsync().ConfigureAwait(false);
     }
-}
 
-internal sealed class GatewayRegistrationHostedService(
-    OmniDispatcher dispatcher,
-    CheckoutWorkflow workflow,
-    ILogger<GatewayRegistrationHostedService> logger)
-    : IHostedService
-{
-    public Task StartAsync(CancellationToken cancellationToken)
+    private static void RegisterGatewayProcedures(IServiceProvider services)
     {
-        RegisterProcedures();
-        logger.LogInformation("Gateway dispatcher '{Service}' registered checkout procedures.", dispatcher.ServiceName);
-        return Task.CompletedTask;
-    }
+        using var scope = services.CreateScope();
+        var dispatcher = scope.ServiceProvider.GetRequiredService<OmniDispatcher>();
+        var workflow = scope.ServiceProvider.GetRequiredService<CheckoutWorkflow>();
+        var loggerFactory = scope.ServiceProvider.GetService<ILoggerFactory>();
+        var logger = loggerFactory?.CreateLogger("GatewayRegistration");
 
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-
-    private void RegisterProcedures()
-    {
         dispatcher.RegisterJsonUnary<CheckoutRequest, CheckoutResponse>(
             "checkout::create",
             async (context, request) =>
@@ -88,7 +79,6 @@ internal sealed class GatewayRegistrationHostedService(
                 builder.AddAliases(["checkout::submit"]);
             });
 
-        // Lightweight ping using raw JSON codec for quick smoke testing.
         var pingCodec = new JsonCodec<CheckoutRequest, CheckoutResponse>();
         dispatcher.RegisterUnary("checkout::echo", builder =>
         {
@@ -118,6 +108,8 @@ internal sealed class GatewayRegistrationHostedService(
                 return ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(new ReadOnlyMemory<byte>(encode.Value), responseMeta)));
             });
         });
+
+        logger?.LogInformation("Gateway dispatcher '{Service}' registered checkout procedures.", dispatcher.ServiceName);
     }
 }
 
