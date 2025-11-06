@@ -7,6 +7,9 @@ using OmniRelay.Transport.Http.Middleware;
 
 namespace OmniRelay.Dispatcher;
 
+/// <summary>
+/// Configuration builder for the dispatcher: lifecycle components, outbound bindings, middleware, and codec registrations.
+/// </summary>
 public sealed class DispatcherOptions
 {
     private readonly List<DispatcherLifecycleComponent> _componentDescriptors = [];
@@ -16,6 +19,9 @@ public sealed class DispatcherOptions
         new(StringComparer.OrdinalIgnoreCase);
     private readonly List<ProcedureCodecRegistration> _codecRegistrations = [];
 
+    /// <summary>
+    /// Creates options for a dispatcher serving the specified service name.
+    /// </summary>
     public DispatcherOptions(string serviceName)
     {
         if (string.IsNullOrWhiteSpace(serviceName))
@@ -26,8 +32,10 @@ public sealed class DispatcherOptions
         ServiceName = serviceName;
     }
 
+    /// <summary>Gets the service name.</summary>
     public string ServiceName { get; }
 
+    /// <summary>Global inbound unary middleware.</summary>
     public IList<IUnaryInboundMiddleware> UnaryInboundMiddleware { get; } = [];
     public IList<IOnewayInboundMiddleware> OnewayInboundMiddleware { get; } = [];
     public IList<IStreamInboundMiddleware> StreamInboundMiddleware { get; } = [];
@@ -38,7 +46,9 @@ public sealed class DispatcherOptions
     public IList<IDuplexInboundMiddleware> DuplexInboundMiddleware { get; } = [];
     public IList<IDuplexOutboundMiddleware> DuplexOutboundMiddleware { get; } = [];
     public IList<IClientStreamOutboundMiddleware> ClientStreamOutboundMiddleware { get; } = [];
+    /// <summary>HTTP outbound middleware configuration builder.</summary>
     public HttpOutboundMiddlewareBuilder HttpOutboundMiddleware { get; } = new();
+    /// <summary>gRPC transport interceptor configuration builder.</summary>
     public GrpcTransportInterceptorBuilder GrpcInterceptors { get; } = new();
 
     internal IReadOnlyList<DispatcherLifecycleComponent> ComponentDescriptors => _componentDescriptors;
@@ -46,6 +56,7 @@ public sealed class DispatcherOptions
     internal IReadOnlyDictionary<string, OutboundCollectionBuilder> OutboundBuilders => _outboundBuilders;
     internal IReadOnlyList<ProcedureCodecRegistration> CodecRegistrations => _codecRegistrations;
 
+    /// <summary>Adds a transport and wires it into dispatcher lifecycle.</summary>
     public void AddTransport(ITransport transport)
     {
         ArgumentNullException.ThrowIfNull(transport);
@@ -53,6 +64,7 @@ public sealed class DispatcherOptions
         AddLifecycle(transport.Name, transport);
     }
 
+    /// <summary>Adds an arbitrary lifecycle component by name.</summary>
     public void AddLifecycle(string name, ILifecycle lifecycle)
     {
         if (string.IsNullOrWhiteSpace(name))
@@ -71,6 +83,7 @@ public sealed class DispatcherOptions
         }
     }
 
+    /// <summary>Binds a unary outbound under the given service and key.</summary>
     public void AddUnaryOutbound(string service, string? key, IUnaryOutbound outbound)
     {
         ArgumentNullException.ThrowIfNull(outbound);
@@ -80,6 +93,7 @@ public sealed class DispatcherOptions
         AddLifecycle(BuildOutboundComponentName(service, key, "unary"), outbound);
     }
 
+    /// <summary>Binds a oneway outbound under the given service and key.</summary>
     public void AddOnewayOutbound(string service, string? key, IOnewayOutbound outbound)
     {
         ArgumentNullException.ThrowIfNull(outbound);
@@ -89,6 +103,7 @@ public sealed class DispatcherOptions
         AddLifecycle(BuildOutboundComponentName(service, key, "oneway"), outbound);
     }
 
+    /// <summary>Binds a server-streaming outbound under the given service and key.</summary>
     public void AddStreamOutbound(string service, string? key, IStreamOutbound outbound)
     {
         ArgumentNullException.ThrowIfNull(outbound);
@@ -98,6 +113,7 @@ public sealed class DispatcherOptions
         AddLifecycle(BuildOutboundComponentName(service, key, "stream"), outbound);
     }
 
+    /// <summary>Binds a client-streaming outbound under the given service and key.</summary>
     public void AddClientStreamOutbound(string service, string? key, IClientStreamOutbound outbound)
     {
         ArgumentNullException.ThrowIfNull(outbound);
@@ -107,6 +123,7 @@ public sealed class DispatcherOptions
         AddLifecycle(BuildOutboundComponentName(service, key, "client-stream"), outbound);
     }
 
+    /// <summary>Binds a duplex-streaming outbound under the given service and key.</summary>
     public void AddDuplexOutbound(string service, string? key, IDuplexOutbound outbound)
     {
         ArgumentNullException.ThrowIfNull(outbound);
@@ -138,33 +155,43 @@ public sealed class DispatcherOptions
         return $"{service}:{variant}:{kind}";
     }
 
+    /// <summary>Registers an inbound codec for a unary procedure on the local service.</summary>
     public void AddInboundUnaryCodec<TRequest, TResponse>(string procedure, ICodec<TRequest, TResponse> codec, IEnumerable<string>? aliases = null) =>
         AddCodec(ProcedureCodecScope.Inbound, null, procedure, ProcedureKind.Unary, codec, aliases);
 
+    /// <summary>Registers an inbound codec for a oneway procedure on the local service.</summary>
     public void AddInboundOnewayCodec<TRequest>(string procedure, ICodec<TRequest, object> codec, IEnumerable<string>? aliases = null) =>
         AddCodec(ProcedureCodecScope.Inbound, null, procedure, ProcedureKind.Oneway, codec, aliases);
 
+    /// <summary>Registers an inbound codec for a server-streaming procedure on the local service.</summary>
     public void AddInboundStreamCodec<TRequest, TResponse>(string procedure, ICodec<TRequest, TResponse> codec, IEnumerable<string>? aliases = null) =>
         AddCodec(ProcedureCodecScope.Inbound, null, procedure, ProcedureKind.Stream, codec, aliases);
 
+    /// <summary>Registers an inbound codec for a client-streaming procedure on the local service.</summary>
     public void AddInboundClientStreamCodec<TRequest, TResponse>(string procedure, ICodec<TRequest, TResponse> codec, IEnumerable<string>? aliases = null) =>
         AddCodec(ProcedureCodecScope.Inbound, null, procedure, ProcedureKind.ClientStream, codec, aliases);
 
+    /// <summary>Registers an inbound codec for a duplex-streaming procedure on the local service.</summary>
     public void AddInboundDuplexCodec<TRequest, TResponse>(string procedure, ICodec<TRequest, TResponse> codec, IEnumerable<string>? aliases = null) =>
         AddCodec(ProcedureCodecScope.Inbound, null, procedure, ProcedureKind.Duplex, codec, aliases);
 
+    /// <summary>Registers an outbound codec for a unary procedure on a remote service.</summary>
     public void AddOutboundUnaryCodec<TRequest, TResponse>(string service, string procedure, ICodec<TRequest, TResponse> codec, IEnumerable<string>? aliases = null) =>
         AddCodec(ProcedureCodecScope.Outbound, service, procedure, ProcedureKind.Unary, codec, aliases);
 
+    /// <summary>Registers an outbound codec for a oneway procedure on a remote service.</summary>
     public void AddOutboundOnewayCodec<TRequest>(string service, string procedure, ICodec<TRequest, object> codec, IEnumerable<string>? aliases = null) =>
         AddCodec(ProcedureCodecScope.Outbound, service, procedure, ProcedureKind.Oneway, codec, aliases);
 
+    /// <summary>Registers an outbound codec for a server-streaming procedure on a remote service.</summary>
     public void AddOutboundStreamCodec<TRequest, TResponse>(string service, string procedure, ICodec<TRequest, TResponse> codec, IEnumerable<string>? aliases = null) =>
         AddCodec(ProcedureCodecScope.Outbound, service, procedure, ProcedureKind.Stream, codec, aliases);
 
+    /// <summary>Registers an outbound codec for a client-streaming procedure on a remote service.</summary>
     public void AddOutboundClientStreamCodec<TRequest, TResponse>(string service, string procedure, ICodec<TRequest, TResponse> codec, IEnumerable<string>? aliases = null) =>
         AddCodec(ProcedureCodecScope.Outbound, service, procedure, ProcedureKind.ClientStream, codec, aliases);
 
+    /// <summary>Registers an outbound codec for a duplex-streaming procedure on a remote service.</summary>
     public void AddOutboundDuplexCodec<TRequest, TResponse>(string service, string procedure, ICodec<TRequest, TResponse> codec, IEnumerable<string>? aliases = null) =>
         AddCodec(ProcedureCodecScope.Outbound, service, procedure, ProcedureKind.Duplex, codec, aliases);
 

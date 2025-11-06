@@ -4,6 +4,9 @@ using OmniRelay.Core.Transport;
 
 namespace OmniRelay.Dispatcher;
 
+/// <summary>
+/// Base record describing a registered procedure: name, encoding, kind, and aliases.
+/// </summary>
 public abstract record ProcedureSpec
 {
     protected ProcedureSpec(
@@ -32,14 +35,21 @@ public abstract record ProcedureSpec
         }
     }
 
+    /// <summary>Gets the service name.</summary>
     public string Service { get; }
+    /// <summary>Gets the procedure name.</summary>
     public string Name { get; }
+    /// <summary>Gets the RPC shape.</summary>
     public ProcedureKind Kind { get; }
+    /// <summary>Gets the preferred encoding, if specified.</summary>
     public string? Encoding { get; }
+    /// <summary>Gets the list of aliases that resolve to this procedure.</summary>
     public ImmutableArray<string> Aliases { get; }
+    /// <summary>Gets the fully qualified procedure name in the form service::name.</summary>
     public string FullName => $"{Service}::{Name}";
 }
 
+/// <summary>Descriptor for a unary procedure.</summary>
 public sealed record UnaryProcedureSpec : ProcedureSpec
 {
     public UnaryProcedureSpec(
@@ -59,6 +69,7 @@ public sealed record UnaryProcedureSpec : ProcedureSpec
     public IReadOnlyList<IUnaryInboundMiddleware> Middleware { get; }
 }
 
+/// <summary>Descriptor for a oneway procedure.</summary>
 public sealed record OnewayProcedureSpec : ProcedureSpec
 {
     public OnewayProcedureSpec(
@@ -78,6 +89,7 @@ public sealed record OnewayProcedureSpec : ProcedureSpec
     public IReadOnlyList<IOnewayInboundMiddleware> Middleware { get; }
 }
 
+/// <summary>Descriptor for a server-streaming procedure.</summary>
 public sealed record StreamProcedureSpec : ProcedureSpec
 {
     public StreamProcedureSpec(
@@ -100,6 +112,7 @@ public sealed record StreamProcedureSpec : ProcedureSpec
     public StreamIntrospectionMetadata Metadata { get; }
 }
 
+/// <summary>Descriptor for a client-streaming procedure.</summary>
 public sealed record ClientStreamProcedureSpec : ProcedureSpec
 {
     public ClientStreamProcedureSpec(
@@ -122,6 +135,7 @@ public sealed record ClientStreamProcedureSpec : ProcedureSpec
     public ClientStreamIntrospectionMetadata Metadata { get; }
 }
 
+/// <summary>Descriptor for a duplex-streaming procedure.</summary>
 public sealed record DuplexProcedureSpec : ProcedureSpec
 {
     public DuplexProcedureSpec(

@@ -4,6 +4,9 @@ using OmniRelay.Core.Transport;
 
 namespace OmniRelay.Dispatcher;
 
+/// <summary>
+/// Exposes outbound bindings and middleware for a specific remote service.
+/// </summary>
 public sealed class ClientConfiguration
 {
     private readonly OutboundCollection _outbounds;
@@ -29,6 +32,7 @@ public sealed class ClientConfiguration
         _duplexMiddleware = duplexMiddleware;
     }
 
+    /// <summary>Gets the remote service name.</summary>
     public string Service => _outbounds.Service;
 
     public IReadOnlyDictionary<string, IUnaryOutbound> Unary => _outbounds.Unary;
@@ -37,12 +41,14 @@ public sealed class ClientConfiguration
     public IReadOnlyDictionary<string, IClientStreamOutbound> ClientStream => _outbounds.ClientStream;
     public IReadOnlyDictionary<string, IDuplexOutbound> Duplex => _outbounds.Duplex;
 
+    /// <summary>Gets unary outbound middleware.</summary>
     public IReadOnlyList<IUnaryOutboundMiddleware> UnaryMiddleware => _unaryMiddleware;
     public IReadOnlyList<IOnewayOutboundMiddleware> OnewayMiddleware => _onewayMiddleware;
     public IReadOnlyList<IStreamOutboundMiddleware> StreamMiddleware => _streamMiddleware;
     public IReadOnlyList<IClientStreamOutboundMiddleware> ClientStreamMiddleware => _clientStreamMiddleware;
     public IReadOnlyList<IDuplexOutboundMiddleware> DuplexMiddleware => _duplexMiddleware;
 
+    /// <summary>Resolves a unary outbound by key, or default when not specified.</summary>
     public IUnaryOutbound? ResolveUnary(string? key = null) => _outbounds.ResolveUnary(key);
 
     public IOnewayOutbound? ResolveOneway(string? key = null) => _outbounds.ResolveOneway(key);

@@ -4,8 +4,14 @@ using OmniRelay.Transport.Grpc;
 
 namespace OmniRelay.Dispatcher;
 
+/// <summary>
+/// Simple readiness evaluator that checks dispatcher status and gRPC outbound bindings.
+/// </summary>
 public static class DispatcherHealthEvaluator
 {
+    /// <summary>
+    /// Evaluates the dispatcher and returns readiness status with issue codes when not ready.
+    /// </summary>
     public static DispatcherReadinessResult Evaluate(Dispatcher dispatcher)
     {
         ArgumentNullException.ThrowIfNull(dispatcher);
@@ -80,4 +86,5 @@ public static class DispatcherHealthEvaluator
     }
 }
 
+/// <summary>Result of dispatcher readiness evaluation.</summary>
 public sealed record DispatcherReadinessResult(bool IsReady, ImmutableArray<string> Issues);

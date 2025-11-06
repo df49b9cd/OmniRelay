@@ -13,6 +13,9 @@ using static Hugo.Go;
 
 namespace OmniRelay.Dispatcher;
 
+/// <summary>
+/// Central runtime that registers procedures, composes middleware, manages transports, and dispatches RPC calls.
+/// </summary>
 public sealed class Dispatcher
 {
     private readonly string _serviceName;
@@ -36,6 +39,9 @@ public sealed class Dispatcher
     private readonly GrpcClientInterceptorRegistry? _grpcClientInterceptorRegistry;
     private readonly GrpcServerInterceptorRegistry? _grpcServerInterceptorRegistry;
 
+    /// <summary>
+    /// Creates a dispatcher for a specific service using the provided options.
+    /// </summary>
     public Dispatcher(DispatcherOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -64,8 +70,10 @@ public sealed class Dispatcher
         AttachTransportExtensions();
     }
 
+    /// <summary>Gets the service name this dispatcher serves.</summary>
     public string ServiceName => _serviceName;
 
+    /// <summary>Gets the current lifecycle status.</summary>
     public DispatcherStatus Status
     {
         get
@@ -77,6 +85,7 @@ public sealed class Dispatcher
         }
     }
 
+    /// <summary>Gets globally configured inbound unary middleware.</summary>
     public IReadOnlyList<IUnaryInboundMiddleware> UnaryInboundMiddleware => _inboundUnaryMiddleware;
     public IReadOnlyList<IOnewayInboundMiddleware> OnewayInboundMiddleware => _inboundOnewayMiddleware;
     public IReadOnlyList<IStreamInboundMiddleware> StreamInboundMiddleware => _inboundStreamMiddleware;
@@ -87,8 +96,12 @@ public sealed class Dispatcher
     public IReadOnlyList<IStreamOutboundMiddleware> StreamOutboundMiddleware => _outboundStreamMiddleware;
     public IReadOnlyList<IClientStreamOutboundMiddleware> ClientStreamOutboundMiddleware => _outboundClientStreamMiddleware;
     public IReadOnlyList<IDuplexOutboundMiddleware> DuplexOutboundMiddleware => _outboundDuplexMiddleware;
+    /// <summary>Gets the codec registry for inbound and outbound procedures.</summary>
     public CodecRegistry Codecs { get; }
 
+    /// <summary>
+    /// Registers a fully constructed <see cref="ProcedureSpec"/> with the dispatcher.
+    /// </summary>
     public void Register(ProcedureSpec spec)
     {
         ArgumentNullException.ThrowIfNull(spec);
@@ -101,6 +114,9 @@ public sealed class Dispatcher
         _procedures.Register(spec);
     }
 
+    /// <summary>
+    /// Registers a unary procedure with an optional per-procedure middleware/encoding configuration.
+    /// </summary>
     public void RegisterUnary(string name, UnaryInboundDelegate handler, Action<UnaryProcedureBuilder>? configure = null)
     {
         ArgumentNullException.ThrowIfNull(handler);
@@ -110,6 +126,9 @@ public sealed class Dispatcher
         Register(builder.Build(_serviceName, EnsureProcedureName(name)));
     }
 
+    /// <summary>
+    /// Registers a unary procedure using a builder configuration.
+    /// </summary>
     public void RegisterUnary(string name, Action<UnaryProcedureBuilder> configure)
     {
         ArgumentNullException.ThrowIfNull(configure);
@@ -119,6 +138,9 @@ public sealed class Dispatcher
         Register(builder.Build(_serviceName, EnsureProcedureName(name)));
     }
 
+    /// <summary>
+    /// Registers a oneway procedure with an optional per-procedure configuration.
+    /// </summary>
     public void RegisterOneway(string name, OnewayInboundDelegate handler, Action<OnewayProcedureBuilder>? configure = null)
     {
         ArgumentNullException.ThrowIfNull(handler);
@@ -128,6 +150,9 @@ public sealed class Dispatcher
         Register(builder.Build(_serviceName, EnsureProcedureName(name)));
     }
 
+    /// <summary>
+    /// Registers a oneway procedure using a builder configuration.
+    /// </summary>
     public void RegisterOneway(string name, Action<OnewayProcedureBuilder> configure)
     {
         ArgumentNullException.ThrowIfNull(configure);
@@ -137,6 +162,9 @@ public sealed class Dispatcher
         Register(builder.Build(_serviceName, EnsureProcedureName(name)));
     }
 
+    /// <summary>
+    /// Registers a server-streaming procedure with an optional per-procedure configuration.
+    /// </summary>
     public void RegisterStream(string name, StreamInboundDelegate handler, Action<StreamProcedureBuilder>? configure = null)
     {
         ArgumentNullException.ThrowIfNull(handler);
@@ -146,6 +174,9 @@ public sealed class Dispatcher
         Register(builder.Build(_serviceName, EnsureProcedureName(name)));
     }
 
+    /// <summary>
+    /// Registers a server-streaming procedure using a builder configuration.
+    /// </summary>
     public void RegisterStream(string name, Action<StreamProcedureBuilder> configure)
     {
         ArgumentNullException.ThrowIfNull(configure);
@@ -155,6 +186,9 @@ public sealed class Dispatcher
         Register(builder.Build(_serviceName, EnsureProcedureName(name)));
     }
 
+    /// <summary>
+    /// Registers a client-streaming procedure with an optional per-procedure configuration.
+    /// </summary>
     public void RegisterClientStream(string name, ClientStreamInboundDelegate handler, Action<ClientStreamProcedureBuilder>? configure = null)
     {
         ArgumentNullException.ThrowIfNull(handler);
@@ -164,6 +198,9 @@ public sealed class Dispatcher
         Register(builder.Build(_serviceName, EnsureProcedureName(name)));
     }
 
+    /// <summary>
+    /// Registers a client-streaming procedure using a builder configuration.
+    /// </summary>
     public void RegisterClientStream(string name, Action<ClientStreamProcedureBuilder> configure)
     {
         ArgumentNullException.ThrowIfNull(configure);
@@ -173,6 +210,9 @@ public sealed class Dispatcher
         Register(builder.Build(_serviceName, EnsureProcedureName(name)));
     }
 
+    /// <summary>
+    /// Registers a duplex-streaming procedure with an optional per-procedure configuration.
+    /// </summary>
     public void RegisterDuplex(string name, DuplexInboundDelegate handler, Action<DuplexProcedureBuilder>? configure = null)
     {
         ArgumentNullException.ThrowIfNull(handler);
@@ -182,6 +222,9 @@ public sealed class Dispatcher
         Register(builder.Build(_serviceName, EnsureProcedureName(name)));
     }
 
+    /// <summary>
+    /// Registers a duplex-streaming procedure using a builder configuration.
+    /// </summary>
     public void RegisterDuplex(string name, Action<DuplexProcedureBuilder> configure)
     {
         ArgumentNullException.ThrowIfNull(configure);
@@ -191,12 +234,17 @@ public sealed class Dispatcher
         Register(builder.Build(_serviceName, EnsureProcedureName(name)));
     }
 
+    /// <summary>Attempts to get a procedure by name and kind.</summary>
     public bool TryGetProcedure(string name, ProcedureKind kind, out ProcedureSpec spec) =>
         _procedures.TryGet(_serviceName, name, kind, out spec);
 
+    /// <summary>Returns a snapshot of all registered procedures.</summary>
     public IReadOnlyCollection<ProcedureSpec> ListProcedures() =>
         _procedures.Snapshot();
 
+    /// <summary>
+    /// Invokes a registered unary procedure through the inbound middleware pipeline.
+    /// </summary>
     public ValueTask<Result<Response<ReadOnlyMemory<byte>>>> InvokeUnaryAsync(
         string procedure,
         IRequest<ReadOnlyMemory<byte>> request,
@@ -220,6 +268,9 @@ public sealed class Dispatcher
         return pipeline(request, cancellationToken);
     }
 
+    /// <summary>
+    /// Invokes a registered oneway procedure through the inbound middleware pipeline.
+    /// </summary>
     public ValueTask<Result<OnewayAck>> InvokeOnewayAsync(
         string procedure,
         IRequest<ReadOnlyMemory<byte>> request,
@@ -243,6 +294,9 @@ public sealed class Dispatcher
         return pipeline(request, cancellationToken);
     }
 
+    /// <summary>
+    /// Returns the client configuration and outbound bindings for a remote service.
+    /// </summary>
     public ClientConfiguration ClientConfig(string service)
     {
         if (string.IsNullOrWhiteSpace(service))
@@ -277,6 +331,9 @@ public sealed class Dispatcher
             _outboundDuplexMiddleware);
     }
 
+    /// <summary>
+    /// Invokes a registered server-streaming procedure through the inbound middleware pipeline.
+    /// </summary>
     public ValueTask<Result<IStreamCall>> InvokeStreamAsync(
         string procedure,
         IRequest<ReadOnlyMemory<byte>> request,
@@ -303,6 +360,9 @@ public sealed class Dispatcher
         return pipeline(request, options, cancellationToken);
     }
 
+    /// <summary>
+    /// Invokes a registered duplex-streaming procedure through the inbound middleware pipeline.
+    /// </summary>
     public ValueTask<Result<IDuplexStreamCall>> InvokeDuplexAsync(
         string procedure,
         IRequest<ReadOnlyMemory<byte>> request,
@@ -328,6 +388,9 @@ public sealed class Dispatcher
         return pipeline(request, cancellationToken);
     }
 
+    /// <summary>
+    /// Starts a client-streaming procedure and returns a call handle to write request messages.
+    /// </summary>
     public ValueTask<Result<ClientStreamCall>> InvokeClientStreamAsync(
         string procedure,
         RequestMeta requestMeta,
@@ -362,6 +425,9 @@ public sealed class Dispatcher
         return ValueTask.FromResult(Ok(call));
     }
 
+    /// <summary>
+    /// Starts all dispatcher lifecycle components in parallel.
+    /// </summary>
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         BeginStart();
@@ -416,6 +482,9 @@ public sealed class Dispatcher
         }
     }
 
+    /// <summary>
+    /// Stops all dispatcher lifecycle components in reverse start order.
+    /// </summary>
     public async Task StopAsync(CancellationToken cancellationToken = default)
     {
         if (!BeginStop())
@@ -451,6 +520,9 @@ public sealed class Dispatcher
         }
     }
 
+    /// <summary>
+    /// Produces a snapshot of registered procedures, middleware, components, and outbounds for diagnostics.
+    /// </summary>
     public DispatcherIntrospection Introspect()
     {
         var procedureSnapshot = _procedures.Snapshot();

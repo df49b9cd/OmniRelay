@@ -3,6 +3,9 @@ using OmniRelay.Core.Transport;
 
 namespace OmniRelay.Dispatcher;
 
+/// <summary>
+/// Resolves outbound transports by key for a remote service across all RPC shapes.
+/// </summary>
 public sealed class OutboundCollection
 {
     public const string DefaultKey = "default";
@@ -34,14 +37,17 @@ public sealed class OutboundCollection
         _duplex = duplex!;
     }
 
+    /// <summary>Gets the remote service name for this collection.</summary>
     public string Service { get; }
 
+    /// <summary>Gets the unary outbound bindings by key.</summary>
     public IReadOnlyDictionary<string, IUnaryOutbound> Unary => _unary;
     public IReadOnlyDictionary<string, IOnewayOutbound> Oneway => _oneway;
     public IReadOnlyDictionary<string, IStreamOutbound> Stream => _stream;
     public IReadOnlyDictionary<string, IClientStreamOutbound> ClientStream => _clientStream;
     public IReadOnlyDictionary<string, IDuplexOutbound> Duplex => _duplex;
 
+    /// <summary>Tries to resolve a unary outbound by key.</summary>
     public bool TryGetUnary(string? key, out IUnaryOutbound? outbound) =>
         _unary.TryGetValue(NormalizeKey(key), out outbound);
 
@@ -57,6 +63,7 @@ public sealed class OutboundCollection
     public bool TryGetDuplex(string? key, out IDuplexOutbound? outbound) =>
         _duplex.TryGetValue(NormalizeKey(key), out outbound);
 
+    /// <summary>Resolves a unary outbound by key, returning <c>null</c> if not found.</summary>
     public IUnaryOutbound? ResolveUnary(string? key = null) =>
         _unary.TryGetValue(NormalizeKey(key), out var outbound) ? outbound : null;
 
