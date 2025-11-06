@@ -2,6 +2,9 @@ using System.Diagnostics.Metrics;
 
 namespace OmniRelay.Core.Middleware;
 
+/// <summary>
+/// Options for RPC metrics middleware, including meter and metric name prefix.
+/// </summary>
 public sealed class RpcMetricsOptions
 {
     /// <summary>

@@ -7,6 +7,10 @@ using static Hugo.Go;
 
 namespace OmniRelay.Core.Middleware;
 
+/// <summary>
+/// OpenTelemetry-based tracing middleware that creates activities for all RPC shapes,
+/// supports inbound context extraction and outbound context injection, and honors runtime sampling.
+/// </summary>
 public sealed class RpcTracingMiddleware :
     IUnaryInboundMiddleware,
     IUnaryOutboundMiddleware,
@@ -25,6 +29,9 @@ public sealed class RpcTracingMiddleware :
     private readonly RpcTracingOptions _options;
     private readonly IDiagnosticsRuntime? _diagnosticsRuntime;
 
+    /// <summary>
+    /// Creates the tracing middleware with optional diagnostics runtime and options.
+    /// </summary>
     public RpcTracingMiddleware(IDiagnosticsRuntime? diagnosticsRuntime = null, RpcTracingOptions? options = null)
     {
         _diagnosticsRuntime = diagnosticsRuntime;
@@ -32,6 +39,7 @@ public sealed class RpcTracingMiddleware :
         _activitySource = _options.ActivitySource ?? DefaultActivitySource;
     }
 
+    /// <inheritdoc />
     public ValueTask<Result<Response<ReadOnlyMemory<byte>>>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
@@ -44,6 +52,7 @@ public sealed class RpcTracingMiddleware :
             (req, token) => next(req, token),
             allowParentExtraction: true);
 
+    /// <inheritdoc />
     public ValueTask<Result<Response<ReadOnlyMemory<byte>>>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
@@ -56,6 +65,7 @@ public sealed class RpcTracingMiddleware :
             (req, token) => next(req, token),
             allowParentExtraction: false);
 
+    /// <inheritdoc />
     public ValueTask<Result<OnewayAck>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
@@ -68,6 +78,7 @@ public sealed class RpcTracingMiddleware :
             (req, token) => next(req, token),
             allowParentExtraction: true);
 
+    /// <inheritdoc />
     public ValueTask<Result<OnewayAck>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
@@ -80,6 +91,7 @@ public sealed class RpcTracingMiddleware :
             (req, token) => next(req, token),
             allowParentExtraction: false);
 
+    /// <inheritdoc />
     public ValueTask<Result<IStreamCall>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         StreamCallOptions options,
@@ -94,6 +106,7 @@ public sealed class RpcTracingMiddleware :
             (req, callOptions, token) => next(req, callOptions, token),
             allowParentExtraction: true);
 
+    /// <inheritdoc />
     public ValueTask<Result<IStreamCall>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         StreamCallOptions options,
@@ -108,6 +121,7 @@ public sealed class RpcTracingMiddleware :
             (req, callOptions, token) => next(req, callOptions, token),
             allowParentExtraction: false);
 
+    /// <inheritdoc />
     public ValueTask<Result<Response<ReadOnlyMemory<byte>>>> InvokeAsync(
         ClientStreamRequestContext context,
         CancellationToken cancellationToken,
@@ -118,6 +132,7 @@ public sealed class RpcTracingMiddleware :
             cancellationToken,
             next);
 
+    /// <inheritdoc />
     public ValueTask<Result<IClientStreamTransportCall>> InvokeAsync(
         RequestMeta requestMeta,
         CancellationToken cancellationToken,
@@ -128,6 +143,7 @@ public sealed class RpcTracingMiddleware :
             cancellationToken,
             next);
 
+    /// <inheritdoc />
     public ValueTask<Result<IDuplexStreamCall>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
@@ -140,6 +156,7 @@ public sealed class RpcTracingMiddleware :
             (req, token) => next(req, token),
             allowParentExtraction: true);
 
+    /// <inheritdoc />
     public ValueTask<Result<IDuplexStreamCall>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,

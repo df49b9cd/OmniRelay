@@ -1,5 +1,8 @@
 namespace OmniRelay.Core.Peers;
 
+/// <summary>
+/// Simple circuit breaker for peers with exponential backoff suspension and half-open state.
+/// </summary>
 public sealed class PeerCircuitBreaker
 {
     private readonly PeerCircuitBreakerOptions _options;
@@ -11,6 +14,7 @@ public sealed class PeerCircuitBreaker
     private int _halfOpenAttempts;
     private int _halfOpenSuccesses;
 
+    /// <summary>Creates a circuit breaker with the provided options.</summary>
     public PeerCircuitBreaker(PeerCircuitBreakerOptions? options = null)
     {
         _options = options ?? new PeerCircuitBreakerOptions();
@@ -43,12 +47,18 @@ public sealed class PeerCircuitBreaker
         _maxDelayMilliseconds = _options.MaxDelay.TotalMilliseconds;
     }
 
+    /// <summary>Gets the current consecutive failure count.</summary>
     public int FailureCount => _failureCount;
 
+    /// <summary>Gets when the breaker will exit suspension, if suspended.</summary>
     public DateTimeOffset? SuspendedUntil => _suspendedUntil;
 
+    /// <summary>Gets a value indicating whether the breaker is currently suspended.</summary>
     public bool IsSuspended => _suspendedUntil is { } until && until > _options.TimeProvider.GetUtcNow();
 
+    /// <summary>
+    /// Attempts to enter the peer for a request, honoring suspension and half-open limits.
+    /// </summary>
     public bool TryEnter()
     {
         var now = _options.TimeProvider.GetUtcNow();
@@ -78,6 +88,7 @@ public sealed class PeerCircuitBreaker
         return true;
     }
 
+    /// <summary>Records a successful attempt, potentially resetting the breaker or progressing half-open.</summary>
     public void OnSuccess()
     {
         if (_isHalfOpen)
@@ -92,6 +103,7 @@ public sealed class PeerCircuitBreaker
         Reset();
     }
 
+    /// <summary>Records a failed attempt and may transition to suspended or half-open states.</summary>
     public void OnFailure()
     {
         var now = _options.TimeProvider.GetUtcNow();

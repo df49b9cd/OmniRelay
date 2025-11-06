@@ -2,6 +2,9 @@ using System.Diagnostics;
 
 namespace OmniRelay.Core.Peers;
 
+/// <summary>
+/// Represents a lease acquired for sending a request to a peer. Records metrics on release.
+/// </summary>
 public sealed class PeerLease : IAsyncDisposable
 {
     private readonly IPeer _peer;
@@ -20,14 +23,19 @@ public sealed class PeerLease : IAsyncDisposable
         PeerMetrics.RecordLeaseAcquired(Meta, _peerIdentifier);
     }
 
+    /// <summary>Gets the leased peer.</summary>
     public IPeer Peer => _peer;
 
+    /// <summary>Gets the request metadata associated with the lease.</summary>
     public RequestMeta Meta { get; }
 
+    /// <summary>Marks the lease outcome as success.</summary>
     public void MarkSuccess() => _success = true;
 
+    /// <summary>Marks the lease outcome as failure.</summary>
     public void MarkFailure() => _success = false;
 
+    /// <inheritdoc />
     public ValueTask DisposeAsync()
     {
         if (_released)

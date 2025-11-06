@@ -8,6 +8,9 @@ using static Hugo.Go;
 
 namespace OmniRelay.Core.Middleware;
 
+/// <summary>
+/// Records request counts, durations, and outcomes for all RPC shapes using System.Diagnostics.Metrics.
+/// </summary>
 public sealed class RpcMetricsMiddleware :
     IUnaryInboundMiddleware,
     IUnaryOutboundMiddleware,
@@ -28,6 +31,9 @@ public sealed class RpcMetricsMiddleware :
     private readonly Histogram<double> _durationHistogram;
     private readonly RpcMetricsOptions _options;
 
+    /// <summary>
+    /// Creates the metrics middleware with optional configuration.
+    /// </summary>
     public RpcMetricsMiddleware(RpcMetricsOptions? options = null)
     {
         _options = options ?? new RpcMetricsOptions();
@@ -40,6 +46,7 @@ public sealed class RpcMetricsMiddleware :
         _durationHistogram = meter.CreateHistogram<double>($"{prefix}.duration", unit: "ms", description: "RPC duration in milliseconds.");
     }
 
+    /// <inheritdoc />
     public ValueTask<Result<Response<ReadOnlyMemory<byte>>>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
@@ -52,6 +59,7 @@ public sealed class RpcMetricsMiddleware :
             (req, token) => next(req, token),
             () => request);
 
+    /// <inheritdoc />
     public ValueTask<Result<Response<ReadOnlyMemory<byte>>>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
@@ -64,6 +72,7 @@ public sealed class RpcMetricsMiddleware :
             (req, token) => next(req, token),
             () => request);
 
+    /// <inheritdoc />
     public ValueTask<Result<OnewayAck>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
@@ -76,6 +85,7 @@ public sealed class RpcMetricsMiddleware :
             (req, token) => next(req, token),
             () => request);
 
+    /// <inheritdoc />
     public ValueTask<Result<OnewayAck>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
@@ -88,6 +98,7 @@ public sealed class RpcMetricsMiddleware :
             (req, token) => next(req, token),
             () => request);
 
+    /// <inheritdoc />
     public ValueTask<Result<IStreamCall>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         StreamCallOptions options,
@@ -102,6 +113,7 @@ public sealed class RpcMetricsMiddleware :
             request,
             options);
 
+    /// <inheritdoc />
     public ValueTask<Result<IStreamCall>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         StreamCallOptions options,
@@ -116,6 +128,7 @@ public sealed class RpcMetricsMiddleware :
             request,
             options);
 
+    /// <inheritdoc />
     public ValueTask<Result<Response<ReadOnlyMemory<byte>>>> InvokeAsync(
         ClientStreamRequestContext context,
         CancellationToken cancellationToken,
@@ -126,6 +139,7 @@ public sealed class RpcMetricsMiddleware :
             context,
             (ctx, token) => next(ctx, token));
 
+    /// <inheritdoc />
     public ValueTask<Result<IClientStreamTransportCall>> InvokeAsync(
         RequestMeta requestMeta,
         CancellationToken cancellationToken,
@@ -135,6 +149,7 @@ public sealed class RpcMetricsMiddleware :
             cancellationToken,
             meta => next(meta, cancellationToken));
 
+    /// <inheritdoc />
     public ValueTask<Result<IDuplexStreamCall>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
@@ -146,6 +161,7 @@ public sealed class RpcMetricsMiddleware :
             cancellationToken,
             token => next(request, token));
 
+    /// <inheritdoc />
     public ValueTask<Result<IDuplexStreamCall>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,

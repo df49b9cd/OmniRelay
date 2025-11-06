@@ -6,6 +6,9 @@ using OmniRelay.Errors;
 
 namespace OmniRelay.Core.Middleware;
 
+/// <summary>
+/// Structured logging middleware for all RPC shapes with scope enrichment and duration logging.
+/// </summary>
 public sealed class RpcLoggingMiddleware(ILogger<RpcLoggingMiddleware> logger, RpcLoggingOptions? options = null) :
     IUnaryInboundMiddleware,
     IUnaryOutboundMiddleware,
@@ -21,6 +24,7 @@ public sealed class RpcLoggingMiddleware(ILogger<RpcLoggingMiddleware> logger, R
     private readonly ILogger _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     private readonly RpcLoggingOptions _options = options ?? new RpcLoggingOptions();
 
+    /// <inheritdoc />
     public ValueTask<Result<Response<ReadOnlyMemory<byte>>>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
@@ -32,6 +36,7 @@ public sealed class RpcLoggingMiddleware(ILogger<RpcLoggingMiddleware> logger, R
             cancellationToken,
             static response => response.Meta);
 
+    /// <inheritdoc />
     public ValueTask<Result<Response<ReadOnlyMemory<byte>>>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
@@ -43,6 +48,7 @@ public sealed class RpcLoggingMiddleware(ILogger<RpcLoggingMiddleware> logger, R
             cancellationToken,
             static response => response.Meta);
 
+    /// <inheritdoc />
     public ValueTask<Result<OnewayAck>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
@@ -54,6 +60,7 @@ public sealed class RpcLoggingMiddleware(ILogger<RpcLoggingMiddleware> logger, R
             cancellationToken,
             static ack => ack.Meta);
 
+    /// <inheritdoc />
     public ValueTask<Result<OnewayAck>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
@@ -65,6 +72,7 @@ public sealed class RpcLoggingMiddleware(ILogger<RpcLoggingMiddleware> logger, R
             cancellationToken,
             static ack => ack.Meta);
 
+    /// <inheritdoc />
     public ValueTask<Result<IStreamCall>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         StreamCallOptions options,
@@ -76,6 +84,7 @@ public sealed class RpcLoggingMiddleware(ILogger<RpcLoggingMiddleware> logger, R
             token => next(request, options, token),
             cancellationToken);
 
+    /// <inheritdoc />
     public ValueTask<Result<IStreamCall>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         StreamCallOptions options,
@@ -87,6 +96,7 @@ public sealed class RpcLoggingMiddleware(ILogger<RpcLoggingMiddleware> logger, R
             token => next(request, options, token),
             cancellationToken);
 
+    /// <inheritdoc />
     public ValueTask<Result<Response<ReadOnlyMemory<byte>>>> InvokeAsync(
         ClientStreamRequestContext context,
         CancellationToken cancellationToken,
@@ -98,6 +108,7 @@ public sealed class RpcLoggingMiddleware(ILogger<RpcLoggingMiddleware> logger, R
             cancellationToken,
             static response => response.Meta);
 
+    /// <inheritdoc />
     public ValueTask<Result<IClientStreamTransportCall>> InvokeAsync(
         RequestMeta requestMeta,
         CancellationToken cancellationToken,
@@ -108,6 +119,7 @@ public sealed class RpcLoggingMiddleware(ILogger<RpcLoggingMiddleware> logger, R
             token => next(requestMeta, token),
             cancellationToken);
 
+    /// <inheritdoc />
     public ValueTask<Result<IDuplexStreamCall>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
@@ -118,6 +130,7 @@ public sealed class RpcLoggingMiddleware(ILogger<RpcLoggingMiddleware> logger, R
             token => next(request, token),
             cancellationToken);
 
+    /// <inheritdoc />
     public ValueTask<Result<IDuplexStreamCall>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,

@@ -2,6 +2,9 @@ using Hugo;
 
 namespace OmniRelay.Core.Transport;
 
+/// <summary>
+/// Tracks per-direction message counts and completion information for duplex-streaming calls.
+/// </summary>
 public sealed class DuplexStreamCallContext
 {
     private long _requestMessageCount;
@@ -13,18 +16,25 @@ public sealed class DuplexStreamCallContext
     private long _requestCompletedAtUtcTicks;
     private long _responseCompletedAtUtcTicks;
 
+    /// <summary>Gets the number of request messages written.</summary>
     public long RequestMessageCount => Interlocked.Read(ref _requestMessageCount);
 
+    /// <summary>Gets the number of response messages written.</summary>
     public long ResponseMessageCount => Interlocked.Read(ref _responseMessageCount);
 
+    /// <summary>Gets the completion status of the request stream.</summary>
     public StreamCompletionStatus RequestCompletionStatus => (StreamCompletionStatus)Volatile.Read(ref _requestCompletionStatus);
 
+    /// <summary>Gets the completion status of the response stream.</summary>
     public StreamCompletionStatus ResponseCompletionStatus => (StreamCompletionStatus)Volatile.Read(ref _responseCompletionStatus);
 
+    /// <summary>Gets the completion error for the request stream, if any.</summary>
     public Error? RequestCompletionError => Volatile.Read(ref _requestCompletionError);
 
+    /// <summary>Gets the completion error for the response stream, if any.</summary>
     public Error? ResponseCompletionError => Volatile.Read(ref _responseCompletionError);
 
+    /// <summary>Gets when the request stream completed.</summary>
     public DateTimeOffset? RequestCompletedAtUtc
     {
         get
@@ -34,6 +44,7 @@ public sealed class DuplexStreamCallContext
         }
     }
 
+    /// <summary>Gets when the response stream completed.</summary>
     public DateTimeOffset? ResponseCompletedAtUtc
     {
         get

@@ -7,6 +7,9 @@ using static Hugo.Go;
 
 namespace OmniRelay.Core.Middleware;
 
+/// <summary>
+/// Applies concurrency rate limiting for all RPC shapes using System.Threading.RateLimiting.
+/// </summary>
 public sealed class RateLimitingMiddleware(RateLimitingOptions? options = null) :
     IUnaryInboundMiddleware,
     IUnaryOutboundMiddleware,
@@ -29,30 +32,35 @@ public sealed class RateLimitingMiddleware(RateLimitingOptions? options = null) 
         })
     };
 
+    /// <inheritdoc />
     public ValueTask<Result<Response<ReadOnlyMemory<byte>>>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
         UnaryOutboundDelegate next) =>
         InvokeCoreAsync(request.Meta, cancellationToken, () => next(request, cancellationToken));
 
+    /// <inheritdoc />
     public ValueTask<Result<Response<ReadOnlyMemory<byte>>>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
         UnaryInboundDelegate next) =>
         InvokeCoreAsync(request.Meta, cancellationToken, () => next(request, cancellationToken));
 
+    /// <inheritdoc />
     public ValueTask<Result<OnewayAck>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
         OnewayOutboundDelegate next) =>
         InvokeCoreAsync(request.Meta, cancellationToken, () => next(request, cancellationToken));
 
+    /// <inheritdoc />
     public ValueTask<Result<OnewayAck>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
         OnewayInboundDelegate next) =>
         InvokeCoreAsync(request.Meta, cancellationToken, () => next(request, cancellationToken));
 
+    /// <inheritdoc />
     public ValueTask<Result<IStreamCall>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         StreamCallOptions options,
@@ -60,6 +68,7 @@ public sealed class RateLimitingMiddleware(RateLimitingOptions? options = null) 
         StreamInboundDelegate next) =>
         InvokeStreamAsync(request.Meta, cancellationToken, () => next(request, options, cancellationToken));
 
+    /// <inheritdoc />
     public ValueTask<Result<IStreamCall>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         StreamCallOptions options,
@@ -67,24 +76,28 @@ public sealed class RateLimitingMiddleware(RateLimitingOptions? options = null) 
         StreamOutboundDelegate next) =>
         InvokeStreamAsync(request.Meta, cancellationToken, () => next(request, options, cancellationToken));
 
+    /// <inheritdoc />
     public ValueTask<Result<Response<ReadOnlyMemory<byte>>>> InvokeAsync(
         ClientStreamRequestContext context,
         CancellationToken cancellationToken,
         ClientStreamInboundDelegate next) =>
         InvokeCoreAsync(context.Meta, cancellationToken, () => next(context, cancellationToken));
 
+    /// <inheritdoc />
     public ValueTask<Result<IClientStreamTransportCall>> InvokeAsync(
         RequestMeta requestMeta,
         CancellationToken cancellationToken,
         ClientStreamOutboundDelegate next) =>
         InvokeClientStreamAsync(requestMeta, cancellationToken, () => next(requestMeta, cancellationToken));
 
+    /// <inheritdoc />
     public ValueTask<Result<IDuplexStreamCall>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
         DuplexInboundDelegate next) =>
         InvokeDuplexAsync(request.Meta, cancellationToken, () => next(request, cancellationToken));
 
+    /// <inheritdoc />
     public ValueTask<Result<IDuplexStreamCall>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,

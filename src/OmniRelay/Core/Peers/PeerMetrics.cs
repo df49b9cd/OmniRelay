@@ -4,6 +4,9 @@ using OmniRelay.Errors;
 
 namespace OmniRelay.Core.Peers;
 
+/// <summary>
+/// Internal peer and retry metric helpers used by transport and middleware components.
+/// </summary>
 internal static class PeerMetrics
 {
     private static readonly Meter Meter = new("OmniRelay.Core.Peers");

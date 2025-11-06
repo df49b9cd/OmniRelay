@@ -1,18 +1,27 @@
 namespace OmniRelay.Core.Peers;
 
+/// <summary>
+/// Snapshot of a peer's state, in-flight requests, and last success/failure timestamps.
+/// </summary>
 public readonly struct PeerStatus(PeerState state, int inflight, DateTimeOffset? lastSuccess, DateTimeOffset? lastFailure)
 {
+    /// <summary>Gets the current peer state.</summary>
     public PeerState State { get; } = state;
 
+    /// <summary>Gets the number of in-flight requests.</summary>
     public int Inflight { get; } = inflight;
 
+    /// <summary>Gets the last success timestamp, if known.</summary>
     public DateTimeOffset? LastSuccess { get; } = lastSuccess;
 
+    /// <summary>Gets the last failure timestamp, if known.</summary>
     public DateTimeOffset? LastFailure { get; } = lastFailure;
 
+    /// <summary>Unknown status sentinel.</summary>
     public static PeerStatus Unknown => new(PeerState.Unknown, 0, null, null);
 }
 
+/// <summary>Represents the connectivity state of a peer.</summary>
 public enum PeerState
 {
     Unknown = 0,
