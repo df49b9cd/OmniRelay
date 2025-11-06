@@ -192,11 +192,11 @@
   - [ ] Fail pipeline when upgrades do not occur or `alt-svc` missing.
   - [ ] Store canary results for auditing.
 - [ ] Test downgrade scenarios (server disables HTTP/3 mid-flight, UDP blocked, mismatched ALPN) to prove resiliency and useful error messages.
-  - [ ] Implement chaos test scripts introducing downgrade conditions.
-  - [ ] Capture client/server behavior and verify user-facing errors remain actionable.
+  - [x] Implement chaos test scripts introducing downgrade conditions.
+  - [x] Capture client/server behavior and verify user-facing errors remain actionable.
   - [ ] File follow-up work for any unacceptable degradations.
 - [ ] Document a rollback strategy that forces listeners back to HTTP/1.1/2 if HTTP/3 issues arise.
-  - [ ] Write rollback runbook including configuration toggles and validation steps.
+  - [x] Write rollback runbook including configuration toggles and validation steps.
   - [ ] Conduct game-day exercise to practice rollback procedure.
   - [ ] Ensure monitoring quiets after rollback before closing incident.
 
