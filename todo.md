@@ -179,10 +179,10 @@
   - [x] Create gRPC test harness exercising unary/streaming calls over HTTP/3.
   - [x] Validate interceptors and deadlines behave identically to HTTP/2 baseline.
   - [x] Add assertions for metadata and status code parity.
-- [ ] Update protobuf-generated service tests to cover HTTP/3 call paths and ensure generated clients honor HTTP/3 configuration defaults.
-  - [ ] Regenerate sample services with updated templates.
-  - [ ] Add tests that instantiate generated clients configured for HTTP/3.
-  - [ ] Verify fallbacks to HTTP/2 remain functional when HTTP/3 is disabled.
+- [x] Update protobuf-generated service tests to cover HTTP/3 call paths and ensure generated clients honor HTTP/3 configuration defaults.
+  - [x] Regenerate sample services with updated templates.
+  - [x] Add tests that instantiate generated clients configured for HTTP/3.
+  - [x] Verify fallbacks to HTTP/2 remain functional when HTTP/3 is disabled.
 - [ ] Run soak/performance tests focusing on high connection churn, packet loss, and mobile-like IP migration scenarios.
   - [ ] Expand load test scripts to include QUIC-specific scenarios (packet loss, connection migration).
   - [ ] Monitor resource utilization and latency to establish new baselines.
