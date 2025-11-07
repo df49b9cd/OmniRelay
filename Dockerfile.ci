@@ -1,15 +1,11 @@
-FROM mcr.microsoft.com/dotnet/sdk:10.0
+FROM mcr.microsoft.com/dotnet/sdk:10.0-preview
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl ca-certificates gnupg \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN curl -sSL https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb -o packages-microsoft-prod.deb \
-    && dpkg -i packages-microsoft-prod.deb \
-    && rm packages-microsoft-prod.deb
-
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends libmsquic \
-    && rm -rf /var/lib/apt/lists/*
+# Add the MS repo to install `libmsquic` to support DNS-over-QUIC:
+ADD --link https://packages.microsoft.com/config/debian/12/packages-microsoft-prod.deb /
+RUN <<HEREDOC
+  dpkg -i packages-microsoft-prod.deb && rm packages-microsoft-prod.deb
+  apt update && apt install -y libmsquic
+  apt clean -y && rm -rf /var/lib/apt/lists/*
+HEREDOC
 
 WORKDIR /work
