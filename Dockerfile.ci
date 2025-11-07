@@ -1,7 +1,7 @@
-FROM mcr.microsoft.com/dotnet/sdk:10.0-preview
+FROM mcr.microsoft.com/dotnet/sdk:10.0
 
 # Add the MS repo to install `libmsquic` to support DNS-over-QUIC:
-ADD --link https://packages.microsoft.com/config/debian/12/packages-microsoft-prod.deb /
+ADD --link https://packages.microsoft.com/config/debian/13/packages-microsoft-prod.deb /
 RUN <<HEREDOC
   dpkg -i packages-microsoft-prod.deb && rm packages-microsoft-prod.deb
   apt update && apt install -y libmsquic
