@@ -12,6 +12,7 @@ using OmniRelay.Core.Middleware;
 using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
 using OmniRelay.IntegrationTests.Codecs;
+using OmniRelay.IntegrationTests.Support;
 using OmniRelay.Tests;
 using OmniRelay.Transport.Http;
 using OmniRelay.Transport.Grpc;
@@ -215,7 +216,7 @@ public class HostingConfigurationIntegrationTests
         Assert.Single(outboundSpec.DuplexOutbounds, o => o.Key == "duplex-primary");
     }
 
-    [Fact(Timeout = 30_000)]
+    [Http3Fact(Timeout = 30_000)]
     public async Task AddOmniRelayDispatcher_EnableHttp3WithoutHttps_Throws()
     {
         var builder = Host.CreateApplicationBuilder();

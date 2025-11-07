@@ -29,4 +29,4 @@ Guidance for running the integration suite locally and in CI, with an emphasis o
 dotnet test tests/OmniRelay.IntegrationTests/OmniRelay.IntegrationTests.csproj
 ```
 
-Set `OMNIRELAY_ENABLE_HTTP3_TESTS=true` when you want to exercise HTTP/3 cases; leave it unset to run the rest of the suite on runners without MsQuic.***End Patch*** End Patch
+Set `OMNIRELAY_ENABLE_HTTP3_TESTS=true` when you want to exercise HTTP/3 cases; leave it unset to run the rest of the suite on runners without MsQuic.
