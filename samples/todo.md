@@ -7,11 +7,9 @@ Curated backlog of sample projects that demonstrate OmniRelay end-to-end pattern
 - Implemented at `samples/MinimalApiBridge` with docs in `docs/reference/samples.md`.
 - Demonstrates ASP.NET Core Minimal APIs and OmniRelay sharing the same Generic Host, DI registrations, and handler classes for both REST and RPC traffic.
 
-## Config-to-Prod Template
+## Config-to-Prod Template (shipped)
 
-- **Audience:** Platform teams standardizing dispatcher hosting.
-- **What to show:** Layer `appsettings.*` files, `AddOmniRelayDispatcher`, environment overrides, diagnostics toggles, and Docker/Kubernetes liveness probes.
-- **Why it helps:** Provides a copy/paste deployment skeleton with health endpoints, readiness gates, and structured configuration so new services launch consistently.
+- Implemented at `samples/ConfigToProd.Template`, covering layered configuration, diagnostics toggles, `/healthz` + `/readyz`, and OmniRelay hosting via `AddOmniRelayDispatcher`.
 
 ## Streaming Analytics Lab
 
