@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 using OmniRelay.Core;
 using OmniRelay.Dispatcher;
 using OmniRelay.Errors;
+using OmniRelay.Tests.Support;
 using OmniRelay.Transport.Http;
 using Xunit;
 
@@ -28,7 +29,7 @@ public class Http3LimitParityTests
             return;
         }
 
-        using var certificate = CreateSelfSigned("CN=omnirelay-http3-limits");
+        using var certificate = TestCertificateFactory.CreateLoopbackCertificate("CN=omnirelay-http3-limits");
 
         var port = TestPortAllocator.GetRandomPort();
         var baseAddress = new Uri($"https://127.0.0.1:{port}/");
@@ -57,19 +58,18 @@ public class Http3LimitParityTests
         {
             using var handler = CreateHttp3Handler();
             using var client = new HttpClient(handler) { BaseAddress = baseAddress };
+            client.DefaultRequestVersion = HttpVersion.Version30;
+            client.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionExact;
+            client.DefaultRequestHeaders.Add(HttpTransportHeaders.Procedure, "limited::echo");
 
-            using var request = new HttpRequestMessage(HttpMethod.Post, "/");
-            request.Version = HttpVersion.Version30;
-            request.VersionPolicy = HttpVersionPolicy.RequestVersionExact;
-            request.Headers.Add(HttpTransportHeaders.Procedure, "limited::echo");
-            request.Content = new SlowChunkedContent(chunkSize: 32, chunkCount: 4, delay: TimeSpan.FromMilliseconds(75));
-            request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+            using var content = new SlowChunkedContent(chunkSize: 32, chunkCount: 4, delay: TimeSpan.FromMilliseconds(75));
+            content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
 
-            using var response = await client.SendAsync(request, HttpCompletionOption.ResponseContentRead, ct);
+            using var response = await client.PostAsync("/", content, ct);
 
             Assert.Equal(HttpStatusCode.TooManyRequests, response.StatusCode);
             Assert.True(response.Headers.TryGetValues(HttpTransportHeaders.Status, out var statusValues));
-            Assert.Contains(OmniRelayStatusCode.ResourceExhausted.ToString(), statusValues);
+            Assert.Contains(nameof(OmniRelayStatusCode.ResourceExhausted), statusValues);
             Assert.True(response.Headers.TryGetValues(HttpTransportHeaders.Protocol, out var protocolHeaders));
             Assert.Contains("HTTP/3", protocolHeaders);
 
@@ -153,18 +153,4 @@ public class Http3LimitParityTests
             SerializeToStreamAsync(stream, context);
     }
 
-    private static X509Certificate2 CreateSelfSigned(string subjectName)
-    {
-        using var rsa = RSA.Create(2048);
-        var request = new CertificateRequest(subjectName, rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
-        request.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, false));
-        request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, false));
-        request.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(request.PublicKey, false));
-        var sanBuilder = new SubjectAlternativeNameBuilder();
-        sanBuilder.AddDnsName("localhost");
-        sanBuilder.AddIpAddress(System.Net.IPAddress.Loopback);
-        request.CertificateExtensions.Add(sanBuilder.Build());
-
-        return request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(1));
-    }
 }

@@ -43,43 +43,43 @@ public class MiddlewareComposerTests
 
         UnaryOutboundDelegate unaryOut = (req, ct) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty)));
         Assert.Same(unaryOut, MiddlewareComposer.ComposeUnaryOutbound(null, unaryOut));
-        Assert.Same(unaryOut, MiddlewareComposer.ComposeUnaryOutbound(Array.Empty<IUnaryOutboundMiddleware>(), unaryOut));
+        Assert.Same(unaryOut, MiddlewareComposer.ComposeUnaryOutbound([], unaryOut));
 
         UnaryInboundDelegate unaryIn = (req, ct) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty)));
         Assert.Same(unaryIn, MiddlewareComposer.ComposeUnaryInbound(null, unaryIn));
-        Assert.Same(unaryIn, MiddlewareComposer.ComposeUnaryInbound(Array.Empty<IUnaryInboundMiddleware>(), unaryIn));
+        Assert.Same(unaryIn, MiddlewareComposer.ComposeUnaryInbound([], unaryIn));
 
         OnewayOutboundDelegate onewayOut = (req, ct) => ValueTask.FromResult(Ok(OnewayAck.Ack()));
         Assert.Same(onewayOut, MiddlewareComposer.ComposeOnewayOutbound(null, onewayOut));
-        Assert.Same(onewayOut, MiddlewareComposer.ComposeOnewayOutbound(Array.Empty<IOnewayOutboundMiddleware>(), onewayOut));
+        Assert.Same(onewayOut, MiddlewareComposer.ComposeOnewayOutbound([], onewayOut));
 
         OnewayInboundDelegate onewayIn = (req, ct) => ValueTask.FromResult(Ok(OnewayAck.Ack()));
         Assert.Same(onewayIn, MiddlewareComposer.ComposeOnewayInbound(null, onewayIn));
-        Assert.Same(onewayIn, MiddlewareComposer.ComposeOnewayInbound(Array.Empty<IOnewayInboundMiddleware>(), onewayIn));
+        Assert.Same(onewayIn, MiddlewareComposer.ComposeOnewayInbound([], onewayIn));
 
         StreamOutboundDelegate streamOut = (req, opts, ct) => ValueTask.FromResult(Ok<IStreamCall>(ServerStreamCall.Create(meta)));
         Assert.Same(streamOut, MiddlewareComposer.ComposeStreamOutbound(null, streamOut));
-        Assert.Same(streamOut, MiddlewareComposer.ComposeStreamOutbound(Array.Empty<IStreamOutboundMiddleware>(), streamOut));
+        Assert.Same(streamOut, MiddlewareComposer.ComposeStreamOutbound([], streamOut));
 
         StreamInboundDelegate streamIn = (req, opts, ct) => ValueTask.FromResult(Ok<IStreamCall>(ServerStreamCall.Create(meta)));
         Assert.Same(streamIn, MiddlewareComposer.ComposeStreamInbound(null, streamIn));
-        Assert.Same(streamIn, MiddlewareComposer.ComposeStreamInbound(Array.Empty<IStreamInboundMiddleware>(), streamIn));
+        Assert.Same(streamIn, MiddlewareComposer.ComposeStreamInbound([], streamIn));
 
         ClientStreamInboundDelegate clientStreamIn = (ctx, ct) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty)));
         Assert.Same(clientStreamIn, MiddlewareComposer.ComposeClientStreamInbound(null, clientStreamIn));
-        Assert.Same(clientStreamIn, MiddlewareComposer.ComposeClientStreamInbound(Array.Empty<IClientStreamInboundMiddleware>(), clientStreamIn));
+        Assert.Same(clientStreamIn, MiddlewareComposer.ComposeClientStreamInbound([], clientStreamIn));
 
         ClientStreamOutboundDelegate clientStreamOut = (requestMeta, ct) => ValueTask.FromResult(Ok<IClientStreamTransportCall>(CreateClientStreamCall(requestMeta)));
         Assert.Same(clientStreamOut, MiddlewareComposer.ComposeClientStreamOutbound(null, clientStreamOut));
-        Assert.Same(clientStreamOut, MiddlewareComposer.ComposeClientStreamOutbound(Array.Empty<IClientStreamOutboundMiddleware>(), clientStreamOut));
+        Assert.Same(clientStreamOut, MiddlewareComposer.ComposeClientStreamOutbound([], clientStreamOut));
 
         DuplexInboundDelegate duplexIn = (req, ct) => ValueTask.FromResult(Ok<IDuplexStreamCall>(DuplexStreamCall.Create(meta)));
         Assert.Same(duplexIn, MiddlewareComposer.ComposeDuplexInbound(null, duplexIn));
-        Assert.Same(duplexIn, MiddlewareComposer.ComposeDuplexInbound(Array.Empty<IDuplexInboundMiddleware>(), duplexIn));
+        Assert.Same(duplexIn, MiddlewareComposer.ComposeDuplexInbound([], duplexIn));
 
         DuplexOutboundDelegate duplexOut = (req, ct) => ValueTask.FromResult(Ok<IDuplexStreamCall>(DuplexStreamCall.Create(meta)));
         Assert.Same(duplexOut, MiddlewareComposer.ComposeDuplexOutbound(null, duplexOut));
-        Assert.Same(duplexOut, MiddlewareComposer.ComposeDuplexOutbound(Array.Empty<IDuplexOutboundMiddleware>(), duplexOut));
+        Assert.Same(duplexOut, MiddlewareComposer.ComposeDuplexOutbound([], duplexOut));
     }
 
     [Fact]

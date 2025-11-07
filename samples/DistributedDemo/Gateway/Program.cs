@@ -38,8 +38,8 @@ public static class Program
                 {
                     var options = new OmniRelay.Configuration.Models.OmniRelayConfigurationOptions();
                     context.Configuration.GetSection("omnirelay").Bind(options);
-                    var httpUrls = options.Inbounds?.Http?.SelectMany(h => h?.Urls ?? Array.Empty<string>())?.ToArray() ?? Array.Empty<string>();
-                    var grpcUrls = options.Inbounds?.Grpc?.SelectMany(g => g?.Urls ?? Array.Empty<string>())?.ToArray() ?? Array.Empty<string>();
+                    var httpUrls = options.Inbounds?.Http?.SelectMany(h => h?.Urls ?? Array.Empty<string>())?.ToArray() ?? [];
+                    var grpcUrls = options.Inbounds?.Grpc?.SelectMany(g => g?.Urls ?? Array.Empty<string>())?.ToArray() ?? [];
                     Console.WriteLine($"[GatewayStartup] HTTP Inbounds: {string.Join(", ", httpUrls)} | gRPC Inbounds: {string.Join(", ", grpcUrls)}");
                     var logger = services.BuildServiceProvider().GetService<ILoggerFactory>()?.CreateLogger("GatewayStartup");
                     logger?.LogInformation("Configured inbound URLs - HTTP: {HttpUrls}; gRPC: {GrpcUrls}", string.Join(", ", httpUrls), string.Join(", ", grpcUrls));

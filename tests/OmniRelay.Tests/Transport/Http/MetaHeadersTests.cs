@@ -39,14 +39,12 @@ public class MetaHeadersTests
         await dispatcher.StartAsync(ct);
 
         using var httpClient = new HttpClient { BaseAddress = baseAddress };
-        using var request = new HttpRequestMessage(HttpMethod.Post, "/");
-        request.Headers.Add(HttpTransportHeaders.Procedure, "meta::echo");
-        request.Headers.Add(HttpTransportHeaders.TtlMs, "1500");
+        httpClient.DefaultRequestHeaders.Add(HttpTransportHeaders.Procedure, "meta::echo");
+        httpClient.DefaultRequestHeaders.Add(HttpTransportHeaders.TtlMs, "1500");
         var deadline = DateTimeOffset.UtcNow.AddSeconds(5).ToString("O");
-        request.Headers.Add(HttpTransportHeaders.Deadline, deadline);
-        request.Content = new ByteArrayContent(Array.Empty<byte>());
+        httpClient.DefaultRequestHeaders.Add(HttpTransportHeaders.Deadline, deadline);
 
-        using var response = await httpClient.SendAsync(request, ct);
+        using var response = await httpClient.PostAsync("/", new ByteArrayContent([]), ct);
         var body = await response.Content.ReadAsStringAsync(ct);
         var doc = JsonSerializer.Deserialize<JsonElement>(body);
 

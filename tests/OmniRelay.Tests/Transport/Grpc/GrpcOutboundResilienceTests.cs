@@ -7,6 +7,7 @@ using OmniRelay.Core.Clients;
 using OmniRelay.Core.Middleware;
 using OmniRelay.Core.Peers;
 using OmniRelay.Dispatcher;
+using OmniRelay.Tests.Support;
 using OmniRelay.Transport.Grpc;
 using Xunit;
 
@@ -20,7 +21,7 @@ public class GrpcOutboundResilienceTests
     public async Task Breaker_Trips_On_Http3_Handshake_Failures()
     {
         // Server supports only HTTP/2
-        using var certificate = CreateSelfSignedCertificate("CN=omnirelay-grpc-resilience-h2");
+        using var certificate = TestCertificateFactory.CreateLoopbackCertificate("CN=omnirelay-grpc-resilience-h2");
 
         var port = TestPortAllocator.GetRandomPort();
         var address = new Uri($"https://127.0.0.1:{port}");
@@ -65,7 +66,7 @@ public class GrpcOutboundResilienceTests
 
             var codec = new RawCodec();
             var client = new UnaryClient<byte[], byte[]>(outbound, codec, dispatcher.ClientConfig("grpc-resilience-h2").UnaryMiddleware);
-            var request = new Request<byte[]>(new RequestMeta("grpc-resilience-h2", "grpc-resilience-h2::ping"), Array.Empty<byte>());
+            var request = new Request<byte[]>(new RequestMeta("grpc-resilience-h2", "grpc-resilience-h2::ping"), []);
 
             // Issue several attempts to exceed breaker threshold
             for (var i = 0; i < 5; i++)
@@ -118,8 +119,8 @@ public class GrpcOutboundResilienceTests
             await outbound.StartAsync(ct);
 
             var codec = new RawCodec();
-            var client = new UnaryClient<byte[], byte[]>(outbound, codec, Array.Empty<IUnaryOutboundMiddleware>());
-            var request = new Request<byte[]>(new RequestMeta("grpc-resilience-noserver", "grpc-resilience-noserver::ping"), Array.Empty<byte>());
+            var client = new UnaryClient<byte[], byte[]>(outbound, codec, []);
+            var request = new Request<byte[]>(new RequestMeta("grpc-resilience-noserver", "grpc-resilience-noserver::ping"), []);
 
             for (var i = 0; i < 5; i++)
             {
@@ -169,19 +170,4 @@ public class GrpcOutboundResilienceTests
         throw new TimeoutException("The gRPC inbound failed to bind within the allotted time.");
     }
 
-    private static X509Certificate2 CreateSelfSignedCertificate(string subjectName)
-    {
-        using var rsa = RSA.Create(2048);
-        var request = new CertificateRequest(subjectName, rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
-        request.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, false));
-        request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, false));
-        request.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(request.PublicKey, false));
-
-        var sanBuilder = new SubjectAlternativeNameBuilder();
-        sanBuilder.AddDnsName("localhost");
-        sanBuilder.AddIpAddress(IPAddress.Loopback);
-        request.CertificateExtensions.Add(sanBuilder.Build());
-
-        return request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(1));
-    }
 }

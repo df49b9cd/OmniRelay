@@ -788,7 +788,7 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
 
         if (!ContainsStatusTrailer(callContext.ResponseTrailers))
         {
-            callContext.ResponseTrailers.Add(GrpcTransportConstants.StatusTrailer, StatusCode.OK.ToString());
+            callContext.ResponseTrailers.Add(GrpcTransportConstants.StatusTrailer, nameof(StatusCode.OK));
         }
     }
 

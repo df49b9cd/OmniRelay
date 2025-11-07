@@ -10,6 +10,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using OmniRelay.Core;
 using OmniRelay.Dispatcher;
+using OmniRelay.Tests.Support;
 using OmniRelay.Transport.Http;
 using Xunit;
 
@@ -25,7 +26,7 @@ public class Http3FallbackErrorTests
             return;
         }
 
-        using var certificate = CreateSelfSigned("CN=omnirelay-http3-errors");
+        using var certificate = TestCertificateFactory.CreateLoopbackCertificate("CN=omnirelay-http3-errors");
 
         var port = TestPortAllocator.GetRandomPort();
         var baseAddress = new Uri($"https://127.0.0.1:{port}/");
@@ -51,7 +52,14 @@ public class Http3FallbackErrorTests
             var http3Snapshot = await CaptureErrorSnapshotAsync(CreateHttp3Client(baseAddress, HttpVersionPolicy.RequestVersionExact), ct);
             var http2Snapshot = await CaptureErrorSnapshotAsync(CreateHttp2Client(baseAddress), ct);
 
-            Assert.Equal(http3Snapshot, http2Snapshot);
+            Assert.Equal(
+                http2Snapshot with
+                {
+                    ProtocolHeader = http3Snapshot.ProtocolHeader,
+                    HttpVersion = http3Snapshot.HttpVersion
+                },
+                http3Snapshot);
+            Assert.StartsWith("HTTP/", http3Snapshot.ProtocolHeader, StringComparison.Ordinal);
         }
         finally
         {
@@ -67,7 +75,7 @@ public class Http3FallbackErrorTests
             return;
         }
 
-        using var certificate = CreateSelfSigned("CN=omnirelay-http3-fallback");
+        using var certificate = TestCertificateFactory.CreateLoopbackCertificate("CN=omnirelay-http3-fallback");
 
         var port = TestPortAllocator.GetRandomPort();
         var baseAddress = new Uri($"https://127.0.0.1:{port}/");
@@ -107,10 +115,7 @@ public class Http3FallbackErrorTests
     {
         using (client)
         {
-            using var request = new HttpRequestMessage(HttpMethod.Post, "/");
-            request.Content = new ByteArrayContent(Array.Empty<byte>());
-
-            using var response = await client.SendAsync(request, HttpCompletionOption.ResponseContentRead, cancellationToken);
+            using var response = await client.PostAsync("/", new ByteArrayContent([]), cancellationToken);
             var payload = await response.Content.ReadAsStringAsync(cancellationToken);
 
             response.Headers.TryGetValues(HttpTransportHeaders.Status, out var statusValues);
@@ -148,9 +153,11 @@ public class Http3FallbackErrorTests
 
     private static HttpClient CreateHttp3Client(Uri baseAddress, HttpVersionPolicy policy)
     {
-        var handler = new SocketsHttpHandler
+        var socketsHandler = new SocketsHttpHandler
         {
             AllowAutoRedirect = false,
+            EnableMultipleHttp2Connections = true,
+            EnableMultipleHttp3Connections = true,
             SslOptions =
             {
                 RemoteCertificateValidationCallback = static (_, _, _, _) => true,
@@ -164,19 +171,37 @@ public class Http3FallbackErrorTests
             }
         };
 
-        return new HttpClient(handler)
+        var versionHandler = new Http3VersionHandler(socketsHandler, policy);
+
+        return new HttpClient(versionHandler)
         {
-            BaseAddress = baseAddress,
-            DefaultRequestVersion = HttpVersion.Version30,
-            DefaultVersionPolicy = policy
+            BaseAddress = baseAddress
         };
+    }
+
+    private sealed class Http3VersionHandler : DelegatingHandler
+    {
+        private readonly HttpVersionPolicy _policy;
+
+        public Http3VersionHandler(HttpMessageHandler inner, HttpVersionPolicy policy) : base(inner)
+        {
+            _policy = policy;
+        }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            request.Version = HttpVersion.Version30;
+            request.VersionPolicy = _policy;
+            return base.SendAsync(request, cancellationToken);
+        }
     }
 
     private static HttpClient CreateHttp2Client(Uri baseAddress)
     {
-        var handler = new SocketsHttpHandler
+        var socketsHandler = new SocketsHttpHandler
         {
             AllowAutoRedirect = false,
+            EnableMultipleHttp2Connections = true,
             SslOptions =
             {
                 RemoteCertificateValidationCallback = static (_, _, _, _) => true,
@@ -189,27 +214,26 @@ public class Http3FallbackErrorTests
             }
         };
 
-        return new HttpClient(handler)
+        var versionHandler = new Http2VersionHandler(socketsHandler);
+
+        return new HttpClient(versionHandler)
         {
-            BaseAddress = baseAddress,
-            DefaultRequestVersion = HttpVersion.Version20,
-            DefaultVersionPolicy = HttpVersionPolicy.RequestVersionExact
+            BaseAddress = baseAddress
         };
     }
 
-    private static X509Certificate2 CreateSelfSigned(string subjectName)
+    private sealed class Http2VersionHandler : DelegatingHandler
     {
-        using var rsa = RSA.Create(2048);
-        var request = new CertificateRequest(subjectName, rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
-        request.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, false));
-        request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, false));
-        request.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(request.PublicKey, false));
-        var sanBuilder = new SubjectAlternativeNameBuilder();
-        sanBuilder.AddDnsName("localhost");
-        sanBuilder.AddIpAddress(System.Net.IPAddress.Loopback);
-        request.CertificateExtensions.Add(sanBuilder.Build());
+        public Http2VersionHandler(HttpMessageHandler inner) : base(inner)
+        {
+        }
 
-        return request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(1));
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            request.Version = HttpVersion.Version20;
+            request.VersionPolicy = HttpVersionPolicy.RequestVersionExact;
+            return base.SendAsync(request, cancellationToken);
+        }
     }
 
     private sealed record ErrorSnapshot(

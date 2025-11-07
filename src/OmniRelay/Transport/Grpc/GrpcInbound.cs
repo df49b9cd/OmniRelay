@@ -195,6 +195,8 @@ public sealed class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcServerInter
                 {
                     if (enableHttp3)
                     {
+                        listenOptions.Protocols = HttpProtocols.Http1AndHttp2AndHttp3;
+
                         if (!uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
                         {
                             throw new InvalidOperationException($"HTTP/3 requires HTTPS. Update inbound URL '{url}' to use https:// or disable HTTP/3 for this listener.");
@@ -202,7 +204,6 @@ public sealed class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcServerInter
 
                         Http3RuntimeGuards.EnsureServerSupport(url, _serverTlsOptions?.Certificate);
 
-                        listenOptions.Protocols = HttpProtocols.Http2 | HttpProtocols.Http3;
                         var enableAltSvc = http3RuntimeOptions?.EnableAltSvc;
                         listenOptions.DisableAltSvcHeader = enableAltSvc switch
                         {

@@ -263,19 +263,18 @@ public sealed class HttpOutbound : IUnaryOutbound, IOnewayOutbound, IOutboundDia
 
         if (_runtimeOptions.EnableHttp3)
         {
-            // Prefer negotiated upgrade to the highest supported version (including HTTP/3)
-            // per Microsoft guidance: set Version=1.1 with VersionPolicy=RequestVersionOrHigher.
-            // If a specific RequestVersion was supplied, honor it.
-            if (_runtimeOptions.RequestVersion is { } desired)
+            var http3Policy = _runtimeOptions.VersionPolicy ?? HttpVersionPolicy.RequestVersionOrLower;
+            httpRequest.VersionPolicy = http3Policy;
+
+            if (_runtimeOptions.RequestVersion is { } desiredVersion)
             {
-                httpRequest.Version = desired;
+                httpRequest.Version = desiredVersion;
             }
             else
             {
-                httpRequest.Version = HttpVersion.Version11;
+                httpRequest.Version = HttpVersion.Version30;
             }
 
-            httpRequest.VersionPolicy = _runtimeOptions.VersionPolicy ?? HttpVersionPolicy.RequestVersionOrHigher;
             return;
         }
 

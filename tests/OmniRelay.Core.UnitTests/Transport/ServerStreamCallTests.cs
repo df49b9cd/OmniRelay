@@ -22,7 +22,7 @@ public class ServerStreamCallTests
         await call.WriteAsync(new byte[] { 1, 2 }, TestContext.Current.CancellationToken);
         await call.WriteAsync(new byte[] { 3 }, TestContext.Current.CancellationToken);
 
-        var received = new System.Collections.Generic.List<byte[]>();
+        var received = new List<byte[]>();
         await foreach (var payload in call.Responses.ReadAllAsync(TestContext.Current.CancellationToken))
         {
             received.Add(payload.ToArray());

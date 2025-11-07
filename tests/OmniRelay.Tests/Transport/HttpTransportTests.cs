@@ -184,11 +184,10 @@ public class HttpTransportTests
         await dispatcher.StartAsync(ct);
 
         var httpClient = new HttpClient { BaseAddress = baseAddress };
-        var request = new HttpRequestMessage(HttpMethod.Get, "/");
-        request.Headers.Add(HttpTransportHeaders.Procedure, "stream::events");
-        request.Headers.Accept.ParseAdd("text/event-stream");
+        httpClient.DefaultRequestHeaders.Add(HttpTransportHeaders.Procedure, "stream::events");
+        httpClient.DefaultRequestHeaders.Accept.ParseAdd("text/event-stream");
 
-        using var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+        using var response = await httpClient.GetAsync("/", HttpCompletionOption.ResponseHeadersRead, ct);
 
         Assert.True(response.IsSuccessStatusCode);
         Assert.Equal("text/event-stream", response.Content.Headers.ContentType?.MediaType);
@@ -197,7 +196,7 @@ public class HttpTransportTests
         using var responseStream = await response.Content.ReadAsStreamAsync(ct);
         using var reader = new StreamReader(responseStream, Encoding.UTF8);
 
-        var events = new System.Collections.Generic.List<string>();
+        var events = new List<string>();
 
         while (events.Count < 3)
         {
@@ -260,11 +259,10 @@ public class HttpTransportTests
         await dispatcher.StartAsync(ct);
 
         var httpClient = new HttpClient { BaseAddress = baseAddress };
-        var request = new HttpRequestMessage(HttpMethod.Get, "/");
-        request.Headers.Add(HttpTransportHeaders.Procedure, "stream::binary");
-        request.Headers.Accept.ParseAdd("text/event-stream");
+        httpClient.DefaultRequestHeaders.Add(HttpTransportHeaders.Procedure, "stream::binary");
+        httpClient.DefaultRequestHeaders.Accept.ParseAdd("text/event-stream");
 
-        using var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+        using var response = await httpClient.GetAsync("/", HttpCompletionOption.ResponseHeadersRead, ct);
         Assert.True(response.IsSuccessStatusCode);
 
         using var responseStream = await response.Content.ReadAsStreamAsync(ct);
@@ -326,11 +324,10 @@ public class HttpTransportTests
         await dispatcher.StartAsync(ct);
 
         var httpClient = new HttpClient { BaseAddress = baseAddress };
-        var request = new HttpRequestMessage(HttpMethod.Get, "/");
-        request.Headers.Add(HttpTransportHeaders.Procedure, "stream::oversized");
-        request.Headers.Accept.ParseAdd("text/event-stream");
+        httpClient.DefaultRequestHeaders.Add(HttpTransportHeaders.Procedure, "stream::oversized");
+        httpClient.DefaultRequestHeaders.Accept.ParseAdd("text/event-stream");
 
-        using var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+        using var response = await httpClient.GetAsync("/", HttpCompletionOption.ResponseHeadersRead, ct);
         Assert.True(response.IsSuccessStatusCode);
 
         await WaitForCompletionAsync(ct);
@@ -441,7 +438,7 @@ public class HttpTransportTests
         await session.WriteAsync(new ChatMessage("world"), ct);
         await session.CompleteRequestsAsync(cancellationToken: ct);
 
-        var messages = new System.Collections.Generic.List<string>();
+        var messages = new List<string>();
         await foreach (var response in session.ReadResponsesAsync(ct))
         {
             messages.Add(response.Body.Message);

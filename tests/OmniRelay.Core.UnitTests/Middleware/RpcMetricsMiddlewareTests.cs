@@ -21,7 +21,7 @@ public class RpcMetricsMiddlewareTests
         public long Requests;
         public long Success;
         public long Failure;
-        public List<double> Durations = new();
+        public List<double> Durations = [];
         public MeterListener Listener = new();
 
         public Collector(Meter meter, string prefix)

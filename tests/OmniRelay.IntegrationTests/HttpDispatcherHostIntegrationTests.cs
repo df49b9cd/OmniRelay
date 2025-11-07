@@ -53,12 +53,11 @@ public class HttpDispatcherHostIntegrationTests
         try
         {
             using var httpClient = new HttpClient { BaseAddress = new Uri(baseUrl) };
-            using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/");
-            httpRequest.Headers.Add(HttpTransportHeaders.Procedure, "integration::ping");
-            httpRequest.Headers.Add(HttpTransportHeaders.Transport, "http");
-            httpRequest.Content = new ByteArrayContent(Encoding.UTF8.GetBytes("ping"));
+            httpClient.DefaultRequestHeaders.Add(HttpTransportHeaders.Procedure, "integration::ping");
+            httpClient.DefaultRequestHeaders.Add(HttpTransportHeaders.Transport, "http");
 
-            using var response = await httpClient.SendAsync(httpRequest, ct);
+            using var content = new ByteArrayContent(Encoding.UTF8.GetBytes("ping"));
+            using var response = await httpClient.PostAsync("/", content, ct);
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             var body = await response.Content.ReadAsStringAsync(ct);
             Assert.Equal("integration-http-response", body);

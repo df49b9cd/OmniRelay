@@ -60,12 +60,12 @@ public sealed class RpcMetricsMiddlewareTests
         Assert.True(result.IsFailure);
 
         AssertMeasurement(longMeasurements, "test.rpc.requests", 1, "rpc.direction", "outbound");
-        AssertMeasurement(longMeasurements, "test.rpc.failure", 1, "rpc.direction", "outbound", "rpc.status", OmniRelayStatusCode.Internal.ToString());
+        AssertMeasurement(longMeasurements, "test.rpc.failure", 1, "rpc.direction", "outbound", "rpc.status", nameof(OmniRelayStatusCode.Internal));
         AssertDoesNotContain(longMeasurements, "test.rpc.success");
 
         var duration = doubleMeasurements.Single(m => m.InstrumentName == "test.rpc.duration");
         Assert.Equal("outbound", duration.Tags.Single(tag => tag.Key == "rpc.direction").Value);
-        Assert.Equal(OmniRelayStatusCode.Internal.ToString(), duration.Tags.Single(tag => tag.Key == "rpc.status").Value);
+        Assert.Equal(nameof(OmniRelayStatusCode.Internal), duration.Tags.Single(tag => tag.Key == "rpc.status").Value);
     }
 
     private static MeterListener CreateListener(

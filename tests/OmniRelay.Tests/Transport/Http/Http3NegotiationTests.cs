@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using OmniRelay.Core;
 using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
+using OmniRelay.Tests.Support;
 using OmniRelay.Transport.Http;
 using Xunit;
 
@@ -26,7 +27,7 @@ public class Http3NegotiationTests
             return;
         }
 
-        using var certificate = CreateSelfSigned("CN=omnirelay-http3");
+        using var certificate = TestCertificateFactory.CreateLoopbackCertificate("CN=omnirelay-http3");
 
         var port = TestPortAllocator.GetRandomPort();
         var baseAddress = new Uri($"https://127.0.0.1:{port}/");
@@ -51,13 +52,11 @@ public class Http3NegotiationTests
         {
             using var handler = CreateHttp3Handler();
             using var client = new HttpClient(handler) { BaseAddress = baseAddress };
-            using var request = new HttpRequestMessage(HttpMethod.Post, "/");
-            request.Version = HttpVersion.Version30;
-            request.VersionPolicy = HttpVersionPolicy.RequestVersionExact;
-            request.Headers.Add(HttpTransportHeaders.Procedure, "ping");
-            request.Content = new ByteArrayContent(Array.Empty<byte>());
+            client.DefaultRequestVersion = HttpVersion.Version30;
+            client.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionExact;
+            client.DefaultRequestHeaders.Add(HttpTransportHeaders.Procedure, "ping");
 
-            using var response = await client.SendAsync(request, ct);
+            using var response = await client.PostAsync("/", new ByteArrayContent([]), ct);
 
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             Assert.Equal(3, response.Version.Major);
@@ -76,7 +75,7 @@ public class Http3NegotiationTests
             return;
         }
 
-        using var certificate = CreateSelfSigned("CN=omnirelay-http3-stream");
+        using var certificate = TestCertificateFactory.CreateLoopbackCertificate("CN=omnirelay-http3-stream");
 
         var payload = new byte[512 * 1024];
         RandomNumberGenerator.Fill(payload);
@@ -111,14 +110,12 @@ public class Http3NegotiationTests
         {
             using var handler = CreateHttp3Handler();
             using var client = new HttpClient(handler) { BaseAddress = baseAddress };
+            client.DefaultRequestVersion = HttpVersion.Version30;
+            client.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionExact;
+            client.DefaultRequestHeaders.Add(HttpTransportHeaders.Procedure, "http3-stream::tail");
+            client.DefaultRequestHeaders.Accept.ParseAdd("text/event-stream");
 
-            var request = new HttpRequestMessage(HttpMethod.Get, "/");
-            request.Version = HttpVersion.Version30;
-            request.VersionPolicy = HttpVersionPolicy.RequestVersionExact;
-            request.Headers.Add(HttpTransportHeaders.Procedure, "http3-stream::tail");
-            request.Headers.Accept.ParseAdd("text/event-stream");
-
-            using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+            using var response = await client.GetAsync("/", HttpCompletionOption.ResponseHeadersRead, ct);
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             Assert.Equal(3, response.Version.Major);
 
@@ -170,7 +167,7 @@ public class Http3NegotiationTests
             return;
         }
 
-        using var certificate = CreateSelfSigned("CN=omnirelay-http3");
+        using var certificate = TestCertificateFactory.CreateLoopbackCertificate("CN=omnirelay-http3");
 
         var port = TestPortAllocator.GetRandomPort();
         var baseAddress = new Uri($"https://127.0.0.1:{port}/");
@@ -195,13 +192,11 @@ public class Http3NegotiationTests
         {
             using var handler = CreateHttp11Handler();
             using var client = new HttpClient(handler) { BaseAddress = baseAddress };
-            using var request = new HttpRequestMessage(HttpMethod.Post, "/");
-            request.Version = HttpVersion.Version11;
-            request.VersionPolicy = HttpVersionPolicy.RequestVersionExact;
-            request.Headers.Add(HttpTransportHeaders.Procedure, "ping");
-            request.Content = new ByteArrayContent(Array.Empty<byte>());
+            client.DefaultRequestVersion = HttpVersion.Version11;
+            client.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionExact;
+            client.DefaultRequestHeaders.Add(HttpTransportHeaders.Procedure, "ping");
 
-            using var response = await client.SendAsync(request, ct);
+            using var response = await client.PostAsync("/", new ByteArrayContent([]), ct);
 
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             Assert.Equal(1, response.Version.Major);
@@ -220,7 +215,7 @@ public class Http3NegotiationTests
             return;
         }
 
-        using var certificate = CreateSelfSigned("CN=omnirelay-http3");
+        using var certificate = TestCertificateFactory.CreateLoopbackCertificate("CN=omnirelay-http3");
 
         var port = TestPortAllocator.GetRandomPort();
         var baseAddress = new Uri($"https://127.0.0.1:{port}/");
@@ -245,13 +240,11 @@ public class Http3NegotiationTests
         {
             using var handler = CreateHttp3Handler();
             using var client = new HttpClient(handler) { BaseAddress = baseAddress };
-            using var request = new HttpRequestMessage(HttpMethod.Post, "/");
-            request.Version = HttpVersion.Version30;
-            request.VersionPolicy = HttpVersionPolicy.RequestVersionOrLower;
-            request.Headers.Add(HttpTransportHeaders.Procedure, "ping");
-            request.Content = new ByteArrayContent(Array.Empty<byte>());
+            client.DefaultRequestVersion = HttpVersion.Version30;
+            client.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrLower;
+            client.DefaultRequestHeaders.Add(HttpTransportHeaders.Procedure, "ping");
 
-            using var response = await client.SendAsync(request, ct);
+            using var response = await client.PostAsync("/", new ByteArrayContent([]), ct);
 
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             Assert.Equal(2, response.Version.Major);
@@ -284,18 +277,4 @@ public class Http3NegotiationTests
         ServerCertificateCustomValidationCallback = (_, _, _, _) => true
     };
 
-    private static X509Certificate2 CreateSelfSigned(string subjectName)
-    {
-        using var rsa = RSA.Create(2048);
-        var req = new CertificateRequest(subjectName, rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
-        req.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, false));
-        req.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, false));
-        req.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(req.PublicKey, false));
-        var sanBuilder = new SubjectAlternativeNameBuilder();
-        sanBuilder.AddDnsName("localhost");
-        sanBuilder.AddIpAddress(IPAddress.Loopback);
-        req.CertificateExtensions.Add(sanBuilder.Build());
-
-        return req.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(1));
-    }
 }

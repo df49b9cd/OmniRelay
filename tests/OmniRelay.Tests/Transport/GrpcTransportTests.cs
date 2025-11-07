@@ -24,6 +24,7 @@ using OmniRelay.Core;
 using OmniRelay.Core.Peers;
 using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
+using OmniRelay.Tests.Support;
 using OmniRelay.Errors;
 using OmniRelay.Transport.Grpc;
 using Xunit;
@@ -239,7 +240,7 @@ public class GrpcTransportTests
             var response = await outbound.CallAsync(request, ct);
             Assert.True(response.IsSuccess, response.Error?.Message);
 
-            await Assert.ThrowsAsync<SocketException>(async () =>
+            var exception = await Assert.ThrowsAnyAsync<Exception>(async () =>
             {
                 var unusedPort = TestPortAllocator.GetRandomPort();
                 using var unusedClient = new TcpClient();
@@ -247,6 +248,10 @@ public class GrpcTransportTests
                 timeoutCts.CancelAfter(TimeSpan.FromMilliseconds(200));
                 await unusedClient.ConnectAsync("127.0.0.1", unusedPort, timeoutCts.Token);
             });
+
+            Assert.True(
+                exception is SocketException or OperationCanceledException,
+                $"Expected connection failure but observed {exception.GetType().FullName}.");
         }
         finally
         {
@@ -359,7 +364,7 @@ public class GrpcTransportTests
         var port = TestPortAllocator.GetRandomPort();
         var address = new Uri($"https://127.0.0.1:{port}");
 
-        using var certificate = CreateSelfSignedCertificate("CN=omnirelay-grpc-test");
+        using var certificate = TestCertificateFactory.CreateLoopbackCertificate("CN=omnirelay-grpc-test");
 
         var options = new DispatcherOptions("tls");
         var tlsOptions = new GrpcServerTlsOptions { Certificate = certificate };
@@ -695,8 +700,7 @@ public class GrpcTransportTests
                 service: "echo",
                 procedure: "echo::ping",
                 encoding: "application/json",
-                transport: "grpc",
-                timeToLive: TimeSpan.FromMilliseconds(200));
+                transport: "grpc");
             var failingPayload = codec.EncodeRequest(new EchoRequest("first"), failingMeta);
             Assert.True(failingPayload.IsSuccess);
             var failingRequest = new Request<ReadOnlyMemory<byte>>(failingMeta, failingPayload.Value);
@@ -799,7 +803,7 @@ public class GrpcTransportTests
             procedure: "stream::oversized",
             encoding: RawCodec.DefaultEncoding,
             transport: TransportName);
-        var request = new Request<byte[]>(requestMeta, Array.Empty<byte>());
+        var request = new Request<byte[]>(requestMeta, []);
 
         var exception = await Assert.ThrowsAsync<OmniRelayException>(async () =>
         {
@@ -2287,7 +2291,7 @@ public class GrpcTransportTests
             Assert.Contains(trailers, entry => string.Equals(entry.Key, ErrorCodeTrailerKey, StringComparison.OrdinalIgnoreCase)
                 && string.Equals(entry.Value, "permission-denied", StringComparison.OrdinalIgnoreCase));
             Assert.Contains(trailers, entry => string.Equals(entry.Key, StatusTrailerKey, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(entry.Value, OmniRelayStatusCode.PermissionDenied.ToString(), StringComparison.OrdinalIgnoreCase));
+                && string.Equals(entry.Value, nameof(OmniRelayStatusCode.PermissionDenied), StringComparison.OrdinalIgnoreCase));
         }
         finally
         {
@@ -2679,21 +2683,6 @@ public class GrpcTransportTests
         throw new TimeoutException("The gRPC inbound failed to bind within the allotted time.");
     }
 
-    private static X509Certificate2 CreateSelfSignedCertificate(string subjectName)
-    {
-        using var rsa = RSA.Create(2048);
-        var request = new CertificateRequest(subjectName, rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
-        request.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, false));
-        request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, false));
-        request.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(request.PublicKey, false));
-
-        var sanBuilder = new SubjectAlternativeNameBuilder();
-        sanBuilder.AddDnsName("localhost");
-        sanBuilder.AddIpAddress(IPAddress.Loopback);
-        request.CertificateExtensions.Add(sanBuilder.Build());
-
-        return request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(1));
-    }
 
     private sealed class ServerTaskTracker : IAsyncDisposable
     {

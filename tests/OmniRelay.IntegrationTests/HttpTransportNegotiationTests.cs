@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Mime;
 using System.Net.Security;
+using System.Security.Authentication;
 using System.Text;
 using OmniRelay.Core;
 using OmniRelay.Dispatcher;
@@ -20,7 +21,7 @@ public class HttpTransportNegotiationTests
     {
         var port = TestPortAllocator.GetRandomPort();
         var baseAddress = new Uri($"https://127.0.0.1:{port}/");
-        using var certificate = TestCertificateFactory.CreateSelfSigned("CN=omnirelay-http11");
+        using var certificate = TestCertificateFactory.CreateLoopbackCertificate("CN=omnirelay-http11");
 
         var dispatcher = CreateDispatcher(
             "http11-service",
@@ -34,12 +35,16 @@ public class HttpTransportNegotiationTests
         try
         {
             using var handler = CreateHttp11Handler();
-            using var client = new HttpClient(handler) { BaseAddress = baseAddress };
+            using var client = new HttpClient(handler);
+            client.BaseAddress = baseAddress;
             client.DefaultRequestVersion = HttpVersion.Version11;
             client.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionExact;
 
-            using var request = CreateRpcRequest("protocol::ping");
-            var response = await client.SendAsync(request, ct);
+            client.DefaultRequestHeaders.Add(HttpTransportHeaders.Procedure, "protocol::ping");
+            client.DefaultRequestHeaders.Add(HttpTransportHeaders.Transport, "http");
+
+            using var content = new ByteArrayContent([]);
+            var response = await client.PostAsync("/", content, ct);
 
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             Assert.Equal(1, response.Version.Major);
@@ -57,7 +62,7 @@ public class HttpTransportNegotiationTests
     {
         var port = TestPortAllocator.GetRandomPort();
         var baseAddress = new Uri($"https://127.0.0.1:{port}/");
-        using var certificate = TestCertificateFactory.CreateSelfSigned("CN=omnirelay-http2");
+        using var certificate = TestCertificateFactory.CreateLoopbackCertificate("CN=omnirelay-http2");
 
         var dispatcher = CreateDispatcher(
             "http2-service",
@@ -72,12 +77,13 @@ public class HttpTransportNegotiationTests
         {
             using var handler = CreateHttp2Handler();
             using var client = new HttpClient(handler) { BaseAddress = baseAddress };
+            client.DefaultRequestVersion = HttpVersion.Version20;
+            client.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionExact;
+            client.DefaultRequestHeaders.Add(HttpTransportHeaders.Procedure, "protocol::ping");
+            client.DefaultRequestHeaders.Add(HttpTransportHeaders.Transport, "http");
 
-            using var request = CreateRpcRequest("protocol::ping");
-            request.Version = HttpVersion.Version20;
-            request.VersionPolicy = HttpVersionPolicy.RequestVersionExact;
-
-            var response = await client.SendAsync(request, ct);
+            using var content = new ByteArrayContent([]);
+            var response = await client.PostAsync("/", content, ct);
 
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             Assert.Equal(2, response.Version.Major);
@@ -95,7 +101,7 @@ public class HttpTransportNegotiationTests
     {
         var port = TestPortAllocator.GetRandomPort();
         var baseAddress = new Uri($"https://127.0.0.1:{port}/");
-        using var certificate = TestCertificateFactory.CreateSelfSigned("CN=omnirelay-http3");
+        using var certificate = TestCertificateFactory.CreateLoopbackCertificate("CN=omnirelay-http3");
 
         var dispatcher = CreateDispatcher(
             "http3-service",
@@ -113,17 +119,23 @@ public class HttpTransportNegotiationTests
         try
         {
             using var handler = CreateHttp3Handler();
-            using var client = new HttpClient(handler) { BaseAddress = baseAddress };
-            client.DefaultRequestVersion = HttpVersion.Version30;
-            client.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionExact;
+            using var client = new HttpClient(handler);
+            client.BaseAddress = baseAddress;
+            client.DefaultRequestHeaders.Add(HttpTransportHeaders.Procedure, "protocol::ping");
+            client.DefaultRequestHeaders.Add(HttpTransportHeaders.Transport, "http");
+            client.DefaultRequestVersion = HttpVersion.Version20;
+            client.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrHigher;
 
-            using var request = CreateRpcRequest("protocol::ping");
-            var response = await client.SendAsync(request, ct);
+            var response = await client.PostAsync("/", new ByteArrayContent([]), ct);
 
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-            Assert.Equal(3, response.Version.Major);
+            Assert.Equal(2, response.Version.Major);
             Assert.True(response.Headers.TryGetValues("Alt-Svc", out var altSvcValues));
             Assert.Contains(altSvcValues, value => value.Contains("h3=\"", StringComparison.OrdinalIgnoreCase));
+
+            var response2 = await client.PostAsync("/", new ByteArrayContent([]), ct);
+            Assert.Equal(HttpStatusCode.OK, response2.StatusCode);
+            Assert.Equal(3, response2.Version.Major);
         }
         finally
         {
@@ -136,7 +148,7 @@ public class HttpTransportNegotiationTests
     {
         var port = TestPortAllocator.GetRandomPort();
         var baseAddress = new Uri($"https://127.0.0.1:{port}/");
-        using var certificate = TestCertificateFactory.CreateSelfSigned("CN=omnirelay-http3-fallback");
+        using var certificate = TestCertificateFactory.CreateLoopbackCertificate("CN=omnirelay-http3-fallback");
 
         var dispatcher = CreateDispatcher(
             "http3-fallback",
@@ -153,12 +165,11 @@ public class HttpTransportNegotiationTests
             using var client = new HttpClient(handler) { BaseAddress = baseAddress };
             client.DefaultRequestVersion = HttpVersion.Version30;
             client.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrLower;
+            client.DefaultRequestHeaders.Add(HttpTransportHeaders.Procedure, "protocol::ping");
+            client.DefaultRequestHeaders.Add(HttpTransportHeaders.Transport, "http");
 
-            using var request = CreateRpcRequest("protocol::ping");
-            request.Version = HttpVersion.Version30;
-            request.VersionPolicy = HttpVersionPolicy.RequestVersionOrLower;
-
-            var response = await client.SendAsync(request, ct);
+            using var content = new ByteArrayContent([]);
+            var response = await client.PostAsync("/", content, ct);
 
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             Assert.Equal(2, response.Version.Major);
@@ -185,7 +196,7 @@ public class HttpTransportNegotiationTests
             "protocol::ping",
             static (_, _) =>
             {
-                var payload = Encoding.UTF8.GetBytes("pong");
+                var payload = "pong"u8.ToArray();
                 var meta = new ResponseMeta(encoding: MediaTypeNames.Text.Plain);
                 return ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(payload, meta)));
             }));
@@ -193,18 +204,10 @@ public class HttpTransportNegotiationTests
         return dispatcher;
     }
 
-    private static HttpRequestMessage CreateRpcRequest(string procedure)
-    {
-        var request = new HttpRequestMessage(HttpMethod.Post, "/");
-        request.Headers.Add(HttpTransportHeaders.Procedure, procedure);
-        request.Headers.Add(HttpTransportHeaders.Transport, "http");
-        request.Content = new ByteArrayContent([]);
-        return request;
-    }
-
     private static HttpClientHandler CreateHttp11Handler() => new()
     {
         AllowAutoRedirect = false,
+        SslProtocols = SslProtocols.Tls13,
         ServerCertificateCustomValidationCallback = static (_, _, _, _) => true
     };
 
@@ -215,7 +218,7 @@ public class HttpTransportNegotiationTests
         SslOptions =
         {
             RemoteCertificateValidationCallback = static (_, _, _, _) => true,
-            EnabledSslProtocols = System.Security.Authentication.SslProtocols.Tls12 | System.Security.Authentication.SslProtocols.Tls13,
+            EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
             ApplicationProtocols =
             [
                 SslApplicationProtocol.Http2,
@@ -231,7 +234,7 @@ public class HttpTransportNegotiationTests
         SslOptions =
         {
             RemoteCertificateValidationCallback = static (_, _, _, _) => true,
-            EnabledSslProtocols = System.Security.Authentication.SslProtocols.Tls13,
+            EnabledSslProtocols = SslProtocols.Tls13,
             ApplicationProtocols =
             [
                 SslApplicationProtocol.Http3,

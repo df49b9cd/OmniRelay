@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 using OmniRelay.Core;
 using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
+using OmniRelay.Tests.Support;
 using OmniRelay.Transport.Http;
 using Xunit;
 
@@ -26,7 +27,7 @@ public class HttpOutboundVersionPolicyTests
             return;
         }
 
-        using var certificate = CreateSelfSignedCertificate("CN=omnirelay-http3-outbound");
+        using var certificate = TestCertificateFactory.CreateLoopbackCertificate("CN=omnirelay-http3-outbound");
 
         var port = TestPortAllocator.GetRandomPort();
         var address = new Uri($"https://127.0.0.1:{port}");
@@ -50,7 +51,11 @@ public class HttpOutboundVersionPolicyTests
 
         using var handler = CreateHttp3SocketsHandler();
         using var httpClient = new HttpClient(handler, disposeHandler: false);
-        var outbound = new HttpOutbound(httpClient, address, disposeClient: false, runtimeOptions: new HttpClientRuntimeOptions { EnableHttp3 = true });
+        var outbound = new HttpOutbound(httpClient, address, disposeClient: false, runtimeOptions: new HttpClientRuntimeOptions
+        {
+            EnableHttp3 = true,
+            VersionPolicy = HttpVersionPolicy.RequestVersionExact
+        });
 
         try
         {
@@ -73,7 +78,7 @@ public class HttpOutboundVersionPolicyTests
     [Fact(Timeout = 45_000)]
     public async Task HttpOutbound_WithOrHigher_ToHttp2Server_DowngradesToHttp2()
     {
-        using var certificate = CreateSelfSignedCertificate("CN=omnirelay-http2-outbound");
+        using var certificate = TestCertificateFactory.CreateLoopbackCertificate("CN=omnirelay-http2-outbound");
 
         var port = TestPortAllocator.GetRandomPort();
         var address = new Uri($"https://127.0.0.1:{port}");
@@ -97,7 +102,11 @@ public class HttpOutboundVersionPolicyTests
 
         using var handler = CreateHttp3SocketsHandler();
         using var httpClient = new HttpClient(handler, disposeHandler: false);
-        var outbound = new HttpOutbound(httpClient, address, disposeClient: false, runtimeOptions: new HttpClientRuntimeOptions { EnableHttp3 = true });
+        var outbound = new HttpOutbound(httpClient, address, disposeClient: false, runtimeOptions: new HttpClientRuntimeOptions
+        {
+            EnableHttp3 = true,
+            VersionPolicy = HttpVersionPolicy.RequestVersionOrLower
+        });
 
         try
         {
@@ -120,7 +129,7 @@ public class HttpOutboundVersionPolicyTests
     [Fact(Timeout = 45_000)]
     public async Task HttpOutbound_WithExactHttp3_ToHttp2Server_Fails()
     {
-        using var certificate = CreateSelfSignedCertificate("CN=omnirelay-http3-exact-outbound");
+        using var certificate = TestCertificateFactory.CreateLoopbackCertificate("CN=omnirelay-http3-exact-outbound");
 
         var port = TestPortAllocator.GetRandomPort();
         var address = new Uri($"https://127.0.0.1:{port}");
@@ -218,19 +227,4 @@ public class HttpOutboundVersionPolicyTests
         return handler;
     }
 
-    private static X509Certificate2 CreateSelfSignedCertificate(string subjectName)
-    {
-        using var rsa = RSA.Create(2048);
-        var request = new CertificateRequest(subjectName, rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
-        request.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, false));
-        request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, false));
-        request.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(request.PublicKey, false));
-
-        var sanBuilder = new SubjectAlternativeNameBuilder();
-        sanBuilder.AddDnsName("localhost");
-        sanBuilder.AddIpAddress(IPAddress.Loopback);
-        request.CertificateExtensions.Add(sanBuilder.Build());
-
-        return request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(1));
-    }
 }

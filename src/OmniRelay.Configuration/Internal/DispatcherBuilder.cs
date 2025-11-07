@@ -910,14 +910,14 @@ internal sealed class DispatcherBuilder
         return normalized;
     }
 
-    private static OmniRelay.Transport.Http.HttpServerRuntimeOptions? BuildHttpServerRuntimeOptions(HttpServerRuntimeConfiguration configuration)
+    private static HttpServerRuntimeOptions? BuildHttpServerRuntimeOptions(HttpServerRuntimeConfiguration configuration)
     {
         if (configuration is null)
         {
             return null;
         }
 
-        var options = new OmniRelay.Transport.Http.HttpServerRuntimeOptions();
+        var options = new HttpServerRuntimeOptions();
         if (configuration.EnableHttp3 is { } enableHttp3)
         {
             options.EnableHttp3 = enableHttp3;
@@ -1013,7 +1013,7 @@ internal sealed class DispatcherBuilder
         };
     }
 
-    private static OmniRelay.Transport.Http.HttpServerTlsOptions? BuildHttpServerTlsOptions(HttpServerTlsConfiguration configuration)
+    private static HttpServerTlsOptions? BuildHttpServerTlsOptions(HttpServerTlsConfiguration configuration)
     {
         if (configuration is null || string.IsNullOrWhiteSpace(configuration.CertificatePath))
         {
@@ -1035,7 +1035,7 @@ internal sealed class DispatcherBuilder
 
         var mode = ParseClientCertificateMode(configuration.ClientCertificateMode);
 
-        return new OmniRelay.Transport.Http.HttpServerTlsOptions
+        return new HttpServerTlsOptions
         {
             Certificate = certificate,
             ClientCertificateMode = mode,

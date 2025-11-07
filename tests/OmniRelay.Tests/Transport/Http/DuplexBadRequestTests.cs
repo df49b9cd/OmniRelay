@@ -33,9 +33,8 @@ public class DuplexBadRequestTests
         await dispatcher.StartAsync(ct);
 
         using var httpClient = new HttpClient { BaseAddress = baseAddress };
-        using var request = new HttpRequestMessage(HttpMethod.Get, "/");
-        request.Headers.Add(HttpTransportHeaders.Procedure, "chat::echo");
-        using var response = await httpClient.SendAsync(request, ct);
+        httpClient.DefaultRequestHeaders.Add(HttpTransportHeaders.Procedure, "chat::echo");
+        using var response = await httpClient.GetAsync("/", ct);
         Assert.Equal(HttpStatusCode.NotAcceptable, response.StatusCode);
 
         await dispatcher.StopAsync(ct);

@@ -10,7 +10,7 @@ public class PeerCircuitBreakerTests
     {
         private DateTimeOffset _now;
         public FakeTimeProvider(DateTimeOffset start) => _now = start;
-        public override long GetTimestamp() => TimeProvider.System.GetTimestamp();
+        public override long GetTimestamp() => System.GetTimestamp();
         public override DateTimeOffset GetUtcNow() => _now;
         public void Advance(TimeSpan by) => _now = _now.Add(by);
     }

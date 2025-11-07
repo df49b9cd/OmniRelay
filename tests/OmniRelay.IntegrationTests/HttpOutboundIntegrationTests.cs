@@ -31,7 +31,7 @@ public class HttpOutboundIntegrationTests
             return;
         }
 
-        using var certificate = TestCertificateFactory.CreateSelfSigned("CN=omnirelay-http2-outbound-integration");
+        using var certificate = TestCertificateFactory.CreateLoopbackCertificate("CN=omnirelay-http2-outbound-integration");
 
         var port = TestPortAllocator.GetRandomPort();
         var remoteAddress = new Uri($"https://127.0.0.1:{port}/");

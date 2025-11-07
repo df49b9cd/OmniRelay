@@ -55,7 +55,7 @@ public class GeneratedClientHttp3Tests
         options.AddLifecycle("inbound", inbound);
 
         var dispatcher = new OmniRelay.Dispatcher.Dispatcher(options);
-        OmniRelay.Tests.Protos.TestServiceOmniRelay.RegisterTestService(dispatcher, new Impl());
+        Protos.TestServiceOmniRelay.RegisterTestService(dispatcher, new Impl());
 
         var ct = TestContext.Current.CancellationToken;
         await dispatcher.StartAsync(ct);
@@ -74,7 +74,7 @@ public class GeneratedClientHttp3Tests
 
         try
         {
-            var client = OmniRelay.Tests.Protos.TestServiceOmniRelay.CreateTestServiceClient(clientDispatcher, "codegen-svc");
+            var client = Protos.TestServiceOmniRelay.CreateTestServiceClient(clientDispatcher, "codegen-svc");
             var result = await client.UnaryCallAsync(new UnaryRequest { Message = "ping" }, cancellationToken: ct);
             Assert.True(result.IsSuccess);
         }
@@ -116,7 +116,7 @@ public class GeneratedClientHttp3Tests
         options.AddLifecycle("inbound-h2", inbound);
 
         var dispatcher = new OmniRelay.Dispatcher.Dispatcher(options);
-        OmniRelay.Tests.Protos.TestServiceOmniRelay.RegisterTestService(dispatcher, new Impl());
+        Protos.TestServiceOmniRelay.RegisterTestService(dispatcher, new Impl());
 
         var ct = TestContext.Current.CancellationToken;
         await dispatcher.StartAsync(ct);
@@ -139,7 +139,7 @@ public class GeneratedClientHttp3Tests
 
         try
         {
-            var client = OmniRelay.Tests.Protos.TestServiceOmniRelay.CreateTestServiceClient(clientDispatcher, "codegen-svc-h2");
+            var client = Protos.TestServiceOmniRelay.CreateTestServiceClient(clientDispatcher, "codegen-svc-h2");
             var result = await client.UnaryCallAsync(new UnaryRequest { Message = "ping" }, cancellationToken: ct);
             Assert.True(result.IsSuccess);
         }
@@ -153,7 +153,7 @@ public class GeneratedClientHttp3Tests
         Assert.StartsWith("HTTP/2", protocol, StringComparison.Ordinal);
     }
 
-    private sealed class Impl : OmniRelay.Tests.Protos.TestServiceOmniRelay.ITestService
+    private sealed class Impl : Protos.TestServiceOmniRelay.ITestService
     {
         public ValueTask<Response<UnaryResponse>> UnaryCallAsync(Request<UnaryRequest> request, CancellationToken cancellationToken)
             => ValueTask.FromResult(Response<UnaryResponse>.Create(new UnaryResponse { Message = request.Body.Message }, new ResponseMeta()));

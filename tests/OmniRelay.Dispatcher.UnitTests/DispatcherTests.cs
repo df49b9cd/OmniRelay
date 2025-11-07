@@ -112,7 +112,7 @@ public class DispatcherTests
     {
         var options = new DispatcherOptions("svc");
         options.AddUnaryOutbound("remote", null, Substitute.For<IUnaryOutbound>());
-        options.UnaryInboundMiddleware.Add(new RecordingUnaryMiddleware("global", new List<string>()));
+        options.UnaryInboundMiddleware.Add(new RecordingUnaryMiddleware("global", []));
 
         var dispatcher = new Dispatcher(options);
         dispatcher.RegisterUnary("echo", builder => builder.Handle((_, _) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty)))));

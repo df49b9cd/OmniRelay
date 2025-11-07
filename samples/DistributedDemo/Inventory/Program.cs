@@ -112,7 +112,7 @@ static void ConfigureInboundMetrics(IServiceCollection services, string serviceN
         });
 }
 
-internal sealed class ConsoleUnaryLogger(string instance) : OmniRelay.Core.Middleware.IUnaryInboundMiddleware
+internal sealed class ConsoleUnaryLogger(string instance) : IUnaryInboundMiddleware
 {
     public async ValueTask<Result<Response<ReadOnlyMemory<byte>>>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,

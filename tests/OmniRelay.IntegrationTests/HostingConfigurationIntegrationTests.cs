@@ -455,7 +455,7 @@ public class HostingConfigurationIntegrationTests
         public const string SpecName = "test-inbound";
         public string Name => SpecName;
         public string? LastEndpoint { get; private set; }
-        public List<RecordingInboundLifecycle> Created { get; } = new();
+        public List<RecordingInboundLifecycle> Created { get; } = [];
 
         public ILifecycle CreateInbound(IConfigurationSection configuration, IServiceProvider services)
         {
@@ -496,11 +496,11 @@ public class HostingConfigurationIntegrationTests
         public const string SpecName = "test-outbound";
         public string Name => SpecName;
         public string? LastUrl { get; private set; }
-        public List<RecordingUnaryOutbound> UnaryOutbounds { get; } = new();
-        public List<RecordingOnewayOutbound> OnewayOutbounds { get; } = new();
-        public List<RecordingStreamOutbound> StreamOutbounds { get; } = new();
-        public List<RecordingClientStreamOutbound> ClientStreamOutbounds { get; } = new();
-        public List<RecordingDuplexOutbound> DuplexOutbounds { get; } = new();
+        public List<RecordingUnaryOutbound> UnaryOutbounds { get; } = [];
+        public List<RecordingOnewayOutbound> OnewayOutbounds { get; } = [];
+        public List<RecordingStreamOutbound> StreamOutbounds { get; } = [];
+        public List<RecordingClientStreamOutbound> ClientStreamOutbounds { get; } = [];
+        public List<RecordingDuplexOutbound> DuplexOutbounds { get; } = [];
 
         public IUnaryOutbound? CreateUnaryOutbound(IConfigurationSection configuration, IServiceProvider services)
         {

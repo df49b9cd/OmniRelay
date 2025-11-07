@@ -21,7 +21,7 @@ public class ClientStreamClientTests
 
     private sealed class TestClientStreamTransportCall : IClientStreamTransportCall
     {
-        private readonly List<ReadOnlyMemory<byte>> _writes = new();
+        private readonly List<ReadOnlyMemory<byte>> _writes = [];
         private readonly TaskCompletionSource<Result<Response<ReadOnlyMemory<byte>>>> _tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public TestClientStreamTransportCall(RequestMeta meta)
@@ -68,7 +68,7 @@ public class ClientStreamClientTests
         var transportCall = new TestClientStreamTransportCall(meta);
         outbound.CallAsync(Arg.Any<RequestMeta>(), Arg.Any<CancellationToken>()).Returns(ci => ValueTask.FromResult(Ok((IClientStreamTransportCall)transportCall)));
 
-        var client = new ClientStreamClient<Req, Res>(outbound, codec, Array.Empty<IClientStreamOutboundMiddleware>());
+        var client = new ClientStreamClient<Req, Res>(outbound, codec, []);
         await using var session = await client.StartAsync(meta, TestContext.Current.CancellationToken);
 
         await session.WriteAsync(new Req { V = 10 }, TestContext.Current.CancellationToken);
@@ -92,7 +92,7 @@ public class ClientStreamClientTests
         outbound.CallAsync(Arg.Any<RequestMeta>(), Arg.Any<CancellationToken>())
             .Returns(ValueTask.FromResult(Err<IClientStreamTransportCall>(OmniRelayErrorAdapter.FromStatus(OmniRelayStatusCode.Unavailable, "fail", transport: "client"))));
 
-        var client = new ClientStreamClient<Req, Res>(outbound, codec, Array.Empty<IClientStreamOutboundMiddleware>());
+        var client = new ClientStreamClient<Req, Res>(outbound, codec, []);
         await Assert.ThrowsAsync<OmniRelayException>(() => client.StartAsync(new RequestMeta(service: "svc"), TestContext.Current.CancellationToken).AsTask());
     }
 
@@ -109,7 +109,7 @@ public class ClientStreamClientTests
         outbound.CallAsync(Arg.Any<RequestMeta>(), Arg.Any<CancellationToken>())
             .Returns(ValueTask.FromResult(Ok((IClientStreamTransportCall)transportCall)));
 
-        var client = new ClientStreamClient<Req, Res>(outbound, codec, Array.Empty<IClientStreamOutboundMiddleware>());
+        var client = new ClientStreamClient<Req, Res>(outbound, codec, []);
         await using var session = await client.StartAsync(meta, TestContext.Current.CancellationToken);
 
         await Assert.ThrowsAsync<OmniRelayException>(() => session.WriteAsync(new Req { V = 1 }, TestContext.Current.CancellationToken).AsTask());
@@ -130,7 +130,7 @@ public class ClientStreamClientTests
         outbound.CallAsync(Arg.Any<RequestMeta>(), Arg.Any<CancellationToken>())
             .Returns(ValueTask.FromResult(Ok((IClientStreamTransportCall)transportCall)));
 
-        var client = new ClientStreamClient<Req, Res>(outbound, codec, Array.Empty<IClientStreamOutboundMiddleware>());
+        var client = new ClientStreamClient<Req, Res>(outbound, codec, []);
         await using var session = await client.StartAsync(meta, TestContext.Current.CancellationToken);
 
         transportCall.CompleteWith(Err<Response<ReadOnlyMemory<byte>>>(OmniRelayErrorAdapter.FromStatus(OmniRelayStatusCode.Internal, "fail", transport: "client")));
@@ -153,7 +153,7 @@ public class ClientStreamClientTests
         outbound.CallAsync(Arg.Any<RequestMeta>(), Arg.Any<CancellationToken>())
             .Returns(ValueTask.FromResult(Ok((IClientStreamTransportCall)transportCall)));
 
-        var client = new ClientStreamClient<Req, Res>(outbound, codec, Array.Empty<IClientStreamOutboundMiddleware>());
+        var client = new ClientStreamClient<Req, Res>(outbound, codec, []);
         await using var session = await client.StartAsync(meta, TestContext.Current.CancellationToken);
 
         transportCall.CompleteWith(Ok(Response<ReadOnlyMemory<byte>>.Create(new byte[] { 2 }, new ResponseMeta())));
@@ -183,7 +183,7 @@ public class ClientStreamClientTests
         outbound.CallAsync(Arg.Any<RequestMeta>(), Arg.Any<CancellationToken>())
             .Returns(ValueTask.FromResult(Ok((IClientStreamTransportCall)transportCall)));
 
-        var client = new ClientStreamClient<Req, Res>(outbound, codec, Array.Empty<IClientStreamOutboundMiddleware>());
+        var client = new ClientStreamClient<Req, Res>(outbound, codec, []);
         await using var session = await client.StartAsync(meta, TestContext.Current.CancellationToken);
         await session.WriteAsync(new Req { V = 5 }, TestContext.Current.CancellationToken);
         transportCall.CompleteWith(Ok(Response<ReadOnlyMemory<byte>>.Create(new byte[] { 5 }, new ResponseMeta())));

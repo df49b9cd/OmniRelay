@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using OmniRelay.Core;
 using OmniRelay.Core.Clients;
 using OmniRelay.Dispatcher;
+using OmniRelay.Tests.Support;
 using OmniRelay.Transport.Grpc;
 using Xunit;
 
@@ -25,7 +26,7 @@ public class GrpcDiscoveryPreferenceTests
             return;
         }
 
-        using var certificate = CreateSelfSignedCertificate("CN=omnirelay-grpc-discovery-pref");
+        using var certificate = TestCertificateFactory.CreateLoopbackCertificate("CN=omnirelay-grpc-discovery-pref");
 
         var h2Port = TestPortAllocator.GetRandomPort();
         var h3Port = TestPortAllocator.GetRandomPort();
@@ -95,7 +96,11 @@ public class GrpcDiscoveryPreferenceTests
         var outbound = new GrpcOutbound(
             addresses,
             remoteService: "grpc-discovery-pref",
-            clientRuntimeOptions: new GrpcClientRuntimeOptions { EnableHttp3 = true },
+            clientRuntimeOptions: new GrpcClientRuntimeOptions
+            {
+                EnableHttp3 = true,
+                VersionPolicy = HttpVersionPolicy.RequestVersionExact
+            },
             endpointHttp3Support: h3Support);
 
         try
@@ -103,9 +108,9 @@ public class GrpcDiscoveryPreferenceTests
             await outbound.StartAsync(ct);
             var codec = new RawCodec();
             var client = new UnaryClient<byte[], byte[]>(outbound, codec, dispatcher.ClientConfig("grpc-discovery-pref").UnaryMiddleware);
-            var request = new Request<byte[]>(new RequestMeta("grpc-discovery-pref", "grpc-discovery-pref::ping"), Array.Empty<byte>());
+            var request = new Request<byte[]>(new RequestMeta("grpc-discovery-pref", "grpc-discovery-pref::ping"), []);
             var result = await client.CallAsync(request, ct);
-            Assert.True(result.IsSuccess);
+            Assert.True(result.IsSuccess, result.Error?.ToString() ?? "Result was not successful.");
         }
         finally
         {
@@ -145,22 +150,6 @@ public class GrpcDiscoveryPreferenceTests
         }
 
         throw new TimeoutException("The gRPC inbound failed to bind within the allotted time.");
-    }
-
-    private static X509Certificate2 CreateSelfSignedCertificate(string subjectName)
-    {
-        using var rsa = RSA.Create(2048);
-        var request = new CertificateRequest(subjectName, rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
-        request.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, false));
-        request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, false));
-        request.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(request.PublicKey, false));
-
-        var sanBuilder = new SubjectAlternativeNameBuilder();
-        sanBuilder.AddDnsName("localhost");
-        sanBuilder.AddIpAddress(IPAddress.Loopback);
-        request.CertificateExtensions.Add(sanBuilder.Build());
-
-        return request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(1));
     }
 
     private sealed class ProtocolCaptureInterceptor(System.Collections.Concurrent.ConcurrentQueue<string> observed) : Interceptor

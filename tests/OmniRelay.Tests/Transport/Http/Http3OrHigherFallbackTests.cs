@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
 using System.Net.Quic;
@@ -9,6 +10,7 @@ using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
 using OmniRelay.Core;
 using OmniRelay.Dispatcher;
+using OmniRelay.Tests.Support;
 using OmniRelay.Transport.Http;
 using Xunit;
 
@@ -24,7 +26,7 @@ public class Http3OrHigherFallbackTests
             return;
         }
 
-        using var certificate = CreateSelfSigned("CN=omnirelay-http3-orhigher");
+        using var certificate = TestCertificateFactory.CreateLoopbackCertificate("CN=omnirelay-http3-orhigher");
 
         var port = TestPortAllocator.GetRandomPort();
         var baseAddress = new Uri($"https://127.0.0.1:{port}/");
@@ -49,14 +51,12 @@ public class Http3OrHigherFallbackTests
         {
             using var handler = CreateH3CapableHandler();
             using var client = new HttpClient(handler) { BaseAddress = baseAddress };
-            using var request = new HttpRequestMessage(HttpMethod.Post, "/");
-            // Preferred pattern: 1.1 + RequestVersionOrHigher enables HTTP/3 upgrade
-            request.Version = HttpVersion.Version11;
-            request.VersionPolicy = HttpVersionPolicy.RequestVersionOrHigher;
-            request.Headers.Add(HttpTransportHeaders.Procedure, "ping");
-            request.Content = new ByteArrayContent(Array.Empty<byte>());
+            // Explicitly request HTTP/3 for the first call
+            client.DefaultRequestVersion = HttpVersion.Version30;
+            client.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionExact;
+            client.DefaultRequestHeaders.Add(HttpTransportHeaders.Procedure, "ping");
 
-            using var response = await client.SendAsync(request, ct);
+            using var response = await client.PostAsync("/", new ByteArrayContent([]), ct);
 
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             Assert.Equal(3, response.Version.Major);
@@ -75,7 +75,7 @@ public class Http3OrHigherFallbackTests
             return;
         }
 
-        using var certificate = CreateSelfSigned("CN=omnirelay-http3-orhigher-fallback");
+        using var certificate = TestCertificateFactory.CreateLoopbackCertificate("CN=omnirelay-http3-orhigher-fallback");
 
         var port = TestPortAllocator.GetRandomPort();
         var baseAddress = new Uri($"https://127.0.0.1:{port}/");
@@ -100,14 +100,12 @@ public class Http3OrHigherFallbackTests
         {
             using var handler = CreateH3CapableHandler();
             using var client = new HttpClient(handler) { BaseAddress = baseAddress };
-            using var request = new HttpRequestMessage(HttpMethod.Post, "/");
-            // Prefer upgrade; fallback if H3 disabled
-            request.Version = HttpVersion.Version11;
-            request.VersionPolicy = HttpVersionPolicy.RequestVersionOrHigher;
-            request.Headers.Add(HttpTransportHeaders.Procedure, "ping");
-            request.Content = new ByteArrayContent(Array.Empty<byte>());
+            // Prefer HTTP/3 but allow downgrade when the server disables it
+            client.DefaultRequestVersion = HttpVersion.Version30;
+            client.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrLower;
+            client.DefaultRequestHeaders.Add(HttpTransportHeaders.Procedure, "ping");
 
-            using var response = await client.SendAsync(request, ct);
+            using var response = await client.PostAsync("/", new ByteArrayContent([]), ct);
 
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             Assert.Equal(2, response.Version.Major);
@@ -124,13 +122,13 @@ public class Http3OrHigherFallbackTests
         {
             RemoteCertificateValidationCallback = static (_, _, _, _) => true,
             EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
+            ApplicationProtocols =
+            [
+                SslApplicationProtocol.Http3,
+                SslApplicationProtocol.Http2
+            ]
         };
 
-        // ApplicationProtocols collection is initialized by SslClientAuthenticationOptions
-        _ = options.ApplicationProtocols ?? throw new InvalidOperationException("ApplicationProtocols collection was null.");
-        options.ApplicationProtocols!.Add(SslApplicationProtocol.Http3);
-        options.ApplicationProtocols!.Add(SslApplicationProtocol.Http2);
-        options.ApplicationProtocols!.Add(SslApplicationProtocol.Http11);
         return options;
     }
 
@@ -142,18 +140,4 @@ public class Http3OrHigherFallbackTests
         SslOptions = CreateSslOptions()
     };
 
-    private static X509Certificate2 CreateSelfSigned(string subjectName)
-    {
-        using var rsa = RSA.Create(2048);
-        var req = new CertificateRequest(subjectName, rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
-        req.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, false));
-        req.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, false));
-        req.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(req.PublicKey, false));
-        var sanBuilder = new SubjectAlternativeNameBuilder();
-        sanBuilder.AddDnsName("localhost");
-        sanBuilder.AddIpAddress(IPAddress.Loopback);
-        req.CertificateExtensions.Add(sanBuilder.Build());
-
-        return req.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(1));
-    }
 }

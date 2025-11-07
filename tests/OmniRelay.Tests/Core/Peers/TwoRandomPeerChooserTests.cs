@@ -12,7 +12,7 @@ public sealed class TwoRandomPeerChooserTests
     {
         var busy = new TestPeer("busy", inflight: 5);
         var idle = new TestPeer("idle", inflight: 0);
-        var chooser = new TwoRandomPeerChooser(ImmutableArray.Create<IPeer>(busy, idle), new DeterministicRandom(1, 0));
+        var chooser = new TwoRandomPeerChooser([busy, idle], new DeterministicRandom(1, 0));
         var meta = new RequestMeta(service: "svc");
 
         var lease = await chooser.AcquireAsync(meta, TestContext.Current.CancellationToken);
@@ -25,7 +25,7 @@ public sealed class TwoRandomPeerChooserTests
     public async Task AcquireAsync_WhenSinglePeer_ReturnsLease()
     {
         var peer = new TestPeer("single");
-        var chooser = new TwoRandomPeerChooser(ImmutableArray.Create<IPeer>(peer), new DeterministicRandom(0));
+        var chooser = new TwoRandomPeerChooser([peer], new DeterministicRandom(0));
         var meta = new RequestMeta(service: "svc");
 
         var lease = await chooser.AcquireAsync(meta, TestContext.Current.CancellationToken);

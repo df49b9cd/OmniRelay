@@ -10,7 +10,7 @@ public class CodecRegistryTests
     [Fact]
     public void Constructor_WithWhitespaceService_Throws()
     {
-        Assert.Throws<ArgumentException>(() => new CodecRegistry(" ", Array.Empty<ProcedureCodecRegistration>()));
+        Assert.Throws<ArgumentException>(() => new CodecRegistry(" ", []));
     }
 
     [Fact]

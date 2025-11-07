@@ -36,7 +36,7 @@ public class UnaryClientTests
         outbound.CallAsync(Arg.Any<IRequest<ReadOnlyMemory<byte>>>(), Arg.Any<CancellationToken>())
             .Returns(ci => ValueTask.FromResult(Ok(outboundResponse)));
 
-        var client = new UnaryClient<Req, Res>(outbound, codec, Array.Empty<IUnaryOutboundMiddleware>());
+        var client = new UnaryClient<Req, Res>(outbound, codec, []);
         var result = await client.CallAsync(new Request<Req>(meta, req), TestContext.Current.CancellationToken);
 
         Assert.True(result.IsSuccess);
@@ -55,7 +55,7 @@ public class UnaryClientTests
         var err = Error.From("encode failed", "invalid-argument");
         codec.EncodeRequest(Arg.Any<Req>(), Arg.Any<RequestMeta>()).Returns(Err<byte[]>(err));
 
-        var client = new UnaryClient<Req, Res>(outbound, codec, Array.Empty<IUnaryOutboundMiddleware>());
+        var client = new UnaryClient<Req, Res>(outbound, codec, []);
         var result = await client.CallAsync(Request<Req>.Create(new Req()), TestContext.Current.CancellationToken);
 
         Assert.True(result.IsFailure);
@@ -74,7 +74,7 @@ public class UnaryClientTests
         outbound.CallAsync(Arg.Any<IRequest<ReadOnlyMemory<byte>>>(), Arg.Any<CancellationToken>())
             .Returns(ci => ValueTask.FromResult(Err<Response<ReadOnlyMemory<byte>>>(err)));
 
-        var client = new UnaryClient<Req, Res>(outbound, codec, Array.Empty<IUnaryOutboundMiddleware>());
+        var client = new UnaryClient<Req, Res>(outbound, codec, []);
         var result = await client.CallAsync(Request<Req>.Create(new Req()), TestContext.Current.CancellationToken);
 
         Assert.True(result.IsFailure);
@@ -94,7 +94,7 @@ public class UnaryClientTests
         outbound.CallAsync(Arg.Any<IRequest<ReadOnlyMemory<byte>>>(), Arg.Any<CancellationToken>())
             .Returns(ci => ValueTask.FromResult(Ok(outboundResponse)));
 
-        var client = new UnaryClient<Req, Res>(outbound, codec, Array.Empty<IUnaryOutboundMiddleware>());
+        var client = new UnaryClient<Req, Res>(outbound, codec, []);
         var result = await client.CallAsync(Request<Req>.Create(new Req()), TestContext.Current.CancellationToken);
 
         Assert.True(result.IsFailure);

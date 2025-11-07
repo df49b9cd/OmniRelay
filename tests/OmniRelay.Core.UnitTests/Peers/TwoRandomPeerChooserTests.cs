@@ -30,7 +30,7 @@ public class TwoRandomPeerChooserTests
     {
         var a = Substitute.For<IPeer>(); a.Identifier.Returns("a"); a.Status.Returns(new PeerStatus(PeerState.Available, 5, null, null)); a.TryAcquire(Arg.Any<CancellationToken>()).Returns(true);
         var b = Substitute.For<IPeer>(); b.Identifier.Returns("b"); b.Status.Returns(new PeerStatus(PeerState.Available, 1, null, null)); b.TryAcquire(Arg.Any<CancellationToken>()).Returns(true);
-        var chooser = new TwoRandomPeerChooser(System.Collections.Immutable.ImmutableArray.Create(a, b), new Random(1));
+        var chooser = new TwoRandomPeerChooser([a, b], new Random(1));
         var res = await chooser.AcquireAsync(Meta(), TestContext.Current.CancellationToken);
         Assert.True(res.IsSuccess);
         Assert.Same(b, res.Value.Peer);
@@ -41,7 +41,7 @@ public class TwoRandomPeerChooserTests
     public async Task Reject_ReturnsExhausted()
     {
         var a = Substitute.For<IPeer>(); a.Identifier.Returns("a"); a.Status.Returns(new PeerStatus(PeerState.Available, 0, null, null)); a.TryAcquire(Arg.Any<CancellationToken>()).Returns(false);
-        var chooser = new TwoRandomPeerChooser(System.Collections.Immutable.ImmutableArray.Create(a), new Random(1));
+        var chooser = new TwoRandomPeerChooser([a], new Random(1));
         var res = await chooser.AcquireAsync(Meta(), TestContext.Current.CancellationToken);
         Assert.True(res.IsFailure);
         Assert.Equal(OmniRelayStatusCode.ResourceExhausted, OmniRelayErrorAdapter.ToStatus(res.Error!));

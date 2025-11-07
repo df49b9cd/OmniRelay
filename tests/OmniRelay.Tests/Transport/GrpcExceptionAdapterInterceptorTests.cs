@@ -20,7 +20,7 @@ public sealed class GrpcExceptionAdapterInterceptorTests
                 (request, callContext) => throw new TimeoutException("deadline")));
 
         Assert.Equal(StatusCode.DeadlineExceeded, rpcException.StatusCode);
-        Assert.Equal(OmniRelayStatusCode.DeadlineExceeded.ToString(), rpcException.Trailers.GetValue(GrpcTransportConstants.StatusTrailer));
+        Assert.Equal(nameof(OmniRelayStatusCode.DeadlineExceeded), rpcException.Trailers.GetValue(GrpcTransportConstants.StatusTrailer));
         Assert.Equal("grpc", rpcException.Trailers.GetValue(GrpcTransportConstants.TransportTrailer));
     }
 

@@ -123,7 +123,7 @@ public sealed class PeerMetricsTests : IDisposable
 
         Assert.True(result.IsSuccess);
 
-        Assert.Contains(GetMeasurements("yarpcore.retry.scheduled"), m => HasTag(m, "error.status", OmniRelayStatusCode.Unavailable.ToString()));
+        Assert.Contains(GetMeasurements("yarpcore.retry.scheduled"), m => HasTag(m, "error.status", nameof(OmniRelayStatusCode.Unavailable)));
         Assert.Contains(GetMeasurements("yarpcore.retry.succeeded"), m => HasTag(m, "retry.attempts", 2));
     }
 

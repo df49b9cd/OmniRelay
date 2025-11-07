@@ -28,7 +28,7 @@ public class OnewayClientTests
         outbound.CallAsync(Arg.Any<IRequest<ReadOnlyMemory<byte>>>(), Arg.Any<CancellationToken>())
             .Returns(ci => ValueTask.FromResult(Ok(OnewayAck.Ack(new ResponseMeta()))));
 
-        var client = new OnewayClient<Req>(outbound, codec, Array.Empty<IOnewayOutboundMiddleware>());
+        var client = new OnewayClient<Req>(outbound, codec, []);
         var result = await client.CallAsync(Request<Req>.Create(new Req { V = "x" }), TestContext.Current.CancellationToken);
 
         Assert.True(result.IsSuccess);
@@ -46,7 +46,7 @@ public class OnewayClientTests
         var err = Error.From("encode failed", "invalid-argument");
         codec.EncodeRequest(Arg.Any<Req>(), Arg.Any<RequestMeta>()).Returns(Err<byte[]>(err));
 
-        var client = new OnewayClient<Req>(outbound, codec, Array.Empty<IOnewayOutboundMiddleware>());
+        var client = new OnewayClient<Req>(outbound, codec, []);
         var result = await client.CallAsync(Request<Req>.Create(new Req()), TestContext.Current.CancellationToken);
 
         Assert.True(result.IsFailure);

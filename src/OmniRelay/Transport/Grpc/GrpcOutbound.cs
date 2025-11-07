@@ -163,11 +163,6 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
             _channelOptions.CompressionProviders = providers;
         }
 
-        if (_clientRuntimeOptions is not null)
-        {
-            ApplyClientRuntimeOptions(_channelOptions, _clientRuntimeOptions);
-        }
-
         if (_clientTlsOptions is not null)
         {
             ApplyClientTlsOptions(_channelOptions, _clientTlsOptions);
@@ -189,9 +184,14 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
                 IPAddress.TryParse(uri.Host, out var ip) && IPAddress.IsLoopback(ip));
 
             if (allLoopback)
-            {
-                sockets.SslOptions.RemoteCertificateValidationCallback = static (_, _, _, _) => true;
-            }
+        {
+            sockets.SslOptions.RemoteCertificateValidationCallback = static (_, _, _, _) => true;
+        }
+
+        if (_clientRuntimeOptions is not null)
+        {
+            ApplyClientRuntimeOptions(_channelOptions, _clientRuntimeOptions);
+        }
         }
     }
 
@@ -1337,32 +1337,10 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
             Version? version;
             HttpVersionPolicy? versionPolicy;
 
-            if (runtimeOptions.EnableHttp3 && runtimeOptions.RequestVersion is null)
+            if (runtimeOptions.EnableHttp3)
             {
-                // Map defaults by policy when HTTP/3 is enabled but no explicit RequestVersion is provided.
-                // - Exact    => 3.0 exact (force HTTP/3)
-                // - OrHigher => force HTTP/2 exact to guarantee connectivity to HTTP/2-only servers
-                // - OrLower  => 3.0 + OrLower (prefer HTTP/3 but allow downgrade to HTTP/2)
-                switch (runtimeOptions.VersionPolicy)
-                {
-                    case HttpVersionPolicy.RequestVersionExact:
-                        version = HttpVersion.Version30;
-                        versionPolicy = HttpVersionPolicy.RequestVersionExact;
-                        break;
-
-                    case HttpVersionPolicy.RequestVersionOrHigher:
-                        // Force HTTP/2 and suppress HTTP/3-specific handler tuning.
-                        version = HttpVersion.Version20;
-                        versionPolicy = HttpVersionPolicy.RequestVersionExact;
-                        enableHttp3Tuning = false;
-                        break;
-
-                    case HttpVersionPolicy.RequestVersionOrLower:
-                    default:
-                        version = HttpVersion.Version30;
-                        versionPolicy = HttpVersionPolicy.RequestVersionOrLower;
-                        break;
-                }
+                versionPolicy = runtimeOptions.VersionPolicy ?? HttpVersionPolicy.RequestVersionOrLower;
+                version = runtimeOptions.RequestVersion ?? HttpVersion.Version30;
             }
             else
             {

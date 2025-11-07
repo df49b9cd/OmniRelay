@@ -35,12 +35,11 @@ public class InMemoryThresholdTests
         await dispatcher.StartAsync(ct);
 
         using var httpClient = new HttpClient { BaseAddress = baseAddress };
-        using var req = new HttpRequestMessage(HttpMethod.Post, "/");
-        req.Headers.Add(HttpTransportHeaders.Procedure, "big::payload");
+        httpClient.DefaultRequestHeaders.Add(HttpTransportHeaders.Procedure, "big::payload");
         // Create payload larger than 64 bytes
         var big = new string('x', 128);
-        req.Content = new StringContent(big, Encoding.UTF8, "text/plain");
-        using var resp = await httpClient.SendAsync(req, ct);
+        using var content = new StringContent(big, Encoding.UTF8, "text/plain");
+        using var resp = await httpClient.PostAsync("/", content, ct);
 
         Assert.Equal(HttpStatusCode.TooManyRequests, resp.StatusCode);
 
@@ -68,16 +67,15 @@ public class InMemoryThresholdTests
         await dispatcher.StartAsync(ct);
 
         using var httpClient = new HttpClient { BaseAddress = baseAddress };
-        using var req = new HttpRequestMessage(HttpMethod.Post, "/");
-        req.Headers.Add(HttpTransportHeaders.Procedure, "big::payload");
-        req.Headers.TransferEncodingChunked = true;
+        httpClient.DefaultRequestHeaders.Add(HttpTransportHeaders.Procedure, "big::payload");
+        httpClient.DefaultRequestHeaders.TransferEncodingChunked = true;
 
         var payload = new string('y', 128);
         var stream = new NonSeekableReadStream(Encoding.UTF8.GetBytes(payload));
-        req.Content = new StreamContent(stream);
-        req.Content.Headers.ContentType = new MediaTypeHeaderValue("text/plain");
+        using var content = new StreamContent(stream);
+        content.Headers.ContentType = new MediaTypeHeaderValue("text/plain");
 
-        using var resp = await httpClient.SendAsync(req, ct);
+        using var resp = await httpClient.PostAsync("/", content, ct);
 
         Assert.Equal(HttpStatusCode.TooManyRequests, resp.StatusCode);
 
@@ -105,16 +103,15 @@ public class InMemoryThresholdTests
         await dispatcher.StartAsync(ct);
 
         using var httpClient = new HttpClient { BaseAddress = baseAddress };
-        using var req = new HttpRequestMessage(HttpMethod.Post, "/");
-        req.Headers.Add(HttpTransportHeaders.Procedure, "big::payload");
-        req.Headers.TransferEncodingChunked = true;
+        httpClient.DefaultRequestHeaders.Add(HttpTransportHeaders.Procedure, "big::payload");
+        httpClient.DefaultRequestHeaders.TransferEncodingChunked = true;
 
         var payload = new string('z', 16);
         var stream = new NonSeekableReadStream(Encoding.UTF8.GetBytes(payload));
-        req.Content = new StreamContent(stream);
-        req.Content.Headers.ContentType = new MediaTypeHeaderValue("text/plain");
+        using var content = new StreamContent(stream);
+        content.Headers.ContentType = new MediaTypeHeaderValue("text/plain");
 
-        using var resp = await httpClient.SendAsync(req, ct);
+        using var resp = await httpClient.PostAsync("/", content, ct);
 
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 

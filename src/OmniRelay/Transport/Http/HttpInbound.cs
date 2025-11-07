@@ -209,7 +209,7 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
                     {
                         options.Limits.Http3.MaxRequestHeaderFieldSize = maxRequestHeaders;
                     }
-                    catch (System.ArgumentOutOfRangeException ex)
+                    catch (ArgumentOutOfRangeException ex)
                     {
                         throw new InvalidOperationException("HTTP/3 MaxRequestHeaderFieldSize must be greater than zero.", ex);
                     }
@@ -1452,9 +1452,11 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
         {
             context.Response.StatusCode = HttpStatusMapper.ToStatusCode(status);
         }
+        var statusText = status.ToString();
+        var payloadStatus = FormatStatusToken(status);
         context.Response.Headers[HttpTransportHeaders.Transport] = transport;
         context.Response.Headers[HttpTransportHeaders.Protocol] = context.Request.Protocol;
-        context.Response.Headers[HttpTransportHeaders.Status] = status.ToString();
+        context.Response.Headers[HttpTransportHeaders.Status] = statusText;
         context.Response.Headers[HttpTransportHeaders.ErrorMessage] = message;
         if (error is not null && !string.IsNullOrEmpty(error.Code))
         {
@@ -1466,12 +1468,35 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
         var payload = new
         {
             message,
-            status = status.ToString(),
+            status = payloadStatus,
             code = error?.Code,
             metadata = error?.Metadata
         };
 
         await JsonSerializer.SerializeAsync(context.Response.Body, payload, cancellationToken: context.RequestAborted).ConfigureAwait(false);
+    }
+
+    private static string FormatStatusToken(OmniRelayStatusCode status)
+    {
+        var text = status.ToString();
+        if (string.IsNullOrEmpty(text))
+        {
+            return string.Empty;
+        }
+
+        var builder = new StringBuilder(text.Length * 2);
+        for (var i = 0; i < text.Length; i++)
+        {
+            var ch = text[i];
+            if (char.IsUpper(ch) && i > 0)
+            {
+                builder.Append('_');
+            }
+
+            builder.Append(char.ToUpperInvariant(ch));
+        }
+
+        return builder.ToString();
     }
 
     private static ReadOnlyMemory<byte> EncodeSseFrame(ReadOnlyMemory<byte> payload, string? encoding)

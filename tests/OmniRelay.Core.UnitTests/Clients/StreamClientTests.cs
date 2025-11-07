@@ -36,7 +36,7 @@ public class StreamClientTests
         outbound.CallAsync(Arg.Any<IRequest<ReadOnlyMemory<byte>>>(), Arg.Any<StreamCallOptions>(), Arg.Any<CancellationToken>())
             .Returns(ci => ValueTask.FromResult(Ok((IStreamCall)serverCall)));
 
-        var client = new StreamClient<Req, Res>(outbound, codec, Array.Empty<IStreamOutboundMiddleware>());
+        var client = new StreamClient<Req, Res>(outbound, codec, []);
         var options = new StreamCallOptions(StreamDirection.Server);
 
         var collectedTask = Task.Run(async () =>
@@ -68,7 +68,7 @@ public class StreamClientTests
         codec.Encoding.Returns("json");
         codec.EncodeRequest(Arg.Any<Req>(), Arg.Any<RequestMeta>()).Returns(Err<byte[]>(Error.From("bad", "invalid-argument")));
 
-        var client = new StreamClient<Req, Res>(outbound, codec, Array.Empty<IStreamOutboundMiddleware>());
+        var client = new StreamClient<Req, Res>(outbound, codec, []);
         await Assert.ThrowsAsync<OmniRelayException>(async () =>
         {
             var options = new StreamCallOptions(StreamDirection.Server);
@@ -90,7 +90,7 @@ public class StreamClientTests
         outbound.CallAsync(Arg.Any<IRequest<ReadOnlyMemory<byte>>>(), Arg.Any<StreamCallOptions>(), Arg.Any<CancellationToken>())
             .Returns(ValueTask.FromResult(Err<IStreamCall>(error)));
 
-        var client = new StreamClient<Req, Res>(outbound, codec, Array.Empty<IStreamOutboundMiddleware>());
+        var client = new StreamClient<Req, Res>(outbound, codec, []);
         var options = new StreamCallOptions(StreamDirection.Server);
 
         await Assert.ThrowsAsync<OmniRelayException>(async () =>
@@ -116,7 +116,7 @@ public class StreamClientTests
         outbound.CallAsync(Arg.Any<IRequest<ReadOnlyMemory<byte>>>(), Arg.Any<StreamCallOptions>(), Arg.Any<CancellationToken>())
             .Returns(ValueTask.FromResult(Ok((IStreamCall)call)));
 
-        var client = new StreamClient<Req, Res>(outbound, codec, Array.Empty<IStreamOutboundMiddleware>());
+        var client = new StreamClient<Req, Res>(outbound, codec, []);
         var options = new StreamCallOptions(StreamDirection.Server);
 
         var iteration = Task.Run(async () =>
@@ -155,7 +155,7 @@ public class StreamClientTests
         outbound.CallAsync(Arg.Any<IRequest<ReadOnlyMemory<byte>>>(), Arg.Any<StreamCallOptions>(), Arg.Any<CancellationToken>())
             .Returns(ValueTask.FromResult(Ok((IStreamCall)call)));
 
-        var client = new StreamClient<Req, Res>(outbound, codec, Array.Empty<IStreamOutboundMiddleware>());
+        var client = new StreamClient<Req, Res>(outbound, codec, []);
         var options = new StreamCallOptions(StreamDirection.Server);
 
         var iterate = Task.Run(async () =>

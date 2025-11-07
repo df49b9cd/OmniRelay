@@ -9,6 +9,7 @@ using Grpc.Core;
 using Grpc.Net.Client;
 using OmniRelay.Core;
 using OmniRelay.Dispatcher;
+using OmniRelay.Tests.Support;
 using OmniRelay.Transport.Grpc;
 using Xunit;
 
@@ -26,7 +27,7 @@ public class GrpcHttp3DeadlineParityTests
             return;
         }
 
-        using var certificate = CreateSelfSignedCertificate("CN=omnirelay-grpc-deadline");
+        using var certificate = TestCertificateFactory.CreateLoopbackCertificate("CN=omnirelay-grpc-deadline");
 
         var port = TestPortAllocator.GetRandomPort();
         var address = new Uri($"https://127.0.0.1:{port}");
@@ -66,7 +67,7 @@ public class GrpcHttp3DeadlineParityTests
 
         var h3Ex = await Assert.ThrowsAsync<RpcException>(async () =>
         {
-            using var call = invokerH3.AsyncUnaryCall(method, null, new CallOptions(deadline: DateTime.UtcNow.AddMilliseconds(100)), Array.Empty<byte>());
+            using var call = invokerH3.AsyncUnaryCall(method, null, new CallOptions(deadline: DateTime.UtcNow.AddMilliseconds(100)), []);
             _ = await call.ResponseAsync;
         });
         Assert.Equal(StatusCode.DeadlineExceeded, h3Ex.StatusCode);
@@ -79,7 +80,7 @@ public class GrpcHttp3DeadlineParityTests
             {
                 RemoteCertificateValidationCallback = static (_, _, _, _) => true,
                 EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
-                ApplicationProtocols = new List<SslApplicationProtocol> { SslApplicationProtocol.Http2 }
+                ApplicationProtocols = [SslApplicationProtocol.Http2]
             }
         };
         using var h2Client = new HttpClient(h2Handler, disposeHandler: false)
@@ -92,7 +93,7 @@ public class GrpcHttp3DeadlineParityTests
 
         var h2Ex = await Assert.ThrowsAsync<RpcException>(async () =>
         {
-            using var call = invokerH2.AsyncUnaryCall(method, null, new CallOptions(deadline: DateTime.UtcNow.AddMilliseconds(100)), Array.Empty<byte>());
+            using var call = invokerH2.AsyncUnaryCall(method, null, new CallOptions(deadline: DateTime.UtcNow.AddMilliseconds(100)), []);
             _ = await call.ResponseAsync;
         });
         Assert.Equal(StatusCode.DeadlineExceeded, h2Ex.StatusCode);
@@ -133,19 +134,4 @@ public class GrpcHttp3DeadlineParityTests
         }
     };
 
-    private static X509Certificate2 CreateSelfSignedCertificate(string subjectName)
-    {
-        using var rsa = RSA.Create(2048);
-        var request = new CertificateRequest(subjectName, rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
-        request.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, false));
-        request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, false));
-        request.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(request.PublicKey, false));
-
-        var sanBuilder = new SubjectAlternativeNameBuilder();
-        sanBuilder.AddDnsName("localhost");
-        sanBuilder.AddIpAddress(IPAddress.Loopback);
-        request.CertificateExtensions.Add(sanBuilder.Build());
-
-        return request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(1));
-    }
 }

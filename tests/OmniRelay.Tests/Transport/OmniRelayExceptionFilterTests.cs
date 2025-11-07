@@ -30,7 +30,7 @@ public sealed class OmniRelayExceptionFilterTests
 
         var payload = Assert.IsType<Dictionary<string, object?>>(result.Value);
         Assert.Equal("deadline", payload["message"]);
-        Assert.Equal(OmniRelayStatusCode.DeadlineExceeded.ToString(), payload["status"]);
+        Assert.Equal(nameof(OmniRelayStatusCode.DeadlineExceeded), payload["status"]);
         Assert.Equal(OmniRelayErrorAdapter.GetStatusName(OmniRelayStatusCode.DeadlineExceeded), payload["code"]);
         var metadata = Assert.IsAssignableFrom<IReadOnlyDictionary<string, object?>>(payload["metadata"]);
         Assert.Equal("http", metadata["omnirelay.transport"]);
@@ -38,7 +38,7 @@ public sealed class OmniRelayExceptionFilterTests
         Assert.Equal(true, retryable);
 
         Assert.Equal("http", httpContext.Response.Headers[HttpTransportHeaders.Transport]);
-        Assert.Equal(OmniRelayStatusCode.DeadlineExceeded.ToString(), httpContext.Response.Headers[HttpTransportHeaders.Status]);
+        Assert.Equal(nameof(OmniRelayStatusCode.DeadlineExceeded), httpContext.Response.Headers[HttpTransportHeaders.Status]);
         Assert.Equal("deadline", httpContext.Response.Headers[HttpTransportHeaders.ErrorMessage]);
     }
 }

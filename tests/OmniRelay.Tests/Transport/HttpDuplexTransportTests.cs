@@ -67,14 +67,14 @@ public class HttpDuplexTransportTests
         try
         {
             using var httpClient = new HttpClient { BaseAddress = baseAddress };
-            var payload = new byte[] { 0x0A, 0x0B, 0x0C };
-            var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/");
-            httpRequest.Headers.Add(HttpTransportHeaders.Procedure, "blob::echo");
-            httpRequest.Headers.Add(HttpTransportHeaders.Encoding, RawCodec.DefaultEncoding);
-            httpRequest.Content = new ByteArrayContent(payload);
-            httpRequest.Content.Headers.ContentType = new MediaTypeHeaderValue(MediaTypeNames.Application.Octet);
+            httpClient.DefaultRequestHeaders.Add(HttpTransportHeaders.Procedure, "blob::echo");
+            httpClient.DefaultRequestHeaders.Add(HttpTransportHeaders.Encoding, RawCodec.DefaultEncoding);
 
-            using var response = await httpClient.SendAsync(httpRequest, ct);
+            var payload = new byte[] { 0x0A, 0x0B, 0x0C };
+            using var content = new ByteArrayContent(payload);
+            content.Headers.ContentType = new MediaTypeHeaderValue(MediaTypeNames.Application.Octet);
+
+            using var response = await httpClient.PostAsync("/", content, ct);
 
             Assert.True(response.IsSuccessStatusCode);
             Assert.Equal(MediaTypeNames.Application.Octet, response.Content.Headers.ContentType?.MediaType);

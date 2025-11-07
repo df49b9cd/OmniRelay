@@ -6,6 +6,7 @@ using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
 using OmniRelay.Core;
 using OmniRelay.Dispatcher;
+using OmniRelay.Tests.Support;
 using OmniRelay.Transport.Http;
 using Xunit;
 
@@ -19,7 +20,7 @@ public class HttpsBindingTests
         var port = TestPortAllocator.GetRandomPort();
         var baseAddress = new Uri($"https://127.0.0.1:{port}/");
 
-        using var cert = CreateSelfSigned("CN=omnirelay-test");
+        using var cert = TestCertificateFactory.CreateLoopbackCertificate("CN=omnirelay-test");
 
         var options = new DispatcherOptions("https");
         var tls = new HttpServerTlsOptions { Certificate = cert };
@@ -40,10 +41,8 @@ public class HttpsBindingTests
             ServerCertificateCustomValidationCallback = static (_, _, _, _) => true
         };
         using var httpClient = new HttpClient(handler) { BaseAddress = baseAddress };
-        using var request = new HttpRequestMessage(HttpMethod.Post, "/");
-        request.Headers.Add(HttpTransportHeaders.Procedure, "ping");
-        request.Content = new ByteArrayContent(Array.Empty<byte>());
-        using var response = await httpClient.SendAsync(request, ct);
+        httpClient.DefaultRequestHeaders.Add(HttpTransportHeaders.Procedure, "ping");
+        using var response = await httpClient.PostAsync("/", new ByteArrayContent([]), ct);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
@@ -64,19 +63,4 @@ public class HttpsBindingTests
         await Assert.ThrowsAsync<InvalidOperationException>(async () => await dispatcher.StartAsync(TestContext.Current.CancellationToken));
     }
 
-    private static X509Certificate2 CreateSelfSigned(string subjectName)
-    {
-        using var rsa = RSA.Create(2048);
-        var req = new CertificateRequest(subjectName, rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
-        req.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, false));
-        req.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, false));
-        req.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(req.PublicKey, false));
-        var sanBuilder = new SubjectAlternativeNameBuilder();
-        sanBuilder.AddDnsName("localhost");
-        sanBuilder.AddIpAddress(System.Net.IPAddress.Loopback);
-        req.CertificateExtensions.Add(sanBuilder.Build());
-
-        var cert = req.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(1));
-        return cert;
-    }
 }

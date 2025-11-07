@@ -12,6 +12,7 @@ using Microsoft.Extensions.DependencyInjection;
 using OmniRelay.Core;
 using OmniRelay.Core.Clients;
 using OmniRelay.Dispatcher;
+using OmniRelay.Tests.Support;
 using OmniRelay.Transport.Grpc;
 using Xunit;
 
@@ -29,7 +30,12 @@ public class GrpcOutboundHttp3ClientTests
             return;
         }
 
-        using var certificate = CreateSelfSignedCertificate("CN=omnirelay-grpc-outbound-http3");
+        if (!QuicConnection.IsSupported)
+        {
+            return;
+        }
+
+        using var certificate = TestCertificateFactory.CreateLoopbackCertificate("CN=omnirelay-grpc-outbound-http3");
 
         var port = TestPortAllocator.GetRandomPort();
         var address = new Uri($"https://127.0.0.1:{port}");
@@ -69,16 +75,20 @@ public class GrpcOutboundHttp3ClientTests
         var outbound = new GrpcOutbound(
             [address],
             remoteService: "grpc-outbound-http3",
-            clientRuntimeOptions: new GrpcClientRuntimeOptions { EnableHttp3 = true });
+            clientRuntimeOptions: new GrpcClientRuntimeOptions
+            {
+                EnableHttp3 = true,
+                VersionPolicy = HttpVersionPolicy.RequestVersionExact
+            });
 
         try
         {
             await outbound.StartAsync(ct);
             var codec = new RawCodec();
             var client = new UnaryClient<byte[], byte[]>(outbound, codec, dispatcher.ClientConfig("grpc-outbound-http3").UnaryMiddleware);
-            var request = new Request<byte[]>(new RequestMeta("grpc-outbound-http3", "grpc-outbound-http3::ping"), Array.Empty<byte>());
+            var request = new Request<byte[]>(new RequestMeta("grpc-outbound-http3", "grpc-outbound-http3::ping"), []);
             var result = await client.CallAsync(request, ct);
-            Assert.True(result.IsSuccess);
+            Assert.True(result.IsSuccess, result.Error?.ToString() ?? "Result was not successful.");
         }
         finally
         {
@@ -93,7 +103,7 @@ public class GrpcOutboundHttp3ClientTests
     [Fact(Timeout = 45_000)]
     public async Task GrpcOutbound_WithOrHigher_ToHttp2Server_DowngradesToHttp2()
     {
-        using var certificate = CreateSelfSignedCertificate("CN=omnirelay-grpc-outbound-http2");
+        using var certificate = TestCertificateFactory.CreateLoopbackCertificate("CN=omnirelay-grpc-outbound-http2");
 
         var port = TestPortAllocator.GetRandomPort();
         var address = new Uri($"https://127.0.0.1:{port}");
@@ -144,9 +154,9 @@ public class GrpcOutboundHttp3ClientTests
             await outbound.StartAsync(ct);
             var codec = new RawCodec();
             var client = new UnaryClient<byte[], byte[]>(outbound, codec, dispatcher.ClientConfig("grpc-outbound-http2").UnaryMiddleware);
-            var request = new Request<byte[]>(new RequestMeta("grpc-outbound-http2", "grpc-outbound-http2::ping"), Array.Empty<byte>());
+            var request = new Request<byte[]>(new RequestMeta("grpc-outbound-http2", "grpc-outbound-http2::ping"), []);
             var result = await client.CallAsync(request, ct);
-            Assert.True(result.IsSuccess);
+            Assert.True(result.IsSuccess, result.Error?.ToString() ?? "Result was not successful.");
         }
         finally
         {
@@ -161,7 +171,7 @@ public class GrpcOutboundHttp3ClientTests
     [Fact(Timeout = 45_000)]
     public async Task GrpcOutbound_WithExactHttp3_ToHttp2Server_Fails()
     {
-        using var certificate = CreateSelfSignedCertificate("CN=omnirelay-grpc-outbound-http3-exact");
+        using var certificate = TestCertificateFactory.CreateLoopbackCertificate("CN=omnirelay-grpc-outbound-http3-exact");
 
         var port = TestPortAllocator.GetRandomPort();
         var address = new Uri($"https://127.0.0.1:{port}");
@@ -198,7 +208,7 @@ public class GrpcOutboundHttp3ClientTests
             await outbound.StartAsync(ct);
             var codec = new RawCodec();
             var client = new UnaryClient<byte[], byte[]>(outbound, codec, dispatcher.ClientConfig("grpc-outbound-http3-exact").UnaryMiddleware);
-            var request = new Request<byte[]>(new RequestMeta("grpc-outbound-http3-exact", "grpc-outbound-http3-exact::ping"), Array.Empty<byte>());
+            var request = new Request<byte[]>(new RequestMeta("grpc-outbound-http3-exact", "grpc-outbound-http3-exact::ping"), []);
             var result = await client.CallAsync(request, ct);
             Assert.True(result.IsFailure, "Call should fail when HTTP/3 exact is required but server is HTTP/2 only.");
         }
@@ -237,22 +247,6 @@ public class GrpcOutboundHttp3ClientTests
         }
 
         throw new TimeoutException("The gRPC inbound failed to bind within the allotted time.");
-    }
-
-    private static X509Certificate2 CreateSelfSignedCertificate(string subjectName)
-    {
-        using var rsa = RSA.Create(2048);
-        var request = new CertificateRequest(subjectName, rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
-        request.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, false));
-        request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, false));
-        request.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(request.PublicKey, false));
-
-        var sanBuilder = new SubjectAlternativeNameBuilder();
-        sanBuilder.AddDnsName("localhost");
-        sanBuilder.AddIpAddress(IPAddress.Loopback);
-        request.CertificateExtensions.Add(sanBuilder.Build());
-
-        return request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(1));
     }
 
     private sealed class ProtocolCaptureInterceptor(System.Collections.Concurrent.ConcurrentQueue<string> observed) : Interceptor

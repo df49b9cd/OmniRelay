@@ -9,6 +9,7 @@ using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using OmniRelay.Core;
 using OmniRelay.Dispatcher;
+using OmniRelay.Tests.Support;
 using OmniRelay.Transport.Http;
 using Xunit;
 using static Hugo.Go;
@@ -46,9 +47,10 @@ public class HttpInboundLifecycleTests
         await dispatcher.StartAsync(ct);
 
         using var httpClient = new HttpClient { BaseAddress = baseAddress };
+        httpClient.DefaultRequestHeaders.Add(HttpTransportHeaders.Procedure, "test::slow");
+        httpClient.DefaultRequestHeaders.Add(HttpTransportHeaders.Transport, "http");
 
-        using var initialRequest = CreateRpcRequest("test::slow");
-        var inFlightTask = httpClient.SendAsync(initialRequest, HttpCompletionOption.ResponseHeadersRead, ct);
+        var inFlightTask = httpClient.PostAsync("/", new ByteArrayContent([]), ct);
 
         await requestStarted.Task.WaitAsync(ct);
 
@@ -56,8 +58,7 @@ public class HttpInboundLifecycleTests
 
         await Task.Delay(100, ct);
 
-        using var rejectedRequest = CreateRpcRequest("test::slow");
-        using var rejectedResponse = await httpClient.SendAsync(rejectedRequest, ct);
+        using var rejectedResponse = await httpClient.PostAsync("/", new ByteArrayContent([]), ct);
 
         Assert.Equal(HttpStatusCode.ServiceUnavailable, rejectedResponse.StatusCode);
         Assert.True(rejectedResponse.Headers.TryGetValues("Retry-After", out var retryAfterValues));
@@ -80,7 +81,7 @@ public class HttpInboundLifecycleTests
             return;
         }
 
-        using var certificate = CreateSelfSignedCertificate("CN=omnirelay-http3-lifecycle");
+        using var certificate = TestCertificateFactory.CreateLoopbackCertificate("CN=omnirelay-http3-lifecycle");
 
         var port = TestPortAllocator.GetRandomPort();
         var baseAddress = new Uri($"https://127.0.0.1:{port}/");
@@ -112,21 +113,19 @@ public class HttpInboundLifecycleTests
 
         using var handler = CreateHttp3Handler();
         using var httpClient = new HttpClient(handler) { BaseAddress = baseAddress };
+        httpClient.DefaultRequestVersion = HttpVersion.Version30;
+        httpClient.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionExact;
+        httpClient.DefaultRequestHeaders.Add(HttpTransportHeaders.Procedure, "test::slow");
+        httpClient.DefaultRequestHeaders.Add(HttpTransportHeaders.Transport, "http");
 
-        using var initialRequest = CreateRpcRequest("test::slow");
-        initialRequest.Version = HttpVersion.Version30;
-        initialRequest.VersionPolicy = HttpVersionPolicy.RequestVersionExact;
-        var inFlightTask = httpClient.SendAsync(initialRequest, HttpCompletionOption.ResponseHeadersRead, ct);
+        var inFlightTask = httpClient.PostAsync("/", new ByteArrayContent([]), ct);
 
         await requestStarted.Task.WaitAsync(ct);
 
         var stopTask = dispatcher.StopAsync(ct);
         await Task.Delay(100, ct);
 
-        using var rejectedRequest = CreateRpcRequest("test::slow");
-        rejectedRequest.Version = HttpVersion.Version30;
-        rejectedRequest.VersionPolicy = HttpVersionPolicy.RequestVersionExact;
-        using var rejectedResponse = await httpClient.SendAsync(rejectedRequest, ct);
+        using var rejectedResponse = await httpClient.PostAsync("/", new ByteArrayContent([]), ct);
 
         Assert.Equal(HttpStatusCode.ServiceUnavailable, rejectedResponse.StatusCode);
         Assert.True(rejectedResponse.Headers.TryGetValues("Retry-After", out var retryAfterValues));
@@ -151,7 +150,7 @@ public class HttpInboundLifecycleTests
             return;
         }
 
-        using var certificate = CreateSelfSignedCertificate("CN=omnirelay-http3-fallback-drain");
+        using var certificate = TestCertificateFactory.CreateLoopbackCertificate("CN=omnirelay-http3-fallback-drain");
 
         var port = TestPortAllocator.GetRandomPort();
         var baseAddress = new Uri($"https://127.0.0.1:{port}/");
@@ -185,24 +184,20 @@ public class HttpInboundLifecycleTests
         using var httpClient = new HttpClient(handler) { BaseAddress = baseAddress };
         httpClient.DefaultRequestVersion = HttpVersion.Version30;
         httpClient.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrLower;
+        httpClient.DefaultRequestHeaders.Add(HttpTransportHeaders.Procedure, "test::slow");
+        httpClient.DefaultRequestHeaders.Add(HttpTransportHeaders.Transport, "http");
 
-        using var initialRequest = CreateRpcRequest("test::slow");
-        initialRequest.Version = HttpVersion.Version30;
-        initialRequest.VersionPolicy = HttpVersionPolicy.RequestVersionOrLower;
-        var inFlightTask = httpClient.SendAsync(initialRequest, HttpCompletionOption.ResponseHeadersRead, ct);
+        var inFlightTask = httpClient.PostAsync("/", new ByteArrayContent([]), ct);
 
         await requestStarted.Task.WaitAsync(ct);
 
         var stopTask = dispatcher.StopAsync(ct);
         await Task.Delay(100, ct);
 
-        using var rejectedRequest = CreateRpcRequest("test::slow");
-        rejectedRequest.Version = HttpVersion.Version30;
-        rejectedRequest.VersionPolicy = HttpVersionPolicy.RequestVersionOrLower;
-        using var rejectedResponse = await httpClient.SendAsync(rejectedRequest, ct);
+        using var rejectedResponse = await httpClient.PostAsync("/", new ByteArrayContent([]), ct);
 
         Assert.Equal(HttpStatusCode.ServiceUnavailable, rejectedResponse.StatusCode);
-        Assert.True(rejectedResponse.Headers.TryGetValues("Retry-After", out var retryAfterValues));
+        _ = rejectedResponse.Headers.TryGetValues("Retry-After", out var retryAfterValues);
         Assert.Contains("1", retryAfterValues);
         Assert.Equal(2, rejectedResponse.Version.Major);
         Assert.True(rejectedResponse.Headers.TryGetValues(HttpTransportHeaders.Protocol, out var protocolValues));
@@ -228,7 +223,7 @@ public class HttpInboundLifecycleTests
             return;
         }
 
-        using var certificate = CreateSelfSignedCertificate("CN=omnirelay-http3-observability");
+        using var certificate = TestCertificateFactory.CreateLoopbackCertificate("CN=omnirelay-http3-observability");
 
         var port = TestPortAllocator.GetRandomPort();
         var baseAddress = new Uri($"https://127.0.0.1:{port}/");
@@ -277,12 +272,9 @@ public class HttpInboundLifecycleTests
             using var http11Handler = CreateHttp11Handler();
             using var http11Client = new HttpClient(http11Handler) { BaseAddress = baseAddress };
 
-            using var http11Request = new HttpRequestMessage(HttpMethod.Get, "/healthz")
-            {
-                Version = HttpVersion.Version11,
-                VersionPolicy = HttpVersionPolicy.RequestVersionExact
-            };
-            using var http11Response = await http11Client.SendAsync(http11Request, ct);
+            http11Client.DefaultRequestVersion = HttpVersion.Version11;
+            http11Client.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionExact;
+            using var http11Response = await http11Client.GetAsync("/healthz", ct);
             Assert.Equal(HttpStatusCode.OK, http11Response.StatusCode);
             Assert.Equal(1, http11Response.Version.Major);
         }
@@ -321,9 +313,10 @@ public class HttpInboundLifecycleTests
         await dispatcher.StartAsync(ct);
 
         using var httpClient = new HttpClient { BaseAddress = baseAddress };
+        httpClient.DefaultRequestHeaders.Add(HttpTransportHeaders.Procedure, "test::slow");
+        httpClient.DefaultRequestHeaders.Add(HttpTransportHeaders.Transport, "http");
 
-        using var initialRequest = CreateRpcRequest("test::slow");
-        var inFlightTask = httpClient.SendAsync(initialRequest, HttpCompletionOption.ResponseHeadersRead, ct);
+        var inFlightTask = httpClient.PostAsync("/", new ByteArrayContent([]), ct);
 
         await requestStarted.Task.WaitAsync(ct);
 
@@ -375,8 +368,10 @@ public class HttpInboundLifecycleTests
                 return Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty, new ResponseMeta()));
             }));
 
-        using var slowRequest = CreateRpcRequest("slow");
-        var slowTask = httpClient.SendAsync(slowRequest, HttpCompletionOption.ResponseHeadersRead, ct);
+        using var rpcClient = new HttpClient { BaseAddress = baseAddress };
+        rpcClient.DefaultRequestHeaders.Add(HttpTransportHeaders.Procedure, "slow");
+        rpcClient.DefaultRequestHeaders.Add(HttpTransportHeaders.Transport, "http");
+        var slowTask = rpcClient.PostAsync("/", new ByteArrayContent([]), ct);
 
         await slowStarted.Task.WaitAsync(ct);
 
@@ -427,15 +422,6 @@ public class HttpInboundLifecycleTests
         await dispatcher.StopAsync(ct);
     }
 
-    private static HttpRequestMessage CreateRpcRequest(string procedure)
-    {
-        var request = new HttpRequestMessage(HttpMethod.Post, "/");
-        request.Headers.Add(HttpTransportHeaders.Procedure, procedure);
-        request.Headers.Add(HttpTransportHeaders.Transport, "http");
-        request.Content = new ByteArrayContent([]);
-        return request;
-    }
-
     private static SocketsHttpHandler CreateHttp3Handler()
     {
         var handler = new SocketsHttpHandler
@@ -464,19 +450,4 @@ public class HttpInboundLifecycleTests
         ServerCertificateCustomValidationCallback = static (_, _, _, _) => true
     };
 
-    private static X509Certificate2 CreateSelfSignedCertificate(string subjectName)
-    {
-        using var rsa = RSA.Create(2048);
-        var request = new CertificateRequest(subjectName, rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
-        request.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, false));
-        request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, false));
-        request.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(request.PublicKey, false));
-
-        var sanBuilder = new SubjectAlternativeNameBuilder();
-        sanBuilder.AddDnsName("localhost");
-        sanBuilder.AddIpAddress(IPAddress.Loopback);
-        request.CertificateExtensions.Add(sanBuilder.Build());
-
-        return request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(1));
-    }
 }

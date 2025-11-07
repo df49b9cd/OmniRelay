@@ -25,7 +25,7 @@ public class ClientStreamCallTests
         await call.CompleteWriterAsync(null, TestContext.Current.CancellationToken);
 
         // Read via internal reader
-        var read = new System.Collections.Generic.List<byte[]>();
+        var read = new List<byte[]>();
         await foreach (var payload in call.Reader.ReadAllAsync(TestContext.Current.CancellationToken))
         {
             read.Add(payload.ToArray());

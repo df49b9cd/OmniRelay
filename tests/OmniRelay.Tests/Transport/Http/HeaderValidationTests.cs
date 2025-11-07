@@ -31,9 +31,8 @@ public class HeaderValidationTests
         await dispatcher.StartAsync(ct);
 
         using var httpClient = new HttpClient { BaseAddress = baseAddress };
-        using var request = new HttpRequestMessage(HttpMethod.Post, "/");
-        request.Content = new ByteArrayContent(Array.Empty<byte>());
-        using var response = await httpClient.SendAsync(request, ct);
+        using var content = new ByteArrayContent([]);
+        using var response = await httpClient.PostAsync("/", content, ct);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
 

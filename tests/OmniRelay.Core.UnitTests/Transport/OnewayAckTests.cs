@@ -15,7 +15,7 @@ public class OnewayAckTests
     [Fact]
     public void Ack_Uses_Provided_Meta()
     {
-        var meta = new OmniRelay.Core.ResponseMeta(encoding: "json");
+        var meta = new ResponseMeta(encoding: "json");
         var ack = OnewayAck.Ack(meta);
         Assert.Same(meta, ack.Meta);
     }

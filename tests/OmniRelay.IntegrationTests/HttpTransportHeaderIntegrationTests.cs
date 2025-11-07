@@ -67,19 +67,18 @@ public class HttpTransportHeaderIntegrationTests
 
             var deadline = DateTimeOffset.UtcNow.AddSeconds(5).ToString("O");
 
-            using (var request = new HttpRequestMessage(HttpMethod.Post, "/"))
-            {
-                request.Headers.Add(HttpTransportHeaders.Procedure, "headers::json");
-                request.Headers.Add(HttpTransportHeaders.Caller, "integration-client");
-                request.Headers.Add(HttpTransportHeaders.Encoding, MediaTypeNames.Application.Json);
-                request.Headers.Add(HttpTransportHeaders.ShardKey, "shard-a");
-                request.Headers.Add(HttpTransportHeaders.RoutingKey, "route-a");
-                request.Headers.Add(HttpTransportHeaders.RoutingDelegate, "delegate-a");
-                request.Headers.Add(HttpTransportHeaders.TtlMs, "250");
-                request.Headers.Add(HttpTransportHeaders.Deadline, deadline);
-                request.Content = new StringContent("{\"message\":\"json\"}", Encoding.UTF8, MediaTypeNames.Application.Json);
+            client.DefaultRequestHeaders.Add(HttpTransportHeaders.Procedure, "headers::json");
+            client.DefaultRequestHeaders.Add(HttpTransportHeaders.Caller, "integration-client");
+            client.DefaultRequestHeaders.Add(HttpTransportHeaders.Encoding, MediaTypeNames.Application.Json);
+            client.DefaultRequestHeaders.Add(HttpTransportHeaders.ShardKey, "shard-a");
+            client.DefaultRequestHeaders.Add(HttpTransportHeaders.RoutingKey, "route-a");
+            client.DefaultRequestHeaders.Add(HttpTransportHeaders.RoutingDelegate, "delegate-a");
+            client.DefaultRequestHeaders.Add(HttpTransportHeaders.TtlMs, "250");
+            client.DefaultRequestHeaders.Add(HttpTransportHeaders.Deadline, deadline);
 
-                using var response = await client.SendAsync(request, ct);
+            using (var jsonContent = new StringContent("{\"message\":\"json\"}", Encoding.UTF8, MediaTypeNames.Application.Json))
+            {
+                using var response = await client.PostAsync("/", jsonContent, ct);
                 Assert.Equal(HttpStatusCode.OK, response.StatusCode);
                 Assert.Equal(MediaTypeNames.Application.Json, response.Content.Headers.ContentType?.MediaType);
                 Assert.True(response.Headers.TryGetValues(HttpTransportHeaders.Transport, out var transportValues));
@@ -93,6 +92,15 @@ public class HttpTransportHeaderIntegrationTests
                 Assert.Equal("{\"result\":\"json\"}", body);
             }
 
+            client.DefaultRequestHeaders.Remove(HttpTransportHeaders.Procedure);
+            client.DefaultRequestHeaders.Remove(HttpTransportHeaders.Caller);
+            client.DefaultRequestHeaders.Remove(HttpTransportHeaders.ShardKey);
+            client.DefaultRequestHeaders.Remove(HttpTransportHeaders.RoutingKey);
+            client.DefaultRequestHeaders.Remove(HttpTransportHeaders.RoutingDelegate);
+            client.DefaultRequestHeaders.Remove(HttpTransportHeaders.TtlMs);
+            client.DefaultRequestHeaders.Remove(HttpTransportHeaders.Deadline);
+            client.DefaultRequestHeaders.Remove(HttpTransportHeaders.Encoding);
+            
             var jsonMeta = await jsonMetaSource.Task.WaitAsync(TimeSpan.FromSeconds(5), ct);
             Assert.Equal("headers-service", jsonMeta.Service);
             Assert.Equal("headers::json", jsonMeta.Procedure);
@@ -107,14 +115,14 @@ public class HttpTransportHeaderIntegrationTests
             Assert.True(jsonMeta.Headers.TryGetValue(HttpTransportHeaders.Protocol, out var jsonProtocol));
             Assert.Equal("HTTP/1.1", jsonProtocol);
 
-            using (var request = new HttpRequestMessage(HttpMethod.Post, "/"))
-            {
-                request.Headers.Add(HttpTransportHeaders.Procedure, "headers::protobuf");
-                request.Headers.Add(HttpTransportHeaders.Encoding, ProtobufContentType);
-                request.Content = new ByteArrayContent(new byte[] { 0x0A, 0x0B, 0x0C });
-                request.Content.Headers.ContentType = new MediaTypeHeaderValue(ProtobufContentType);
+            client.DefaultRequestHeaders.Add(HttpTransportHeaders.Procedure, "headers::protobuf");
+            client.DefaultRequestHeaders.Add(HttpTransportHeaders.Encoding, ProtobufContentType);
 
-                using var response = await client.SendAsync(request, ct);
+            using (var requestContent = new ByteArrayContent([0x0A, 0x0B, 0x0C]))
+            {
+                requestContent.Headers.ContentType = new MediaTypeHeaderValue(ProtobufContentType);
+
+                using var response = await client.PostAsync("/", requestContent, ct);
                 Assert.Equal(HttpStatusCode.OK, response.StatusCode);
                 Assert.True(response.Headers.TryGetValues(HttpTransportHeaders.Transport, out var transportValues));
                 Assert.Contains("http", transportValues);
@@ -124,6 +132,9 @@ public class HttpTransportHeaderIntegrationTests
                 var body = await response.Content.ReadAsByteArrayAsync(ct);
                 Assert.Equal(new byte[] { 0x0A, 0x0B, 0x0C }, body);
             }
+
+            client.DefaultRequestHeaders.Remove(HttpTransportHeaders.Procedure);
+            client.DefaultRequestHeaders.Remove(HttpTransportHeaders.Encoding);
 
             var protoMeta = await protoMetaSource.Task.WaitAsync(TimeSpan.FromSeconds(5), ct);
             Assert.Equal(ProtobufContentType, protoMeta.Encoding);
@@ -166,19 +177,18 @@ public class HttpTransportHeaderIntegrationTests
         try
         {
             using var client = new HttpClient { BaseAddress = baseAddress };
-            using var request = new HttpRequestMessage(HttpMethod.Post, "/");
-            request.Headers.Add(HttpTransportHeaders.Procedure, "headers::fail");
-            request.Headers.Add(HttpTransportHeaders.Encoding, MediaTypeNames.Application.Json);
-            request.Content = new StringContent("{}", Encoding.UTF8, MediaTypeNames.Application.Json);
+            client.DefaultRequestHeaders.Add(HttpTransportHeaders.Procedure, "headers::fail");
+            client.DefaultRequestHeaders.Add(HttpTransportHeaders.Encoding, MediaTypeNames.Application.Json);
 
-            using var response = await client.SendAsync(request, ct);
+            using var requestContent = new StringContent("{}", Encoding.UTF8, MediaTypeNames.Application.Json);
+            using var response = await client.PostAsync("/", requestContent, ct);
             Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
             Assert.True(response.Headers.TryGetValues(HttpTransportHeaders.Transport, out var transportValues));
             Assert.Contains("http", transportValues);
             Assert.True(response.Headers.TryGetValues(HttpTransportHeaders.Protocol, out var protocolValues));
             Assert.Contains("HTTP/1.1", protocolValues);
             Assert.True(response.Headers.TryGetValues(HttpTransportHeaders.Status, out var statusValues));
-            Assert.Contains(OmniRelayStatusCode.InvalidArgument.ToString(), statusValues);
+            Assert.Contains(nameof(OmniRelayStatusCode.InvalidArgument), statusValues);
             Assert.True(response.Headers.TryGetValues(HttpTransportHeaders.ErrorCode, out var codeValues));
             Assert.Contains("invalid-argument", codeValues);
             Assert.True(response.Headers.TryGetValues(HttpTransportHeaders.ErrorMessage, out var messageValues));
@@ -188,7 +198,7 @@ public class HttpTransportHeaderIntegrationTests
             var body = await response.Content.ReadAsStringAsync(ct);
             using var json = JsonDocument.Parse(body);
             Assert.Equal("invalid payload", json.RootElement.GetProperty("message").GetString());
-            Assert.Equal(OmniRelayStatusCode.InvalidArgument.ToString(), json.RootElement.GetProperty("status").GetString());
+            Assert.Equal(nameof(OmniRelayStatusCode.InvalidArgument), json.RootElement.GetProperty("status").GetString());
             Assert.Equal("invalid-argument", json.RootElement.GetProperty("code").GetString());
         }
         finally

@@ -80,7 +80,7 @@ public class OmniRelayErrorsTests
         var error = OmniRelayErrorAdapter.FromStatus(OmniRelayStatusCode.Unavailable, "unavailable");
 
         Assert.True(error.TryGetMetadata(OmniRelayErrorAdapter.FaultMetadataKey, out string? fault));
-        Assert.Equal(OmniRelayFaultType.Server.ToString(), fault);
+        Assert.Equal(nameof(OmniRelayFaultType.Server), fault);
         Assert.True(error.TryGetMetadata(OmniRelayErrorAdapter.RetryableMetadataKey, out bool retryable));
         Assert.True(retryable);
     }

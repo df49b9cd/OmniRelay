@@ -276,12 +276,12 @@ internal sealed class StartupBannerHostedService(
         var httpUrls = string.Join(
             ", ",
             configuration.GetSection("omnirelay:inbounds:http").GetChildren()
-                .SelectMany(section => section.GetSection("urls").Get<string[]>() ?? Array.Empty<string>()));
+                .SelectMany(section => section.GetSection("urls").Get<string[]>() ?? []));
 
         var grpcUrls = string.Join(
             ", ",
             configuration.GetSection("omnirelay:inbounds:grpc").GetChildren()
-                .SelectMany(section => section.GetSection("urls").Get<string[]>() ?? Array.Empty<string>()));
+                .SelectMany(section => section.GetSection("urls").Get<string[]>() ?? []));
 
         logger.LogInformation("OmniRelay configuration sample running as {Service}.", dispatcher.ServiceName);
         if (!string.IsNullOrWhiteSpace(httpUrls))

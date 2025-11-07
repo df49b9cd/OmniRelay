@@ -34,7 +34,7 @@ public class DuplexStreamClientTests
         outbound.CallAsync(Arg.Any<IRequest<ReadOnlyMemory<byte>>>(), Arg.Any<CancellationToken>())
             .Returns(ci => ValueTask.FromResult(Ok((IDuplexStreamCall)duplex)));
 
-        var client = new DuplexStreamClient<Req, Res>(outbound, codec, Array.Empty<IDuplexOutboundMiddleware>());
+        var client = new DuplexStreamClient<Req, Res>(outbound, codec, []);
         var session = await client.StartAsync(meta, TestContext.Current.CancellationToken);
 
         await session.WriteAsync(new Req { A = 1 }, TestContext.Current.CancellationToken);
@@ -63,7 +63,7 @@ public class DuplexStreamClientTests
         outbound.CallAsync(Arg.Any<IRequest<ReadOnlyMemory<byte>>>(), Arg.Any<CancellationToken>())
             .Returns(ValueTask.FromResult(Err<IDuplexStreamCall>(OmniRelayErrorAdapter.FromStatus(OmniRelayStatusCode.Unavailable, "nope", transport: "duplex"))));
 
-        var client = new DuplexStreamClient<Req, Res>(outbound, codec, Array.Empty<IDuplexOutboundMiddleware>());
+        var client = new DuplexStreamClient<Req, Res>(outbound, codec, []);
         await Assert.ThrowsAsync<OmniRelayException>(() => client.StartAsync(new RequestMeta(service: "svc"), TestContext.Current.CancellationToken).AsTask());
     }
 
@@ -79,7 +79,7 @@ public class DuplexStreamClientTests
         outbound.CallAsync(Arg.Any<IRequest<ReadOnlyMemory<byte>>>(), Arg.Any<CancellationToken>())
             .Returns(ValueTask.FromResult(Ok((IDuplexStreamCall)duplex)));
 
-        var client = new DuplexStreamClient<Req, Res>(outbound, codec, Array.Empty<IDuplexOutboundMiddleware>());
+        var client = new DuplexStreamClient<Req, Res>(outbound, codec, []);
         var session = await client.StartAsync(new RequestMeta(), TestContext.Current.CancellationToken);
 
         await Assert.ThrowsAsync<OmniRelayException>(() => session.WriteAsync(new Req(), TestContext.Current.CancellationToken).AsTask());
@@ -100,7 +100,7 @@ public class DuplexStreamClientTests
         outbound.CallAsync(Arg.Any<IRequest<ReadOnlyMemory<byte>>>(), Arg.Any<CancellationToken>())
             .Returns(ValueTask.FromResult(Ok((IDuplexStreamCall)duplex)));
 
-        var client = new DuplexStreamClient<Req, Res>(outbound, codec, Array.Empty<IDuplexOutboundMiddleware>());
+        var client = new DuplexStreamClient<Req, Res>(outbound, codec, []);
         var session = await client.StartAsync(new RequestMeta(), TestContext.Current.CancellationToken);
 
         var readTask = Task.Run(async () =>
@@ -133,7 +133,7 @@ public class DuplexStreamClientTests
                 return ValueTask.FromResult(Ok((IDuplexStreamCall)duplex));
             });
 
-        var client = new DuplexStreamClient<Req, Res>(outbound, codec, Array.Empty<IDuplexOutboundMiddleware>());
+        var client = new DuplexStreamClient<Req, Res>(outbound, codec, []);
         await client.StartAsync(new RequestMeta(service: "svc"), TestContext.Current.CancellationToken);
 
         Assert.NotNull(captured);

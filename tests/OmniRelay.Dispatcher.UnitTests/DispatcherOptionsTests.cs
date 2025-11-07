@@ -25,7 +25,7 @@ public class DispatcherOptionsTests
         options.AddLifecycle("first", lifecycle);
         options.AddLifecycle("second", lifecycle);
 
-        var dispatcher = new OmniRelay.Dispatcher.Dispatcher(options);
+        var dispatcher = new Dispatcher(options);
 
         await dispatcher.StartAsync(CancellationToken.None);
         await dispatcher.StopAsync(CancellationToken.None);
@@ -42,7 +42,7 @@ public class DispatcherOptionsTests
         transport.Name.Returns("http");
         options.AddTransport(transport);
 
-        var dispatcher = new OmniRelay.Dispatcher.Dispatcher(options);
+        var dispatcher = new Dispatcher(options);
         var components = dispatcher.Introspect().Components;
 
         Assert.Contains(components, component => component.Name == "http");
@@ -54,7 +54,7 @@ public class DispatcherOptionsTests
         var options = new DispatcherOptions("svc");
         options.AddUnaryOutbound("remote", null, Substitute.For<IUnaryOutbound>());
 
-        var dispatcher = new OmniRelay.Dispatcher.Dispatcher(options);
+        var dispatcher = new Dispatcher(options);
         var outbounds = dispatcher.Introspect().Outbounds.Single();
 
         Assert.Equal("remote", outbounds.Service);

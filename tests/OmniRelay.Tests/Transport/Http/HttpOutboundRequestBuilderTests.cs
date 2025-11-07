@@ -94,8 +94,8 @@ public sealed class HttpOutboundRequestBuilderTests
 
         Assert.Equal(HttpMethod.Post, captured.Method);
         Assert.Equal(requestUri, captured.RequestUri);
-        Assert.Equal(HttpVersion.Version11, captured.Version);
-        Assert.Equal(HttpVersionPolicy.RequestVersionOrHigher, captured.VersionPolicy);
+        Assert.Equal(HttpVersion.Version30, captured.Version);
+        Assert.Equal(HttpVersionPolicy.RequestVersionOrLower, captured.VersionPolicy);
 
         Assert.Equal("http", captured.Headers[HttpTransportHeaders.Transport]);
         Assert.Equal(meta.Procedure, captured.Headers[HttpTransportHeaders.Procedure]);

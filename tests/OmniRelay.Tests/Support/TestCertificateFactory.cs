@@ -1,8 +1,9 @@
+using System;
 using System.Net;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 
-namespace OmniRelay.IntegrationTests.Support;
+namespace OmniRelay.Tests.Support;
 
 internal static class TestCertificateFactory
 {
@@ -18,8 +19,7 @@ internal static class TestCertificateFactory
         using var rsa = RSA.Create(2048);
         var request = new CertificateRequest(subjectName, rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
         request.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, false));
-        request.CertificateExtensions.Add(
-            new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, false));
+        request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, false));
         request.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(request.PublicKey, false));
 
         var eku = new OidCollection
@@ -34,8 +34,7 @@ internal static class TestCertificateFactory
         sanBuilder.AddIpAddress(IPAddress.IPv6Loopback);
         request.CertificateExtensions.Add(sanBuilder.Build());
 
-        using var certificate =
-            request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(1));
+        using var certificate = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(1));
         var export = certificate.Export(X509ContentType.Pfx, DefaultPassword);
         return X509CertificateLoader.LoadPkcs12(
             export,

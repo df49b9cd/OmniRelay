@@ -62,11 +62,10 @@ public class HttpStreamingIntegrationTests
         try
         {
             using var client = new HttpClient { BaseAddress = baseAddress };
-            using var request = new HttpRequestMessage(HttpMethod.Get, "/");
-            request.Headers.Add(HttpTransportHeaders.Procedure, "stream::events");
-            request.Headers.Accept.ParseAdd("text/event-stream");
+            client.DefaultRequestHeaders.Add(HttpTransportHeaders.Procedure, "stream::events");
+            client.DefaultRequestHeaders.Accept.ParseAdd("text/event-stream");
 
-            using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+            using var response = await client.GetAsync("/", HttpCompletionOption.ResponseHeadersRead, ct);
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             Assert.Equal("text/event-stream", response.Content.Headers.ContentType?.MediaType);
             Assert.True(response.Headers.TryGetValues("X-Accel-Buffering", out var bufferingValues));
@@ -142,11 +141,10 @@ public class HttpStreamingIntegrationTests
         try
         {
             using var client = new HttpClient { BaseAddress = baseAddress };
-            using var request = new HttpRequestMessage(HttpMethod.Get, "/");
-            request.Headers.Add(HttpTransportHeaders.Procedure, "stream::oversized");
-            request.Headers.Accept.ParseAdd("text/event-stream");
+            client.DefaultRequestHeaders.Add(HttpTransportHeaders.Procedure, "stream::oversized");
+            client.DefaultRequestHeaders.Accept.ParseAdd("text/event-stream");
 
-            using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+            using var response = await client.GetAsync("/", HttpCompletionOption.ResponseHeadersRead, ct);
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
             using var stream = await response.Content.ReadAsStreamAsync(ct);
