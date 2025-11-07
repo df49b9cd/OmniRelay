@@ -27,19 +27,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Install MsQuic dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libmsquic
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v5
-        with:
-          cache: true
-          cache-dependency-path: |
-            **/packages.lock.json
-          global-json-file: global.json
-          dotnet-quality: 'preview'
+      - name: Prepare NuGet cache directory
+        run: mkdir -p ~/.nuget/packages
 
       - name: Cache NuGet packages
         uses: actions/cache@v4
@@ -49,23 +38,42 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-nuget-
 
+      - name: Build CI image
+        run: docker build -f Dockerfile.ci -t omnirelay-ci .
+
       - name: Restore (locked mode)
-        run: dotnet restore OmniRelay.slnx --locked-mode
+        run: >
+          docker run --rm
+          -v ${{ github.workspace }}:/work
+          -v $HOME/.nuget/packages:/root/.nuget/packages
+          -w /work
+          -e DOTNET_NOLOGO=1
+          -e DOTNET_CLI_TELEMETRY_OPTOUT=1
+          omnirelay-ci
+          dotnet restore OmniRelay.slnx --locked-mode
 
       - name: Build (with binlog)
         run: |
           mkdir -p artifacts/build
-          dotnet build OmniRelay.slnx --configuration Release -bl:artifacts/build/build.binlog
+          docker run --rm \
+            -v ${{ github.workspace }}:/work \
+            -v $HOME/.nuget/packages:/root/.nuget/packages \
+            -w /work \
+            -e DOTNET_NOLOGO=1 \
+            -e DOTNET_CLI_TELEMETRY_OPTOUT=1 \
+            omnirelay-ci \
+            dotnet build OmniRelay.slnx --configuration Release -bl:artifacts/build/build.binlog
 
       - name: Test (with coverage and TRX)
-        env:
-          OMNIRELAY_ENABLE_HTTP3_TESTS: true
-        run: |
-          dotnet test OmniRelay.slnx \
-            --configuration Release \
-            --no-build \
-            --collect:"XPlat Code Coverage" \
-            --logger "trx;LogFileName=test-results.trx"
+        run: >
+          docker run --rm
+          -v ${{ github.workspace }}:/work
+          -v $HOME/.nuget/packages:/root/.nuget/packages
+          -w /work
+          -e DOTNET_NOLOGO=1
+          -e DOTNET_CLI_TELEMETRY_OPTOUT=1
+          omnirelay-ci
+          bash -c "dotnet test OmniRelay.slnx --configuration Release --no-build --collect:\"XPlat Code Coverage\" --logger \"trx;LogFileName=test-results.trx\""
 
       - name: Gather coverage artifacts
         if: always()
