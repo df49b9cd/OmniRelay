@@ -10,6 +10,7 @@ The repository ships focused sample projects that exercise specific runtime feat
 | Config-to-prod template | `samples/ConfigToProd.Template` | Layered config + probes | Shows `AddOmniRelayDispatcher` with `appsettings.*`, env overrides, diagnostics toggles, and liveness/readiness endpoints ready for Docker/Kubernetes. |
 | Multi-tenant gateway | `samples/MultiTenant.Gateway` | Tenant-aware routing | Demonstrates per-tenant middleware, quotas, and routing headers that fan out to isolated peer sets without duplicating hosts. |
 | Hybrid batch runner | `samples/HybridRunner` | Batch + realtime | Background jobs push progress via oneway RPCs while dashboards stream updates via server streams. |
+| Chaos & failover lab | `samples/ChaosFailover.Lab` | Reliability sandbox | Spins up flaky backends so retries, deadlines, and peer diagnostics can be observed safely. |
 | Configuration host | `samples/Configuration.Server` | `AddOmniRelayDispatcher` + DI | Uses `appsettings.json` to configure transports, diagnostics, middleware, JSON codecs, and a custom outbound spec instantiated via configuration. |
 | Codegen + tee rollout | `samples/CodegenTee.Rollout` | Protobuf generator + shadowing | Builds Protobuf contracts via OmniRelay’s generator and mirrors typed client calls to primary + shadow deployments using tee outbounds. |
 | Tee shadowing | `samples/Shadowing.Server` | `TeeUnaryOutbound` / `TeeOnewayOutbound` | Mirrors production calls to a shadow stack, shows how to compose typed clients and oneway fan-out while logging both inbound and outbound pipelines. |
@@ -116,6 +117,18 @@ The repository ships focused sample projects that exercise specific runtime feat
 - Notes:
   - Adjust the `BatchWorker` delay/logic to reflect real work or wire the queues to external systems (Redis, SQS, etc.).
   - Combine with the Observability sample to expose metrics/traces for the worker pipeline.
+
+## Chaos & Failover Lab
+
+- Path: `samples/ChaosFailover.Lab`
+- Run: `dotnet run --project samples/ChaosFailover.Lab`
+- What it shows:
+  - Two unstable backends (different success rates) behind a dispatcher that applies retries and deadlines.
+  - Traffic generator that continuously calls `chaos::ping`, sometimes targeting the secondary outbound to trigger failover.
+  - Easy hooks for `omnirelay` CLI/`/omnirelay/introspect` to observe peer diagnostics while failures occur.
+- Notes:
+  - Tweak backend success rates or retry/deadline values to explore different failure scenarios.
+  - Pair with Observability sample to stream metrics/traces while chaos testing.
 
 ## Codegen + Tee Rollout Harness
 

@@ -8,6 +8,7 @@
     <Project Path="samples/Observability.CliPlayground/Observability.CliPlayground.csproj" />
     <Project Path="samples/MultiTenant.Gateway/MultiTenant.Gateway.csproj" />
     <Project Path="samples/HybridRunner/HybridRunner.csproj" />
+    <Project Path="samples/ChaosFailover.Lab/ChaosFailover.Lab.csproj" />
     <Project Path="samples\Configuration.Server\Configuration.Server.csproj" Type="Classic C#" />
     <Project Path="samples\Shadowing.Server\Shadowing.Server.csproj" Type="Classic C#" />
   </Folder>

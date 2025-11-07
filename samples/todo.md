@@ -37,6 +37,5 @@ Curated backlog of sample projects that demonstrate OmniRelay end-to-end pattern
 
 ## Chaos & Failover Lab
 
-- **Audience:** Reliability engineers.
-- **What to show:** Scripts that deliberately fail peers, trip circuit breakers, and observe peer chooser behavior plus automatic recovery via `/omnirelay/introspect` and metrics.
-- **Why it helps:** Gives teams a safe sandbox to learn how OmniRelay reacts to partial outages, ensuring confidence before production rollouts.
+- **Status:** Shipped at `samples/ChaosFailover.Lab`.
+- **Highlights:** Flaky backends, retry/deadline middleware, and a traffic generator demonstrate failover behavior while engineers inspect diagnostics.
