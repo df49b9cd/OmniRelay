@@ -6,6 +6,7 @@ The repository ships focused sample projects that exercise specific runtime feat
 | ------ | ---- | ----- | ---------- |
 | Quickstart dispatcher | `samples/Quickstart.Server` | Manual bootstrap | Registers unary/oneway/stream handlers, custom inbound middleware, mixed HTTP + gRPC inbounds. |
 | Minimal API bridge | `samples/MinimalApiBridge` | ASP.NET Core + OmniRelay | Shared DI container hosts Minimal APIs next to an OmniRelay dispatcher so HTTP controllers and RPC procedures reuse the same handlers, codecs, and middleware. |
+| Streaming analytics lab | `samples/StreamingAnalytics.Lab` | Server/client/duplex streaming | Demonstrates JSON + Protobuf codecs, server/client/duplex handlers, and matching OmniRelay streaming clients that feed ESG/ticker data. |
 | Config-to-prod template | `samples/ConfigToProd.Template` | Layered config + probes | Shows `AddOmniRelayDispatcher` with `appsettings.*`, env overrides, diagnostics toggles, and liveness/readiness endpoints ready for Docker/Kubernetes. |
 | Configuration host | `samples/Configuration.Server` | `AddOmniRelayDispatcher` + DI | Uses `appsettings.json` to configure transports, diagnostics, middleware, JSON codecs, and a custom outbound spec instantiated via configuration. |
 | Tee shadowing | `samples/Shadowing.Server` | `TeeUnaryOutbound` / `TeeOnewayOutbound` | Mirrors production calls to a shadow stack, shows how to compose typed clients and oneway fan-out while logging both inbound and outbound pipelines. |
@@ -49,6 +50,18 @@ The repository ships focused sample projects that exercise specific runtime feat
 - Notes:
   - The Minimal API host listens on `http://127.0.0.1:5058` by default; override via `ASPNETCORE_URLS`.
   - OmniRelay HTTP/gRPC inbounds default to `http://127.0.0.1:7080` and `http://127.0.0.1:7090`; adjust the URIs in `Program.cs` to match your environment.
+
+## Streaming Analytics Lab
+
+- Path: `samples/StreamingAnalytics.Lab`
+- Run: `dotnet run --project samples/StreamingAnalytics.Lab`
+- What it shows:
+  - Server-, client-, and duplex-streaming handlers living in the same dispatcher, mixing JSON codecs (ticker subscriptions) with Protobuf codecs generated from `Protos/analytics.proto`.
+  - Use of `StreamClient`, `ClientStreamClient`, and `DuplexStreamClient` to call the dispatcher through loopback gRPC outbounds, illustrating how to reuse codecs/middleware for inbound and outbound streaming.
+  - Backpressure-aware server streaming that throttles ticker updates, client-stream aggregation that reads `MetricSample` batches, and duplex collaboration that broadcasts `InsightSignal` replies as requests arrive.
+- Notes:
+  - gRPC inbound/outbound listen on `http://127.0.0.1:7190`. Update the URIs inside `StreamingLabBootstrap` if you need to expose different ports.
+  - The bundled demo clients run automatically, but you can connect your own OmniRelay/gRPC clients using the same JSON contract (`TickerSubscription`/`TickerUpdate`) and the generated Protobuf messages.
 
 ## Config-to-Prod Template
 

@@ -13,9 +13,8 @@ Curated backlog of sample projects that demonstrate OmniRelay end-to-end pattern
 
 ## Streaming Analytics Lab
 
-- **Audience:** Real-time telemetry/quant teams.
-- **What to show:** Server, client, and duplex streaming handlers plus matching clients that publish/consume ticker or ESG updates using JSON + protobuf codecs.
-- **Why it helps:** Demonstrates backpressure, cancellation, and codec reuse without deep-diving into the streaming guide first.
+- **Status:** Shipped at `samples/StreamingAnalytics.Lab`.
+- **Highlights:** JSON ticker streams, Protobuf client/duplex handlers, and loopback streaming clients that exercise OmniRelay codecs and backpressure end-to-end.
 
 ## Observability & CLI Playground
 
