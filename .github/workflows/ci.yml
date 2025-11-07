@@ -27,6 +27,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      - name: Install MsQuic dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libmsquic
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
         with:
@@ -53,6 +58,8 @@ jobs:
           dotnet build OmniRelay.slnx --configuration Release -bl:artifacts/build/build.binlog
 
       - name: Test (with coverage and TRX)
+        env:
+          OMNIRELAY_ENABLE_HTTP3_TESTS: true
         run: |
           dotnet test OmniRelay.slnx \
             --configuration Release \
