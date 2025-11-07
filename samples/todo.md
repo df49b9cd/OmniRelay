@@ -32,9 +32,8 @@ Curated backlog of sample projects that demonstrate OmniRelay end-to-end pattern
 
 ## Hybrid Batch + Realtime Runner
 
-- **Audience:** Teams blending scheduled jobs with live RPCs.
-- **What to show:** Background workers enqueue batch jobs through OmniRelay oneway procedures, while a live dashboard consumes server streams to follow progress; include retry budgets and deadlines.
-- **Why it helps:** Demonstrates that the runtime can coordinate asynchronous workloads and live traffic inside the same host with consistent middleware.
+- **Status:** Shipped at `samples/HybridRunner`.
+- **Highlights:** Oneway batch ingestion, background worker progress publishing, and server-stream dashboards sharing the same middleware stack.
 
 ## Chaos & Failover Lab
 
