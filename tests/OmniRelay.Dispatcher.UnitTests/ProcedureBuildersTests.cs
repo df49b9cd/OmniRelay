@@ -19,7 +19,7 @@ public class ProcedureBuildersTests
             .Use(middleware)
             .WithEncoding("json")
             .AddAlias("alias-one")
-            .AddAliases(new[] { "alias-two", "alias-three" });
+            .AddAliases(["alias-two", "alias-three"]);
 
         var spec = builder.Build("svc", "proc");
 

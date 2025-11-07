@@ -76,7 +76,7 @@ public sealed class HttpOutboundRequestBuilderTests
             routingDelegate: "delegate-C",
             timeToLive: ttl,
             deadline: deadline,
-            headers: new[] { KeyValuePair.Create("X-Correlation-Id", "cor-123") });
+            headers: [KeyValuePair.Create("X-Correlation-Id", "cor-123")]);
         var payload = Encoding.UTF8.GetBytes("ping");
         var request = new Request<ReadOnlyMemory<byte>>(meta, payload);
 

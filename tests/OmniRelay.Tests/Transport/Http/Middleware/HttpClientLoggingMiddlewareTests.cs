@@ -19,11 +19,11 @@ public sealed class HttpClientLoggingMiddlewareTests
             service: "svc",
             procedure: "echo::call",
             transport: "http",
-            headers: new[]
-            {
+            headers:
+            [
                 new KeyValuePair<string, string>("x-request-id", "req-123"),
                 new KeyValuePair<string, string>("rpc.peer", "10.0.0.1")
-            });
+            ]);
 
         var context = new HttpClientMiddlewareContext(
             request,

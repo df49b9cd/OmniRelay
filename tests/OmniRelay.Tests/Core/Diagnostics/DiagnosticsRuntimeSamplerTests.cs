@@ -42,7 +42,7 @@ public class DiagnosticsRuntimeSamplerTests
 
         var parentContext = new ActivityContext(
             CreateTraceId(0x11),
-            ActivitySpanId.CreateFromBytes(new byte[8] { 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11 }),
+            ActivitySpanId.CreateFromBytes([0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11]),
             ActivityTraceFlags.Recorded);
 
         var result = sampler.ShouldSample(CreateParameters(CreateTraceId(0x00), parentContext));

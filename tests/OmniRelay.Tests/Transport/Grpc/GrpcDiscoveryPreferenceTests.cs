@@ -38,14 +38,14 @@ public class GrpcDiscoveryPreferenceTests
         var h2ServerRuntime = new GrpcServerRuntimeOptions
         {
             EnableHttp3 = false,
-            Interceptors = new[] { typeof(ProtocolCaptureInterceptor) }
+            Interceptors = [typeof(ProtocolCaptureInterceptor)]
         };
 
         // HTTP/3-enabled inbound
         var h3ServerRuntime = new GrpcServerRuntimeOptions
         {
             EnableHttp3 = true,
-            Interceptors = new[] { typeof(ProtocolCaptureInterceptor) }
+            Interceptors = [typeof(ProtocolCaptureInterceptor)]
         };
 
         var tls = new GrpcServerTlsOptions { Certificate = certificate };

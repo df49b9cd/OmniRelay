@@ -15,7 +15,7 @@ public class ProcedureRegistryTests
     public void TryGet_WithRegisteredAlias_ReturnsSpec()
     {
         var registry = new ProcedureRegistry();
-        var spec = new UnaryProcedureSpec("svc", "primary", UnaryHandler, aliases: new[] { "alias" });
+        var spec = new UnaryProcedureSpec("svc", "primary", UnaryHandler, aliases: ["alias"]);
 
         registry.Register(spec);
 
@@ -39,7 +39,7 @@ public class ProcedureRegistryTests
     public void Register_WithDuplicateAlias_Throws()
     {
         var registry = new ProcedureRegistry();
-        var spec = new UnaryProcedureSpec("svc", "name", UnaryHandler, aliases: new[] { "dup", "dup" });
+        var spec = new UnaryProcedureSpec("svc", "name", UnaryHandler, aliases: ["dup", "dup"]);
 
         Assert.Throws<InvalidOperationException>(() => registry.Register(spec));
     }
@@ -49,8 +49,8 @@ public class ProcedureRegistryTests
     {
         var registry = new ProcedureRegistry();
 
-        var general = new UnaryProcedureSpec("svc", "general", UnaryHandler, aliases: new[] { "foo.*" });
-        var specific = new UnaryProcedureSpec("svc", "specific", UnaryHandler, aliases: new[] { "foo.bar*" });
+        var general = new UnaryProcedureSpec("svc", "general", UnaryHandler, aliases: ["foo.*"]);
+        var specific = new UnaryProcedureSpec("svc", "specific", UnaryHandler, aliases: ["foo.bar*"]);
 
         registry.Register(general);
         registry.Register(specific);

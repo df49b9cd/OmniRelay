@@ -31,13 +31,13 @@ public class DispatcherHealthEvaluatorTests
 
         var noAvailable = await EvaluateAsync(CreateSnapshot(
             isStarted: true,
-            peers: new[] { new Uri("http://localhost") },
+            peers: [new Uri("http://localhost")],
             summaries: ImmutableArray.Create(new GrpcPeerSummary(new Uri("http://localhost"), Core.Peers.PeerState.Unavailable, 0, null, null, 0, 0, null, null, null, null))));
         Assert.Contains("grpc:remote:unary:default:no-available-peers", noAvailable.Issues);
 
         var healthy = await EvaluateAsync(CreateSnapshot(
             isStarted: true,
-            peers: new[] { new Uri("http://localhost") },
+            peers: [new Uri("http://localhost")],
             summaries: ImmutableArray.Create(new GrpcPeerSummary(new Uri("http://localhost"), Core.Peers.PeerState.Available, 0, null, null, 0, 0, null, null, null, null))));
         Assert.True(healthy.IsReady);
         Assert.Empty(healthy.Issues);

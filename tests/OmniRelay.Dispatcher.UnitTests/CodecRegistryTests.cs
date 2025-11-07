@@ -45,7 +45,7 @@ public class CodecRegistryTests
         var codec = new TestHelpers.TestCodec<int, int>();
         var registry = new CodecRegistry("svc");
 
-        registry.RegisterInbound("primary", ProcedureKind.Unary, codec, new[] { "alias-1", "alias-2" });
+        registry.RegisterInbound("primary", ProcedureKind.Unary, codec, ["alias-1", "alias-2"]);
 
         Assert.True(registry.TryResolve(ProcedureCodecScope.Inbound, "svc", "alias-1", ProcedureKind.Unary, out var first));
         Assert.True(registry.TryResolve(ProcedureCodecScope.Inbound, "svc", "alias-2", ProcedureKind.Unary, out var second));
@@ -80,7 +80,7 @@ public class CodecRegistryTests
             codec.Encoding,
             ImmutableArray<string>.Empty);
 
-        var registry = new CodecRegistry("svc", new[] { registration });
+        var registry = new CodecRegistry("svc", [registration]);
 
         var snapshot = registry.Snapshot();
 

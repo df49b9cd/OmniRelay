@@ -56,7 +56,7 @@ public class GrpcHttp3NegotiationTests
         var runtime = new GrpcServerRuntimeOptions
         {
             EnableHttp3 = true,
-            Interceptors = new[] { typeof(AuthorizationInterceptor), typeof(GrpcServerLoggingInterceptor) }
+            Interceptors = [typeof(AuthorizationInterceptor), typeof(GrpcServerLoggingInterceptor)]
         };
 
         var tls = new GrpcServerTlsOptions { Certificate = certificate };
@@ -142,7 +142,7 @@ public class GrpcHttp3NegotiationTests
         var runtimeOptions = new GrpcServerRuntimeOptions
         {
             EnableHttp3 = true,
-            Interceptors = new[] { typeof(AuthorizationInterceptor), typeof(GrpcServerLoggingInterceptor) }
+            Interceptors = [typeof(AuthorizationInterceptor), typeof(GrpcServerLoggingInterceptor)]
         };
 
         var tls = new GrpcServerTlsOptions { Certificate = certificate };
@@ -230,7 +230,7 @@ public class GrpcHttp3NegotiationTests
         var runtime = new GrpcServerRuntimeOptions
         {
             EnableHttp3 = false,
-            Interceptors = new[] { typeof(AuthorizationInterceptor) }
+            Interceptors = [typeof(AuthorizationInterceptor)]
         };
 
         var tls = new GrpcServerTlsOptions { Certificate = certificate };
@@ -320,7 +320,7 @@ public class GrpcHttp3NegotiationTests
         var runtime = new GrpcServerRuntimeOptions
         {
             EnableHttp3 = true,
-            Interceptors = new[] { typeof(AcceptEncodingCaptureInterceptor) }
+            Interceptors = [typeof(AcceptEncodingCaptureInterceptor)]
         };
 
         var tls = new GrpcServerTlsOptions { Certificate = certificate };
@@ -557,7 +557,7 @@ public class GrpcHttp3NegotiationTests
         var runtime = new GrpcServerRuntimeOptions
         {
             EnableHttp3 = true,
-            Interceptors = new[] { typeof(AuthorizationInterceptor) }
+            Interceptors = [typeof(AuthorizationInterceptor)]
         };
 
         var tls = new GrpcServerTlsOptions { Certificate = certificate };
@@ -656,12 +656,12 @@ public class GrpcHttp3NegotiationTests
         var runtime = new GrpcServerRuntimeOptions
         {
             EnableHttp3 = true,
-            Interceptors = new[] { typeof(AcceptEncodingCaptureInterceptor) }
+            Interceptors = [typeof(AcceptEncodingCaptureInterceptor)]
         };
 
         var compressionOptions = new GrpcCompressionOptions
         {
-            Providers = new ICompressionProvider[] { new GzipCompressionProvider(CompressionLevel.Optimal) },
+            Providers = [new GzipCompressionProvider(CompressionLevel.Optimal)],
             DefaultAlgorithm = "gzip",
             DefaultCompressionLevel = CompressionLevel.Optimal
         };
@@ -696,7 +696,7 @@ public class GrpcHttp3NegotiationTests
         using var channel = GrpcChannel.ForAddress(address, new GrpcChannelOptions
         {
             HttpClient = client,
-            CompressionProviders = new ICompressionProvider[] { new GzipCompressionProvider(CompressionLevel.Optimal) }
+            CompressionProviders = [new GzipCompressionProvider(CompressionLevel.Optimal)]
         });
 
         var invoker = channel.CreateCallInvoker();
@@ -742,12 +742,12 @@ public class GrpcHttp3NegotiationTests
         var runtime = new GrpcServerRuntimeOptions
         {
             EnableHttp3 = false,
-            Interceptors = new[] { typeof(AcceptEncodingCaptureInterceptor) }
+            Interceptors = [typeof(AcceptEncodingCaptureInterceptor)]
         };
 
         var compressionOptions = new GrpcCompressionOptions
         {
-            Providers = new ICompressionProvider[] { new GzipCompressionProvider(CompressionLevel.Optimal) },
+            Providers = [new GzipCompressionProvider(CompressionLevel.Optimal)],
             DefaultAlgorithm = "gzip",
             DefaultCompressionLevel = CompressionLevel.Optimal
         };
@@ -782,7 +782,7 @@ public class GrpcHttp3NegotiationTests
         using var channel = GrpcChannel.ForAddress(address, new GrpcChannelOptions
         {
             HttpClient = client,
-            CompressionProviders = new ICompressionProvider[] { new GzipCompressionProvider(CompressionLevel.Optimal) }
+            CompressionProviders = [new GzipCompressionProvider(CompressionLevel.Optimal)]
         });
 
         var invoker = channel.CreateCallInvoker();

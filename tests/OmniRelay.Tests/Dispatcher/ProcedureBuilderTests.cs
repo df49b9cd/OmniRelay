@@ -32,7 +32,7 @@ public class ProcedureBuilderTests
         var builder = new StreamProcedureBuilder()
             .Handle((req, _, _) => ValueTask.FromResult(Result.Ok<IStreamCall>(ServerStreamCall.Create(req.Meta))))
             .AddAlias("  foo::bar  ")
-            .AddAliases(new[] { "one", "two" })
+            .AddAliases(["one", "two"])
             .Use(middleware)
             .WithEncoding("json")
             .WithMetadata(metadata);

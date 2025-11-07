@@ -30,6 +30,6 @@ public class ProcedureSpecTests
                 "svc",
                 "proc",
                 (_, _) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty))),
-                aliases: new[] { "valid", "  " }));
+                aliases: ["valid", "  "]));
     }
 }

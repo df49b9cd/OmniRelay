@@ -27,6 +27,6 @@ public class DispatcherLifecycleSpikeTests
 
         Assert.Contains("start:0", started);
         Assert.Contains("start:1", started);
-        Assert.Equal(new[] { "stop:0", "stop:1" }, stopped);
+        Assert.Equal(["stop:0", "stop:1"], stopped);
     }
 }

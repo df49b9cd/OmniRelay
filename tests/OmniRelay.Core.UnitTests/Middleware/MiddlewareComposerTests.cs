@@ -29,7 +29,7 @@ public class MiddlewareComposerTests
             return ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty)));
         };
 
-        var composed = MiddlewareComposer.ComposeUnaryOutbound(new IUnaryOutboundMiddleware[] { m1, m2, m3 }, terminal);
+        var composed = MiddlewareComposer.ComposeUnaryOutbound([m1, m2, m3], terminal);
         var result = await composed(new Request<ReadOnlyMemory<byte>>(meta, ReadOnlyMemory<byte>.Empty), TestContext.Current.CancellationToken);
 
         Assert.True(result.IsSuccess);
@@ -88,7 +88,7 @@ public class MiddlewareComposerTests
         var order = new List<string>();
         var meta = new RequestMeta(service: "svc");
         var composed = MiddlewareComposer.ComposeUnaryInbound(
-            new IUnaryInboundMiddleware[] { new RecordingMiddleware("m1", order), new RecordingMiddleware("m2", order) },
+            [new RecordingMiddleware("m1", order), new RecordingMiddleware("m2", order)],
             (req, ct) =>
             {
                 order.Add("terminal");
@@ -107,7 +107,7 @@ public class MiddlewareComposerTests
         var order = new List<string>();
         var meta = new RequestMeta(service: "svc");
         var composed = MiddlewareComposer.ComposeOnewayOutbound(
-            new IOnewayOutboundMiddleware[] { new RecordingMiddleware("m1", order), new RecordingMiddleware("m2", order) },
+            [new RecordingMiddleware("m1", order), new RecordingMiddleware("m2", order)],
             (req, ct) =>
             {
                 order.Add("terminal");
@@ -126,7 +126,7 @@ public class MiddlewareComposerTests
         var order = new List<string>();
         var meta = new RequestMeta(service: "svc");
         var composed = MiddlewareComposer.ComposeOnewayInbound(
-            new IOnewayInboundMiddleware[] { new RecordingMiddleware("m1", order), new RecordingMiddleware("m2", order) },
+            [new RecordingMiddleware("m1", order), new RecordingMiddleware("m2", order)],
             (req, ct) =>
             {
                 order.Add("terminal");
@@ -146,7 +146,7 @@ public class MiddlewareComposerTests
         var meta = new RequestMeta(service: "svc");
         var options = new StreamCallOptions(StreamDirection.Server);
         var composed = MiddlewareComposer.ComposeStreamOutbound(
-            new IStreamOutboundMiddleware[] { new RecordingMiddleware("m1", order), new RecordingMiddleware("m2", order) },
+            [new RecordingMiddleware("m1", order), new RecordingMiddleware("m2", order)],
             (req, opts, ct) =>
             {
                 order.Add("terminal");
@@ -166,7 +166,7 @@ public class MiddlewareComposerTests
         var meta = new RequestMeta(service: "svc");
         var options = new StreamCallOptions(StreamDirection.Server);
         var composed = MiddlewareComposer.ComposeStreamInbound(
-            new IStreamInboundMiddleware[] { new RecordingMiddleware("m1", order), new RecordingMiddleware("m2", order) },
+            [new RecordingMiddleware("m1", order), new RecordingMiddleware("m2", order)],
             (req, opts, ct) =>
             {
                 order.Add("terminal");
@@ -186,7 +186,7 @@ public class MiddlewareComposerTests
         var meta = new RequestMeta(service: "svc");
         var ctx = new ClientStreamRequestContext(meta, Channel.CreateUnbounded<ReadOnlyMemory<byte>>().Reader);
         var composed = MiddlewareComposer.ComposeClientStreamInbound(
-            new IClientStreamInboundMiddleware[] { new RecordingMiddleware("m1", order), new RecordingMiddleware("m2", order) },
+            [new RecordingMiddleware("m1", order), new RecordingMiddleware("m2", order)],
             (context, ct) =>
             {
                 order.Add("terminal");
@@ -205,7 +205,7 @@ public class MiddlewareComposerTests
         var order = new List<string>();
         var meta = new RequestMeta(service: "svc");
         var composed = MiddlewareComposer.ComposeClientStreamOutbound(
-            new IClientStreamOutboundMiddleware[] { new RecordingMiddleware("m1", order), new RecordingMiddleware("m2", order) },
+            [new RecordingMiddleware("m1", order), new RecordingMiddleware("m2", order)],
             (requestMeta, ct) =>
             {
                 order.Add("terminal");
@@ -224,7 +224,7 @@ public class MiddlewareComposerTests
         var order = new List<string>();
         var meta = new RequestMeta(service: "svc");
         var composed = MiddlewareComposer.ComposeDuplexInbound(
-            new IDuplexInboundMiddleware[] { new RecordingMiddleware("m1", order), new RecordingMiddleware("m2", order) },
+            [new RecordingMiddleware("m1", order), new RecordingMiddleware("m2", order)],
             (req, ct) =>
             {
                 order.Add("terminal");
@@ -243,7 +243,7 @@ public class MiddlewareComposerTests
         var order = new List<string>();
         var meta = new RequestMeta(service: "svc");
         var composed = MiddlewareComposer.ComposeDuplexOutbound(
-            new IDuplexOutboundMiddleware[] { new RecordingMiddleware("m1", order), new RecordingMiddleware("m2", order) },
+            [new RecordingMiddleware("m1", order), new RecordingMiddleware("m2", order)],
             (req, ct) =>
             {
                 order.Add("terminal");

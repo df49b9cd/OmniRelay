@@ -52,10 +52,10 @@ internal static class GrpcMetadataAdapter
         var headerList = headers;
         if (!string.IsNullOrWhiteSpace(protocol))
         {
-            headerList = headerList.Concat(new[]
-            {
+            headerList = headerList.Concat(
+            [
                 new KeyValuePair<string, string>("rpc.protocol", protocol!)
-            });
+            ]);
         }
 
         return new RequestMeta(

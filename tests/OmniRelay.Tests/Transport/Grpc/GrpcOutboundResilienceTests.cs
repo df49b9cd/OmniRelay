@@ -44,7 +44,7 @@ public class GrpcOutboundResilienceTests
 
         // Client requires HTTP/3 exact (handshake will fail consistently)
         var outbound = new GrpcOutbound(
-            new[] { address },
+            [address],
             remoteService: "grpc-resilience-h2",
             clientRuntimeOptions: new GrpcClientRuntimeOptions
             {
@@ -98,7 +98,7 @@ public class GrpcOutboundResilienceTests
         var ct = TestContext.Current.CancellationToken;
 
         var outbound = new GrpcOutbound(
-            new[] { address },
+            [address],
             remoteService: "grpc-resilience-noserver",
             clientRuntimeOptions: new GrpcClientRuntimeOptions
             {

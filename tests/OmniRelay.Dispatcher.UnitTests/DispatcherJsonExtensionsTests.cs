@@ -43,7 +43,7 @@ public class DispatcherJsonExtensionsTests
         var client = dispatcher.CreateJsonClient<JsonDocument, JsonDocument>(
             "downstream",
             "echo",
-            aliases: new[] { "alias" });
+            aliases: ["alias"]);
 
         Assert.IsType<Core.Clients.UnaryClient<JsonDocument, JsonDocument>>(client);
         Assert.True(dispatcher.Codecs.TryResolve<JsonDocument, JsonDocument>(ProcedureCodecScope.Outbound, "downstream", "echo", ProcedureKind.Unary, out _));

@@ -136,11 +136,11 @@ internal static class ShadowingProcedures
                     service: "payments",
                     procedure: "payments::authorize",
                     caller: context.Meta.Caller ?? dispatcher.ServiceName,
-                    headers: new[]
-                    {
+                    headers:
+                    [
                         new KeyValuePair<string, string>("x-session-id", request.SessionId),
                         new KeyValuePair<string, string>("x-shadow-origin", "payments::submit")
-                    });
+                    ]);
 
                 var outboundRequest = new Request<SubmitPaymentRequest>(outboundMeta, request);
                 var upstream = await paymentsClient.CallAsync(outboundRequest, context.CancellationToken).ConfigureAwait(false);
@@ -164,10 +164,10 @@ internal static class ShadowingProcedures
                     var auditMeta = new RequestMeta(
                         service: "audit",
                         procedure: "audit::record",
-                        headers: new[]
-                        {
+                        headers:
+                        [
                             new KeyValuePair<string, string>("x-audit-shadow", "beta-stack")
-                        });
+                        ]);
 
                     var entry = new AuditLogEntry(
                         request.MerchantId,

@@ -12,8 +12,8 @@ public class ConfigScaffoldTests
         Directory.CreateDirectory(tempDir);
         var output = Path.Combine(tempDir, "appsettings.json");
 
-        var exit = await global::OmniRelay.Cli.Program.Main(new[]
-            {
+        var exit = await global::OmniRelay.Cli.Program.Main(
+            [
             "config", "scaffold",
             "--output", output,
             "--section", "polymer",
@@ -22,7 +22,7 @@ public class ConfigScaffoldTests
             "--http3-grpc",
             "--include-outbound",
             "--outbound-service", "ledger"
-        });
+        ]);
 
         Assert.Equal(0, exit);
         Assert.True(File.Exists(output), $"Expected scaffold file at '{output}'.");

@@ -1661,7 +1661,7 @@ internal sealed class DispatcherBuilder
                      throw new InvalidOperationException($"DispatcherOptions.{methodName} not found.");
 
         var generic = method.MakeGenericMethod(requestType, responseType);
-        generic.Invoke(dispatcherOptions, new[] { procedure, codec, aliases });
+        generic.Invoke(dispatcherOptions, [procedure, codec, aliases]);
     }
 
     private static void InvokeCodecRegistration(
@@ -1678,7 +1678,7 @@ internal sealed class DispatcherBuilder
                      throw new InvalidOperationException($"DispatcherOptions.{methodName} not found.");
 
         var generic = method.MakeGenericMethod(requestType, responseType);
-        generic.Invoke(dispatcherOptions, new[] { service, procedure, codec, aliases });
+        generic.Invoke(dispatcherOptions, [service, procedure, codec, aliases]);
     }
 
     private static void InvokeOnewayCodecRegistration(
@@ -1693,7 +1693,7 @@ internal sealed class DispatcherBuilder
                      throw new InvalidOperationException($"DispatcherOptions.{methodName} not found.");
 
         var generic = method.MakeGenericMethod(requestType);
-        generic.Invoke(dispatcherOptions, new[] { procedure, codec, aliases });
+        generic.Invoke(dispatcherOptions, [procedure, codec, aliases]);
     }
 
     private static void InvokeOnewayCodecRegistration(
@@ -1709,7 +1709,7 @@ internal sealed class DispatcherBuilder
                      throw new InvalidOperationException($"DispatcherOptions.{methodName} not found.");
 
         var generic = method.MakeGenericMethod(requestType);
-        generic.Invoke(dispatcherOptions, new[] { service, procedure, codec, aliases });
+        generic.Invoke(dispatcherOptions, [service, procedure, codec, aliases]);
     }
 
     private static JsonSerializerOptions CreateDefaultJsonSerializerOptions() =>

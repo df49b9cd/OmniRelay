@@ -13,7 +13,7 @@ public class RequestLoggingScopeTests
         var meta = new RequestMeta(
             service: "inventory",
             procedure: "get-item",
-            headers: new[] { new KeyValuePair<string, string>("rpc.protocol", "HTTP/3") });
+            headers: [new KeyValuePair<string, string>("rpc.protocol", "HTTP/3")]);
 
         var scopeItems = RequestLoggingScope.Create(meta);
 

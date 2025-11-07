@@ -174,7 +174,7 @@ public class DispatcherJsonExtensionsTests
             "svc::register",
             codec => codec.Encoding = "application/json",
             outboundKey: null,
-            aliases: new[] { "svc::alias" });
+            aliases: ["svc::alias"]);
 
         Assert.NotNull(client);
 
