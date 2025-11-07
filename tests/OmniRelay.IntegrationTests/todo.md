@@ -25,9 +25,9 @@ Track high-value integration scenarios that prove the dispatcher, transports, co
 
 ## Codegen & Client Workflows
 
-- [ ] Round-trip generated clients against a dispatcher host, including HTTP/3-enabled channels and fallback to HTTP/2.
-- [ ] Validate client-stream/duplex helpers from codegen interoperate with the dispatcher when instantiated via DI.
-- [ ] Ensure codegen-produced registration helpers wire middleware/encodings identically to manual registrations.
+- [x] Round-trip generated clients against a dispatcher host, including HTTP/3-enabled channels and fallback to HTTP/2. (`CodegenWorkflowIntegrationTests`)
+- [x] Validate client-stream/duplex helpers from codegen interoperate with the dispatcher when instantiated via DI. (`CodegenWorkflowIntegrationTests`)
+- [x] Ensure codegen-produced registration helpers wire middleware/encodings identically to manual registrations. (`CodegenWorkflowIntegrationTests`)
 
 ## CLI & Tooling
 

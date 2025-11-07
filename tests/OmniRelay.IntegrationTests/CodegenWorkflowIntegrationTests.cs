@@ -56,7 +56,7 @@ public class CodegenWorkflowIntegrationTests
 
         using var serverHost = serverBuilder.Build();
         var serverDispatcher = serverHost.Services.GetRequiredService<Dispatcher.Dispatcher>();
-        var serviceImpl = serverHost.Services.GetRequiredService<TestServiceOmniRelay.ITestService>();
+        var serviceImpl = (LoopbackTestService)serverHost.Services.GetRequiredService<TestServiceOmniRelay.ITestService>();
         TestServiceOmniRelay.RegisterTestService(serverDispatcher, serviceImpl);
 
         var clientBuilder = Host.CreateApplicationBuilder();
@@ -96,6 +96,11 @@ public class CodegenWorkflowIntegrationTests
             DeleteIfExists(certificatePath);
         }
 
+        Assert.True(serviceImpl.UnaryMetas.TryDequeue(out var unaryMeta), "Unary metadata not captured.");
+        Assert.Equal("codegen-host-http3", unaryMeta.Service);
+        Assert.Equal("UnaryCall", unaryMeta.Procedure);
+        Assert.Equal(EncodingName, unaryMeta.Encoding);
+
         Assert.True(protocols.TryDequeue(out var observed), "No protocol captured.");
         Assert.StartsWith("HTTP/3", observed, StringComparison.OrdinalIgnoreCase);
     }
@@ -132,7 +137,7 @@ public class CodegenWorkflowIntegrationTests
 
         using var serverHost = serverBuilder.Build();
         var serverDispatcher = serverHost.Services.GetRequiredService<Dispatcher.Dispatcher>();
-        var serviceImpl = serverHost.Services.GetRequiredService<TestServiceOmniRelay.ITestService>();
+        var serviceImpl = (LoopbackTestService)serverHost.Services.GetRequiredService<TestServiceOmniRelay.ITestService>();
         TestServiceOmniRelay.RegisterTestService(serverDispatcher, serviceImpl);
 
         var clientBuilder = Host.CreateApplicationBuilder();
@@ -172,6 +177,11 @@ public class CodegenWorkflowIntegrationTests
             DeleteIfExists(certificatePath);
         }
 
+        Assert.True(serviceImpl.UnaryMetas.TryDequeue(out var unaryMeta), "Unary metadata not captured.");
+        Assert.Equal("codegen-host-http2", unaryMeta.Service);
+        Assert.Equal("UnaryCall", unaryMeta.Procedure);
+        Assert.Equal(EncodingName, unaryMeta.Encoding);
+
         Assert.True(protocols.TryDequeue(out var observed), "No protocol captured.");
         Assert.StartsWith("HTTP/2", observed, StringComparison.OrdinalIgnoreCase);
     }
@@ -194,7 +204,7 @@ public class CodegenWorkflowIntegrationTests
 
         using var serverHost = serverBuilder.Build();
         var serverDispatcher = serverHost.Services.GetRequiredService<Dispatcher.Dispatcher>();
-        var serviceImpl = serverHost.Services.GetRequiredService<TestServiceOmniRelay.ITestService>();
+        var serviceImpl = (LoopbackTestService)serverHost.Services.GetRequiredService<TestServiceOmniRelay.ITestService>();
         TestServiceOmniRelay.RegisterTestService(serverDispatcher, serviceImpl);
 
         var clientBuilder = Host.CreateApplicationBuilder();
@@ -269,6 +279,21 @@ public class CodegenWorkflowIntegrationTests
             await clientHost.StopAsync(CancellationToken.None);
             await serverHost.StopAsync(CancellationToken.None);
         }
+
+        Assert.True(serviceImpl.ServerStreamMetas.TryDequeue(out var serverStreamMeta), "Server stream metadata missing.");
+        Assert.Equal("codegen-host-streams", serverStreamMeta.Service);
+        Assert.Equal("ServerStream", serverStreamMeta.Procedure);
+        Assert.Equal(EncodingName, serverStreamMeta.Encoding);
+
+        Assert.True(serviceImpl.ClientStreamMetas.TryDequeue(out var clientStreamMeta), "Client stream metadata missing.");
+        Assert.Equal("codegen-host-streams", clientStreamMeta.Service);
+        Assert.Equal("ClientStream", clientStreamMeta.Procedure);
+        Assert.Equal(EncodingName, clientStreamMeta.Encoding);
+
+        Assert.True(serviceImpl.DuplexStreamMetas.TryDequeue(out var duplexMeta), "Duplex stream metadata missing.");
+        Assert.Equal("codegen-host-streams", duplexMeta.Service);
+        Assert.Equal("DuplexStream", duplexMeta.Procedure);
+        Assert.Equal(EncodingName, duplexMeta.Encoding);
     }
 
     [Fact]
@@ -290,6 +315,31 @@ public class CodegenWorkflowIntegrationTests
         Assert.Equal(manualProcedures.Stream, generatedProcedures.Stream);
         Assert.Equal(manualProcedures.ClientStream, generatedProcedures.ClientStream);
         Assert.Equal(manualProcedures.Duplex, generatedProcedures.Duplex);
+
+        static TSpec GetSpec<TSpec>(Dispatcher.Dispatcher dispatcher, string procedure, ProcedureKind kind)
+            where TSpec : ProcedureSpec
+        {
+            Assert.True(dispatcher.TryGetProcedure(procedure, kind, out var spec), $"Procedure '{procedure}' not registered.");
+            return Assert.IsType<TSpec>(spec);
+        }
+
+        var manualUnary = GetSpec<UnaryProcedureSpec>(manualDispatcher, "UnaryCall", ProcedureKind.Unary);
+        var generatedUnary = GetSpec<UnaryProcedureSpec>(generatedDispatcher, "UnaryCall", ProcedureKind.Unary);
+        Assert.Equal(manualUnary.Encoding, generatedUnary.Encoding);
+        Assert.Equal(manualUnary.Middleware.Count, generatedUnary.Middleware.Count);
+
+        var manualServerStream = GetSpec<StreamProcedureSpec>(manualDispatcher, "ServerStream", ProcedureKind.Stream);
+        var generatedServerStream = GetSpec<StreamProcedureSpec>(generatedDispatcher, "ServerStream", ProcedureKind.Stream);
+        Assert.Equal(manualServerStream.Encoding, generatedServerStream.Encoding);
+        Assert.Equal(manualServerStream.Metadata, generatedServerStream.Metadata);
+
+        var manualClientStream = GetSpec<ClientStreamProcedureSpec>(manualDispatcher, "ClientStream", ProcedureKind.ClientStream);
+        var generatedClientStream = GetSpec<ClientStreamProcedureSpec>(generatedDispatcher, "ClientStream", ProcedureKind.ClientStream);
+        Assert.Equal(manualClientStream.Encoding, generatedClientStream.Encoding);
+
+        var manualDuplex = GetSpec<DuplexProcedureSpec>(manualDispatcher, "DuplexStream", ProcedureKind.Duplex);
+        var generatedDuplex = GetSpec<DuplexProcedureSpec>(generatedDispatcher, "DuplexStream", ProcedureKind.Duplex);
+        Assert.Equal(manualDuplex.Encoding, generatedDuplex.Encoding);
     }
 
     private static string PersistCertificate(X509Certificate2 certificate)
@@ -374,14 +424,21 @@ public class CodegenWorkflowIntegrationTests
 
     private sealed class LoopbackTestService : TestServiceOmniRelay.ITestService
     {
+        public ConcurrentQueue<RequestMeta> UnaryMetas { get; } = new();
+        public ConcurrentQueue<RequestMeta> ServerStreamMetas { get; } = new();
+        public ConcurrentQueue<RequestMeta> ClientStreamMetas { get; } = new();
+        public ConcurrentQueue<RequestMeta> DuplexStreamMetas { get; } = new();
+
         public ValueTask<Response<UnaryResponse>> UnaryCallAsync(Request<UnaryRequest> request, CancellationToken cancellationToken)
         {
+            UnaryMetas.Enqueue(request.Meta);
             var payload = new UnaryResponse { Message = $"{request.Body.Message}-ok" };
             return ValueTask.FromResult(Response<UnaryResponse>.Create(payload, new ResponseMeta(encoding: EncodingName)));
         }
 
         public async ValueTask ServerStreamAsync(Request<StreamRequest> request, ProtobufCallAdapters.ProtobufServerStreamWriter<StreamRequest, StreamResponse> stream, CancellationToken cancellationToken)
         {
+            ServerStreamMetas.Enqueue(request.Meta);
             for (var index = 0; index < 3; index++)
             {
                 await stream.WriteAsync(new StreamResponse { Value = $"{request.Body.Value}#{index}" }, cancellationToken).ConfigureAwait(false);
@@ -390,6 +447,7 @@ public class CodegenWorkflowIntegrationTests
 
         public async ValueTask<Response<UnaryResponse>> ClientStreamAsync(ProtobufCallAdapters.ProtobufClientStreamContext<StreamRequest, UnaryResponse> context, CancellationToken cancellationToken)
         {
+            ClientStreamMetas.Enqueue(context.Meta);
             var sum = 0;
             await foreach (var chunk in context.ReadAllAsync(cancellationToken).ConfigureAwait(false))
             {
@@ -403,6 +461,7 @@ public class CodegenWorkflowIntegrationTests
 
         public async ValueTask DuplexStreamAsync(ProtobufCallAdapters.ProtobufDuplexStreamContext<StreamRequest, StreamResponse> context, CancellationToken cancellationToken)
         {
+            DuplexStreamMetas.Enqueue(context.RequestMeta);
             await context.WriteAsync(new StreamResponse { Value = "ready" }, cancellationToken).ConfigureAwait(false);
             await foreach (var chunk in context.ReadAllAsync(cancellationToken).ConfigureAwait(false))
             {
