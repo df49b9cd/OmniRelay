@@ -31,9 +31,9 @@ Track high-value integration scenarios that prove the dispatcher, transports, co
 
 ## CLI & Tooling
 
-- [ ] Invoke `omnirelay config validate` and `omnirelay serve` within tests to assert configs produced by the CLI bootstrap hosts successfully.
-- [ ] Run `omnirelay introspect/request/benchmark` against live hosts and assert output (text + JSON) matches the service wiring.
-- [ ] Cover HTTP/3-related CLI flags to ensure they propagate into generated config and result in QUIC listeners.
+- [x] Invoke `omnirelay config validate` and `omnirelay serve` within tests to assert configs produced by the CLI bootstrap hosts successfully.
+- [x] Run `omnirelay introspect/request/benchmark` against live hosts and assert output (text + JSON) matches the service wiring.
+- [x] Cover HTTP/3-related CLI flags to ensure they propagate into generated config and result in QUIC listeners.
 
 ## Observability & Diagnostics
 

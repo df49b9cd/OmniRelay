@@ -1,0 +1,170 @@
+using System.Diagnostics;
+using System.Linq;
+using System.Text;
+
+namespace OmniRelay.IntegrationTests.Support;
+
+internal static class OmniRelayCliTestHelper
+{
+    private static readonly string RepositoryRoot = ResolveRepositoryRoot();
+    private static readonly string CliProjectPath = Path.Combine(RepositoryRoot, "src", "OmniRelay.Cli", "OmniRelay.Cli.csproj");
+
+    public static Task<CliResult> RunAsync(IEnumerable<string> arguments, CancellationToken cancellationToken) =>
+        RunCliAsync(arguments.ToArray(), cancellationToken);
+
+    public static CliBackgroundProcess StartBackground(IEnumerable<string> arguments)
+    {
+        var psi = CreateProcessStartInfo(arguments);
+        var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
+
+        if (!process.Start())
+        {
+            throw new InvalidOperationException("Failed to start OmniRelay CLI process.");
+        }
+
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
+        return new CliBackgroundProcess(process, stdoutTask, stderrTask);
+    }
+
+    private static async Task<CliResult> RunCliAsync(string[] arguments, CancellationToken cancellationToken)
+    {
+        var psi = CreateProcessStartInfo(arguments);
+        using var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
+
+        if (!process.Start())
+        {
+            throw new InvalidOperationException("Failed to start OmniRelay CLI process.");
+        }
+
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
+
+        try
+        {
+            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (!process.HasExited)
+            {
+                TryKill(process);
+            }
+        }
+
+        var stdout = (await stdoutTask.ConfigureAwait(false)).TrimEnd();
+        var stderr = (await stderrTask.ConfigureAwait(false)).TrimEnd();
+        return new CliResult(process.ExitCode, stdout, stderr);
+    }
+
+    private static ProcessStartInfo CreateProcessStartInfo(IEnumerable<string> cliArguments)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = "dotnet",
+            WorkingDirectory = RepositoryRoot,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        psi.ArgumentList.Add("run");
+        psi.ArgumentList.Add("--project");
+        psi.ArgumentList.Add(CliProjectPath);
+        psi.ArgumentList.Add("--configuration");
+        psi.ArgumentList.Add("Debug");
+        psi.ArgumentList.Add("--");
+        foreach (var argument in cliArguments)
+        {
+            psi.ArgumentList.Add(argument);
+        }
+
+        psi.Environment["DOTNET_CLI_UI_LANGUAGE"] = "en";
+        psi.Environment["DOTNET_SKIP_FIRST_TIME_EXPERIENCE"] = "1";
+        return psi;
+    }
+
+    private static string ResolveRepositoryRoot()
+    {
+        var directory = AppContext.BaseDirectory;
+        for (var i = 0; i < 6; i++)
+        {
+            directory = Directory.GetParent(directory)!.FullName;
+        }
+        return directory;
+    }
+
+    private static void TryKill(Process process)
+    {
+        try
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+            }
+        }
+        catch
+        {
+        }
+    }
+}
+
+internal sealed record CliResult(int ExitCode, string StandardOutput, string StandardError);
+
+internal sealed class CliBackgroundProcess : IAsyncDisposable
+{
+    private readonly Process _process;
+    private readonly Task<string> _stdoutTask;
+    private readonly Task<string> _stderrTask;
+
+    public CliBackgroundProcess(Process process, Task<string> stdoutTask, Task<string> stderrTask)
+    {
+        _process = process;
+        _stdoutTask = stdoutTask;
+        _stderrTask = stderrTask;
+    }
+
+    public int ProcessId => _process.Id;
+
+    public Task WaitForExitAsync(CancellationToken cancellationToken) =>
+        _process.WaitForExitAsync(cancellationToken);
+
+    public async Task<CliResult> GetResultAsync(CancellationToken cancellationToken)
+    {
+        await _process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        var stdout = (await _stdoutTask.ConfigureAwait(false)).TrimEnd();
+        var stderr = (await _stderrTask.ConfigureAwait(false)).TrimEnd();
+        return new CliResult(_process.ExitCode, stdout, stderr);
+    }
+
+    public void Kill()
+    {
+        try
+        {
+            if (!_process.HasExited)
+            {
+                _process.Kill(entireProcessTree: true);
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        Kill();
+
+        try
+        {
+            await _process.WaitForExitAsync().ConfigureAwait(false);
+            await Task.WhenAll(_stdoutTask, _stderrTask).ConfigureAwait(false);
+        }
+        catch
+        {
+        }
+        finally
+        {
+            _process.Dispose();
+        }
+    }
+}

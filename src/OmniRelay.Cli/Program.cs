@@ -11,6 +11,7 @@ using Google.Protobuf.WellKnownTypes;
 using Hugo;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using OmniRelay.Configuration;
 using OmniRelay.Core;
@@ -66,6 +67,7 @@ public static class Program
         var root = new RootCommand("OmniRelay CLI providing configuration validation, dispatcher introspection, and ad-hoc request tooling.")
         {
             CreateConfigCommand(),
+            CreateServeCommand(),
             CreateIntrospectCommand(),
             CreateRequestCommand(),
             CreateBenchmarkCommand(),
@@ -81,6 +83,60 @@ public static class Program
             CreateConfigValidateCommand(),
             CreateConfigScaffoldCommand()
         };
+        return command;
+    }
+
+    private static Command CreateServeCommand()
+    {
+        var command = new Command("serve", "Run an OmniRelay dispatcher using configuration files.");
+
+        var configOption = new Option<string[]>("--config")
+        {
+            Description = "Configuration file(s) to load.",
+            AllowMultipleArgumentsPerToken = true,
+            Required = true,
+            Arity = ArgumentArity.OneOrMore
+        };
+
+        var sectionOption = new Option<string>("--section")
+        {
+            Description = "Root configuration section name.",
+            DefaultValueFactory = _ => DefaultConfigSection
+        };
+
+        var setOption = new Option<string[]>("--set")
+        {
+            Description = "Override configuration values (KEY=VALUE).",
+            AllowMultipleArgumentsPerToken = true,
+            DefaultValueFactory = _ => []
+        };
+
+        var readyFileOption = new Option<string?>("--ready-file")
+        {
+            Description = "Touch the specified file once the dispatcher starts."
+        };
+
+        var shutdownAfterOption = new Option<string?>("--shutdown-after")
+        {
+            Description = "Automatically shut down after the specified duration (e.g. 30s)."
+        };
+
+        command.Add(configOption);
+        command.Add(sectionOption);
+        command.Add(setOption);
+        command.Add(readyFileOption);
+        command.Add(shutdownAfterOption);
+
+        command.SetAction(parseResult =>
+        {
+            var configs = parseResult.GetValue(configOption) ?? [];
+            var section = parseResult.GetValue(sectionOption) ?? DefaultConfigSection;
+            var overrides = parseResult.GetValue(setOption) ?? [];
+            var readyFile = parseResult.GetValue(readyFileOption);
+            var shutdownAfter = parseResult.GetValue(shutdownAfterOption);
+            return RunServeAsync(configs, section, overrides, readyFile, shutdownAfter).GetAwaiter().GetResult();
+        });
+
         return command;
     }
 
@@ -885,60 +941,9 @@ public static class Program
 
     private static async Task<int> RunConfigValidateAsync(string[] configPaths, string section, string[] setOverrides)
     {
-        if (configPaths.Length == 0)
+        if (!TryBuildConfiguration(configPaths, setOverrides, out var configuration, out var errorMessage))
         {
-            await Console.Error.WriteLineAsync("No configuration files supplied. Use --config <path> (repeat for layering).").ConfigureAwait(false);
-            return 1;
-        }
-
-        var builder = new ConfigurationBuilder();
-
-        foreach (var path in configPaths)
-        {
-            if (!File.Exists(path))
-            {
-                await Console.Error.WriteLineAsync($"Configuration file '{path}' does not exist.").ConfigureAwait(false);
-                return 1;
-            }
-
-            var extension = Path.GetExtension(path);
-            if (string.Equals(extension, ".json", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(extension, ".jsn", StringComparison.OrdinalIgnoreCase))
-            {
-                builder.AddJsonFile(path, optional: false, reloadOnChange: false);
-            }
-            else
-            {
-                await Console.Error.WriteLineAsync($"Unsupported configuration format '{extension}'. Only JSON is currently supported.").ConfigureAwait(false);
-                return 1;
-            }
-        }
-
-        if (setOverrides.Length > 0)
-        {
-            var overlay = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
-            foreach (var entry in setOverrides)
-            {
-                if (!TrySplitKeyValue(entry, out var key, out var value))
-                {
-                    await Console.Error.WriteLineAsync($"Could not parse --set value '{entry}'. Expected KEY=VALUE.").ConfigureAwait(false);
-                    return 1;
-                }
-
-                overlay[key] = value;
-            }
-
-            builder.AddInMemoryCollection(overlay!);
-        }
-
-        IConfigurationRoot configuration;
-        try
-        {
-            configuration = builder.Build();
-        }
-        catch (Exception ex)
-        {
-            await Console.Error.WriteLineAsync($"Failed to build configuration: {ex.Message}").ConfigureAwait(false);
+            await Console.Error.WriteLineAsync(errorMessage ?? "Failed to load configuration.").ConfigureAwait(false);
             return 1;
         }
 
@@ -999,6 +1004,122 @@ public static class Program
         {
             await Console.Error.WriteLineAsync($"Dispatcher validation threw: {ex.Message}").ConfigureAwait(false);
             return 1;
+        }
+    }
+
+    private static async Task<int> RunServeAsync(string[] configPaths, string section, string[] setOverrides, string? readyFile, string? shutdownAfterOption)
+    {
+        if (!TryBuildConfiguration(configPaths, setOverrides, out var configuration, out var errorMessage))
+        {
+            await Console.Error.WriteLineAsync(errorMessage ?? "Failed to load configuration.").ConfigureAwait(false);
+            return 1;
+        }
+
+        TimeSpan? shutdownAfter = null;
+        if (!string.IsNullOrWhiteSpace(shutdownAfterOption))
+        {
+            if (!TryParseDuration(shutdownAfterOption!, out var parsed))
+            {
+                await Console.Error.WriteLineAsync($"Could not parse --shutdown-after value '{shutdownAfterOption}'.").ConfigureAwait(false);
+                return 1;
+            }
+
+            if (parsed <= TimeSpan.Zero)
+            {
+                await Console.Error.WriteLineAsync("--shutdown-after duration must be greater than zero.").ConfigureAwait(false);
+                return 1;
+            }
+
+            shutdownAfter = parsed;
+        }
+
+        var builder = Host.CreateApplicationBuilder();
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddConfiguration(configuration);
+        builder.Services.AddLogging(static logging => logging.AddSimpleConsole(options =>
+        {
+            options.SingleLine = true;
+            options.TimestampFormat = "HH:mm:ss ";
+        }));
+
+        try
+        {
+            builder.Services.AddOmniRelayDispatcher(builder.Configuration.GetSection(section ?? DefaultConfigSection));
+        }
+        catch (Exception ex)
+        {
+            await Console.Error.WriteLineAsync($"Failed to configure dispatcher: {ex.Message}").ConfigureAwait(false);
+            return 1;
+        }
+
+        using var host = builder.Build();
+        var shutdownSignal = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        ConsoleCancelEventHandler? cancelHandler = null;
+
+        void RequestShutdown()
+        {
+            shutdownSignal.TrySetResult(true);
+        }
+
+        cancelHandler = (_, eventArgs) =>
+        {
+            eventArgs.Cancel = true;
+            RequestShutdown();
+        };
+
+        Console.CancelKeyPress += cancelHandler;
+
+        if (shutdownAfter.HasValue)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(shutdownAfter.Value).ConfigureAwait(false);
+                    RequestShutdown();
+                }
+                catch
+                {
+                    RequestShutdown();
+                }
+            });
+        }
+
+        try
+        {
+            await host.StartAsync(CancellationToken.None).ConfigureAwait(false);
+            var dispatcher = host.Services.GetRequiredService<Dispatcher.Dispatcher>();
+            Console.WriteLine($"OmniRelay dispatcher '{dispatcher.ServiceName}' started.");
+
+            if (!string.IsNullOrWhiteSpace(readyFile))
+            {
+                TryWriteReadyFile(readyFile!);
+            }
+
+            if (shutdownAfter.HasValue)
+            {
+                Console.WriteLine($"Shutting down automatically after {shutdownAfter.Value:c}.");
+            }
+            else
+            {
+                Console.WriteLine("Press Ctrl+C to stop.");
+            }
+
+            await shutdownSignal.Task.ConfigureAwait(false);
+            await host.StopAsync(CancellationToken.None).ConfigureAwait(false);
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            await Console.Error.WriteLineAsync($"Failed to run dispatcher: {ex.Message}").ConfigureAwait(false);
+            return 1;
+        }
+        finally
+        {
+            if (cancelHandler is not null)
+            {
+                Console.CancelKeyPress -= cancelHandler;
+            }
         }
     }
 
@@ -1076,6 +1197,86 @@ public static class Program
         {
             await Console.Error.WriteLineAsync($"Introspection failed: {ex.Message}").ConfigureAwait(false);
             return 1;
+        }
+    }
+
+    private static bool TryBuildConfiguration(string[] configPaths, string[] setOverrides, out IConfigurationRoot configuration, out string? errorMessage)
+    {
+        configuration = default!;
+        errorMessage = null;
+
+        if (configPaths.Length == 0)
+        {
+            errorMessage = "No configuration files supplied. Use --config <path> (repeat for layering).";
+            return false;
+        }
+
+        var builder = new ConfigurationBuilder();
+        foreach (var path in configPaths)
+        {
+            if (!File.Exists(path))
+            {
+                errorMessage = $"Configuration file '{path}' does not exist.";
+                return false;
+            }
+
+            var extension = Path.GetExtension(path);
+            if (string.Equals(extension, ".json", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(extension, ".jsn", StringComparison.OrdinalIgnoreCase))
+            {
+                builder.AddJsonFile(path, optional: false, reloadOnChange: false);
+            }
+            else
+            {
+                errorMessage = $"Unsupported configuration format '{extension}'. Only JSON is currently supported.";
+                return false;
+            }
+        }
+
+        if (setOverrides.Length > 0)
+        {
+            var overlay = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+            foreach (var entry in setOverrides)
+            {
+                if (!TrySplitKeyValue(entry, out var key, out var value))
+                {
+                    errorMessage = $"Could not parse --set value '{entry}'. Expected KEY=VALUE.";
+                    return false;
+                }
+
+                overlay[key] = value;
+            }
+
+            builder.AddInMemoryCollection(overlay!);
+        }
+
+        try
+        {
+            configuration = builder.Build();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to build configuration: {ex.Message}";
+            return false;
+        }
+    }
+
+    private static void TryWriteReadyFile(string path)
+    {
+        try
+        {
+            var directory = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            File.WriteAllText(path, DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture));
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Failed to write ready file '{path}': {ex.Message}");
         }
     }
 
