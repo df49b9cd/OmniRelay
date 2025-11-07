@@ -1,0 +1,30 @@
+{
+  "steps": [
+    {
+      "type": "request",
+      "description": "Call the HTTP health endpoint",
+      "transport": "http",
+      "url": "http://127.0.0.1:7130/healthz",
+      "service": "samples.observability-cli",
+      "procedure": "omnirelay::health",
+      "encoding": "application/json"
+    },
+    {
+      "type": "introspect",
+      "description": "Summarize dispatcher state",
+      "url": "http://127.0.0.1:7130/omnirelay/introspect",
+      "format": "text",
+      "timeout": "3s"
+    },
+    {
+      "type": "request",
+      "description": "Benchmark echo procedure via gRPC",
+      "transport": "grpc",
+      "address": "http://127.0.0.1:7131",
+      "service": "samples.observability-cli",
+      "procedure": "ops::ping",
+      "encoding": "application/json",
+      "body": "{\"message\":\"cli benchmark\"}"
+    }
+  ]
+}

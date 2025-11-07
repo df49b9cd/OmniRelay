@@ -11,6 +11,7 @@ The repository ships focused sample projects that exercise specific runtime feat
 | Configuration host | `samples/Configuration.Server` | `AddOmniRelayDispatcher` + DI | Uses `appsettings.json` to configure transports, diagnostics, middleware, JSON codecs, and a custom outbound spec instantiated via configuration. |
 | Tee shadowing | `samples/Shadowing.Server` | `TeeUnaryOutbound` / `TeeOnewayOutbound` | Mirrors production calls to a shadow stack, shows how to compose typed clients and oneway fan-out while logging both inbound and outbound pipelines. |
 | Distributed demo | `samples/DistributedDemo` | Docker Compose + multi-service topology | Gateway + downstream services communicating via gRPC (Protobuf) and HTTP (JSON), multiple peer choosers, OpenTelemetry collector, and Prometheus scraping. |
+| Observability & CLI playground | `samples/Observability.CliPlayground` | Diagnostics + scripts | Exposes `/omnirelay/introspect`, `/healthz`, `/readyz`, Prometheus metrics, OpenTelemetry traces, and ships ready-made `omnirelay` CLI scripts. |
 
 ## Quickstart Dispatcher
 
@@ -75,6 +76,19 @@ The repository ships focused sample projects that exercise specific runtime feat
 - Notes:
   - Prefix any environment variable with `CONFIG2PROD_` (double underscores become `:`) to override configuration without touching files.
   - Adjust warm-up and diagnostics requirements via the `probes` section to mirror your deployment policy.
+
+## Observability & CLI Playground
+
+- Path: `samples/Observability.CliPlayground`
+- Run: `dotnet run --project samples/Observability.CliPlayground --environment Development`
+- What it shows:
+  - OmniRelay hosted via configuration with HTTP `/omnirelay/introspect`, `/healthz`, `/readyz`, gRPC inbound, and Prometheus metrics (`/metrics`).
+  - OpenTelemetry configuration (console trace exporter + Prometheus metrics exporter) so telemetry lights up by default.
+  - Background service that simulates `omnirelay` CLI flows (introspection + ops ping) to generate metrics and ensure endpoints can be scripted.
+  - Companion CLI script (`docs/reference/cli-scripts/observability-playground.json`) for reproducible health/introspection/request steps.
+- Notes:
+  - Override ports or telemetry settings via `OBS_CLI__` environment variables.
+  - Pair the sample with `omnirelay benchmark` to record traces/metrics during load tests.
 
 ## Tee Shadowing Sample
 

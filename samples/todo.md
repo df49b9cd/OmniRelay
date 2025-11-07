@@ -16,11 +16,9 @@ Curated backlog of sample projects that demonstrate OmniRelay end-to-end pattern
 - **Status:** Shipped at `samples/StreamingAnalytics.Lab`.
 - **Highlights:** JSON ticker streams, Protobuf client/duplex handlers, and loopback streaming clients that exercise OmniRelay codecs and backpressure end-to-end.
 
-## Observability & CLI Playground
+## Observability & CLI Playground (shipped)
 
-- **Audience:** SREs and operators.
-- **What to show:** `/omnirelay/introspect`, `/healthz`, `/readyz`, OpenTelemetry/Prometheus wiring, and prebuilt `omnirelay` CLI scripts for config validation, smoke tests, and benchmarking.
-- **Why it helps:** Lowers the barrier for operational sign-off and gives teams reproducible diagnostics flows tied to OmniRelay’s tooling.
+- Implemented at `samples/Observability.CliPlayground` with HTTP/gRPC endpoints, Prometheus/OpenTelemetry wiring, and CLI scripts under `docs/reference/cli-scripts/observability-playground.json`.
 
 ## Codegen + Tee Rollout Harness
 
