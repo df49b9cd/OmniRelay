@@ -76,54 +76,15 @@ public sealed class HttpOutbound : IUnaryOutbound, IOnewayOutbound, IOutboundDia
     /// <param name="request">The request containing metadata and payload.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The decoded response or an error.</returns>
-    private async ValueTask<Result<Response<ReadOnlyMemory<byte>>>> CallUnaryAsync(
+    private ValueTask<Result<Response<ReadOnlyMemory<byte>>>> CallUnaryAsync(
         IRequest<ReadOnlyMemory<byte>> request,
-        CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            using var httpRequest = BuildHttpRequest(request);
-            using var response = await SendWithMiddlewareAsync(
-                    httpRequest,
-                    request.Meta,
-                    HttpOutboundCallKind.Unary,
-                    HttpCompletionOption.ResponseHeadersRead,
-                    cancellationToken)
-                .ConfigureAwait(false);
-
-            var responseMeta = BuildResponseMeta(response);
-            var payload = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
-
-            // Fallback metric: if HTTP/3 was desired but response protocol < HTTP/3
-            if (_runtimeOptions?.EnableHttp3 == true)
-            {
-                var observed = responseMeta.Headers.FirstOrDefault(h => string.Equals(h.Key, HttpTransportHeaders.Protocol, StringComparison.OrdinalIgnoreCase)).Value
-                               ?? FormatProtocol(response.Version);
-                if (!string.IsNullOrWhiteSpace(observed) && !observed.StartsWith("HTTP/3", StringComparison.OrdinalIgnoreCase))
-                {
-                    var baseTags = HttpTransportMetrics.CreateBaseTags(
-                        request.Meta.Service ?? string.Empty,
-                        request.Meta.Procedure ?? string.Empty,
-                        httpRequest.Method.Method,
-                        observed);
-                    var tags = HttpTransportMetrics.AppendObservedProtocol(baseTags, observed);
-                    HttpTransportMetrics.ClientProtocolFallbacks.Add(1, tags);
-                }
-            }
-
-            if (response.IsSuccessStatusCode)
-            {
-                return Ok(Response<ReadOnlyMemory<byte>>.Create(payload, responseMeta));
-            }
-
-            var error = await ReadErrorAsync(response, "http", cancellationToken).ConfigureAwait(false);
-            return Err<Response<ReadOnlyMemory<byte>>>(error);
-        }
-        catch (Exception ex)
-        {
-            return OmniRelayErrors.ToResult<Response<ReadOnlyMemory<byte>>>(ex, transport: "http");
-        }
-    }
+        CancellationToken cancellationToken = default) =>
+        ExecuteHttpCallAsync(
+            request,
+            HttpOutboundCallKind.Unary,
+            HttpCompletionOption.ResponseHeadersRead,
+            (httpRequest, response, token) => HandleUnaryResponseAsync(httpRequest, response, request.Meta, token),
+            cancellationToken);
 
     /// <summary>
     /// Performs a oneway RPC over HTTP.
@@ -131,53 +92,15 @@ public sealed class HttpOutbound : IUnaryOutbound, IOnewayOutbound, IOutboundDia
     /// <param name="request">The request containing metadata and payload.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>An acknowledgement if the server accepted the request; otherwise an error.</returns>
-    private async ValueTask<Result<OnewayAck>> CallOnewayAsync(
+    private ValueTask<Result<OnewayAck>> CallOnewayAsync(
         IRequest<ReadOnlyMemory<byte>> request,
-        CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            using var httpRequest = BuildHttpRequest(request);
-            using var response = await SendWithMiddlewareAsync(
-                    httpRequest,
-                    request.Meta,
-                    HttpOutboundCallKind.Oneway,
-                    HttpCompletionOption.ResponseContentRead,
-                    cancellationToken)
-                .ConfigureAwait(false);
-            // Fallback metric for oneway
-            if (_runtimeOptions?.EnableHttp3 == true)
-            {
-                var observed = response.Headers.TryGetValues(HttpTransportHeaders.Protocol, out var protoValues)
-                    ? protoValues.FirstOrDefault()
-                    : FormatProtocol(response.Version);
-                if (!string.IsNullOrWhiteSpace(observed) && !observed.StartsWith("HTTP/3", StringComparison.OrdinalIgnoreCase))
-                {
-                    var baseTags = HttpTransportMetrics.CreateBaseTags(
-                        request.Meta.Service ?? string.Empty,
-                        request.Meta.Procedure ?? string.Empty,
-                        httpRequest.Method.Method,
-                        observed);
-                    var tags = HttpTransportMetrics.AppendObservedProtocol(baseTags, observed);
-                    HttpTransportMetrics.ClientProtocolFallbacks.Add(1, tags);
-                }
-            }
-
-            if (response.StatusCode == HttpStatusCode.Accepted ||
-                response.StatusCode == (HttpStatusCode)StatusCodes.Status202Accepted)
-            {
-                var meta = BuildResponseMeta(response);
-                return Ok(OnewayAck.Ack(meta));
-            }
-
-            var error = await ReadErrorAsync(response, "http", cancellationToken).ConfigureAwait(false);
-            return Err<OnewayAck>(error);
-        }
-        catch (Exception ex)
-        {
-            return OmniRelayErrors.ToResult<OnewayAck>(ex, transport: "http");
-        }
-    }
+        CancellationToken cancellationToken = default) =>
+        ExecuteHttpCallAsync(
+            request,
+            HttpOutboundCallKind.Oneway,
+            HttpCompletionOption.ResponseContentRead,
+            (httpRequest, response, token) => HandleOnewayResponseAsync(httpRequest, response, request.Meta, token),
+            cancellationToken);
 
     /// <summary>
     /// Builds an <see cref="HttpRequestMessage"/> from the RPC request metadata and body.
@@ -426,6 +349,101 @@ public sealed class HttpOutbound : IUnaryOutbound, IOnewayOutbound, IOutboundDia
         var fallbackStatus = HttpStatusMapper.FromStatusCode((int)response.StatusCode);
         var fallbackMessage = response.ReasonPhrase ?? $"HTTP {(int)response.StatusCode}";
         return OmniRelayErrorAdapter.FromStatus(fallbackStatus, fallbackMessage, transport: transport);
+    }
+
+    private ValueTask<Result<T>> ExecuteHttpCallAsync<T>(
+        IRequest<ReadOnlyMemory<byte>> request,
+        HttpOutboundCallKind callKind,
+        HttpCompletionOption completionOption,
+        Func<HttpRequestMessage, HttpResponseMessage, CancellationToken, Task<T>> handler,
+        CancellationToken cancellationToken)
+    {
+        return new ValueTask<Result<T>>(Result.TryAsync(
+            async token =>
+            {
+                using var httpRequest = BuildHttpRequest(request);
+                using var response = await SendWithMiddlewareAsync(
+                        httpRequest,
+                        request.Meta,
+                        callKind,
+                        completionOption,
+                        token)
+                    .ConfigureAwait(false);
+
+                return await handler(httpRequest, response, token).ConfigureAwait(false);
+            },
+            errorFactory: ex => OmniRelayErrors.FromException(ex, transport: "http").Error,
+            cancellationToken: cancellationToken));
+    }
+
+    private async Task<Response<ReadOnlyMemory<byte>>> HandleUnaryResponseAsync(
+        HttpRequestMessage httpRequest,
+        HttpResponseMessage response,
+        RequestMeta requestMeta,
+        CancellationToken cancellationToken)
+    {
+        var responseMeta = BuildResponseMeta(response);
+        RecordHttp3Fallback(response, responseMeta, httpRequest, requestMeta);
+
+        var payload = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+
+        if (response.IsSuccessStatusCode)
+        {
+            return Response<ReadOnlyMemory<byte>>.Create(payload, responseMeta);
+        }
+
+        var error = await ReadErrorAsync(response, "http", cancellationToken).ConfigureAwait(false);
+        throw new ResultException(error);
+    }
+
+    private async Task<OnewayAck> HandleOnewayResponseAsync(
+        HttpRequestMessage httpRequest,
+        HttpResponseMessage response,
+        RequestMeta requestMeta,
+        CancellationToken cancellationToken)
+    {
+        var responseMeta = BuildResponseMeta(response);
+        RecordHttp3Fallback(response, responseMeta, httpRequest, requestMeta);
+
+        if (response.StatusCode == HttpStatusCode.Accepted ||
+            response.StatusCode == (HttpStatusCode)StatusCodes.Status202Accepted)
+        {
+            return OnewayAck.Ack(responseMeta);
+        }
+
+        var error = await ReadErrorAsync(response, "http", cancellationToken).ConfigureAwait(false);
+        throw new ResultException(error);
+    }
+
+    private void RecordHttp3Fallback(
+        HttpResponseMessage response,
+        ResponseMeta responseMeta,
+        HttpRequestMessage httpRequest,
+        RequestMeta requestMeta)
+    {
+        if (_runtimeOptions?.EnableHttp3 != true)
+        {
+            return;
+        }
+
+        var observed = responseMeta.Headers.FirstOrDefault(
+            static header => string.Equals(header.Key, HttpTransportHeaders.Protocol, StringComparison.OrdinalIgnoreCase)).Value
+                       ?? FormatProtocol(response.Version);
+
+        if (string.IsNullOrWhiteSpace(observed) ||
+            observed.StartsWith("HTTP/3", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var baseTags = HttpTransportMetrics.CreateBaseTags(
+            requestMeta.Service ?? string.Empty,
+            requestMeta.Procedure ?? string.Empty,
+            httpRequest.Method.Method,
+            observed);
+
+        var tags = HttpTransportMetrics.AppendObservedProtocol(baseTags, observed);
+        HttpTransportMetrics.ClientProtocolFallbacks.Add(1, tags);
     }
 
     /// <inheritdoc />

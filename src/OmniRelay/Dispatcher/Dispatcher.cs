@@ -539,7 +539,14 @@ public sealed class Dispatcher
             }, cancellationToken);
         }
 
-        await waitGroup.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await waitGroup.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // Fast shutdown requested; proceed with whatever completed.
+        }
 
         var errors = exceptions.ToArray();
         if (errors.Length == 1)

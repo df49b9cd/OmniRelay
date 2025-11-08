@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Quic;
 using System.Net.Security;
+using System.Net.Sockets;
 using System.Security.Authentication;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
@@ -72,6 +73,73 @@ public class HttpInboundLifecycleTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         await stopTask;
+    }
+
+    [Fact(Timeout = 30_000)]
+    public async Task StopAsync_ResetsDrainSignalAndAllowsRestart()
+    {
+        var port = TestPortAllocator.GetRandomPort();
+        var baseAddress = new Uri($"http://127.0.0.1:{port}/");
+
+        var options = new DispatcherOptions("lifecycle-restart");
+        var httpInbound = new HttpInbound([baseAddress.ToString()]);
+        options.AddLifecycle("http-inbound", httpInbound);
+
+        var dispatcher = new OmniRelay.Dispatcher.Dispatcher(options);
+
+        var requestStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseRequest = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var requestCount = 0;
+
+        dispatcher.Register(new UnaryProcedureSpec(
+            "lifecycle-restart",
+            "test::slow",
+            async (request, token) =>
+            {
+                var invocation = Interlocked.Increment(ref requestCount);
+                if (invocation == 1)
+                {
+                    requestStarted.TrySetResult();
+                    await releaseRequest.Task.WaitAsync(token);
+                }
+
+                return Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty, new ResponseMeta()));
+            }));
+
+        var ct = TestContext.Current.CancellationToken;
+        await dispatcher.StartAsync(ct);
+        await WaitForHttpReadyAsync(baseAddress, ct);
+
+        using var httpClient = new HttpClient { BaseAddress = baseAddress };
+        httpClient.DefaultRequestHeaders.Add(HttpTransportHeaders.Transport, "http");
+        httpClient.DefaultRequestHeaders.Add(HttpTransportHeaders.Procedure, "test::slow");
+
+        var inFlightTask = httpClient.PostAsync("/", new ByteArrayContent([]), ct);
+        await requestStarted.Task.WaitAsync(ct);
+
+        var stopTask = dispatcher.StopAsync(ct);
+        Assert.False(stopTask.IsCompleted);
+
+        releaseRequest.TrySetResult();
+
+        using (var firstResponse = await inFlightTask.ConfigureAwait(false))
+        {
+            Assert.Equal(HttpStatusCode.OK, firstResponse.StatusCode);
+        }
+
+        await stopTask.ConfigureAwait(false);
+
+        await dispatcher.StartAsync(ct);
+        await WaitForHttpReadyAsync(baseAddress, ct);
+
+        using (var secondResponse = await httpClient.PostAsync("/", new ByteArrayContent([]), ct).ConfigureAwait(false))
+        {
+            Assert.Equal(HttpStatusCode.OK, secondResponse.StatusCode);
+        }
+
+        Assert.Equal(2, Volatile.Read(ref requestCount));
+
+        await dispatcher.StopAsync(ct);
     }
 
     [Http3Fact(Timeout = 45_000)]
@@ -451,4 +519,38 @@ public class HttpInboundLifecycleTests
         ServerCertificateCustomValidationCallback = static (_, _, _, _) => true
     };
 
+    private static async Task WaitForHttpReadyAsync(Uri address, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(address);
+
+        const int maxAttempts = 100;
+        const int connectTimeoutMilliseconds = 200;
+        const int settleDelayMilliseconds = 20;
+        const int retryDelayMilliseconds = 25;
+
+        for (var attempt = 0; attempt < maxAttempts; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            try
+            {
+                using var client = new TcpClient();
+                await client.ConnectAsync(address.Host, address.Port)
+                    .WaitAsync(TimeSpan.FromMilliseconds(connectTimeoutMilliseconds), cancellationToken);
+
+                await Task.Delay(TimeSpan.FromMilliseconds(settleDelayMilliseconds), cancellationToken);
+                return;
+            }
+            catch (SocketException)
+            {
+            }
+            catch (TimeoutException)
+            {
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(retryDelayMilliseconds), cancellationToken);
+        }
+
+        throw new TimeoutException("The HTTP inbound failed to bind within the allotted time.");
+    }
 }
