@@ -22,10 +22,16 @@ public static class DispatcherClientExtensions
         ArgumentNullException.ThrowIfNull(codec);
 
         var configuration = dispatcher.ClientConfig(service);
-        if (!configuration.TryGetUnary(outboundKey, out var outbound) || outbound is null)
-        {
-            throw new KeyNotFoundException($"No unary outbound registered for service '{service}' with key '{outboundKey ?? OutboundCollection.DefaultKey}'.");
-        }
+        var outbound = ResolveOutbound(
+            configuration,
+            service,
+            outboundKey,
+            static (config, key) =>
+            {
+                var success = config.TryGetUnary(key, out var resolved);
+                return (success, resolved);
+            },
+            "unary");
 
         return new UnaryClient<TRequest, TResponse>(outbound, codec, configuration.UnaryMiddleware);
     }
@@ -63,10 +69,16 @@ public static class DispatcherClientExtensions
         ArgumentNullException.ThrowIfNull(codec);
 
         var configuration = dispatcher.ClientConfig(service);
-        if (!configuration.TryGetOneway(outboundKey, out var outbound) || outbound is null)
-        {
-            throw new KeyNotFoundException($"No oneway outbound registered for service '{service}' with key '{outboundKey ?? OutboundCollection.DefaultKey}'.");
-        }
+        var outbound = ResolveOutbound(
+            configuration,
+            service,
+            outboundKey,
+            static (config, key) =>
+            {
+                var success = config.TryGetOneway(key, out var resolved);
+                return (success, resolved);
+            },
+            "oneway");
 
         return new OnewayClient<TRequest>(outbound, codec, configuration.OnewayMiddleware);
     }
@@ -104,10 +116,16 @@ public static class DispatcherClientExtensions
         ArgumentNullException.ThrowIfNull(codec);
 
         var configuration = dispatcher.ClientConfig(service);
-        if (!configuration.TryGetStream(outboundKey, out var outbound) || outbound is null)
-        {
-            throw new KeyNotFoundException($"No stream outbound registered for service '{service}' with key '{outboundKey ?? OutboundCollection.DefaultKey}'.");
-        }
+        var outbound = ResolveOutbound(
+            configuration,
+            service,
+            outboundKey,
+            static (config, key) =>
+            {
+                var success = config.TryGetStream(key, out var resolved);
+                return (success, resolved);
+            },
+            "stream");
 
         return new StreamClient<TRequest, TResponse>(outbound, codec, configuration.StreamMiddleware);
     }
@@ -145,10 +163,16 @@ public static class DispatcherClientExtensions
         ArgumentNullException.ThrowIfNull(codec);
 
         var configuration = dispatcher.ClientConfig(service);
-        if (!configuration.TryGetClientStream(outboundKey, out var outbound) || outbound is null)
-        {
-            throw new KeyNotFoundException($"No client stream outbound registered for service '{service}' with key '{outboundKey ?? OutboundCollection.DefaultKey}'.");
-        }
+        var outbound = ResolveOutbound(
+            configuration,
+            service,
+            outboundKey,
+            static (config, key) =>
+            {
+                var success = config.TryGetClientStream(key, out var resolved);
+                return (success, resolved);
+            },
+            "client stream");
 
         return new ClientStreamClient<TRequest, TResponse>(outbound, codec, configuration.ClientStreamMiddleware);
     }
@@ -186,10 +210,16 @@ public static class DispatcherClientExtensions
         ArgumentNullException.ThrowIfNull(codec);
 
         var configuration = dispatcher.ClientConfig(service);
-        if (!configuration.TryGetDuplex(outboundKey, out var outbound) || outbound is null)
-        {
-            throw new KeyNotFoundException($"No duplex stream outbound registered for service '{service}' with key '{outboundKey ?? OutboundCollection.DefaultKey}'.");
-        }
+        var outbound = ResolveOutbound(
+            configuration,
+            service,
+            outboundKey,
+            static (config, key) =>
+            {
+                var success = config.TryGetDuplex(key, out var resolved);
+                return (success, resolved);
+            },
+            "duplex stream");
 
         return new DuplexStreamClient<TRequest, TResponse>(outbound, codec, configuration.DuplexMiddleware);
     }
@@ -211,5 +241,23 @@ public static class DispatcherClientExtensions
         }
 
         return dispatcher.CreateDuplexStreamClient(service, codec, outboundKey);
+    }
+
+    private static TOutbound ResolveOutbound<TOutbound>(
+        ClientConfiguration configuration,
+        string service,
+        string? outboundKey,
+        Func<ClientConfiguration, string?, (bool Success, TOutbound? Outbound)> resolver,
+        string outboundType)
+        where TOutbound : class
+    {
+        var (success, outbound) = resolver(configuration, outboundKey);
+        if (!success || outbound is null)
+        {
+            throw new KeyNotFoundException(
+                $"No {outboundType} outbound registered for service '{service}' with key '{outboundKey ?? OutboundCollection.DefaultKey}'.");
+        }
+
+        return outbound;
     }
 }

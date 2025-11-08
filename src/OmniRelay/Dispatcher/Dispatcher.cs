@@ -1,7 +1,9 @@
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Threading;
 using Hugo;
+using Hugo.Policies;
 using OmniRelay.Core;
 using OmniRelay.Core.Middleware;
 using OmniRelay.Core.Transport;
@@ -39,6 +41,8 @@ public sealed class Dispatcher
     private readonly HttpOutboundMiddlewareRegistry? _httpOutboundMiddlewareRegistry;
     private readonly GrpcClientInterceptorRegistry? _grpcClientInterceptorRegistry;
     private readonly GrpcServerInterceptorRegistry? _grpcServerInterceptorRegistry;
+    private readonly ResultExecutionPolicy _startRetryPolicy;
+    private readonly ResultExecutionPolicy _stopRetryPolicy;
 
     /// <summary>
     /// Creates a dispatcher for a specific service using the provided options.
@@ -62,6 +66,8 @@ public sealed class Dispatcher
         _outboundStreamMiddleware = [.. options.StreamOutboundMiddleware];
         _outboundClientStreamMiddleware = [.. options.ClientStreamOutboundMiddleware];
         _outboundDuplexMiddleware = [.. options.DuplexOutboundMiddleware];
+        _startRetryPolicy = options.StartRetryPolicy;
+        _stopRetryPolicy = options.StopRetryPolicy;
         Codecs = new CodecRegistry(_serviceName, options.CodecRegistrations);
 
         BindDispatcherAwareComponents(_lifecycleDescriptors);
@@ -251,22 +257,18 @@ public sealed class Dispatcher
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken = default)
     {
-        if (!_procedures.TryGet(_serviceName, procedure, ProcedureKind.Unary, out var spec) ||
-            spec is not UnaryProcedureSpec unarySpec)
-        {
-            var error = OmniRelayErrorAdapter.FromStatus(
-                OmniRelayStatusCode.Unimplemented,
-                $"Unary procedure '{procedure}' is not registered for service '{_serviceName}'.",
-                transport: request.Meta.Transport ?? "unknown");
+        var transport = request.Meta.Transport ?? "unknown";
 
-            return ValueTask.FromResult(Err<Response<ReadOnlyMemory<byte>>>(error));
-        }
+        var task = ResolveProcedure<UnaryProcedureSpec>(
+                procedure,
+                ProcedureKind.Unary,
+                transport)
+            .Map(spec => MiddlewareComposer.ComposeUnaryInbound(
+                CombineMiddleware(_inboundUnaryMiddleware, spec.Middleware),
+                spec.Handler))
+            .ThenAsync((pipeline, token) => pipeline(request, token).AsTask(), cancellationToken);
 
-        var pipeline = MiddlewareComposer.ComposeUnaryInbound(
-            CombineMiddleware(_inboundUnaryMiddleware, unarySpec.Middleware),
-            unarySpec.Handler);
-
-        return pipeline(request, cancellationToken);
+        return new ValueTask<Result<Response<ReadOnlyMemory<byte>>>>(task);
     }
 
     /// <summary>
@@ -277,22 +279,18 @@ public sealed class Dispatcher
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken = default)
     {
-        if (!_procedures.TryGet(_serviceName, procedure, ProcedureKind.Oneway, out var spec) ||
-            spec is not OnewayProcedureSpec onewaySpec)
-        {
-            var error = OmniRelayErrorAdapter.FromStatus(
-                OmniRelayStatusCode.Unimplemented,
-                $"Oneway procedure '{procedure}' is not registered for service '{_serviceName}'.",
-                transport: request.Meta.Transport ?? "unknown");
+        var transport = request.Meta.Transport ?? "unknown";
 
-            return ValueTask.FromResult(Err<OnewayAck>(error));
-        }
+        var task = ResolveProcedure<OnewayProcedureSpec>(
+                procedure,
+                ProcedureKind.Oneway,
+                transport)
+            .Map(spec => MiddlewareComposer.ComposeOnewayInbound(
+                CombineMiddleware(_inboundOnewayMiddleware, spec.Middleware),
+                spec.Handler))
+            .ThenAsync((pipeline, token) => pipeline(request, token).AsTask(), cancellationToken);
 
-        var pipeline = MiddlewareComposer.ComposeOnewayInbound(
-            CombineMiddleware(_inboundOnewayMiddleware, onewaySpec.Middleware),
-            onewaySpec.Handler);
-
-        return pipeline(request, cancellationToken);
+        return new ValueTask<Result<OnewayAck>>(task);
     }
 
     /// <summary>
@@ -348,17 +346,19 @@ public sealed class Dispatcher
                 "Procedure name is required for streaming calls.")));
         }
 
-        if (!_procedures.TryGet(_serviceName, procedure, ProcedureKind.Stream, out var spec) ||
-            spec is not StreamProcedureSpec streamSpec)
-        {
-            return ValueTask.FromResult(Err<IStreamCall>(OmniRelayErrorAdapter.FromStatus(
-                OmniRelayStatusCode.Unimplemented,
-                $"Stream procedure '{procedure}' is not registered for service '{_serviceName}'.")));
-        }
+        var transport = request.Meta.Transport ?? "stream";
 
-        var middleware = CombineMiddleware(_inboundStreamMiddleware, streamSpec.Middleware);
-        var pipeline = MiddlewareComposer.ComposeStreamInbound(middleware, streamSpec.Handler);
-        return pipeline(request, options, cancellationToken);
+        var task = ResolveProcedure<StreamProcedureSpec>(
+                procedure,
+                ProcedureKind.Stream,
+                transport,
+                $"Stream procedure '{procedure}' is not registered for service '{_serviceName}'.")
+            .Map(spec => MiddlewareComposer.ComposeStreamInbound(
+                CombineMiddleware(_inboundStreamMiddleware, spec.Middleware),
+                spec.Handler))
+            .ThenAsync((pipeline, token) => pipeline(request, options, token).AsTask(), cancellationToken);
+
+        return new ValueTask<Result<IStreamCall>>(task);
     }
 
     /// <summary>
@@ -376,17 +376,19 @@ public sealed class Dispatcher
                 "Procedure name is required for duplex streaming calls.")));
         }
 
-        if (!_procedures.TryGet(_serviceName, procedure, ProcedureKind.Duplex, out var spec) ||
-            spec is not DuplexProcedureSpec duplexSpec)
-        {
-            return ValueTask.FromResult(Err<IDuplexStreamCall>(OmniRelayErrorAdapter.FromStatus(
-                OmniRelayStatusCode.Unimplemented,
-                $"Duplex stream procedure '{procedure}' is not registered for service '{_serviceName}'.")));
-        }
+        var transport = request.Meta.Transport ?? "stream";
 
-        var middleware = CombineMiddleware(_inboundDuplexMiddleware, duplexSpec.Middleware);
-        var pipeline = MiddlewareComposer.ComposeDuplexInbound(middleware, duplexSpec.Handler);
-        return pipeline(request, cancellationToken);
+        var task = ResolveProcedure<DuplexProcedureSpec>(
+                procedure,
+                ProcedureKind.Duplex,
+                transport,
+                $"Duplex stream procedure '{procedure}' is not registered for service '{_serviceName}'.")
+            .Map(spec => MiddlewareComposer.ComposeDuplexInbound(
+                CombineMiddleware(_inboundDuplexMiddleware, spec.Middleware),
+                spec.Handler))
+            .ThenAsync((pipeline, token) => pipeline(request, token).AsTask(), cancellationToken);
+
+        return new ValueTask<Result<IDuplexStreamCall>>(task);
     }
 
     /// <summary>
@@ -406,24 +408,25 @@ public sealed class Dispatcher
 
         ArgumentNullException.ThrowIfNull(requestMeta);
 
-        if (!_procedures.TryGet(_serviceName, procedure, ProcedureKind.ClientStream, out var spec) ||
-            spec is not ClientStreamProcedureSpec clientStreamSpec)
-        {
-            return ValueTask.FromResult(Err<ClientStreamCall>(OmniRelayErrorAdapter.FromStatus(
-                OmniRelayStatusCode.Unimplemented,
-                $"Client stream procedure '{procedure}' is not registered for service '{_serviceName}'.",
-                transport: requestMeta.Transport ?? "unknown")));
-        }
+        var transport = requestMeta.Transport ?? "unknown";
 
-        var call = ClientStreamCall.Create(requestMeta);
-        var context = new ClientStreamRequestContext(call.RequestMeta, call.Reader);
+        var result = ResolveProcedure<ClientStreamProcedureSpec>(
+                procedure,
+                ProcedureKind.ClientStream,
+                transport,
+                $"Client stream procedure '{procedure}' is not registered for service '{_serviceName}'.")
+            .Map(spec =>
+            {
+                var call = ClientStreamCall.Create(requestMeta);
+                var context = new ClientStreamRequestContext(call.RequestMeta, call.Reader);
+                var middleware = CombineMiddleware(_inboundClientStreamMiddleware, spec.Middleware);
+                var pipeline = MiddlewareComposer.ComposeClientStreamInbound(middleware, spec.Handler);
 
-        var middleware = CombineMiddleware(_inboundClientStreamMiddleware, clientStreamSpec.Middleware);
-        var pipeline = MiddlewareComposer.ComposeClientStreamInbound(middleware, clientStreamSpec.Handler);
+                _ = ProcessClientStreamAsync(call, context, pipeline, cancellationToken);
+                return call;
+            });
 
-        _ = ProcessClientStreamAsync(call, context, pipeline, cancellationToken);
-
-        return ValueTask.FromResult(Ok(call));
+        return ValueTask.FromResult(result);
     }
 
     /// <summary>
@@ -452,17 +455,20 @@ public sealed class Dispatcher
 
                 group.Go(async token =>
                 {
-                    try
+                    var startResult = await ExecuteLifecycleWithPolicyAsync(
+                        component.Name,
+                        lifecycle.StartAsync,
+                        _startRetryPolicy,
+                        token).ConfigureAwait(false);
+
+                    if (startResult.IsSuccess)
                     {
-                        await lifecycle.StartAsync(token).ConfigureAwait(false);
                         Volatile.Write(ref startedComponents[index], 1);
-                        return Result.Ok(Unit.Value);
+                        return startResult;
                     }
-                    catch (Exception ex)
-                    {
-                        exceptions.Enqueue(ex);
-                        throw;
-                    }
+
+                    exceptions.Enqueue(new ResultException(startResult.Error!));
+                    return startResult;
                 });
             }
 
@@ -511,31 +517,41 @@ public sealed class Dispatcher
             return;
         }
 
-        var exceptions = new List<Exception>();
+        var exceptions = new ConcurrentQueue<Exception>();
+        var waitGroup = new WaitGroup();
 
         for (var index = _lifecycleStartOrder.Length - 1; index >= 0; index--)
         {
             var component = _lifecycleStartOrder[index];
-            try
+            var lifecycle = component.Lifecycle;
+            waitGroup.Go(async token =>
             {
-                await component.Lifecycle.StopAsync(cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                exceptions.Add(ex);
-            }
+                var stopResult = await ExecuteLifecycleWithPolicyAsync(
+                    component.Name,
+                    lifecycle.StopAsync,
+                    _stopRetryPolicy,
+                    token).ConfigureAwait(false);
+
+                if (stopResult.IsFailure)
+                {
+                    exceptions.Enqueue(new ResultException(stopResult.Error!));
+                }
+            }, cancellationToken);
         }
 
-        if (exceptions.Count == 1)
+        await waitGroup.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+        var errors = exceptions.ToArray();
+        if (errors.Length == 1)
         {
             FailStop();
-            throw exceptions[0];
+            throw errors[0];
         }
 
-        if (exceptions.Count > 1)
+        if (errors.Length > 1)
         {
             FailStop();
-            throw new AggregateException("One or more dispatcher components failed to stop.", exceptions);
+            throw new AggregateException("One or more dispatcher components failed to stop.", errors);
         }
 
         CompleteStop();
@@ -647,6 +663,52 @@ public sealed class Dispatcher
             })];
     }
 
+    private Result<TProcedure> ResolveProcedure<TProcedure>(
+        string procedure,
+        ProcedureKind kind,
+        string transport,
+        string? missingMessage = null)
+        where TProcedure : ProcedureSpec
+    {
+        if (_procedures.TryGet(_serviceName, procedure, kind, out var spec) &&
+            spec is TProcedure typed)
+        {
+            return Ok(typed);
+        }
+
+        var message = missingMessage ?? $"{kind} procedure '{procedure}' is not registered for service '{_serviceName}'.";
+        var error = OmniRelayErrorAdapter.FromStatus(
+            OmniRelayStatusCode.Unimplemented,
+            message,
+            transport: transport);
+
+        return Err<TProcedure>(error);
+    }
+
+    private static ValueTask<Result<Unit>> ExecuteLifecycleWithPolicyAsync(
+        string componentName,
+        Func<CancellationToken, ValueTask> lifecycleAction,
+        ResultExecutionPolicy policy,
+        CancellationToken cancellationToken)
+    {
+        return Result.RetryWithPolicyAsync<Unit>(
+            async (_, token) =>
+            {
+                try
+                {
+                    await lifecycleAction(token).ConfigureAwait(false);
+                    return Ok(Unit.Value);
+                }
+                catch (Exception ex)
+                {
+                    return OmniRelayErrors.ToResult<Unit>(ex, componentName);
+                }
+            },
+            policy,
+            TimeProvider.System,
+            cancellationToken);
+    }
+
     private static async Task ProcessClientStreamAsync(
         ClientStreamCall call,
         ClientStreamRequestContext context,
@@ -748,15 +810,18 @@ public sealed class Dispatcher
                 continue;
             }
 
-            var lifecycle = _lifecycleStartOrder[index].Lifecycle;
+            var component = _lifecycleStartOrder[index];
+            var lifecycle = component.Lifecycle;
 
-            try
+            var rollbackResult = await ExecuteLifecycleWithPolicyAsync(
+                component.Name,
+                lifecycle.StopAsync,
+                _stopRetryPolicy,
+                CancellationToken.None).ConfigureAwait(false);
+
+            if (rollbackResult.IsFailure && rollbackResult.Error is not null)
             {
-                await lifecycle.StopAsync(CancellationToken.None).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                rollbackExceptions.Add(ex);
+                rollbackExceptions.Add(new ResultException(rollbackResult.Error));
             }
         }
 

@@ -1,4 +1,6 @@
 using System.Collections.Immutable;
+using Hugo;
+using Hugo.Policies;
 using OmniRelay.Core;
 using OmniRelay.Core.Middleware;
 using OmniRelay.Core.Transport;
@@ -34,6 +36,11 @@ public sealed class DispatcherOptions
 
     /// <summary>Gets the service name.</summary>
     public string ServiceName { get; }
+
+    /// <summary>Retry policy applied to lifecycle StartAsync operations.</summary>
+    public ResultExecutionPolicy StartRetryPolicy { get; set; } = ResultExecutionPolicy.None;
+    /// <summary>Retry policy applied to lifecycle StopAsync operations.</summary>
+    public ResultExecutionPolicy StopRetryPolicy { get; set; } = ResultExecutionPolicy.None;
 
     /// <summary>Global inbound unary middleware.</summary>
     public IList<IUnaryInboundMiddleware> UnaryInboundMiddleware { get; } = [];
