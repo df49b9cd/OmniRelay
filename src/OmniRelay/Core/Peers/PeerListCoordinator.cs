@@ -15,12 +15,19 @@ internal sealed class PeerListCoordinator : IPeerSubscriber, IDisposable
     private readonly object _lock = new();
     private readonly Dictionary<string, PeerRegistration> _registrations = new(StringComparer.Ordinal);
     private readonly List<IPeer> _availablePeers = [];
-    private readonly PeerAvailabilitySignal _availabilitySignal = new();
-    private readonly TimeProvider _timeProvider = TimeProvider.System;
+    private readonly PeerAvailabilitySignal _availabilitySignal;
+    private readonly TimeProvider _timeProvider;
     private bool _disposed;
 
     public PeerListCoordinator(IEnumerable<IPeer> peers)
+        : this(peers, TimeProvider.System)
     {
+    }
+
+    public PeerListCoordinator(IEnumerable<IPeer> peers, TimeProvider timeProvider)
+    {
+        _timeProvider = timeProvider ?? TimeProvider.System;
+        _availabilitySignal = new PeerAvailabilitySignal(_timeProvider);
         UpdatePeers(peers);
     }
 

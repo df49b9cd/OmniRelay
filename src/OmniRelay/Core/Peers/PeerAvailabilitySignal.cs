@@ -13,7 +13,7 @@ internal sealed class PeerAvailabilitySignal : IDisposable
     private readonly Channel<bool> _channel;
     private readonly TimeProvider _timeProvider;
 
-    public PeerAvailabilitySignal(TimeProvider? timeProvider = null)
+    public PeerAvailabilitySignal(TimeProvider timeProvider)
     {
         _timeProvider = timeProvider ?? TimeProvider.System;
         _channel = Go.MakeChannel<bool>(new BoundedChannelOptions(1)
