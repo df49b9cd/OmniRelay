@@ -41,7 +41,7 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
     private Dispatcher.Dispatcher? _dispatcher;
     private volatile bool _isDraining;
     private int _activeRequests;
-    private TaskCompletionSource<bool> _drainCompletion = CreateDrainTcs();
+    private Channel<bool> _drainSignal = CreateDrainSignal();
     private static readonly JsonSerializerOptions IntrospectionSerializerOptions = CreateIntrospectionSerializerOptions();
     private static readonly JsonSerializerOptions HealthSerializerOptions = CreateHealthSerializerOptions();
     private const string RetryAfterHeaderValue = "1";
@@ -366,18 +366,19 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
 
         _isDraining = true;
 
-        if (Volatile.Read(ref _activeRequests) == 0)
-        {
-            _drainCompletion.TrySetResult(true);
-        }
+        SignalDrainIfComplete();
 
         try
         {
-            await _drainCompletion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+            await WaitForDrainAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
             // fall through for fast shutdown
+        }
+        catch (ChannelClosedException)
+        {
+            // drain signal already satisfied
         }
 
         try
@@ -393,7 +394,7 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
         _app = null;
         _isDraining = false;
         Interlocked.Exchange(ref _activeRequests, 0);
-        _drainCompletion = CreateDrainTcs();
+        _drainSignal = CreateDrainSignal();
     }
 
     private static JsonSerializerOptions CreateIntrospectionSerializerOptions()
@@ -415,8 +416,27 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
         };
 
-    private static TaskCompletionSource<bool> CreateDrainTcs() =>
-        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private static Channel<bool> CreateDrainSignal() =>
+        Go.MakeChannel<bool>(new BoundedChannelOptions(1)
+        {
+            SingleReader = true,
+            SingleWriter = true,
+            AllowSynchronousContinuations = false
+        });
+
+    private Task WaitForDrainAsync(CancellationToken cancellationToken) =>
+        _drainSignal.Reader.ReadAsync(cancellationToken).AsTask();
+
+    private void SignalDrainIfComplete()
+    {
+        if (_isDraining && Volatile.Read(ref _activeRequests) == 0)
+        {
+            if (_drainSignal.Writer.TryWrite(true))
+            {
+                _drainSignal.Writer.TryComplete();
+            }
+        }
+    }
 
     private static bool TrySetQuicOption(QuicTransportOptions options, string propertyName, object value)
     {
@@ -452,10 +472,8 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
 
     private void CompleteRequest()
     {
-        if (Interlocked.Decrement(ref _activeRequests) == 0 && _isDraining)
-        {
-            _drainCompletion.TrySetResult(true);
-        }
+        Interlocked.Decrement(ref _activeRequests);
+        SignalDrainIfComplete();
     }
 
     private async Task HandleIntrospectAsync(HttpContext context)

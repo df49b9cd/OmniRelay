@@ -34,32 +34,50 @@ public sealed class HttpDuplexOutbound(Uri baseAddress) : IDuplexOutbound, IOutb
     /// <param name="request">The request metadata and optional initial payload.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A transport-backed duplex stream call or an error.</returns>
-    public async ValueTask<Result<IDuplexStreamCall>> CallAsync(
+    public ValueTask<Result<IDuplexStreamCall>> CallAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken = default)
     {
-        try
-        {
-            if (string.IsNullOrEmpty(request.Meta.Procedure))
-            {
-                return Err<IDuplexStreamCall>(OmniRelayErrorAdapter.FromStatus(
+        var task = Result.Ok(request)
+            .Ensure(
+                req => !string.IsNullOrWhiteSpace(req.Meta.Procedure),
+                req => OmniRelayErrorAdapter.FromStatus(
                     OmniRelayStatusCode.InvalidArgument,
                     "Procedure metadata is required for HTTP duplex streaming calls.",
-                    transport: "http"));
-            }
+                    transport: "http"))
+            .ThenAsync((req, token) => ConnectAsync(req, token).AsTask(), cancellationToken);
 
-            var socket = new ClientWebSocket();
+        return new ValueTask<Result<IDuplexStreamCall>>(task);
+    }
+
+    private async ValueTask<Result<IDuplexStreamCall>> ConnectAsync(
+        IRequest<ReadOnlyMemory<byte>> request,
+        CancellationToken cancellationToken)
+    {
+        var socket = new ClientWebSocket();
+
+        try
+        {
             ApplyHeaders(socket, request.Meta);
             var webSocketUri = BuildWebSocketUri(_baseAddress);
 
             await socket.ConnectAsync(webSocketUri, cancellationToken).ConfigureAwait(false);
 
             var responseMeta = new ResponseMeta(transport: "http", encoding: request.Meta.Encoding);
-            var transportCall = await HttpDuplexStreamTransportCall.CreateAsync(request.Meta, responseMeta, socket, cancellationToken).ConfigureAwait(false);
+            var transportCall = await HttpDuplexStreamTransportCall
+                .CreateAsync(request.Meta, responseMeta, socket, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (transportCall.IsFailure)
+            {
+                socket.Dispose();
+            }
+
             return transportCall;
         }
         catch (Exception ex)
         {
+            socket.Dispose();
             return OmniRelayErrors.ToResult<IDuplexStreamCall>(ex, transport: "http");
         }
     }

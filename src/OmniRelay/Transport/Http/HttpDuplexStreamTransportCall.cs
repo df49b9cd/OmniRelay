@@ -20,8 +20,7 @@ internal sealed class HttpDuplexStreamTransportCall : IDuplexStreamCall
     private readonly DuplexStreamCall _inner;
     private readonly CancellationTokenSource _cts;
     private readonly string _transport;
-    private Task? _requestPump;
-    private Task? _responsePump;
+    private ErrGroup? _pumpGroup;
 
     private HttpDuplexStreamTransportCall(
         ClientWebSocket socket,
@@ -70,8 +69,21 @@ internal sealed class HttpDuplexStreamTransportCall : IDuplexStreamCall
 
     private void StartPumps()
     {
-        _requestPump = PumpRequestsAsync(_cts.Token);
-        _responsePump = PumpResponsesAsync(_cts.Token);
+        var group = new ErrGroup(_cts.Token);
+
+        group.Go(async token =>
+        {
+            await PumpRequestsAsync(token).ConfigureAwait(false);
+            return Ok(Unit.Value);
+        });
+
+        group.Go(async token =>
+        {
+            await PumpResponsesAsync(token).ConfigureAwait(false);
+            return Ok(Unit.Value);
+        });
+
+        _pumpGroup = group;
     }
 
     /// <inheritdoc />
@@ -108,19 +120,21 @@ internal sealed class HttpDuplexStreamTransportCall : IDuplexStreamCall
     {
         await _cts.CancelAsync().ConfigureAwait(false);
 
-        try
+        if (_pumpGroup is not null)
         {
-            if (_requestPump is not null || _responsePump is not null)
+            try
             {
-                await Task.WhenAll(
-                        _requestPump ?? Task.CompletedTask,
-                        _responsePump ?? Task.CompletedTask)
-                    .ConfigureAwait(false);
+                await _pumpGroup.WaitAsync(CancellationToken.None).ConfigureAwait(false);
             }
-        }
-        catch
-        {
-            // swallow pump exceptions during disposal
+            catch
+            {
+                // swallow pump completion errors
+            }
+            finally
+            {
+                _pumpGroup.Dispose();
+                _pumpGroup = null;
+            }
         }
 
         if (_socket.State is WebSocketState.Open or WebSocketState.CloseReceived)
