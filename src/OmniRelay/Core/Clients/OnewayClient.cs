@@ -1,7 +1,6 @@
 using Hugo;
 using OmniRelay.Core.Middleware;
 using OmniRelay.Core.Transport;
-using static Hugo.Go;
 
 namespace OmniRelay.Core.Clients;
 
@@ -32,30 +31,25 @@ public sealed class OnewayClient<TRequest>
     /// <summary>
     /// Performs a oneway RPC with the typed request and returns the acknowledgement.
     /// </summary>
-    public async ValueTask<Result<OnewayAck>> CallAsync(Request<TRequest> request, CancellationToken cancellationToken = default)
-    {
-        var meta = EnsureEncoding(request.Meta);
-
-        var encodeResult = _codec.EncodeRequest(request.Body, meta);
-        if (encodeResult.IsFailure)
-        {
-            return Err<OnewayAck>(encodeResult.Error!);
-        }
-
-        var outboundRequest = new Request<ReadOnlyMemory<byte>>(meta, encodeResult.Value);
-        var ackResult = await _pipeline(outboundRequest, cancellationToken).ConfigureAwait(false);
-        return ackResult;
-    }
+    public async ValueTask<Result<OnewayAck>> CallAsync(Request<TRequest> request, CancellationToken cancellationToken = default) =>
+        await EncodeRequest(request)
+            .ThenAsync((outboundRequest, token) => _pipeline(outboundRequest, token).AsTask(), cancellationToken)
+            .ConfigureAwait(false);
 
     private RequestMeta EnsureEncoding(RequestMeta meta)
     {
         ArgumentNullException.ThrowIfNull(meta);
 
-        if (string.IsNullOrWhiteSpace(meta.Encoding))
-        {
-            return meta with { Encoding = _codec.Encoding };
-        }
+        return string.IsNullOrWhiteSpace(meta.Encoding)
+            ? meta with { Encoding = _codec.Encoding }
+            : meta;
+    }
 
-        return meta;
+    private Result<Request<ReadOnlyMemory<byte>>> EncodeRequest(Request<TRequest> request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var meta = EnsureEncoding(request.Meta);
+        return _codec.EncodeRequest(request.Body, meta)
+            .Map(payload => new Request<ReadOnlyMemory<byte>>(meta, payload));
     }
 }

@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.Threading;
 using Hugo;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -34,6 +36,8 @@ public sealed class TeeUnaryOutbound : IUnaryOutbound, IOutboundDiagnostic
     private readonly IUnaryOutbound _shadow;
     private readonly TeeOptions _options;
     private readonly ILogger _logger;
+    private readonly WaitGroup _shadowWork = new();
+    private CancellationTokenSource _shadowCts = new();
 
     /// <summary>
     /// Creates a tee unary outbound given primary and shadow outbounds.
@@ -72,8 +76,8 @@ public sealed class TeeUnaryOutbound : IUnaryOutbound, IOutboundDiagnostic
     /// <inheritdoc />
     public async ValueTask StopAsync(CancellationToken cancellationToken = default)
     {
-        await _shadow.StopAsync(cancellationToken).ConfigureAwait(false);
-        await _primary.StopAsync(cancellationToken).ConfigureAwait(false);
+        await DrainShadowWorkAsync(cancellationToken).ConfigureAwait(false);
+        await StopOutboundsAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -143,11 +147,14 @@ public sealed class TeeUnaryOutbound : IUnaryOutbound, IOutboundDiagnostic
         var payloadCopy = request.Body.ToArray();
         var teeRequest = new Request<ReadOnlyMemory<byte>>(teeMeta, payloadCopy);
 
-        _ = Task.Run(async () =>
+        _shadowWork.Go(async token =>
         {
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, _shadowCts.Token);
+            var shadowToken = linked.Token;
+
             try
             {
-                var result = await _shadow.CallAsync(teeRequest, CancellationToken.None).ConfigureAwait(false);
+                var result = await _shadow.CallAsync(teeRequest, shadowToken).ConfigureAwait(false);
                 if (result.IsFailure)
                 {
                     _logger.LogDebug(
@@ -157,6 +164,9 @@ public sealed class TeeUnaryOutbound : IUnaryOutbound, IOutboundDiagnostic
                         result.Error?.Message);
                 }
             }
+            catch (OperationCanceledException) when (shadowToken.IsCancellationRequested)
+            {
+            }
             catch (Exception ex)
             {
                 _logger.LogWarning(
@@ -165,7 +175,7 @@ public sealed class TeeUnaryOutbound : IUnaryOutbound, IOutboundDiagnostic
                     teeMeta.Service,
                     teeMeta.Procedure);
             }
-        });
+        }, _shadowCts.Token);
     }
 
     private RequestMeta PrepareShadowMeta(RequestMeta meta)
@@ -176,6 +186,72 @@ public sealed class TeeUnaryOutbound : IUnaryOutbound, IOutboundDiagnostic
         }
 
         return meta.WithHeader(_options.ShadowHeaderName, _options.ShadowHeaderValue);
+    }
+
+    private async ValueTask DrainShadowWorkAsync(CancellationToken cancellationToken)
+    {
+        _shadowCts.Cancel();
+
+        try
+        {
+            await _shadowWork.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            ReplaceShadowCancellationSource();
+        }
+    }
+
+    private void ReplaceShadowCancellationSource()
+    {
+        var previous = Interlocked.Exchange(ref _shadowCts, new CancellationTokenSource());
+        previous.Dispose();
+    }
+
+    private async ValueTask StopOutboundsAsync(CancellationToken cancellationToken)
+    {
+        var exceptions = new ConcurrentQueue<Exception>();
+        using var group = new ErrGroup(cancellationToken);
+
+        group.Go(async token =>
+        {
+            try
+            {
+                await _shadow.StopAsync(token).ConfigureAwait(false);
+                return Result.Ok(Go.Unit.Value);
+            }
+            catch (Exception ex)
+            {
+                exceptions.Enqueue(ex);
+                throw;
+            }
+        });
+
+        group.Go(async token =>
+        {
+            try
+            {
+                await _primary.StopAsync(token).ConfigureAwait(false);
+                return Result.Ok(Go.Unit.Value);
+            }
+            catch (Exception ex)
+            {
+                exceptions.Enqueue(ex);
+                throw;
+            }
+        });
+
+        var waitResult = await group.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+        if (!exceptions.IsEmpty)
+        {
+            throw new AggregateException(exceptions);
+        }
+
+        if (waitResult.IsFailure && waitResult.Error is { } error)
+        {
+            throw new ResultException(error);
+        }
     }
 }
 
@@ -188,6 +264,8 @@ public sealed class TeeOnewayOutbound : IOnewayOutbound, IOutboundDiagnostic
     private readonly IOnewayOutbound _shadow;
     private readonly TeeOptions _options;
     private readonly ILogger _logger;
+    private readonly WaitGroup _shadowWork = new();
+    private CancellationTokenSource _shadowCts = new();
 
     /// <summary>
     /// Creates a tee oneway outbound given primary and shadow outbounds.
@@ -226,8 +304,8 @@ public sealed class TeeOnewayOutbound : IOnewayOutbound, IOutboundDiagnostic
     /// <inheritdoc />
     public async ValueTask StopAsync(CancellationToken cancellationToken = default)
     {
-        await _shadow.StopAsync(cancellationToken).ConfigureAwait(false);
-        await _primary.StopAsync(cancellationToken).ConfigureAwait(false);
+        await DrainShadowWorkAsync(cancellationToken).ConfigureAwait(false);
+        await StopOutboundsAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -297,11 +375,14 @@ public sealed class TeeOnewayOutbound : IOnewayOutbound, IOutboundDiagnostic
         var payloadCopy = request.Body.ToArray();
         var teeRequest = new Request<ReadOnlyMemory<byte>>(teeMeta, payloadCopy);
 
-        _ = Task.Run(async () =>
+        _shadowWork.Go(async token =>
         {
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, _shadowCts.Token);
+            var shadowToken = linked.Token;
+
             try
             {
-                var result = await _shadow.CallAsync(teeRequest, CancellationToken.None).ConfigureAwait(false);
+                var result = await _shadow.CallAsync(teeRequest, shadowToken).ConfigureAwait(false);
                 if (result.IsFailure)
                 {
                     _logger.LogDebug(
@@ -311,6 +392,9 @@ public sealed class TeeOnewayOutbound : IOnewayOutbound, IOutboundDiagnostic
                         result.Error?.Message);
                 }
             }
+            catch (OperationCanceledException) when (shadowToken.IsCancellationRequested)
+            {
+            }
             catch (Exception ex)
             {
                 _logger.LogWarning(
@@ -319,7 +403,7 @@ public sealed class TeeOnewayOutbound : IOnewayOutbound, IOutboundDiagnostic
                     teeMeta.Service,
                     teeMeta.Procedure);
             }
-        });
+        }, _shadowCts.Token);
     }
 
     private RequestMeta PrepareShadowMeta(RequestMeta meta)
@@ -330,5 +414,71 @@ public sealed class TeeOnewayOutbound : IOnewayOutbound, IOutboundDiagnostic
         }
 
         return meta.WithHeader(_options.ShadowHeaderName, _options.ShadowHeaderValue);
+    }
+
+    private async ValueTask DrainShadowWorkAsync(CancellationToken cancellationToken)
+    {
+        _shadowCts.Cancel();
+
+        try
+        {
+            await _shadowWork.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            ReplaceShadowCancellationSource();
+        }
+    }
+
+    private void ReplaceShadowCancellationSource()
+    {
+        var previous = Interlocked.Exchange(ref _shadowCts, new CancellationTokenSource());
+        previous.Dispose();
+    }
+
+    private async ValueTask StopOutboundsAsync(CancellationToken cancellationToken)
+    {
+        var exceptions = new ConcurrentQueue<Exception>();
+        using var group = new ErrGroup(cancellationToken);
+
+        group.Go(async token =>
+        {
+            try
+            {
+                await _shadow.StopAsync(token).ConfigureAwait(false);
+                return Result.Ok(Go.Unit.Value);
+            }
+            catch (Exception ex)
+            {
+                exceptions.Enqueue(ex);
+                throw;
+            }
+        });
+
+        group.Go(async token =>
+        {
+            try
+            {
+                await _primary.StopAsync(token).ConfigureAwait(false);
+                return Result.Ok(Go.Unit.Value);
+            }
+            catch (Exception ex)
+            {
+                exceptions.Enqueue(ex);
+                throw;
+            }
+        });
+
+        var waitResult = await group.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+        if (!exceptions.IsEmpty)
+        {
+            throw new AggregateException(exceptions);
+        }
+
+        if (waitResult.IsFailure && waitResult.Error is { } error)
+        {
+            throw new ResultException(error);
+        }
     }
 }

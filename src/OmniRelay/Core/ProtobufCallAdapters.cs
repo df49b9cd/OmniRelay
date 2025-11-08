@@ -26,32 +26,17 @@ public static class ProtobufCallAdapters
 
         return async (request, cancellationToken) =>
         {
-            var decode = codec.DecodeRequest(request.Body, request.Meta);
-            if (decode.IsFailure)
-            {
-                return Err<Response<ReadOnlyMemory<byte>>>(decode.Error!);
-            }
+            var transport = request.Meta.Transport ?? "grpc";
 
-            Response<TResponse> response;
+            var handlerResult = await codec
+                .DecodeRequest(request.Body, request.Meta)
+                .Map(decoded => new Request<TRequest>(request.Meta, decoded))
+                .ThenAsync(
+                    (typedRequest, token) => InvokeHandlerSafeAsync(handler, typedRequest, transport, token).AsTask(),
+                    cancellationToken)
+                .ConfigureAwait(false);
 
-            try
-            {
-                var typedRequest = new Request<TRequest>(request.Meta, decode.Value);
-                response = await handler(typedRequest, cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                return OmniRelayErrors.ToResult<Response<ReadOnlyMemory<byte>>>(ex, request.Meta.Transport ?? "grpc");
-            }
-
-            var responseMeta = EnsureResponseMeta(response.Meta, codec.Encoding);
-            var encode = codec.EncodeResponse(response.Body, responseMeta);
-            if (encode.IsFailure)
-            {
-                return Err<Response<ReadOnlyMemory<byte>>>(encode.Error!);
-            }
-
-            return Ok(Response<ReadOnlyMemory<byte>>.Create(encode.Value, responseMeta));
+            return handlerResult.Then(response => EncodeResponse(codec, response));
         };
     }
 
@@ -85,25 +70,10 @@ public static class ProtobufCallAdapters
         return async (context, cancellationToken) =>
         {
             var streamContext = new ProtobufClientStreamContext<TRequest, TResponse>(codec, context);
-            Response<TResponse> response;
+            var transport = context.Meta.Transport ?? "stream";
 
-            try
-            {
-                response = await handler(streamContext, cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                return OmniRelayErrors.ToResult<Response<ReadOnlyMemory<byte>>>(ex, context.Meta.Transport ?? "stream");
-            }
-
-            var responseMeta = EnsureResponseMeta(response.Meta, codec.Encoding);
-            var encode = codec.EncodeResponse(response.Body, responseMeta);
-            if (encode.IsFailure)
-            {
-                return Err<Response<ReadOnlyMemory<byte>>>(encode.Error!);
-            }
-
-            return Ok(Response<ReadOnlyMemory<byte>>.Create(encode.Value, responseMeta));
+            var handlerResult = await InvokeHandlerSafeAsync(handler, streamContext, transport, cancellationToken).ConfigureAwait(false);
+            return handlerResult.Then(response => EncodeResponse(codec, response));
         };
     }
 
@@ -130,19 +100,17 @@ public static class ProtobufCallAdapters
         where TRequest : class, IMessage<TRequest>
         where TResponse : class, IMessage<TResponse>
     {
-        var decode = codec.DecodeRequest(request.Body, request.Meta);
-        if (decode.IsFailure)
-        {
-            return Err<IStreamCall>(decode.Error!);
-        }
+        return codec
+            .DecodeRequest(request.Body, request.Meta)
+            .Map(decoded =>
+            {
+                var call = ServerStreamCall.Create(request.Meta, new ResponseMeta(encoding: codec.Encoding));
+                var writer = new ProtobufServerStreamWriter<TRequest, TResponse>(codec, call, request.Meta.Transport ?? "stream");
+                var typedRequest = new Request<TRequest>(request.Meta, decoded);
 
-        var call = ServerStreamCall.Create(request.Meta, new ResponseMeta(encoding: codec.Encoding));
-        var writer = new ProtobufServerStreamWriter<TRequest, TResponse>(codec, call, request.Meta.Transport ?? "stream");
-        var typedRequest = new Request<TRequest>(request.Meta, decode.Value);
-
-        _ = RunServerStreamAsync(typedRequest, writer, handler, cancellationToken);
-
-        return Ok((IStreamCall)call);
+                _ = RunServerStreamAsync(typedRequest, writer, handler, cancellationToken);
+                return (IStreamCall)call;
+            });
     }
 
     private static async Task RunServerStreamAsync<TRequest, TResponse>(
@@ -195,6 +163,34 @@ public static class ProtobufCallAdapters
         catch (Exception ex)
         {
             await context.FailAsync(ex, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private static Result<Response<ReadOnlyMemory<byte>>> EncodeResponse<TRequest, TResponse>(
+        ProtobufCodec<TRequest, TResponse> codec,
+        Response<TResponse> response)
+        where TRequest : class, IMessage<TRequest>
+        where TResponse : class, IMessage<TResponse>
+    {
+        var responseMeta = EnsureResponseMeta(response.Meta, codec.Encoding);
+        return codec.EncodeResponse(response.Body, responseMeta)
+            .Map(payload => Response<ReadOnlyMemory<byte>>.Create(payload, responseMeta));
+    }
+
+    private static async ValueTask<Result<Response<TResponse>>> InvokeHandlerSafeAsync<TArg, TResponse>(
+        Func<TArg, CancellationToken, ValueTask<Response<TResponse>>> handler,
+        TArg argument,
+        string transport,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await handler(argument, cancellationToken).ConfigureAwait(false);
+            return Ok(response);
+        }
+        catch (Exception ex)
+        {
+            return OmniRelayErrors.ToResult<Response<TResponse>>(ex, transport);
         }
     }
 

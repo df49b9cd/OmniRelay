@@ -9,6 +9,7 @@ public sealed class PeerCircuitBreaker
     private readonly PeerCircuitBreakerOptions _options;
     private readonly double _baseDelayMilliseconds;
     private readonly double _maxDelayMilliseconds;
+    private readonly TimeProvider _timeProvider;
     private readonly Lock _lock = new();
     private int _failureCount;
     private DateTimeOffset? _suspendedUntil;
@@ -47,6 +48,7 @@ public sealed class PeerCircuitBreaker
 
         _baseDelayMilliseconds = _options.BaseDelay.TotalMilliseconds;
         _maxDelayMilliseconds = _options.MaxDelay.TotalMilliseconds;
+        _timeProvider = _options.TimeProvider ?? TimeProvider.System;
     }
 
     /// <summary>Gets the current consecutive failure count.</summary>

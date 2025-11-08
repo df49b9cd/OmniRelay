@@ -1,7 +1,6 @@
 using Hugo;
 using OmniRelay.Core.Middleware;
 using OmniRelay.Core.Transport;
-using static Hugo.Go;
 
 namespace OmniRelay.Core.Clients;
 
@@ -28,41 +27,29 @@ public sealed class UnaryClient<TRequest, TResponse>
     /// </summary>
     public async ValueTask<Result<Response<TResponse>>> CallAsync(Request<TRequest> request, CancellationToken cancellationToken = default)
     {
-        var meta = EnsureEncoding(request.Meta);
+        var outboundResult = await EncodeRequest(request)
+            .ThenAsync((raw, token) => _pipeline(raw, token).AsTask(), cancellationToken)
+            .ConfigureAwait(false);
 
-        var encodeResult = _codec.EncodeRequest(request.Body, meta);
-        if (encodeResult.IsFailure)
-        {
-            return Err<Response<TResponse>>(encodeResult.Error!);
-        }
-
-        var rawRequest = new Request<ReadOnlyMemory<byte>>(meta, encodeResult.Value);
-        var outboundResult = await _pipeline(rawRequest, cancellationToken).ConfigureAwait(false);
-
-        if (outboundResult.IsFailure)
-        {
-            return Err<Response<TResponse>>(outboundResult.Error!);
-        }
-
-        var decodeResult = _codec.DecodeResponse(outboundResult.Value.Body, outboundResult.Value.Meta);
-        if (decodeResult.IsFailure)
-        {
-            return Err<Response<TResponse>>(decodeResult.Error!);
-        }
-
-        var response = Response<TResponse>.Create(decodeResult.Value, outboundResult.Value.Meta);
-        return Ok(response);
+        return outboundResult.Then(response => _codec
+            .DecodeResponse(response.Body, response.Meta)
+            .Map(decoded => Response<TResponse>.Create(decoded, response.Meta)));
     }
 
     private RequestMeta EnsureEncoding(RequestMeta meta)
     {
         ArgumentNullException.ThrowIfNull(meta);
 
-        if (string.IsNullOrWhiteSpace(meta.Encoding))
-        {
-            return meta with { Encoding = _codec.Encoding };
-        }
+        return string.IsNullOrWhiteSpace(meta.Encoding)
+            ? meta with { Encoding = _codec.Encoding }
+            : meta;
+    }
 
-        return meta;
+    private Result<Request<ReadOnlyMemory<byte>>> EncodeRequest(Request<TRequest> request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var meta = EnsureEncoding(request.Meta);
+        return _codec.EncodeRequest(request.Body, meta)
+            .Map(payload => new Request<ReadOnlyMemory<byte>>(meta, payload));
     }
 }
