@@ -1,7 +1,9 @@
 using System.Diagnostics;
+using System.Runtime.ExceptionServices;
 using Grpc.AspNetCore.Server.Model;
 using Grpc.Core;
 using Hugo;
+using static Hugo.Go;
 using OmniRelay.Core;
 using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
@@ -558,24 +560,40 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                     using var pumpCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                     var pumpToken = pumpCts.Token;
 
-                    var requestPump = PumpRequestsAsync();
-                    var responsePump = PumpResponsesAsync();
+                    using var pumpGroup = new ErrGroup(pumpToken);
+                    ExceptionDispatchInfo? pumpFailure = null;
 
-                    await Task.WhenAll(requestPump, responsePump).ConfigureAwait(false);
+                    void CapturePumpFailure(Exception exception) =>
+                        Interlocked.CompareExchange(ref pumpFailure, ExceptionDispatchInfo.Capture(exception), null);
 
-                    async Task PumpRequestsAsync()
+                    pumpGroup.Go(async token =>
+                    {
+                        await PumpRequestsAsync(token).ConfigureAwait(false);
+                        return Ok(Unit.Value);
+                    });
+
+                    pumpGroup.Go(async token =>
+                    {
+                        await PumpResponsesAsync(token).ConfigureAwait(false);
+                        return Ok(Unit.Value);
+                    });
+
+                    await pumpGroup.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+                    pumpFailure?.Throw();
+
+                    async Task PumpRequestsAsync(CancellationToken token)
                     {
                         try
                         {
-                            await foreach (var payload in requestStream.ReadAllAsync(pumpToken).ConfigureAwait(false))
+                            await foreach (var payload in requestStream.ReadAllAsync(token).ConfigureAwait(false))
                             {
-                                pumpToken.ThrowIfCancellationRequested();
+                                token.ThrowIfCancellationRequested();
                                 Interlocked.Increment(ref requestCount);
                                 GrpcTransportMetrics.ServerDuplexRequestMessages.Add(1, metricTags);
-                                await duplexCall.RequestWriter.WriteAsync(payload, pumpToken).ConfigureAwait(false);
+                                await duplexCall.RequestWriter.WriteAsync(payload, token).ConfigureAwait(false);
                             }
 
-                            await duplexCall.CompleteRequestsAsync(cancellationToken: pumpToken).ConfigureAwait(false);
+                            await duplexCall.CompleteRequestsAsync(cancellationToken: token).ConfigureAwait(false);
                         }
                         catch (OperationCanceledException ex)
                         {
@@ -616,7 +634,7 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                         }
                     }
 
-                    async Task PumpResponsesAsync()
+                    async Task PumpResponsesAsync(CancellationToken token)
                     {
                         var headersSent = false;
 
@@ -638,10 +656,10 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
 
                         try
                         {
-                            await foreach (var payload in duplexCall.ResponseReader.ReadAllAsync(pumpToken).ConfigureAwait(false))
+                            await foreach (var payload in duplexCall.ResponseReader.ReadAllAsync(token).ConfigureAwait(false))
                             {
                                 await EnsureHeadersAsync().ConfigureAwait(false);
-                                pumpToken.ThrowIfCancellationRequested();
+                                token.ThrowIfCancellationRequested();
                                 if (duplexMaxMessageBytes is { } maxBytes && payload.Length > maxBytes)
                                 {
                                     var error = OmniRelayErrorAdapter.FromStatus(
@@ -658,17 +676,18 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                                     GrpcTransportDiagnostics.RecordException(activity, rpcException, status.StatusCode, status.Detail);
                                     RecordServerDuplexMetrics(status.StatusCode);
                                     pumpCts.Cancel();
-                                    throw rpcException;
+                                    CapturePumpFailure(rpcException);
+                                    return;
                                 }
 
                                 Interlocked.Increment(ref responseCount);
                                 GrpcTransportMetrics.ServerDuplexResponseMessages.Add(1, metricTags);
-                                await WriteGrpcMessageAsync(responseStream, payload, pumpToken, duplexWriteTimeout).ConfigureAwait(false);
+                                await WriteGrpcMessageAsync(responseStream, payload, token, duplexWriteTimeout).ConfigureAwait(false);
                             }
 
                             await EnsureHeadersAsync().ConfigureAwait(false);
                             ApplySuccessTrailers(callContext, duplexCall.ResponseMeta);
-                            await duplexCall.CompleteResponsesAsync(cancellationToken: pumpToken).ConfigureAwait(false);
+                            await duplexCall.CompleteResponsesAsync(cancellationToken: token).ConfigureAwait(false);
                             RecordServerDuplexMetrics(StatusCode.OK);
                         }
                         catch (TimeoutException)
@@ -688,7 +707,8 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                             GrpcTransportDiagnostics.RecordException(activity, rpcException, status.StatusCode, status.Detail);
                             RecordServerDuplexMetrics(status.StatusCode);
                             pumpCts.Cancel();
-                            throw rpcException;
+                            CapturePumpFailure(rpcException);
+                            return;
                         }
                         catch (OperationCanceledException)
                         {
@@ -706,12 +726,14 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                             GrpcTransportDiagnostics.RecordException(activity, rpcException, status.StatusCode, status.Detail);
                             RecordServerDuplexMetrics(status.StatusCode);
                             pumpCts.Cancel();
-                            throw rpcException;
+                            CapturePumpFailure(rpcException);
+                            return;
                         }
-                        catch (RpcException)
+                        catch (RpcException rpcException)
                         {
                             pumpCts.Cancel();
-                            throw;
+                            CapturePumpFailure(rpcException);
+                            return;
                         }
                         catch (Exception ex)
                         {
@@ -725,7 +747,8 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                             GrpcTransportDiagnostics.RecordException(activity, rpcException, status.StatusCode, status.Detail);
                             RecordServerDuplexMetrics(status.StatusCode);
                             pumpCts.Cancel();
-                            throw rpcException;
+                            CapturePumpFailure(rpcException);
+                            return;
                         }
                     }
 

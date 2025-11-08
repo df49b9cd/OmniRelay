@@ -2,6 +2,7 @@ using System.Net;
 using System.Security.Authentication;
 using Grpc.AspNetCore.Server.Model;
 using Grpc.Core;
+using Hugo;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
@@ -35,8 +36,7 @@ public sealed class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcServerInter
     private GrpcServerInterceptorRegistry? _serverInterceptorRegistry;
     private int _interceptorsConfigured;
     private volatile bool _isDraining;
-    private int _activeCalls;
-    private TaskCompletionSource<bool> _drainCompletion = CreateDrainTcs();
+    private readonly WaitGroup _activeCalls = new();
     private const string RetryAfterMetadataName = "retry-after";
     private const string RetryAfterMetadataValue = "1";
 
@@ -430,22 +430,13 @@ public sealed class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcServerInter
             return false;
         }
 
-        Interlocked.Increment(ref _activeCalls);
+        _activeCalls.Add(1);
         scope = new CallScope(this);
         rejection = null;
         return true;
     }
 
-    private void OnCallCompleted()
-    {
-        if (Interlocked.Decrement(ref _activeCalls) == 0 && _isDraining)
-        {
-            _drainCompletion.TrySetResult(true);
-        }
-    }
-
-    private static TaskCompletionSource<bool> CreateDrainTcs() =>
-        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private void OnCallCompleted() => _activeCalls.Done();
 
     private static bool TrySetQuicOption(QuicTransportOptions options, string propertyName, object value)
     {
@@ -503,14 +494,9 @@ public sealed class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcServerInter
 
         _isDraining = true;
 
-        if (Volatile.Read(ref _activeCalls) == 0)
-        {
-            _drainCompletion.TrySetResult(true);
-        }
-
         try
         {
-            await _drainCompletion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+            await _activeCalls.WaitAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -529,7 +515,5 @@ public sealed class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcServerInter
         await _app.DisposeAsync().ConfigureAwait(false);
         _app = null;
         _isDraining = false;
-        Interlocked.Exchange(ref _activeCalls, 0);
-        _drainCompletion = CreateDrainTcs();
     }
 }

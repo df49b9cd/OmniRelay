@@ -18,8 +18,7 @@ internal sealed class GrpcDuplexStreamTransportCall : IDuplexStreamCall
     private readonly AsyncDuplexStreamingCall<byte[], byte[]> _call;
     private readonly DuplexStreamCall _inner;
     private readonly CancellationTokenSource _cts;
-    private readonly Task _requestPump;
-    private readonly Task _responsePump;
+    private ErrGroup? _pumpGroup;
     private readonly KeyValuePair<string, object?>[] _baseTags;
     private readonly long _startTimestamp = Stopwatch.GetTimestamp();
     private long _requestCount;
@@ -36,8 +35,26 @@ internal sealed class GrpcDuplexStreamTransportCall : IDuplexStreamCall
         _inner = DuplexStreamCall.Create(requestMeta, responseMeta);
         _baseTags = GrpcTransportMetrics.CreateBaseTags(requestMeta);
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        _requestPump = PumpRequestsAsync(_cts.Token);
-        _responsePump = PumpResponsesAsync(_cts.Token);
+        StartPumps();
+    }
+
+    private void StartPumps()
+    {
+        var group = new ErrGroup(_cts.Token);
+
+        group.Go(async token =>
+        {
+            await PumpRequestsAsync(token).ConfigureAwait(false);
+            return Ok(Unit.Value);
+        });
+
+        group.Go(async token =>
+        {
+            await PumpResponsesAsync(token).ConfigureAwait(false);
+            return Ok(Unit.Value);
+        });
+
+        _pumpGroup = group;
     }
 
     /// <summary>
@@ -105,21 +122,27 @@ internal sealed class GrpcDuplexStreamTransportCall : IDuplexStreamCall
     {
         await _cts.CancelAsync().ConfigureAwait(false);
 
-        try
+        if (_pumpGroup is not null)
         {
-            await Task.WhenAll(_requestPump, _responsePump).ConfigureAwait(false);
+            try
+            {
+                await _pumpGroup.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+            }
+            catch
+            {
+                // ignored
+            }
+            finally
+            {
+                _pumpGroup.Dispose();
+                _pumpGroup = null;
+            }
         }
-        catch
-        {
-            // ignored
-        }
-        finally
-        {
-            _call.Dispose();
-            await _inner.DisposeAsync().ConfigureAwait(false);
-            _cts.Dispose();
-            RecordCompletion(StatusCode.Cancelled);
-        }
+
+        _call.Dispose();
+        await _inner.DisposeAsync().ConfigureAwait(false);
+        _cts.Dispose();
+        RecordCompletion(StatusCode.Cancelled);
     }
 
     private async Task PumpRequestsAsync(CancellationToken cancellationToken)
