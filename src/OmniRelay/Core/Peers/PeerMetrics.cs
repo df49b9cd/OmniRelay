@@ -12,31 +12,31 @@ internal static class PeerMetrics
     private static readonly Meter Meter = new("OmniRelay.Core.Peers");
 
     private static readonly UpDownCounter<long> InflightCounter =
-        Meter.CreateUpDownCounter<long>("yarpcore.peer.inflight", unit: "requests", description: "In-flight requests per peer.");
+        Meter.CreateUpDownCounter<long>("omnirelay.peer.inflight", unit: "requests", description: "In-flight requests per peer.");
 
     private static readonly Counter<long> SuccessCounter =
-        Meter.CreateCounter<long>("yarpcore.peer.successes", unit: "requests", description: "Successful requests per peer.");
+        Meter.CreateCounter<long>("omnirelay.peer.successes", unit: "requests", description: "Successful requests per peer.");
 
     private static readonly Counter<long> FailureCounter =
-        Meter.CreateCounter<long>("yarpcore.peer.failures", unit: "requests", description: "Failed requests per peer.");
+        Meter.CreateCounter<long>("omnirelay.peer.failures", unit: "requests", description: "Failed requests per peer.");
 
     private static readonly Counter<long> LeaseRejectedCounter =
-        Meter.CreateCounter<long>("yarpcore.peer.lease_rejected", unit: "requests", description: "Peer lease attempts rejected by peers.");
+        Meter.CreateCounter<long>("omnirelay.peer.lease_rejected", unit: "requests", description: "Peer lease attempts rejected by peers.");
 
     private static readonly Counter<long> PoolExhaustedCounter =
-        Meter.CreateCounter<long>("yarpcore.peer.pool_exhausted", unit: "requests", description: "Times an outbound exhausted all available peers.");
+        Meter.CreateCounter<long>("omnirelay.peer.pool_exhausted", unit: "requests", description: "Times an outbound exhausted all available peers.");
 
     private static readonly Histogram<double> LeaseDurationHistogram =
-        Meter.CreateHistogram<double>("yarpcore.peer.lease.duration", unit: "ms", description: "Observed lease durations by peer.");
+        Meter.CreateHistogram<double>("omnirelay.peer.lease.duration", unit: "ms", description: "Observed lease durations by peer.");
 
     private static readonly Counter<long> RetryScheduledCounter =
-        Meter.CreateCounter<long>("yarpcore.retry.scheduled", unit: "attempts", description: "Retry attempts scheduled after peer failures.");
+        Meter.CreateCounter<long>("omnirelay.retry.scheduled", unit: "attempts", description: "Retry attempts scheduled after peer failures.");
 
     private static readonly Counter<long> RetryExhaustedCounter =
-        Meter.CreateCounter<long>("yarpcore.retry.exhausted", unit: "requests", description: "Requests that exhausted their retry budget.");
+        Meter.CreateCounter<long>("omnirelay.retry.exhausted", unit: "requests", description: "Requests that exhausted their retry budget.");
 
     private static readonly Counter<long> RetrySucceededCounter =
-        Meter.CreateCounter<long>("yarpcore.retry.succeeded", unit: "requests", description: "Requests that succeeded after one or more retries.");
+        Meter.CreateCounter<long>("omnirelay.retry.succeeded", unit: "requests", description: "Requests that succeeded after one or more retries.");
 
     internal static void RecordLeaseAcquired(RequestMeta meta, string peerIdentifier) => InflightCounter.Add(1, CreatePeerTags(meta, peerIdentifier));
 
