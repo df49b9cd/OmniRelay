@@ -1,3 +1,4 @@
+
 namespace OmniRelay.Core.Peers;
 
 /// <summary>
@@ -8,6 +9,7 @@ public sealed class PeerCircuitBreaker
     private readonly PeerCircuitBreakerOptions _options;
     private readonly double _baseDelayMilliseconds;
     private readonly double _maxDelayMilliseconds;
+    private readonly Lock _lock = new();
     private int _failureCount;
     private DateTimeOffset? _suspendedUntil;
     private bool _isHalfOpen;
@@ -48,13 +50,41 @@ public sealed class PeerCircuitBreaker
     }
 
     /// <summary>Gets the current consecutive failure count.</summary>
-    public int FailureCount => _failureCount;
+    public int FailureCount
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _failureCount;
+            }
+        }
+    }
 
     /// <summary>Gets when the breaker will exit suspension, if suspended.</summary>
-    public DateTimeOffset? SuspendedUntil => _suspendedUntil;
+    public DateTimeOffset? SuspendedUntil
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _suspendedUntil;
+            }
+        }
+    }
 
     /// <summary>Gets a value indicating whether the breaker is currently suspended.</summary>
-    public bool IsSuspended => _suspendedUntil is { } until && until > _options.TimeProvider.GetUtcNow();
+    public bool IsSuspended
+    {
+        get
+        {
+            var now = _options.TimeProvider.GetUtcNow();
+            lock (_lock)
+            {
+                return _suspendedUntil is { } until && until > now;
+            }
+        }
+    }
 
     /// <summary>
     /// Attempts to enter the peer for a request, honoring suspension and half-open limits.
@@ -63,44 +93,50 @@ public sealed class PeerCircuitBreaker
     {
         var now = _options.TimeProvider.GetUtcNow();
 
-        if (_suspendedUntil is not { } until)
+        lock (_lock)
         {
+            if (_suspendedUntil is not { } until)
+            {
+                return true;
+            }
+
+            if (until > now)
+            {
+                return false;
+            }
+
+            if (!_isHalfOpen)
+            {
+                EnterHalfOpenLocked();
+            }
+
+            if (_halfOpenAttempts >= _options.HalfOpenMaxAttempts)
+            {
+                return false;
+            }
+
+            _halfOpenAttempts++;
+
             return true;
         }
-
-        if (until > now)
-        {
-            return false;
-        }
-
-        if (!_isHalfOpen)
-        {
-            EnterHalfOpen();
-        }
-
-        if (_halfOpenAttempts >= _options.HalfOpenMaxAttempts)
-        {
-            return false;
-        }
-
-        _halfOpenAttempts++;
-
-        return true;
     }
 
     /// <summary>Records a successful attempt, potentially resetting the breaker or progressing half-open.</summary>
     public void OnSuccess()
     {
-        if (_isHalfOpen)
+        lock (_lock)
         {
-            _halfOpenSuccesses++;
-            if (_halfOpenSuccesses < _options.HalfOpenSuccessThreshold)
+            if (_isHalfOpen)
             {
-                return;
+                _halfOpenSuccesses++;
+                if (_halfOpenSuccesses < _options.HalfOpenSuccessThreshold)
+                {
+                    return;
+                }
             }
-        }
 
-        Reset();
+            ResetLocked();
+        }
     }
 
     /// <summary>Records a failed attempt and may transition to suspended or half-open states.</summary>
@@ -108,34 +144,37 @@ public sealed class PeerCircuitBreaker
     {
         var now = _options.TimeProvider.GetUtcNow();
 
-        if (_isHalfOpen)
+        lock (_lock)
         {
-            _isHalfOpen = false;
-            _halfOpenAttempts = 0;
-            _halfOpenSuccesses = 0;
-            _failureCount = Math.Max(_failureCount + 1, _options.FailureThreshold);
-            ScheduleSuspension(now);
-            return;
+            if (_isHalfOpen)
+            {
+                _isHalfOpen = false;
+                _halfOpenAttempts = 0;
+                _halfOpenSuccesses = 0;
+                _failureCount = Math.Max(_failureCount + 1, _options.FailureThreshold);
+                ScheduleSuspensionLocked(now);
+                return;
+            }
+
+            _failureCount++;
+
+            if (_failureCount < _options.FailureThreshold)
+            {
+                return;
+            }
+
+            ScheduleSuspensionLocked(now);
         }
-
-        _failureCount++;
-
-        if (_failureCount < _options.FailureThreshold)
-        {
-            return;
-        }
-
-        ScheduleSuspension(now);
     }
 
-    private void EnterHalfOpen()
+    private void EnterHalfOpenLocked()
     {
         _isHalfOpen = true;
         _halfOpenAttempts = 0;
         _halfOpenSuccesses = 0;
     }
 
-    private void Reset()
+    private void ResetLocked()
     {
         _failureCount = 0;
         _suspendedUntil = null;
@@ -144,7 +183,7 @@ public sealed class PeerCircuitBreaker
         _halfOpenSuccesses = 0;
     }
 
-    private void ScheduleSuspension(DateTimeOffset now)
+    private void ScheduleSuspensionLocked(DateTimeOffset now)
     {
         _isHalfOpen = false;
         _halfOpenAttempts = 0;

@@ -10,7 +10,7 @@ namespace OmniRelay.Dispatcher;
 public sealed class CodecRegistry
 {
     private readonly Dictionary<string, ProcedureCodecDescriptor> _codecs = new(StringComparer.OrdinalIgnoreCase);
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly string _localService;
 
     internal CodecRegistry(string localService, IEnumerable<ProcedureCodecRegistration> registrations)

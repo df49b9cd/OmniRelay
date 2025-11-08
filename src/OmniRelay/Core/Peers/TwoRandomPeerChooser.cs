@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Threading.Tasks;
 using Hugo;
 using OmniRelay.Errors;
 using static Hugo.Go;
@@ -26,29 +27,31 @@ public sealed class TwoRandomPeerChooser : IPeerChooser
         }
 
         _peers = peers;
-        _random = random ?? new Random();
+        _random = random ?? Random.Shared;
     }
 
-    public ValueTask<Result<PeerLease>> AcquireAsync(RequestMeta meta, CancellationToken cancellationToken = default)
+    public async ValueTask<Result<PeerLease>> AcquireAsync(RequestMeta meta, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        var waitDeadline = PeerChooserHelpers.ResolveDeadline(meta);
 
-        if (_peers.Length == 1)
+        while (true)
         {
-            return TryAcquire(meta, _peers[0], cancellationToken);
+            if (TryAcquireOnce(meta, cancellationToken, out var lease))
+            {
+                return Ok(lease!);
+            }
+
+            if (!PeerChooserHelpers.TryGetWaitDelay(waitDeadline, out var delay))
+            {
+                break;
+            }
+
+            await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
         }
 
-        IPeer first = _peers[_random.Next(_peers.Length)];
-        IPeer second;
-
-        do
-        {
-            second = _peers[_random.Next(_peers.Length)];
-        }
-        while (ReferenceEquals(first, second) && _peers.Length > 1);
-
-        var chosen = ChoosePreferred(first, second);
-        return TryAcquire(meta, chosen, cancellationToken);
+        PeerMetrics.RecordPoolExhausted(meta);
+        return CreateExhaustedResult(meta);
     }
 
     private static IPeer ChoosePreferred(IPeer first, IPeer second)
@@ -79,18 +82,57 @@ public sealed class TwoRandomPeerChooser : IPeerChooser
         return first;
     }
 
-    private static ValueTask<Result<PeerLease>> TryAcquire(RequestMeta meta, IPeer peer, CancellationToken cancellationToken)
+    private bool TryAcquireOnce(RequestMeta meta, CancellationToken cancellationToken, out PeerLease? lease)
+    {
+        if (_peers.Length == 1)
+        {
+            return TryAcquire(meta, _peers[0], cancellationToken, out lease);
+        }
+
+        IPeer first = _peers[_random.Next(_peers.Length)];
+        IPeer second;
+
+        do
+        {
+            second = _peers[_random.Next(_peers.Length)];
+        }
+        while (ReferenceEquals(first, second) && _peers.Length > 1);
+
+        var chosen = ChoosePreferred(first, second);
+        if (TryAcquire(meta, chosen, cancellationToken, out lease))
+        {
+            return true;
+        }
+
+        var alternate = ReferenceEquals(chosen, first) ? second : first;
+        if (!ReferenceEquals(chosen, alternate) && TryAcquire(meta, alternate, cancellationToken, out lease))
+        {
+            return true;
+        }
+
+        lease = null;
+        return false;
+    }
+
+    private static bool TryAcquire(RequestMeta meta, IPeer peer, CancellationToken cancellationToken, out PeerLease? lease)
     {
         if (!peer.TryAcquire(cancellationToken))
         {
-            PeerMetrics.RecordLeaseRejected(meta, peer.Identifier, "rejected");
-            var exhausted = OmniRelayErrorAdapter.FromStatus(
-                OmniRelayStatusCode.ResourceExhausted,
-                "Selected peer rejected the lease.",
-                transport: meta.Transport ?? "unknown");
-            return ValueTask.FromResult(Err<PeerLease>(exhausted));
+            PeerMetrics.RecordLeaseRejected(meta, peer.Identifier, "busy");
+            lease = null;
+            return false;
         }
 
-        return ValueTask.FromResult(Ok(new PeerLease(peer, meta)));
+        lease = new PeerLease(peer, meta);
+        return true;
+    }
+
+    private static Result<PeerLease> CreateExhaustedResult(RequestMeta meta)
+    {
+        var exhausted = OmniRelayErrorAdapter.FromStatus(
+            OmniRelayStatusCode.ResourceExhausted,
+            "All peers are busy.",
+            transport: meta.Transport ?? "unknown");
+        return Err<PeerLease>(exhausted);
     }
 }
