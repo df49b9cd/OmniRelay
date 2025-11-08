@@ -72,7 +72,7 @@ public class OmniRelayConfigurationTests
     public void AddOmniRelayDispatcher_MissingServiceThrows()
     {
         var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>())
+            .AddInMemoryCollection([])
             .Build();
 
         var services = new ServiceCollection();
