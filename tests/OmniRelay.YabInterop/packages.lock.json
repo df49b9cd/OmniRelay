@@ -37,11 +37,13 @@
       },
       "Hugo": {
         "type": "Direct",
-        "requested": "[1.4.3, )",
-        "resolved": "1.4.3",
-        "contentHash": "eGt8OfhxH11bMYvCvwRupKMc/yb0zJiJdFM4o7J37vDIIuvD3zHQiyJS+i+/+jhLyjbNU9anfXis/cD0sxWhsg==",
+        "requested": "[1.4.4, )",
+        "resolved": "1.4.4",
+        "contentHash": "AQZUOCBj2wHASAiVLsorAPAD3h5PxXp/CNu8lMgy6l0HDwuUg41ekAkbIE2cvZKYR+Bb/FvsAlUZFW2yM+WvzQ==",
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "9.0.10",
+          "Microsoft.Extensions.Diagnostics.HealthChecks": "9.0.10",
+          "Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions": "9.0.10",
           "Microsoft.Extensions.Logging.Abstractions": "9.0.10"
         }
       },
@@ -132,6 +134,42 @@
           "Microsoft.Extensions.Options": "10.0.0-rc.2.25502.107"
         }
       },
+      "Microsoft.Extensions.Diagnostics.HealthChecks": {
+        "type": "Transitive",
+        "resolved": "9.0.10",
+        "contentHash": "4R5RmjAb6IzfNBIQRLWEx8pXktg3CufPw7TotU6eHzFA6o7v2kEI/MfaNsvDjprZC+tCSPvmMKb3R25RuJpCGg==",
+        "dependencies": {
+          "Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions": "9.0.10",
+          "Microsoft.Extensions.Hosting.Abstractions": "9.0.10",
+          "Microsoft.Extensions.Logging.Abstractions": "9.0.10",
+          "Microsoft.Extensions.Options": "9.0.10"
+        }
+      },
+      "Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions": {
+        "type": "Transitive",
+        "resolved": "9.0.10",
+        "contentHash": "oAtETy4DYsuPwWwFoemOb/lmnaJor8fLvfOnCwWJhg1W250nZBHbMe5QfFLK7hkIrNSOi58Uz1R2ZFw4AoPM4g=="
+      },
+      "Microsoft.Extensions.FileProviders.Abstractions": {
+        "type": "Transitive",
+        "resolved": "9.0.10",
+        "contentHash": "3+cLxZKUWBbpfIXLLuKcEok9C91PsV1h5xxfUsEnLSXXLNMiPDfrhpb1xajNFcejFPs9Ck/Fi3z71hYDqFBwYg==",
+        "dependencies": {
+          "Microsoft.Extensions.Primitives": "9.0.10"
+        }
+      },
+      "Microsoft.Extensions.Hosting.Abstractions": {
+        "type": "Transitive",
+        "resolved": "9.0.10",
+        "contentHash": "spfXydiEQENFwxdgr3Y57wwys/FRjfmq5VjHGPh6ct1FJK7X+qNEWYbnZJCMqq0B0oJTMvnItAReOv4mi2Idog==",
+        "dependencies": {
+          "Microsoft.Extensions.Configuration.Abstractions": "9.0.10",
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "9.0.10",
+          "Microsoft.Extensions.Diagnostics.Abstractions": "9.0.10",
+          "Microsoft.Extensions.FileProviders.Abstractions": "9.0.10",
+          "Microsoft.Extensions.Logging.Abstractions": "9.0.10"
+        }
+      },
       "Microsoft.Extensions.Http": {
         "type": "Transitive",
         "resolved": "6.0.0",
@@ -216,7 +254,7 @@
           "Grpc.AspNetCore.Server": "[2.71.0, )",
           "Grpc.HealthCheck": "[2.71.0, )",
           "Grpc.Net.Client": "[2.71.0, )",
-          "Hugo": "[1.4.3, )",
+          "Hugo": "[1.4.4, )",
           "JsonSchema.Net": "[7.4.0, )",
           "OpenTelemetry": "[1.14.0-rc.1, )"
         }
