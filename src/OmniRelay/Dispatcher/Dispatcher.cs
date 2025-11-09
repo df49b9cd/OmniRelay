@@ -110,136 +110,146 @@ public sealed class Dispatcher
     /// <summary>
     /// Registers a fully constructed <see cref="ProcedureSpec"/> with the dispatcher.
     /// </summary>
-    public void Register(ProcedureSpec spec)
+    public Result<Unit> Register(ProcedureSpec spec)
     {
         ArgumentNullException.ThrowIfNull(spec);
 
         if (!string.Equals(spec.Service, _serviceName, StringComparison.OrdinalIgnoreCase))
         {
-            throw new InvalidOperationException($"Procedure '{spec.FullName}' does not match dispatcher service '{_serviceName}'.");
+            return Err<Unit>(CreateDispatcherError(
+                $"Procedure '{spec.FullName}' does not match dispatcher service '{_serviceName}'.",
+                OmniRelayStatusCode.InvalidArgument));
         }
 
-        _procedures.Register(spec);
+        try
+        {
+            _procedures.Register(spec);
+            return Ok(Unit.Value);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Err<Unit>(CreateDispatcherError(ex.Message, OmniRelayStatusCode.FailedPrecondition));
+        }
     }
 
     /// <summary>
     /// Registers a unary procedure with an optional per-procedure middleware/encoding configuration.
     /// </summary>
-    public void RegisterUnary(string name, UnaryInboundDelegate handler, Action<UnaryProcedureBuilder>? configure = null)
+    public Result<Unit> RegisterUnary(string name, UnaryInboundDelegate handler, Action<UnaryProcedureBuilder>? configure = null)
     {
         ArgumentNullException.ThrowIfNull(handler);
 
         var builder = new UnaryProcedureBuilder(handler);
         configure?.Invoke(builder);
-        Register(builder.Build(_serviceName, EnsureProcedureName(name)));
+        return RegisterProcedure(name, trimmed => builder.Build(_serviceName, trimmed));
     }
 
     /// <summary>
     /// Registers a unary procedure using a builder configuration.
     /// </summary>
-    public void RegisterUnary(string name, Action<UnaryProcedureBuilder> configure)
+    public Result<Unit> RegisterUnary(string name, Action<UnaryProcedureBuilder> configure)
     {
         ArgumentNullException.ThrowIfNull(configure);
 
         var builder = new UnaryProcedureBuilder();
         configure(builder);
-        Register(builder.Build(_serviceName, EnsureProcedureName(name)));
+        return RegisterProcedure(name, trimmed => builder.Build(_serviceName, trimmed));
     }
 
     /// <summary>
     /// Registers a oneway procedure with an optional per-procedure configuration.
     /// </summary>
-    public void RegisterOneway(string name, OnewayInboundDelegate handler, Action<OnewayProcedureBuilder>? configure = null)
+    public Result<Unit> RegisterOneway(string name, OnewayInboundDelegate handler, Action<OnewayProcedureBuilder>? configure = null)
     {
         ArgumentNullException.ThrowIfNull(handler);
 
         var builder = new OnewayProcedureBuilder(handler);
         configure?.Invoke(builder);
-        Register(builder.Build(_serviceName, EnsureProcedureName(name)));
+        return RegisterProcedure(name, trimmed => builder.Build(_serviceName, trimmed));
     }
 
     /// <summary>
     /// Registers a oneway procedure using a builder configuration.
     /// </summary>
-    public void RegisterOneway(string name, Action<OnewayProcedureBuilder> configure)
+    public Result<Unit> RegisterOneway(string name, Action<OnewayProcedureBuilder> configure)
     {
         ArgumentNullException.ThrowIfNull(configure);
 
         var builder = new OnewayProcedureBuilder();
         configure(builder);
-        Register(builder.Build(_serviceName, EnsureProcedureName(name)));
+        return RegisterProcedure(name, trimmed => builder.Build(_serviceName, trimmed));
     }
 
     /// <summary>
     /// Registers a server-streaming procedure with an optional per-procedure configuration.
     /// </summary>
-    public void RegisterStream(string name, StreamInboundDelegate handler, Action<StreamProcedureBuilder>? configure = null)
+    public Result<Unit> RegisterStream(string name, StreamInboundDelegate handler, Action<StreamProcedureBuilder>? configure = null)
     {
         ArgumentNullException.ThrowIfNull(handler);
 
         var builder = new StreamProcedureBuilder(handler);
         configure?.Invoke(builder);
-        Register(builder.Build(_serviceName, EnsureProcedureName(name)));
+        return RegisterProcedure(name, trimmed => builder.Build(_serviceName, trimmed));
     }
 
     /// <summary>
     /// Registers a server-streaming procedure using a builder configuration.
     /// </summary>
-    public void RegisterStream(string name, Action<StreamProcedureBuilder> configure)
+    public Result<Unit> RegisterStream(string name, Action<StreamProcedureBuilder> configure)
     {
         ArgumentNullException.ThrowIfNull(configure);
 
         var builder = new StreamProcedureBuilder();
         configure(builder);
-        Register(builder.Build(_serviceName, EnsureProcedureName(name)));
+        return RegisterProcedure(name, trimmed => builder.Build(_serviceName, trimmed));
     }
 
     /// <summary>
     /// Registers a client-streaming procedure with an optional per-procedure configuration.
     /// </summary>
-    public void RegisterClientStream(string name, ClientStreamInboundDelegate handler, Action<ClientStreamProcedureBuilder>? configure = null)
+    public Result<Unit> RegisterClientStream(string name, ClientStreamInboundDelegate handler, Action<ClientStreamProcedureBuilder>? configure = null)
     {
         ArgumentNullException.ThrowIfNull(handler);
 
         var builder = new ClientStreamProcedureBuilder(handler);
         configure?.Invoke(builder);
-        Register(builder.Build(_serviceName, EnsureProcedureName(name)));
+        return RegisterProcedure(name, trimmed => builder.Build(_serviceName, trimmed));
     }
 
     /// <summary>
     /// Registers a client-streaming procedure using a builder configuration.
     /// </summary>
-    public void RegisterClientStream(string name, Action<ClientStreamProcedureBuilder> configure)
+    public Result<Unit> RegisterClientStream(string name, Action<ClientStreamProcedureBuilder> configure)
     {
         ArgumentNullException.ThrowIfNull(configure);
 
         var builder = new ClientStreamProcedureBuilder();
         configure(builder);
-        Register(builder.Build(_serviceName, EnsureProcedureName(name)));
+        return RegisterProcedure(name, trimmed => builder.Build(_serviceName, trimmed));
     }
 
     /// <summary>
     /// Registers a duplex-streaming procedure with an optional per-procedure configuration.
     /// </summary>
-    public void RegisterDuplex(string name, DuplexInboundDelegate handler, Action<DuplexProcedureBuilder>? configure = null)
+    public Result<Unit> RegisterDuplex(string name, DuplexInboundDelegate handler, Action<DuplexProcedureBuilder>? configure = null)
     {
         ArgumentNullException.ThrowIfNull(handler);
 
         var builder = new DuplexProcedureBuilder(handler);
         configure?.Invoke(builder);
-        Register(builder.Build(_serviceName, EnsureProcedureName(name)));
+        return RegisterProcedure(name, trimmed => builder.Build(_serviceName, trimmed));
     }
 
     /// <summary>
     /// Registers a duplex-streaming procedure using a builder configuration.
     /// </summary>
-    public void RegisterDuplex(string name, Action<DuplexProcedureBuilder> configure)
+    public Result<Unit> RegisterDuplex(string name, Action<DuplexProcedureBuilder> configure)
     {
         ArgumentNullException.ThrowIfNull(configure);
 
         var builder = new DuplexProcedureBuilder();
         configure(builder);
-        Register(builder.Build(_serviceName, EnsureProcedureName(name)));
+        return RegisterProcedure(name, trimmed => builder.Build(_serviceName, trimmed));
     }
 
     /// <summary>Attempts to get a procedure by name and kind.</summary>
@@ -297,11 +307,13 @@ public sealed class Dispatcher
     /// <summary>
     /// Returns the client configuration and outbound bindings for a remote service.
     /// </summary>
-    public ClientConfiguration ClientConfig(string service)
+    public Result<ClientConfiguration> ClientConfig(string service)
     {
         if (string.IsNullOrWhiteSpace(service))
         {
-            throw new ArgumentException("Service identifier cannot be null or whitespace.", nameof(service));
+            return Err<ClientConfiguration>(CreateDispatcherError(
+                "Service identifier cannot be null or whitespace.",
+                OmniRelayStatusCode.InvalidArgument));
         }
 
         if (!_outbounds.TryGetValue(service, out var collection))
@@ -318,17 +330,19 @@ public sealed class Dispatcher
             }
             else
             {
-                throw new KeyNotFoundException($"No outbound configuration found for service '{service}'.");
+                return Err<ClientConfiguration>(CreateDispatcherError(
+                    $"No outbound configuration found for service '{service}'.",
+                    OmniRelayStatusCode.NotFound));
             }
         }
 
-        return new ClientConfiguration(
+        return Ok(new ClientConfiguration(
             collection,
             _outboundUnaryMiddleware,
             _outboundOnewayMiddleware,
             _outboundStreamMiddleware,
             _outboundClientStreamMiddleware,
-            _outboundDuplexMiddleware);
+            _outboundDuplexMiddleware));
     }
 
     /// <summary>
@@ -1035,13 +1049,34 @@ public sealed class Dispatcher
         return combined;
     }
 
-    private static string EnsureProcedureName(string name)
+    private Result<Unit> RegisterProcedure(string name, Func<string, ProcedureSpec> builder)
+    {
+        return EnsureProcedureName(name)
+            .Then(trimmed => BuildProcedureSpec(() => builder(trimmed)))
+            .Then(Register);
+    }
+
+    private static Result<ProcedureSpec> BuildProcedureSpec(Func<ProcedureSpec> build)
+    {
+        try
+        {
+            return Ok(build());
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Err<ProcedureSpec>(CreateDispatcherError(ex.Message, OmniRelayStatusCode.InvalidArgument));
+        }
+    }
+
+    private static Result<string> EnsureProcedureName(string name)
     {
         if (string.IsNullOrWhiteSpace(name))
         {
-            throw new ArgumentException("Procedure name cannot be null or whitespace.", nameof(name));
+            return Err<string>(CreateDispatcherError(
+                "Procedure name cannot be null or whitespace.",
+                OmniRelayStatusCode.InvalidArgument));
         }
 
-        return name.Trim();
+        return Ok(name.Trim());
     }
 }

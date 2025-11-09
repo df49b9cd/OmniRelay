@@ -108,7 +108,7 @@ public class GrpcDiscoveryPreferenceTests
         {
             await outbound.StartAsync(ct);
             var codec = new RawCodec();
-            var client = new UnaryClient<byte[], byte[]>(outbound, codec, dispatcher.ClientConfig("grpc-discovery-pref").UnaryMiddleware);
+            var client = new UnaryClient<byte[], byte[]>(outbound, codec, dispatcher.ClientConfigOrThrow("grpc-discovery-pref").UnaryMiddleware);
             var request = new Request<byte[]>(new RequestMeta("grpc-discovery-pref", "grpc-discovery-pref::ping"), []);
             var result = await client.CallAsync(request, ct);
             Assert.True(result.IsSuccess, result.Error?.ToString() ?? "Result was not successful.");

@@ -6,7 +6,7 @@ OmniRelay mirrors `yarpc-go` by layering transport-specific middleware stacks wi
 
 - `DispatcherOptions` exposes distinct lists for inbound/outbound stacks across every RPC shape (unary, oneway, server/client streaming, duplex). These middleware run for every procedure registered on the dispatcher.
 - Per-procedure middleware is appended after the global stack for that RPC type. Execution order is deterministic: middleware execute in the order they were registered, followed by the handler.
-- Outbound middleware is layered on the `ClientConfiguration` returned by `Dispatcher.ClientConfig(service)`. Like inbound stacks, the order in the configuration reflects the order they were added.
+- Outbound middleware is layered on the `ClientConfiguration` returned by `Dispatcher.ClientConfig(service)`. The method now returns a `Result<ClientConfiguration>` so callers can propagate failures (missing service, invalid service name) without exceptions. Use the returned result directly or call the convenience `ClientConfigOrThrow` extension inside `OmniRelay.Dispatcher` when exception-based flow is still desired. Like inbound stacks, the middleware list preserves registration order.
 
 ```
 // Execution order:
@@ -33,7 +33,7 @@ dispatcher.RegisterUnary(
         .WithEncoding("json")
         .AddAliases(new[] { "v1::user::get" })
         .Use(new RpcMetricsMiddleware())
-        .Use(new RpcLoggingMiddleware()));
+        .Use(new RpcLoggingMiddleware())).ThrowIfFailure();
 
 dispatcher.RegisterStream(
     "events::subscribe",
@@ -42,7 +42,7 @@ dispatcher.RegisterStream(
     configure: builder => builder
         .WithMetadata(new StreamIntrospectionMetadata(
             new StreamChannelMetadata(StreamDirection.Server, "bounded-channel", Capacity: 100, TracksMessageCount: true)))
-        .Use(new RpcTracingMiddleware()));
+        .Use(new RpcTracingMiddleware())).ThrowIfFailure();
 ```
 
 Available builders:
@@ -55,7 +55,7 @@ Available builders:
 | Client Stream   | `ClientStreamProcedureBuilder`  | `Handle`, `Use`, `WithEncoding`, `WithMetadata` |
 | Duplex Stream   | `DuplexProcedureBuilder`        | `Handle`, `Use`, `WithEncoding`, `WithMetadata` |
 
-> **Guard rails:** Builders require exactly one call to `Handle(...)`. Forgetting to set the handler triggers a descriptive exception so misconfigurations fail fast.
+> **Guard rails:** Builders still require exactly one call to `Handle(...)`. Forgetting to set the handler causes the corresponding `Register*` method to return a failed `Result<Unit>` with a descriptive error, allowing callers to either propagate or convert the failure to an exception via `ThrowIfFailure()`.
 
 ## Outbound middleware composition
 
@@ -80,7 +80,7 @@ dispatcher.RegisterUnary(
     },
     configure: builder => builder
         .Use(new RecordingUnaryMiddleware("procedure-1", order))
-        .Use(new RecordingUnaryMiddleware("procedure-2", order)));
+        .Use(new RecordingUnaryMiddleware("procedure-2", order))).ThrowIfFailure();
 
 // Invoke → order == [ "global", "procedure-1", "procedure-2", "handler" ]
 ```

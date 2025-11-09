@@ -318,7 +318,7 @@ public sealed class OmniRelayProtobufGenerator
             builder.AppendLine($"builder.WithEncoding({method.CodecFieldName}.Encoding);");
             builder.AppendLine($"builder.Handle(ProtobufCallAdapters.{adapterFactory}({method.CodecFieldName}, implementation.{method.HandlerName}));");
             builder.PopIndent();
-            builder.AppendLine("});");
+            builder.AppendLine("}).ThrowIfFailure();");
         }
 
         private void GenerateInterface(IndentedStringBuilder builder, IReadOnlyList<MethodModel> methods)

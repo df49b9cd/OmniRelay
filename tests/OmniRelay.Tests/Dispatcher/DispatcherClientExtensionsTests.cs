@@ -16,7 +16,7 @@ public class DispatcherClientExtensionsTests
         var dispatcher = new OmniRelay.Dispatcher.Dispatcher(new DispatcherOptions("local"));
         var codec = new PassthroughCodec();
 
-        Assert.Throws<KeyNotFoundException>(() => dispatcher.CreateUnaryClient("remote", codec));
+        Assert.Throws<ResultException>(() => dispatcher.CreateUnaryClient("remote", codec));
     }
 
     [Fact]
@@ -41,7 +41,7 @@ public class DispatcherClientExtensionsTests
         var dispatcher = new OmniRelay.Dispatcher.Dispatcher(new DispatcherOptions("svc"));
         var codec = new PassthroughCodec();
 
-        Assert.Throws<KeyNotFoundException>(() => dispatcher.CreateStreamClient("remote", codec));
+        Assert.Throws<ResultException>(() => dispatcher.CreateStreamClient("remote", codec));
     }
 
     private sealed class PassthroughCodec : ICodec<int, int>

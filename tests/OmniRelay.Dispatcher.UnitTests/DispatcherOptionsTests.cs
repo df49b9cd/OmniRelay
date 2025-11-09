@@ -69,7 +69,7 @@ public class DispatcherOptionsTests
         options.AddUnaryOutbound("remote", "  primary  ", outbound);
 
         var dispatcher = new Dispatcher(options);
-        var config = dispatcher.ClientConfig("remote");
+        var config = dispatcher.ClientConfigOrThrow("remote");
 
         Assert.True(config.TryGetUnary("primary", out var resolved));
         Assert.Same(outbound, resolved);

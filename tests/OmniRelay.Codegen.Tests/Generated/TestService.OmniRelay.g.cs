@@ -32,25 +32,25 @@ public static class TestServiceOmniRelay
         {
             builder.WithEncoding(__UnaryCallCodec.Encoding);
             builder.Handle(ProtobufCallAdapters.CreateUnaryHandler(__UnaryCallCodec, implementation.UnaryCallAsync));
-        });
+        }).ThrowIfFailure();
 
         dispatcher.RegisterStream("ServerStream", builder =>
         {
             builder.WithEncoding(__ServerStreamCodec.Encoding);
             builder.Handle(ProtobufCallAdapters.CreateServerStreamHandler(__ServerStreamCodec, implementation.ServerStreamAsync));
-        });
+        }).ThrowIfFailure();
 
         dispatcher.RegisterClientStream("ClientStream", builder =>
         {
             builder.WithEncoding(__ClientStreamCodec.Encoding);
             builder.Handle(ProtobufCallAdapters.CreateClientStreamHandler(__ClientStreamCodec, implementation.ClientStreamAsync));
-        });
+        }).ThrowIfFailure();
 
         dispatcher.RegisterDuplex("DuplexStream", builder =>
         {
             builder.WithEncoding(__DuplexStreamCodec.Encoding);
             builder.Handle(ProtobufCallAdapters.CreateDuplexHandler(__DuplexStreamCodec, implementation.DuplexStreamAsync));
-        });
+        }).ThrowIfFailure();
 
     }
 

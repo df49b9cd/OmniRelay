@@ -1,4 +1,5 @@
 using System.Linq;
+using Hugo;
 using NSubstitute;
 using OmniRelay.Core.Clients;
 using OmniRelay.Core.Transport;
@@ -38,7 +39,7 @@ public class DispatcherClientExtensionsTests
     {
         var dispatcher = new Dispatcher(new DispatcherOptions("svc"));
 
-        Assert.Throws<KeyNotFoundException>(() =>
+        Assert.Throws<ResultException>(() =>
             dispatcher.CreateDuplexStreamClient<string, string>("remote", new TestHelpers.TestCodec<string, string>()));
     }
 

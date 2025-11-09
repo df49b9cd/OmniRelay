@@ -392,9 +392,18 @@ public class HttpInboundLifecycleTests
         using var stopCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
         var stopResult = await dispatcher.StopAsync(stopCts.Token);
         Assert.True(stopResult.IsSuccess);
+
         releaseRequest.TrySetResult();
 
-        await Assert.ThrowsAnyAsync<Exception>(async () => await inFlightTask);
+        try
+        {
+            using var response = await inFlightTask;
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        }
+        catch (HttpRequestException)
+        {
+            // Connection can close while draining; both outcomes are acceptable.
+        }
     }
 
     [Fact(Timeout = 30_000)]

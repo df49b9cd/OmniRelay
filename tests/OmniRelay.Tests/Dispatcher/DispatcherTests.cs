@@ -37,27 +37,33 @@ public class DispatcherTests
     }
 
     [Fact]
-    public void Register_DuplicateProcedureThrows()
+    public void Register_DuplicateProcedureReportsFailure()
     {
         var options = new DispatcherOptions("payments");
         var dispatcher = new OmniRelay.Dispatcher.Dispatcher(options);
 
         var spec = CreateUnaryProcedure("payments", "charge");
 
-        dispatcher.Register(spec);
+        dispatcher.Register(spec).ThrowIfFailure();
 
-        Assert.Throws<InvalidOperationException>(() => dispatcher.Register(spec));
+        var duplicate = dispatcher.Register(spec);
+
+        Assert.True(duplicate.IsFailure);
+        Assert.Equal(OmniRelayStatusCode.FailedPrecondition, OmniRelayErrorAdapter.ToStatus(duplicate.Error!));
     }
 
     [Fact]
-    public void Register_WithDifferentServiceThrows()
+    public void Register_WithDifferentServiceReturnsError()
     {
         var options = new DispatcherOptions("catalog");
         var dispatcher = new OmniRelay.Dispatcher.Dispatcher(options);
 
         var spec = CreateUnaryProcedure("inventory", "list");
 
-        Assert.Throws<InvalidOperationException>(() => dispatcher.Register(spec));
+        var result = dispatcher.Register(spec);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(OmniRelayStatusCode.InvalidArgument, OmniRelayErrorAdapter.ToStatus(result.Error!));
     }
 
     [Fact]
@@ -78,7 +84,7 @@ public class DispatcherTests
             },
             aliases: ["v1::user::*", "users::get"]);
 
-        dispatcher.Register(spec);
+        dispatcher.Register(spec).ThrowIfFailure();
 
         var meta = new RequestMeta(service: "keyvalue", procedure: "v1::user::get", transport: "test");
         var request = new Request<ReadOnlyMemory<byte>>(meta, ReadOnlyMemory<byte>.Empty);
@@ -127,7 +133,7 @@ public class DispatcherTests
                 .WithEncoding("json")
                 .AddAlias("users::get")
                 .Use(middleware1)
-                .Use(middleware2));
+                .Use(middleware2)).ThrowIfFailure();
 
         var meta = new RequestMeta(service: "keyvalue", procedure: "user::get", transport: "test");
         var request = new Request<ReadOnlyMemory<byte>>(meta, ReadOnlyMemory<byte>.Empty);
@@ -161,7 +167,7 @@ public class DispatcherTests
                 wildcardInvocations++;
                 return ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty)));
             },
-            builder => builder.AddAlias("catalog::*"));
+            builder => builder.AddAlias("catalog::*")).ThrowIfFailure();
 
         dispatcher.RegisterUnary(
             "catalog::exact",
@@ -169,7 +175,7 @@ public class DispatcherTests
             {
                 directInvocations++;
                 return ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty)));
-            });
+            }).ThrowIfFailure();
 
         var wildcardRequest = new Request<ReadOnlyMemory<byte>>(
             new RequestMeta(service: "catalog", procedure: "catalog::listing", transport: "test"),
@@ -205,7 +211,7 @@ public class DispatcherTests
                 generalCount++;
                 return ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty)));
             },
-            builder => builder.AddAlias("inventory::*"));
+            builder => builder.AddAlias("inventory::*")).ThrowIfFailure();
 
         dispatcher.RegisterUnary(
             "inventory::v2::handler",
@@ -214,7 +220,7 @@ public class DispatcherTests
                 versionCount++;
                 return ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty)));
             },
-            builder => builder.AddAlias("inventory::v2::*"));
+            builder => builder.AddAlias("inventory::v2::*")).ThrowIfFailure();
 
         var request = new Request<ReadOnlyMemory<byte>>(
             new RequestMeta(service: "inventory", procedure: "inventory::v2::list", transport: "test"),
@@ -227,7 +233,7 @@ public class DispatcherTests
     }
 
     [Fact]
-    public void RegisterUnary_DuplicateWildcardAliasThrows()
+    public void RegisterUnary_DuplicateWildcardAliasReturnsError()
     {
         var options = new DispatcherOptions("billing");
         var dispatcher = new OmniRelay.Dispatcher.Dispatcher(options);
@@ -235,15 +241,15 @@ public class DispatcherTests
         dispatcher.RegisterUnary(
             "billing::primary",
             (request, _) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty))),
+            builder => builder.AddAlias("billing::*")).ThrowIfFailure();
+
+        var conflict = dispatcher.RegisterUnary(
+            "billing::secondary",
+            (request, _) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty))),
             builder => builder.AddAlias("billing::*"));
 
-        var exception = Assert.Throws<InvalidOperationException>(() =>
-            dispatcher.RegisterUnary(
-                "billing::secondary",
-                (request, _) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty))),
-                builder => builder.AddAlias("billing::*")));
-
-        Assert.Contains("conflicts", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.True(conflict.IsFailure);
+        Assert.Contains("conflicts", conflict.Error?.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -251,19 +257,23 @@ public class DispatcherTests
     {
         var dispatcher = new OmniRelay.Dispatcher.Dispatcher(new DispatcherOptions("edge"));
 
-        var exception = Assert.Throws<InvalidOperationException>(() =>
-            dispatcher.RegisterUnary("missing", builder => builder.WithEncoding("json")));
+        var result = dispatcher.RegisterUnary("missing", builder => builder.WithEncoding("json"));
 
-        Assert.Contains("Handle", exception.Message, StringComparison.Ordinal);
+        Assert.True(result.IsFailure);
+        Assert.Contains("Handle", result.Error?.Message, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void RegisterUnary_BlankName_Throws()
+    public void RegisterUnary_BlankName_ReturnsInvalidArgument()
     {
         var dispatcher = new OmniRelay.Dispatcher.Dispatcher(new DispatcherOptions("svc"));
 
-        Assert.Throws<ArgumentException>(() =>
-            dispatcher.RegisterUnary("   ", (request, _) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty)))));
+        var result = dispatcher.RegisterUnary(
+            "   ",
+            (request, _) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty))));
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(OmniRelayStatusCode.InvalidArgument, OmniRelayErrorAdapter.ToStatus(result.Error!));
     }
 
     [Fact]
@@ -271,7 +281,7 @@ public class DispatcherTests
     {
         var dispatcher = new OmniRelay.Dispatcher.Dispatcher(new DispatcherOptions("svc"));
 
-        dispatcher.RegisterUnary(" svc::call  ", (request, _) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty))));
+        dispatcher.RegisterUnary(" svc::call  ", (request, _) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty)))).ThrowIfFailure();
 
         Assert.True(dispatcher.TryGetProcedure("svc::call", ProcedureKind.Unary, out _));
     }
@@ -290,7 +300,7 @@ public class DispatcherTests
             builder => builder
                 .WithEncoding("json")
                 .AddAliases(["events::watch"])
-                .WithMetadata(metadata));
+                .WithMetadata(metadata)).ThrowIfFailure();
 
         Assert.True(dispatcher.TryGetProcedure("events::subscribe", ProcedureKind.Stream, out var spec));
         var streamSpec = Assert.IsType<StreamProcedureSpec>(spec);
@@ -311,7 +321,9 @@ public class DispatcherTests
 
         var dispatcher = new OmniRelay.Dispatcher.Dispatcher(options);
 
-        var config = dispatcher.ClientConfig("backend");
+        var configResult = dispatcher.ClientConfig("backend");
+        Assert.True(configResult.IsSuccess, configResult.Error?.ToString());
+        var config = configResult.Value;
 
         Assert.Equal("backend", config.Service);
         Assert.True(config.TryGetUnary(null, out var resolved));
@@ -326,11 +338,14 @@ public class DispatcherTests
     }
 
     [Fact]
-    public void ClientConfig_UnknownServiceThrows()
+    public void ClientConfig_UnknownServiceReturnsError()
     {
         var dispatcher = new OmniRelay.Dispatcher.Dispatcher(new DispatcherOptions("frontend"));
 
-        Assert.Throws<KeyNotFoundException>(() => dispatcher.ClientConfig("missing"));
+        var config = dispatcher.ClientConfig("missing");
+
+        Assert.True(config.IsFailure);
+        Assert.Equal(OmniRelayStatusCode.NotFound, OmniRelayErrorAdapter.ToStatus(config.Error!));
     }
 
     [Fact]
@@ -352,7 +367,7 @@ public class DispatcherTests
                 var responseMeta = new ResponseMeta(encoding: "application/octet-stream");
                 var response = Response<ReadOnlyMemory<byte>>.Create(BitConverter.GetBytes(totalBytes), responseMeta);
                 return Ok(response);
-            }));
+            })).ThrowIfFailure();
 
         var requestMeta = new RequestMeta(service: "keyvalue", procedure: "aggregate", transport: "test");
         var ct = TestContext.Current.CancellationToken;
@@ -399,7 +414,7 @@ public class DispatcherTests
         options.UnaryOutboundMiddleware.Add(unaryOutbound);
 
         var dispatcher = new OmniRelay.Dispatcher.Dispatcher(options);
-        dispatcher.Register(CreateUnaryProcedure("keyvalue", "get"));
+        dispatcher.Register(CreateUnaryProcedure("keyvalue", "get")).ThrowIfFailure();
 
         var beforeStart = dispatcher.Introspect();
         Assert.Equal(DispatcherStatus.Created, beforeStart.Status);

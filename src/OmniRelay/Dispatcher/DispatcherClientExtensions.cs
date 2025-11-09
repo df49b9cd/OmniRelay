@@ -21,7 +21,7 @@ public static class DispatcherClientExtensions
 
         ArgumentNullException.ThrowIfNull(codec);
 
-        var configuration = dispatcher.ClientConfig(service);
+        var configuration = dispatcher.ClientConfigOrThrow(service);
         var outbound = ResolveOutbound(
             configuration,
             service,
@@ -68,7 +68,7 @@ public static class DispatcherClientExtensions
 
         ArgumentNullException.ThrowIfNull(codec);
 
-        var configuration = dispatcher.ClientConfig(service);
+        var configuration = dispatcher.ClientConfigOrThrow(service);
         var outbound = ResolveOutbound(
             configuration,
             service,
@@ -115,7 +115,7 @@ public static class DispatcherClientExtensions
 
         ArgumentNullException.ThrowIfNull(codec);
 
-        var configuration = dispatcher.ClientConfig(service);
+        var configuration = dispatcher.ClientConfigOrThrow(service);
         var outbound = ResolveOutbound(
             configuration,
             service,
@@ -162,7 +162,7 @@ public static class DispatcherClientExtensions
 
         ArgumentNullException.ThrowIfNull(codec);
 
-        var configuration = dispatcher.ClientConfig(service);
+        var configuration = dispatcher.ClientConfigOrThrow(service);
         var outbound = ResolveOutbound(
             configuration,
             service,
@@ -209,7 +209,7 @@ public static class DispatcherClientExtensions
 
         ArgumentNullException.ThrowIfNull(codec);
 
-        var configuration = dispatcher.ClientConfig(service);
+        var configuration = dispatcher.ClientConfigOrThrow(service);
         var outbound = ResolveOutbound(
             configuration,
             service,

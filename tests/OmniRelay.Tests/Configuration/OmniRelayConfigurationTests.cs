@@ -51,7 +51,7 @@ public class OmniRelayConfigurationTests
         var dispatcher = provider.GetRequiredService<OmniRelayDispatcher>();
         Assert.Equal("gateway", dispatcher.ServiceName);
 
-        var clientConfig = dispatcher.ClientConfig("keyvalue");
+        var clientConfig = dispatcher.ClientConfigOrThrow("keyvalue");
         Assert.True(clientConfig.TryGetUnary("primary", out var unary));
         Assert.NotNull(unary);
         Assert.True(clientConfig.TryGetOneway("primary", out var oneway));
@@ -174,7 +174,7 @@ public class OmniRelayConfigurationTests
         Assert.Contains(components, component => component.Name == "ws-inbound");
         Assert.Equal("/ws", inboundSpec.LastEndpoint);
 
-        var clientConfig = dispatcher.ClientConfig("search");
+        var clientConfig = dispatcher.ClientConfigOrThrow("search");
         Assert.True(clientConfig.TryGetUnary("primary", out var outbound));
         var testOutbound = Assert.IsType<TestUnaryOutbound>(outbound);
         Assert.Equal("http://search.internal:8080", testOutbound.Address);
@@ -204,7 +204,7 @@ public class OmniRelayConfigurationTests
         using var provider = services.BuildServiceProvider();
         var dispatcher = provider.GetRequiredService<OmniRelayDispatcher>();
 
-        var clientConfig = dispatcher.ClientConfig("metrics");
+        var clientConfig = dispatcher.ClientConfigOrThrow("metrics");
         Assert.True(clientConfig.TryGetUnary("primary", out var outbound));
         Assert.IsType<HttpOutbound>(outbound);
 
@@ -236,7 +236,7 @@ public class OmniRelayConfigurationTests
         using var provider = services.BuildServiceProvider();
         var dispatcher = provider.GetRequiredService<OmniRelayDispatcher>();
 
-        var clientConfig = dispatcher.ClientConfig("reports");
+        var clientConfig = dispatcher.ClientConfigOrThrow("reports");
         Assert.True(clientConfig.TryGetUnary(OutboundCollection.DefaultKey, out var outbound));
         Assert.IsType<OmniRelay.Transport.Grpc.GrpcOutbound>(outbound);
         Assert.Equal("sticky", peerSpec.LastMode);

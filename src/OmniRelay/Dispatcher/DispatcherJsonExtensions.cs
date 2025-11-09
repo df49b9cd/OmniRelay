@@ -62,7 +62,7 @@ public static class DispatcherJsonExtensions
             builder.Handle(Wrapper);
             builder.WithEncoding(codec.Encoding);
             configureProcedure?.Invoke(builder);
-        });
+        }).ThrowIfFailure();
 
         if (dispatcher.TryGetProcedure(name, ProcedureKind.Unary, out var spec) &&
             spec is UnaryProcedureSpec unarySpec)

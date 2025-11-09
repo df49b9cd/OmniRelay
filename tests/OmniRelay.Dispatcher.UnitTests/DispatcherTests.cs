@@ -17,7 +17,7 @@ namespace OmniRelay.Dispatcher.UnitTests;
 public class DispatcherTests
 {
     [Fact]
-    public void Register_WithServiceMismatch_Throws()
+    public void Register_WithServiceMismatch_ReturnsError()
     {
         var dispatcher = new Dispatcher(new DispatcherOptions("svc"));
         var spec = new UnaryProcedureSpec(
@@ -25,7 +25,10 @@ public class DispatcherTests
             "proc",
             (_, _) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty))));
 
-        Assert.Throws<InvalidOperationException>(() => dispatcher.Register(spec));
+        var result = dispatcher.Register(spec);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(OmniRelayStatusCode.InvalidArgument, OmniRelayErrorAdapter.ToStatus(result.Error!));
     }
 
     [Fact]
@@ -45,7 +48,7 @@ public class DispatcherTests
                 return Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty));
             });
             builder.Use(new RecordingUnaryMiddleware("local", invocations));
-        });
+        }).ThrowIfFailure();
 
         var ct = TestContext.Current.CancellationToken;
         var result = await dispatcher.InvokeUnaryAsync("echo", TestHelpers.CreateRequest(), ct);
@@ -55,18 +58,21 @@ public class DispatcherTests
     }
 
     [Fact]
-    public void ClientConfig_WithUnknownService_Throws()
+    public void ClientConfig_WithUnknownService_ReturnsError()
     {
         var dispatcher = new Dispatcher(new DispatcherOptions("svc"));
 
-        Assert.Throws<KeyNotFoundException>(() => dispatcher.ClientConfig("remote"));
+        var result = dispatcher.ClientConfig("remote");
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(OmniRelayStatusCode.NotFound, OmniRelayErrorAdapter.ToStatus(result.Error!));
     }
 
     [Fact]
     public void ClientConfig_WithLocalService_ReturnsEmptyConfiguration()
     {
         var dispatcher = new Dispatcher(new DispatcherOptions("svc"));
-        var config = dispatcher.ClientConfig("svc");
+        var config = dispatcher.ClientConfigOrThrow("svc");
 
         Assert.Equal("svc", config.Service);
         Assert.Empty(config.Unary);
@@ -81,7 +87,7 @@ public class DispatcherTests
         {
             builder.Handle((_, _) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty))));
             builder.AddAlias("alias");
-        });
+        }).ThrowIfFailure();
 
         Assert.True(dispatcher.TryGetProcedure("alias", ProcedureKind.Unary, out var spec));
         Assert.Equal("primary", spec.Name);
@@ -116,7 +122,7 @@ public class DispatcherTests
         options.UnaryInboundMiddleware.Add(new RecordingUnaryMiddleware("global", []));
 
         var dispatcher = new Dispatcher(options);
-        dispatcher.RegisterUnary("echo", builder => builder.Handle((_, _) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty)))));
+        dispatcher.RegisterUnary("echo", builder => builder.Handle((_, _) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty))))).ThrowIfFailure();
 
         var snapshot = dispatcher.Introspect();
 
@@ -153,7 +159,7 @@ public class DispatcherTests
 
                 return Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty));
             });
-        });
+        }).ThrowIfFailure();
 
         var ct = TestContext.Current.CancellationToken;
         var result = await dispatcher.InvokeClientStreamAsync("collect", new RequestMeta(), ct);
@@ -194,7 +200,7 @@ public class DispatcherTests
     }
 
     [Fact]
-    public async Task StopAsync_WhileStartIsInProgress_Throws()
+    public async Task StopAsync_WhileStartIsInProgress_ReturnsFailure()
     {
         var options = new DispatcherOptions("svc");
         var lifecycle = new BlockingLifecycle();

@@ -85,7 +85,7 @@ public class HostingConfigurationIntegrationTests
         Assert.Equal("primary", unaryOutbound.Key);
         Assert.Contains("HttpOutbound", unaryOutbound.ImplementationType, StringComparison.Ordinal);
 
-        var clientConfig = dispatcher.ClientConfig("ledger");
+        var clientConfig = dispatcher.ClientConfigOrThrow("ledger");
         Assert.True(clientConfig.TryGetUnary("primary", out var outboundInstance));
         Assert.IsAssignableFrom<HttpOutbound>(outboundInstance);
 
@@ -148,7 +148,7 @@ public class HostingConfigurationIntegrationTests
         var unaryBinding = Assert.Single(paymentsOutbound.Unary);
         Assert.Contains("HttpOutbound", unaryBinding.ImplementationType, StringComparison.Ordinal);
 
-        var clientConfig = dispatcher.ClientConfig("payments");
+        var clientConfig = dispatcher.ClientConfigOrThrow("payments");
         Assert.True(clientConfig.TryGetUnary("primary", out var outboundInstance));
         Assert.IsAssignableFrom<HttpOutbound>(outboundInstance);
     }
@@ -186,7 +186,7 @@ public class HostingConfigurationIntegrationTests
         using var host = builder.Build();
         var dispatcher = host.Services.GetRequiredService<Dispatcher.Dispatcher>();
 
-        var clientConfig = dispatcher.ClientConfig("workflow");
+        var clientConfig = dispatcher.ClientConfigOrThrow("workflow");
 
         Assert.True(clientConfig.TryGetUnary("unary-primary", out var unary));
         Assert.IsType<RecordingUnaryOutbound>(unary);
@@ -293,7 +293,7 @@ public class HostingConfigurationIntegrationTests
         await host.StartAsync(ct);
         await host.StopAsync(CancellationToken.None);
 
-        var clientConfig = dispatcher.ClientConfig("workflow");
+        var clientConfig = dispatcher.ClientConfigOrThrow("workflow");
         Assert.IsType<HttpOutbound>(clientConfig.Unary["http-unary"]);
         Assert.IsType<HttpOutbound>(clientConfig.Oneway["http-oneway"]);
         Assert.IsType<GrpcOutbound>(clientConfig.Stream["grpc-stream"]);
@@ -446,7 +446,7 @@ public class HostingConfigurationIntegrationTests
         Assert.Equal("primary", unary.Key);
         Assert.Contains(nameof(RecordingUnaryOutbound), unary.ImplementationType, StringComparison.Ordinal);
 
-        var clientConfig = dispatcher.ClientConfig("search");
+        var clientConfig = dispatcher.ClientConfigOrThrow("search");
         Assert.True(clientConfig.TryGetUnary("primary", out var outboundInstance));
         Assert.IsType<RecordingUnaryOutbound>(outboundInstance);
     }
