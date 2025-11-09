@@ -28,7 +28,7 @@ public sealed class UnaryClient<TRequest, TResponse>
     public async ValueTask<Result<Response<TResponse>>> CallAsync(Request<TRequest> request, CancellationToken cancellationToken = default)
     {
         var outboundResult = await EncodeRequest(request)
-            .ThenAsync((raw, token) => _pipeline(raw, token).AsTask(), cancellationToken)
+            .ThenValueTaskAsync((raw, token) => _pipeline(raw, token), cancellationToken)
             .ConfigureAwait(false);
 
         return outboundResult.Then(response => _codec

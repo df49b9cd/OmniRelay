@@ -31,8 +31,8 @@ public static class ProtobufCallAdapters
             var handlerResult = await codec
                 .DecodeRequest(request.Body, request.Meta)
                 .Map(decoded => new Request<TRequest>(request.Meta, decoded))
-                .ThenAsync(
-                    (typedRequest, token) => InvokeHandlerSafeAsync(handler, typedRequest, transport, token).AsTask(),
+                .ThenValueTaskAsync(
+                    (typedRequest, token) => InvokeHandlerSafeAsync(handler, typedRequest, transport, token),
                     cancellationToken)
                 .ConfigureAwait(false);
 

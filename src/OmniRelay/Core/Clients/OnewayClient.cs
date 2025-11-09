@@ -33,7 +33,7 @@ public sealed class OnewayClient<TRequest>
     /// </summary>
     public async ValueTask<Result<OnewayAck>> CallAsync(Request<TRequest> request, CancellationToken cancellationToken = default) =>
         await EncodeRequest(request)
-            .ThenAsync((outboundRequest, token) => _pipeline(outboundRequest, token).AsTask(), cancellationToken)
+            .ThenValueTaskAsync((outboundRequest, token) => _pipeline(outboundRequest, token), cancellationToken)
             .ConfigureAwait(false);
 
     private RequestMeta EnsureEncoding(RequestMeta meta)

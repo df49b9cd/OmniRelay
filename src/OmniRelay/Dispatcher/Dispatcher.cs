@@ -270,16 +270,14 @@ public sealed class Dispatcher
     {
         var transport = request.Meta.Transport ?? "unknown";
 
-        var task = ResolveProcedure<UnaryProcedureSpec>(
+        return ResolveProcedure<UnaryProcedureSpec>(
                 procedure,
                 ProcedureKind.Unary,
                 transport)
             .Map(spec => MiddlewareComposer.ComposeUnaryInbound(
                 CombineMiddleware(_inboundUnaryMiddleware, spec.Middleware),
                 spec.Handler))
-            .ThenAsync((pipeline, token) => pipeline(request, token).AsTask(), cancellationToken);
-
-        return new ValueTask<Result<Response<ReadOnlyMemory<byte>>>>(task);
+            .ThenValueTaskAsync((pipeline, token) => pipeline(request, token), cancellationToken);
     }
 
     /// <summary>
@@ -292,16 +290,14 @@ public sealed class Dispatcher
     {
         var transport = request.Meta.Transport ?? "unknown";
 
-        var task = ResolveProcedure<OnewayProcedureSpec>(
+        return ResolveProcedure<OnewayProcedureSpec>(
                 procedure,
                 ProcedureKind.Oneway,
                 transport)
             .Map(spec => MiddlewareComposer.ComposeOnewayInbound(
                 CombineMiddleware(_inboundOnewayMiddleware, spec.Middleware),
                 spec.Handler))
-            .ThenAsync((pipeline, token) => pipeline(request, token).AsTask(), cancellationToken);
-
-        return new ValueTask<Result<OnewayAck>>(task);
+            .ThenValueTaskAsync((pipeline, token) => pipeline(request, token), cancellationToken);
     }
 
     /// <summary>
@@ -363,7 +359,7 @@ public sealed class Dispatcher
 
         var transport = request.Meta.Transport ?? "stream";
 
-        var task = ResolveProcedure<StreamProcedureSpec>(
+        return ResolveProcedure<StreamProcedureSpec>(
                 procedure,
                 ProcedureKind.Stream,
                 transport,
@@ -371,9 +367,7 @@ public sealed class Dispatcher
             .Map(spec => MiddlewareComposer.ComposeStreamInbound(
                 CombineMiddleware(_inboundStreamMiddleware, spec.Middleware),
                 spec.Handler))
-            .ThenAsync((pipeline, token) => pipeline(request, options, token).AsTask(), cancellationToken);
-
-        return new ValueTask<Result<IStreamCall>>(task);
+            .ThenValueTaskAsync((pipeline, token) => pipeline(request, options, token), cancellationToken);
     }
 
     /// <summary>
@@ -393,7 +387,7 @@ public sealed class Dispatcher
 
         var transport = request.Meta.Transport ?? "stream";
 
-        var task = ResolveProcedure<DuplexProcedureSpec>(
+        return ResolveProcedure<DuplexProcedureSpec>(
                 procedure,
                 ProcedureKind.Duplex,
                 transport,
@@ -401,9 +395,7 @@ public sealed class Dispatcher
             .Map(spec => MiddlewareComposer.ComposeDuplexInbound(
                 CombineMiddleware(_inboundDuplexMiddleware, spec.Middleware),
                 spec.Handler))
-            .ThenAsync((pipeline, token) => pipeline(request, token).AsTask(), cancellationToken);
-
-        return new ValueTask<Result<IDuplexStreamCall>>(task);
+            .ThenValueTaskAsync((pipeline, token) => pipeline(request, token), cancellationToken);
     }
 
     /// <summary>

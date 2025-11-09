@@ -38,16 +38,14 @@ public sealed class HttpDuplexOutbound(Uri baseAddress) : IDuplexOutbound, IOutb
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken = default)
     {
-        var task = Result.Ok(request)
+        return Result.Ok(request)
             .Ensure(
                 req => !string.IsNullOrWhiteSpace(req.Meta.Procedure),
                 req => OmniRelayErrorAdapter.FromStatus(
                     OmniRelayStatusCode.InvalidArgument,
                     "Procedure metadata is required for HTTP duplex streaming calls.",
                     transport: "http"))
-            .ThenAsync((req, token) => ConnectAsync(req, token).AsTask(), cancellationToken);
-
-        return new ValueTask<Result<IDuplexStreamCall>>(task);
+            .ThenValueTaskAsync((req, token) => ConnectAsync(req, token), cancellationToken);
     }
 
     private async ValueTask<Result<IDuplexStreamCall>> ConnectAsync(
