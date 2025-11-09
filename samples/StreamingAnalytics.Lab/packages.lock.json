@@ -16,9 +16,9 @@
       },
       "Hugo": {
         "type": "Direct",
-        "requested": "[1.4.2, )",
-        "resolved": "1.4.2",
-        "contentHash": "rG3SPqXYFb7FUkJhbmyaGejV+6xnnhGokZoLopD8cJR4/s0mmZFY0ZBT24iwotR3cX40+2V4DVZewEUuqbkZkQ==",
+        "requested": "[1.4.3, )",
+        "resolved": "1.4.3",
+        "contentHash": "eGt8OfhxH11bMYvCvwRupKMc/yb0zJiJdFM4o7J37vDIIuvD3zHQiyJS+i+/+jhLyjbNU9anfXis/cD0sxWhsg==",
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "9.0.10",
           "Microsoft.Extensions.Logging.Abstractions": "9.0.10"
@@ -166,7 +166,7 @@
           "Grpc.AspNetCore.Server": "[2.71.0, )",
           "Grpc.HealthCheck": "[2.71.0, )",
           "Grpc.Net.Client": "[2.71.0, )",
-          "Hugo": "[1.4.2, )",
+          "Hugo": "[1.4.3, )",
           "JsonSchema.Net": "[7.4.0, )",
           "OpenTelemetry": "[1.14.0-rc.1, )"
         }
