@@ -60,8 +60,8 @@ public interface IClientStreamTransportCall : IAsyncDisposable
     RequestMeta RequestMeta { get; }
     /// <summary>Gets the response metadata.</summary>
     ResponseMeta ResponseMeta { get; }
-    /// <summary>Gets the task that completes with the unary response.</summary>
-    Task<Result<Response<ReadOnlyMemory<byte>>>> Response { get; }
+    /// <summary>Gets the ValueTask that completes with the unary response.</summary>
+    ValueTask<Result<Response<ReadOnlyMemory<byte>>>> Response { get; }
     /// <summary>Writes a request message to the stream.</summary>
     ValueTask WriteAsync(ReadOnlyMemory<byte> payload, CancellationToken cancellationToken = default);
     /// <summary>Signals completion of the request stream.</summary>

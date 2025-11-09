@@ -33,8 +33,9 @@ public sealed class ClientStreamCall : IAsyncDisposable
 
     internal ChannelReader<ReadOnlyMemory<byte>> Reader => _requests.Reader;
 
-    /// <summary>Gets the task that completes with the unary response.</summary>
-    public Task<Result<Response<ReadOnlyMemory<byte>>>> Response => _completion.Task;
+    /// <summary>Gets the ValueTask that completes with the unary response.</summary>
+    public ValueTask<Result<Response<ReadOnlyMemory<byte>>>> Response =>
+        new(_completion.Task);
 
     /// <summary>
     /// Creates a client-streaming call instance for the given request metadata.

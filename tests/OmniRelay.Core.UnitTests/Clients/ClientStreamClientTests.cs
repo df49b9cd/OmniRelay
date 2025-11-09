@@ -33,7 +33,7 @@ public class ClientStreamClientTests
 
         public RequestMeta RequestMeta { get; }
         public ResponseMeta ResponseMeta { get; set; }
-        public Task<Result<Response<ReadOnlyMemory<byte>>>> Response => _tcs.Task;
+        public ValueTask<Result<Response<ReadOnlyMemory<byte>>>> Response => new(_tcs.Task);
         public IReadOnlyList<ReadOnlyMemory<byte>> Writes => _writes;
 
         public ValueTask WriteAsync(ReadOnlyMemory<byte> payload, CancellationToken cancellationToken = default)

@@ -77,7 +77,8 @@ internal static class TestHelpers
     {
         public RequestMeta RequestMeta { get; } = requestMeta;
         public ResponseMeta ResponseMeta => new();
-        public Task<Result<Response<ReadOnlyMemory<byte>>>> Response => Task.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty)));
+        public ValueTask<Result<Response<ReadOnlyMemory<byte>>>> Response =>
+            new(Task.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty))));
         public ValueTask WriteAsync(ReadOnlyMemory<byte> payload, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
         public ValueTask CompleteAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;

@@ -1,3 +1,4 @@
+using System;
 using System.Diagnostics;
 using System.Threading.Channels;
 using Hugo;
@@ -658,21 +659,21 @@ public sealed class RpcTracingMiddleware :
         private readonly IClientStreamTransportCall _inner;
         private readonly RpcTracingMiddleware _owner;
         private Activity? _activity;
-        private readonly Task<Result<Response<ReadOnlyMemory<byte>>>> _response;
+        private readonly Lazy<Task<Result<Response<ReadOnlyMemory<byte>>>>> _response;
 
         public TracingClientStreamTransportCall(IClientStreamTransportCall inner, Activity activity, RpcTracingMiddleware owner)
         {
             _inner = inner ?? throw new ArgumentNullException(nameof(inner));
             _activity = activity ?? throw new ArgumentNullException(nameof(activity));
             _owner = owner;
-            _response = MonitorResponse(inner.Response);
+            _response = new Lazy<Task<Result<Response<ReadOnlyMemory<byte>>>>>(() => MonitorResponseAsync(inner.Response));
         }
 
         public RequestMeta RequestMeta => _inner.RequestMeta;
 
         public ResponseMeta ResponseMeta => _inner.ResponseMeta;
 
-        public Task<Result<Response<ReadOnlyMemory<byte>>>> Response => _response;
+        public ValueTask<Result<Response<ReadOnlyMemory<byte>>>> Response => new(_response.Value);
 
         public ValueTask WriteAsync(ReadOnlyMemory<byte> payload, CancellationToken cancellationToken = default) =>
             _inner.WriteAsync(payload, cancellationToken);
@@ -692,38 +693,70 @@ public sealed class RpcTracingMiddleware :
             }
         }
 
-        private Task<Result<Response<ReadOnlyMemory<byte>>>> MonitorResponse(Task<Result<Response<ReadOnlyMemory<byte>>>> responseTask) =>
-            responseTask.ContinueWith(task =>
+        private Task<Result<Response<ReadOnlyMemory<byte>>>> MonitorResponseAsync(ValueTask<Result<Response<ReadOnlyMemory<byte>>>> responseTask)
+        {
+            if (responseTask.IsCompletedSuccessfully)
             {
-                if (task.IsFaulted)
+                try
                 {
-                    if (task.Exception is { } aggregate && aggregate.InnerExceptions.Count == 1)
-                    {
-                        RecordException(_activity, aggregate.InnerExceptions[0]);
-                    }
-                    else
-                    {
-                        RecordException(_activity, task.Exception!);
-                    }
+                    var result = responseTask.GetAwaiter().GetResult();
+                    HandleResponseResult(result);
+                    return Task.FromResult(result);
                 }
-                else if (task.IsCompletedSuccessfully)
+                catch (Exception ex)
                 {
-                    var result = task.Result;
-                    if (result.IsSuccess)
-                    {
-                        if (_activity is not null)
-                        {
-                            SetSuccess(_activity, result.Value.Meta.Encoding);
-                        }
-                    }
-                    else if (_activity is not null)
-                    {
-                        RecordError(_activity, result.Error!);
-                    }
+                    HandleResponseException(ex);
+                    return Task.FromException<Result<Response<ReadOnlyMemory<byte>>>>(ex);
                 }
+            }
 
-                return task.Result;
-            }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            return AwaitAndHandleAsync(responseTask);
+
+            async Task<Result<Response<ReadOnlyMemory<byte>>>> AwaitAndHandleAsync(ValueTask<Result<Response<ReadOnlyMemory<byte>>>> pending)
+            {
+                try
+                {
+                    var result = await pending.ConfigureAwait(false);
+                    HandleResponseResult(result);
+                    return result;
+                }
+                catch (Exception ex)
+                {
+                    HandleResponseException(ex);
+                    throw;
+                }
+            }
+        }
+
+        private void HandleResponseResult(Result<Response<ReadOnlyMemory<byte>>> result)
+        {
+            var activity = _activity;
+            if (activity is null)
+            {
+                return;
+            }
+
+            if (result.IsSuccess)
+            {
+                SetSuccess(activity, result.Value.Meta.Encoding);
+            }
+            else
+            {
+                RecordError(activity, result.Error!);
+            }
+        }
+
+        private void HandleResponseException(Exception exception)
+        {
+            if (exception is AggregateException { InnerExceptions.Count: 1 } aggregate)
+            {
+                RecordException(_activity, aggregate.InnerExceptions[0]);
+            }
+            else
+            {
+                RecordException(_activity, exception);
+            }
+        }
 
         private void CloseActivity()
         {

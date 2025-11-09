@@ -74,8 +74,8 @@ public sealed class ClientStreamClient<TRequest, TResponse>
         /// <summary>Gets the response metadata.</summary>
         public ResponseMeta ResponseMeta => _transportCall.ResponseMeta;
 
-        /// <summary>Gets the task that completes with the result-wrapped unary response.</summary>
-        public Task<Result<Response<TResponse>>> Response => _response.Value;
+        /// <summary>Gets the ValueTask that completes with the result-wrapped unary response.</summary>
+        public ValueTask<Result<Response<TResponse>>> Response => new(_response.Value);
 
         /// <summary>Writes a typed request message to the stream, returning a result for success or failure.</summary>
         public async ValueTask<Result<Unit>> WriteAsync(TRequest message, CancellationToken cancellationToken = default)

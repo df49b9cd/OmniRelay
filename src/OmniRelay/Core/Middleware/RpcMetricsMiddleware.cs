@@ -1,3 +1,4 @@
+using System;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Threading.Channels;
@@ -460,17 +461,31 @@ public sealed class RpcMetricsMiddleware :
         }
     }
 
-    private sealed class MetricsClientStreamTransportCall(IClientStreamTransportCall inner, KeyValuePair<string, object?>[] tags, long startTimestamp, RpcMetricsMiddleware owner) : IClientStreamTransportCall
+    private sealed class MetricsClientStreamTransportCall : IClientStreamTransportCall
     {
-        private readonly IClientStreamTransportCall _inner = inner ?? throw new ArgumentNullException(nameof(inner));
-        private readonly KeyValuePair<string, object?>[] _tags = tags ?? throw new ArgumentNullException(nameof(tags));
-        private readonly long _startTimestamp = startTimestamp;
-        private readonly RpcMetricsMiddleware _owner = owner;
+        private readonly IClientStreamTransportCall _inner;
+        private readonly KeyValuePair<string, object?>[] _tags;
+        private readonly long _startTimestamp;
+        private readonly RpcMetricsMiddleware _owner;
+        private readonly Lazy<Task<Result<Response<ReadOnlyMemory<byte>>>>> _response;
+
+        public MetricsClientStreamTransportCall(
+            IClientStreamTransportCall inner,
+            KeyValuePair<string, object?>[] tags,
+            long startTimestamp,
+            RpcMetricsMiddleware owner)
+        {
+            _inner = inner ?? throw new ArgumentNullException(nameof(inner));
+            _tags = tags ?? throw new ArgumentNullException(nameof(tags));
+            _startTimestamp = startTimestamp;
+            _owner = owner;
+            _response = new Lazy<Task<Result<Response<ReadOnlyMemory<byte>>>>>(ObserveResponseAsync);
+        }
 
         public RequestMeta RequestMeta => _inner.RequestMeta;
         public ResponseMeta ResponseMeta => _inner.ResponseMeta;
 
-        public Task<Result<Response<ReadOnlyMemory<byte>>>> Response => ObserveResponseAsync();
+        public ValueTask<Result<Response<ReadOnlyMemory<byte>>>> Response => new(_response.Value);
 
         public ValueTask WriteAsync(ReadOnlyMemory<byte> payload, CancellationToken cancellationToken = default) =>
             _inner.WriteAsync(payload, cancellationToken);

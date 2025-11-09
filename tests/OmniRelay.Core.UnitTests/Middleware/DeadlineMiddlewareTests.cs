@@ -130,7 +130,8 @@ public class DeadlineMiddlewareTests
         var call = Substitute.For<IClientStreamTransportCall>();
         call.RequestMeta.Returns(meta);
         call.ResponseMeta.Returns(new ResponseMeta());
-        call.Response.Returns(Task.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty))));
+        call.Response.Returns(new ValueTask<Result<Response<ReadOnlyMemory<byte>>>>(
+            Task.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty)))));
         call.WriteAsync(Arg.Any<ReadOnlyMemory<byte>>(), Arg.Any<CancellationToken>()).Returns(ValueTask.CompletedTask);
         call.CompleteAsync(Arg.Any<CancellationToken>()).Returns(ValueTask.CompletedTask);
         call.DisposeAsync().Returns(ValueTask.CompletedTask);

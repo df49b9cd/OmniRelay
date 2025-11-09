@@ -185,7 +185,8 @@ public class RpcTracingMiddlewareTests
             var call = Substitute.For<IClientStreamTransportCall>();
             call.RequestMeta.Returns(requestMeta);
             call.ResponseMeta.Returns(new ResponseMeta());
-            call.Response.Returns(Task.FromResult(Err<Response<ReadOnlyMemory<byte>>>(OmniRelayErrorAdapter.FromStatus(OmniRelayStatusCode.Unavailable, "fail", transport: "http"))));
+            var response = Err<Response<ReadOnlyMemory<byte>>>(OmniRelayErrorAdapter.FromStatus(OmniRelayStatusCode.Unavailable, "fail", transport: "http"));
+            call.Response.Returns(new ValueTask<Result<Response<ReadOnlyMemory<byte>>>>(Task.FromResult(response)));
             call.WriteAsync(Arg.Any<ReadOnlyMemory<byte>>(), Arg.Any<CancellationToken>()).Returns(ValueTask.CompletedTask);
             call.CompleteAsync(Arg.Any<CancellationToken>()).Returns(ValueTask.CompletedTask);
             call.DisposeAsync().Returns(ValueTask.CompletedTask);

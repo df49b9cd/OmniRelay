@@ -128,8 +128,8 @@ public class MiddlewareComposerTests
 
         public ResponseMeta ResponseMeta { get; private set; } = new ResponseMeta();
 
-        public Task<Result<Response<ReadOnlyMemory<byte>>>> Response => Task.FromResult(
-            Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty, ResponseMeta)));
+        public ValueTask<Result<Response<ReadOnlyMemory<byte>>>> Response => new(
+            Task.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty, ResponseMeta))));
 
         public ValueTask WriteAsync(ReadOnlyMemory<byte> payload, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
 

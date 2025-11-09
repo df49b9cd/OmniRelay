@@ -52,9 +52,10 @@ internal sealed class GrpcClientStreamTransportCall : IClientStreamTransportCall
     public ResponseMeta ResponseMeta { get; private set; }
 
     /// <summary>
-    /// Gets the task that completes with the unary response of the client-streaming call.
+    /// Gets the ValueTask that completes with the unary response of the client-streaming call.
     /// </summary>
-    public Task<Result<Response<ReadOnlyMemory<byte>>>> Response => _completion.Task;
+    public ValueTask<Result<Response<ReadOnlyMemory<byte>>>> Response =>
+        new(_completion.Task);
 
     /// <inheritdoc />
     public async ValueTask WriteAsync(ReadOnlyMemory<byte> payload, CancellationToken cancellationToken = default)

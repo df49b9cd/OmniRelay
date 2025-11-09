@@ -266,7 +266,7 @@ public sealed class RateLimitingMiddleware(RateLimitingOptions? options = null) 
 
         public RequestMeta RequestMeta => _inner.RequestMeta;
         public ResponseMeta ResponseMeta => _inner.ResponseMeta;
-        public Task<Result<Response<ReadOnlyMemory<byte>>>> Response => _inner.Response;
+        public ValueTask<Result<Response<ReadOnlyMemory<byte>>>> Response => _inner.Response;
 
         public ValueTask WriteAsync(ReadOnlyMemory<byte> payload, CancellationToken cancellationToken = default) =>
             _inner.WriteAsync(payload, cancellationToken);

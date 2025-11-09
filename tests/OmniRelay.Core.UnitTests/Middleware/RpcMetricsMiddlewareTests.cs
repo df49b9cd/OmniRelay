@@ -203,7 +203,7 @@ public class RpcMetricsMiddlewareTests
         var result = await middleware.InvokeAsync(meta, TestContext.Current.CancellationToken, next);
         Assert.True(result.IsSuccess);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => result.Value.Response);
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await result.Value.Response);
 
         await Task.Delay(10, TestContext.Current.CancellationToken);
 
@@ -299,7 +299,8 @@ public class RpcMetricsMiddlewareTests
     {
         public RequestMeta RequestMeta { get; } = meta;
         public ResponseMeta ResponseMeta { get; } = new();
-        public Task<Result<Response<ReadOnlyMemory<byte>>>> Response => Task.FromException<Result<Response<ReadOnlyMemory<byte>>>>(new InvalidOperationException("client stream failure"));
+        public ValueTask<Result<Response<ReadOnlyMemory<byte>>>> Response =>
+            new(Task.FromException<Result<Response<ReadOnlyMemory<byte>>>>(new InvalidOperationException("client stream failure")));
         public ValueTask WriteAsync(ReadOnlyMemory<byte> payload, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
         public ValueTask CompleteAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
@@ -309,7 +310,8 @@ public class RpcMetricsMiddlewareTests
     {
         public RequestMeta RequestMeta { get; } = meta;
         public ResponseMeta ResponseMeta { get; } = new();
-        public Task<Result<Response<ReadOnlyMemory<byte>>>> Response { get; } = Task.FromResult(response);
+        public ValueTask<Result<Response<ReadOnlyMemory<byte>>>> Response { get; } =
+            new(Task.FromResult(response));
 
         public ValueTask WriteAsync(ReadOnlyMemory<byte> payload, CancellationToken cancellationToken = default) =>
             ValueTask.CompletedTask;

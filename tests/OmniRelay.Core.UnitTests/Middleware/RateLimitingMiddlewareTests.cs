@@ -286,7 +286,7 @@ public class RateLimitingMiddlewareTests
 
         public RequestMeta RequestMeta { get; }
         public ResponseMeta ResponseMeta { get; } = new();
-        public Task<Result<Response<ReadOnlyMemory<byte>>>> Response => _tcs.Task;
+        public ValueTask<Result<Response<ReadOnlyMemory<byte>>>> Response => new(_tcs.Task);
 
         public ValueTask WriteAsync(ReadOnlyMemory<byte> payload, CancellationToken cancellationToken = default) =>
             ValueTask.CompletedTask;

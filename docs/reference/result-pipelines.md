@@ -66,6 +66,8 @@ Every async variation accepts a `CancellationToken` and normalises cancellations
 - `Functional.EnsureAsync` validates successful values asynchronously.
 - `Functional.FinallyAsync` awaits success/failure continuations (sync or async callbacks).
 
+> **Hugo v1.4.3:** Every async combinator has a `*ValueTaskAsync` counterpart (for example `Functional.ThenValueTaskAsync`, `Functional.MapValueTaskAsync`) so pipelines that already use `ValueTask<Result<T>>` stay allocation-free when chaining Functional helpers.
+
 ## Collection helpers
 
 - `Result.Sequence` / `Result.SequenceAsync` aggregate successes from `IEnumerable<Result<T>>` and `IAsyncEnumerable<Result<T>>`.

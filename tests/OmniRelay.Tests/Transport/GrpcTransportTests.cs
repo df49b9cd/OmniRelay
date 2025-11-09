@@ -543,7 +543,7 @@ public class GrpcTransportTests
                 .GetAsyncEnumerator(ct);
 
             Assert.True(await enumerator.MoveNextAsync());
-            Assert.Equal("first", enumerator.Current.Body.Message);
+            Assert.Equal("first", enumerator.Current.ValueOrThrow().Body.Message);
 
             var exception = await Assert.ThrowsAsync<OmniRelayException>(async () =>
             {

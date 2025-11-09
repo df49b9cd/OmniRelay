@@ -60,7 +60,7 @@ All factory methods ultimately increment success/failure counters through `GoDia
 
 `Functional` is a static class housing the “railway oriented” fluent API. Extensions exist in synchronous and asynchronous forms and return `Result<T>` (or tasks of results) so they compose naturally.
 
-- Execution flow: `Then`, `ThenAsync` overloads (sync→sync, sync→async, async→sync, async→async) plus `Recover`, `RecoverAsync` and `Finally`, `FinallyAsync`. All async helpers now ship ValueTask-friendly variants (`*ValueTaskAsync`) so both delegates and `ValueTask<Result<T>>` sources compose without allocating extra tasks.
+- Execution flow: `Then`, `ThenAsync` overloads (sync→sync, sync→async, async→sync, async→async) plus `Recover`, `RecoverAsync` and `Finally`, `FinallyAsync`. As of Hugo v1.4.3, all async helpers ship ValueTask-friendly variants (`*ValueTaskAsync`) so both delegates and `ValueTask<Result<T>>` sources compose without allocating extra tasks.
 - Mapping: `Map`, `MapAsync` (sync source/async mapper), `Tap`, `TapAsync`, and aliases `Tee`, `TeeAsync`.
 - Validation: `Ensure`, `EnsureAsync`, LINQ integration (`Select`, `SelectMany`, `Where`).
 - Side-effects: `OnSuccess`/`OnSuccessAsync`, `OnFailure`/`OnFailureAsync`, `TapError`/`TapErrorAsync`.
