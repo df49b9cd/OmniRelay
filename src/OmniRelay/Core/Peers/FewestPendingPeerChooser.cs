@@ -13,16 +13,16 @@ public sealed class FewestPendingPeerChooser : IPeerChooser
     private readonly PeerListCoordinator _coordinator;
 
     public FewestPendingPeerChooser(params IPeer[] peers)
-        : this(peers is null ? throw new ArgumentNullException(nameof(peers)) : peers.AsEnumerable())
+        : this(peers is null ? throw new ArgumentNullException(nameof(peers)) : peers.AsEnumerable(), random: null, leaseHealthTracker: null)
     {
     }
 
-    public FewestPendingPeerChooser(ImmutableArray<IPeer> peers, Random? random = null)
-        : this(peers.AsEnumerable(), random)
+    public FewestPendingPeerChooser(ImmutableArray<IPeer> peers, Random? random = null, PeerLeaseHealthTracker? leaseHealthTracker = null)
+        : this(peers.AsEnumerable(), random, leaseHealthTracker)
     {
     }
 
-    public FewestPendingPeerChooser(IEnumerable<IPeer> peers, Random? random = null)
+    public FewestPendingPeerChooser(IEnumerable<IPeer> peers, Random? random = null, PeerLeaseHealthTracker? leaseHealthTracker = null)
     {
         ArgumentNullException.ThrowIfNull(peers);
         var snapshot = peers.ToList();
@@ -31,7 +31,7 @@ public sealed class FewestPendingPeerChooser : IPeerChooser
             throw new ArgumentException("At least one peer must be provided.", nameof(peers));
         }
 
-        _coordinator = new PeerListCoordinator(snapshot);
+        _coordinator = new PeerListCoordinator(snapshot, leaseHealthTracker);
         _random = random ?? Random.Shared;
     }
 

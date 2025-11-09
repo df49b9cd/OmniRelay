@@ -1,0 +1,229 @@
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Globalization;
+
+namespace OmniRelay.Core.Peers;
+
+/// <summary>
+/// Tracks SafeTaskQueue lease heartbeats and membership gossip for metadata peers.
+/// </summary>
+public sealed class PeerLeaseHealthTracker
+{
+    private readonly ConcurrentDictionary<string, PeerLeaseHealthState> _states = new(StringComparer.Ordinal);
+    private readonly TimeSpan _heartbeatGracePeriod;
+    private readonly TimeProvider _timeProvider;
+
+    public PeerLeaseHealthTracker(TimeSpan? heartbeatGracePeriod = null, TimeProvider? timeProvider = null)
+    {
+        _heartbeatGracePeriod = heartbeatGracePeriod ?? TimeSpan.FromSeconds(30);
+        _timeProvider = timeProvider ?? TimeProvider.System;
+    }
+
+    /// <summary>Records a new lease assignment for the specified peer.</summary>
+    public void RecordLeaseAssignment(string peerId, PeerLeaseHandle handle, string? namespaceId = null, string? tableId = null)
+    {
+        var state = GetOrCreateState(peerId);
+        var now = _timeProvider.GetUtcNow();
+        state.RecordAssignment(handle, now, namespaceId, tableId);
+        PeerMetrics.RecordLeaseAssignmentSignal(peerId, namespaceId, tableId);
+    }
+
+    /// <summary>Marks the lease as released and records whether it was requeued.</summary>
+    public void RecordLeaseReleased(string peerId, PeerLeaseHandle handle, bool requeued)
+    {
+        var state = GetOrCreateState(peerId);
+        var now = _timeProvider.GetUtcNow();
+        state.RecordRelease(handle, now, requeued);
+    }
+
+    /// <summary>Records a heartbeat from the peer for the associated lease.</summary>
+    public void RecordLeaseHeartbeat(string peerId, PeerLeaseHandle? handle = null, long? pendingCount = null)
+    {
+        var state = GetOrCreateState(peerId);
+        var now = _timeProvider.GetUtcNow();
+        state.RecordHeartbeat(now, handle, pendingCount);
+        PeerMetrics.RecordLeaseHeartbeatSignal(peerId);
+    }
+
+    /// <summary>Registers a disconnect or failure signal for the peer.</summary>
+    public void RecordDisconnect(string peerId, string? reason = null)
+    {
+        var state = GetOrCreateState(peerId);
+        var now = _timeProvider.GetUtcNow();
+        state.RecordDisconnect(now, reason);
+        PeerMetrics.RecordLeaseDisconnectSignal(peerId, reason);
+    }
+
+    /// <summary>Stores metadata learned through gossip (for example region/zone, namespace ownership).</summary>
+    public void RecordGossip(string peerId, IReadOnlyDictionary<string, string> metadata)
+    {
+        var state = GetOrCreateState(peerId);
+        state.RecordGossip(metadata);
+    }
+
+    /// <summary>Determines whether the peer is eligible for new lease assignments.</summary>
+    public bool IsPeerEligible(string peerId)
+    {
+        if (!_states.TryGetValue(peerId, out var state))
+        {
+            return true;
+        }
+
+        var now = _timeProvider.GetUtcNow();
+        return state.IsHealthy(now, _heartbeatGracePeriod);
+    }
+
+    /// <summary>Returns an immutable snapshot for all tracked peers.</summary>
+    public ImmutableArray<PeerLeaseHealthSnapshot> Snapshot()
+    {
+        var now = _timeProvider.GetUtcNow();
+        var builder = ImmutableArray.CreateBuilder<PeerLeaseHealthSnapshot>(_states.Count);
+
+        foreach (var state in _states.Values)
+        {
+            builder.Add(state.ToSnapshot(now, _heartbeatGracePeriod));
+        }
+
+        return builder.ToImmutable();
+    }
+
+    private PeerLeaseHealthState GetOrCreateState(string peerId) =>
+        _states.GetOrAdd(peerId, static id => new PeerLeaseHealthState(id));
+
+    private sealed class PeerLeaseHealthState
+    {
+        private readonly string _peerId;
+        private readonly object _lock = new();
+        private readonly Dictionary<Guid, PeerLeaseHandle> _activeLeases = new();
+        private ImmutableDictionary<string, string> _metadata = ImmutableDictionary<string, string>.Empty;
+        private DateTimeOffset _lastHeartbeat = DateTimeOffset.MinValue;
+        private DateTimeOffset? _lastDisconnect;
+        private bool _isDisconnected;
+        private int _pendingReassignments;
+
+        public PeerLeaseHealthState(string peerId)
+        {
+            _peerId = peerId;
+        }
+
+        public void RecordAssignment(PeerLeaseHandle handle, DateTimeOffset observedAt, string? namespaceId, string? tableId)
+        {
+            lock (_lock)
+            {
+                _activeLeases[handle.LeaseId] = handle;
+                _lastHeartbeat = observedAt;
+                _isDisconnected = false;
+                if (namespaceId is not null)
+                {
+                    _metadata = _metadata.SetItem("namespace", namespaceId);
+                }
+
+                if (tableId is not null)
+                {
+                    _metadata = _metadata.SetItem("table", tableId);
+                }
+
+                if (_pendingReassignments > 0)
+                {
+                    _pendingReassignments--;
+                }
+            }
+        }
+
+        public void RecordRelease(PeerLeaseHandle handle, DateTimeOffset observedAt, bool requeued)
+        {
+            lock (_lock)
+            {
+                _activeLeases.Remove(handle.LeaseId);
+                _lastHeartbeat = observedAt;
+                if (requeued)
+                {
+                    _pendingReassignments++;
+                }
+            }
+        }
+
+        public void RecordHeartbeat(DateTimeOffset observedAt, PeerLeaseHandle? handle, long? pendingCount)
+        {
+            lock (_lock)
+            {
+                _lastHeartbeat = observedAt;
+                _isDisconnected = false;
+                if (handle is PeerLeaseHandle lease && !_activeLeases.ContainsKey(lease.LeaseId))
+                {
+                    _activeLeases[lease.LeaseId] = lease;
+                }
+
+                if (pendingCount is not null)
+                {
+                    _metadata = _metadata.SetItem("pending.count", pendingCount.Value.ToString(CultureInfo.InvariantCulture));
+                }
+            }
+        }
+
+        public void RecordDisconnect(DateTimeOffset observedAt, string? reason)
+        {
+            lock (_lock)
+            {
+                _lastDisconnect = observedAt;
+                _isDisconnected = true;
+                if (!string.IsNullOrWhiteSpace(reason))
+                {
+                    _metadata = _metadata.SetItem("disconnect.reason", reason);
+                }
+            }
+        }
+
+        public void RecordGossip(IReadOnlyDictionary<string, string> metadata)
+        {
+            lock (_lock)
+            {
+                foreach (var kvp in metadata)
+                {
+                    if (!string.IsNullOrWhiteSpace(kvp.Key) && kvp.Value is not null)
+                    {
+                        _metadata = _metadata.SetItem(kvp.Key, kvp.Value);
+                    }
+                }
+            }
+        }
+
+        public bool IsHealthy(DateTimeOffset now, TimeSpan gracePeriod)
+        {
+            lock (_lock)
+            {
+                if (_isDisconnected)
+                {
+                    return false;
+                }
+
+                if (_lastHeartbeat == DateTimeOffset.MinValue)
+                {
+                    return true;
+                }
+
+                return now - _lastHeartbeat <= gracePeriod;
+            }
+        }
+
+        public PeerLeaseHealthSnapshot ToSnapshot(DateTimeOffset now, TimeSpan gracePeriod)
+        {
+            lock (_lock)
+            {
+                var leases = _activeLeases.Values.ToImmutableArray();
+                var metadata = _metadata;
+                var healthy = !_isDisconnected && (_lastHeartbeat == DateTimeOffset.MinValue || now - _lastHeartbeat <= gracePeriod);
+                return new PeerLeaseHealthSnapshot(
+                    _peerId,
+                    _lastHeartbeat,
+                    _lastDisconnect,
+                    healthy,
+                    leases.Length,
+                    _pendingReassignments,
+                    leases,
+                    metadata);
+            }
+        }
+    }
+}

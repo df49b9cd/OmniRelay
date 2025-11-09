@@ -15,16 +15,16 @@ public sealed class TwoRandomPeerChooser : IPeerChooser
     private readonly Random _random;
 
     public TwoRandomPeerChooser(params IPeer[] peers)
-        : this(peers is null ? throw new ArgumentNullException(nameof(peers)) : peers.AsEnumerable())
+        : this(peers is null ? throw new ArgumentNullException(nameof(peers)) : peers.AsEnumerable(), random: null, leaseHealthTracker: null)
     {
     }
 
-    public TwoRandomPeerChooser(ImmutableArray<IPeer> peers, Random? random = null)
-        : this(peers.AsEnumerable(), random)
+    public TwoRandomPeerChooser(ImmutableArray<IPeer> peers, Random? random = null, PeerLeaseHealthTracker? leaseHealthTracker = null)
+        : this(peers.AsEnumerable(), random, leaseHealthTracker)
     {
     }
 
-    public TwoRandomPeerChooser(IEnumerable<IPeer> peers, Random? random = null)
+    public TwoRandomPeerChooser(IEnumerable<IPeer> peers, Random? random = null, PeerLeaseHealthTracker? leaseHealthTracker = null)
     {
         ArgumentNullException.ThrowIfNull(peers);
         var snapshot = peers.ToList();
@@ -33,7 +33,7 @@ public sealed class TwoRandomPeerChooser : IPeerChooser
             throw new ArgumentException("At least one peer must be provided.", nameof(peers));
         }
 
-        _coordinator = new PeerListCoordinator(snapshot);
+        _coordinator = new PeerListCoordinator(snapshot, leaseHealthTracker);
         _random = random ?? Random.Shared;
     }
 

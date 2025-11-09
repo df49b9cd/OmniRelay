@@ -16,6 +16,13 @@ Each DTO lives alongside the component (`TableLeaseItemPayload`, `TableLeaseOwne
 
 Use `TableLeaseDispatcherOptions.QueueOptions` to align lease duration, heartbeat cadence, capacity, and backpressure thresholds with Lakeview’s SafeTaskQueue settings.
 
+### Peer health + membership gossip
+
+- `TableLeaseDispatcherOptions.LeaseHealthTracker` accepts a shared `PeerLeaseHealthTracker` (under `Core.Peers`). When supplied, the dispatcher emits lease assignments, heartbeats, disconnects, and requeue signals into the tracker so peer choosers can filter unhealthy owners.
+- `TableLeaseLeaseRequest` now accepts an optional `peerId`. If callers omit it, the dispatcher falls back to `RequestMeta.Caller` or the `x-peer-id` header. The ID is echoed on `TableLeaseLeaseResponse.OwnerPeerId`.
+- Heartbeats (`tablelease::heartbeat`), completes, and fails record health events for the owning peer using SafeTaskQueue ownership tokens. When a peer fails a lease without requeueing, `PeerLeaseHealthTracker.RecordDisconnect` fires and the corresponding `PeerListCoordinator` stops selecting that peer until a fresh heartbeat arrives.
+- Use the same tracker instance when constructing peer choosers (for example `new RoundRobinPeerChooser(peers, leaseHealthTracker)`) so `PeerListCoordinator` can call `IsPeerEligible` before issuing a lease. `PeerListCoordinator.LeaseHealth` surfaces current `PeerLeaseHealthSnapshot` data for dispatcher introspection endpoints.
+
 ---
 
 - Replicated stream layer: add an ordered broadcast mechanism (e.g., Raft-style log or deterministic sequencer) so every metadata node sees the same lease events with fencing tokens; wire this through streaming transports and include replay/dedup logic using deterministic coordination primitives (docs/reference/hugo-api-reference.md (lines 136-154), docs/reference/deterministic-coordination.md (lines 16-96)).

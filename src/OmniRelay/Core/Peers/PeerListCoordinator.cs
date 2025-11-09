@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 using Hugo;
 using OmniRelay.Errors;
@@ -17,19 +18,29 @@ internal sealed class PeerListCoordinator : IPeerSubscriber, IDisposable
     private readonly List<IPeer> _availablePeers = [];
     private readonly PeerAvailabilitySignal _availabilitySignal;
     private readonly TimeProvider _timeProvider;
+    private readonly PeerLeaseHealthTracker? _leaseHealthTracker;
     private bool _disposed;
 
     public PeerListCoordinator(IEnumerable<IPeer> peers)
-        : this(peers, TimeProvider.System)
+        : this(peers, null, TimeProvider.System)
     {
     }
 
-    public PeerListCoordinator(IEnumerable<IPeer> peers, TimeProvider timeProvider)
+    public PeerListCoordinator(IEnumerable<IPeer> peers, PeerLeaseHealthTracker? leaseHealthTracker)
+        : this(peers, leaseHealthTracker, TimeProvider.System)
+    {
+    }
+
+    public PeerListCoordinator(IEnumerable<IPeer> peers, PeerLeaseHealthTracker? leaseHealthTracker, TimeProvider? timeProvider)
     {
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _leaseHealthTracker = leaseHealthTracker;
         _availabilitySignal = new PeerAvailabilitySignal(_timeProvider);
         UpdatePeers(peers);
     }
+
+    public ImmutableArray<PeerLeaseHealthSnapshot> LeaseHealth =>
+        _leaseHealthTracker?.Snapshot() ?? ImmutableArray<PeerLeaseHealthSnapshot>.Empty;
 
     public void UpdatePeers(IEnumerable<IPeer> peers)
     {
@@ -275,6 +286,12 @@ internal sealed class PeerListCoordinator : IPeerSubscriber, IDisposable
             }
 
             attempted = true;
+
+            if (_leaseHealthTracker is not null && !_leaseHealthTracker.IsPeerEligible(candidate.Identifier))
+            {
+                PeerMetrics.RecordLeaseRejected(meta, candidate.Identifier, "lease_unhealthy");
+                continue;
+            }
 
             if (candidate.TryAcquire(cancellationToken))
             {

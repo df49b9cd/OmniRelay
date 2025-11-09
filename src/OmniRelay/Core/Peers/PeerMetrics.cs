@@ -39,6 +39,15 @@ internal static class PeerMetrics
     private static readonly Counter<long> RetrySucceededCounter =
         Meter.CreateCounter<long>("omnirelay.retry.succeeded", unit: "requests", description: "Requests that succeeded after one or more retries.");
 
+    private static readonly Counter<long> LeaseAssignmentCounter =
+        Meter.CreateCounter<long>("omnirelay.peer.lease_assignments", unit: "leases", description: "Table lease assignments per peer.");
+
+    private static readonly Counter<long> LeaseHeartbeatCounter =
+        Meter.CreateCounter<long>("omnirelay.peer.lease_heartbeats", unit: "signals", description: "Heartbeats received from peers holding table leases.");
+
+    private static readonly Counter<long> LeaseDisconnectCounter =
+        Meter.CreateCounter<long>("omnirelay.peer.lease_disconnects", unit: "signals", description: "Disconnect signals detected for peers with outstanding leases.");
+
     internal static void RecordLeaseAcquired(RequestMeta meta, string peerIdentifier) => InflightCounter.Add(1, CreatePeerTags(meta, peerIdentifier));
 
     internal static void RecordLeaseReleased(RequestMeta meta, string peerIdentifier, bool success, double durationMilliseconds)
@@ -88,6 +97,37 @@ internal static class PeerMetrics
         tags.Add("retry.attempts", attempts);
         RetrySucceededCounter.Add(1, tags);
     }
+
+    internal static void RecordLeaseAssignmentSignal(string peerIdentifier, string? namespaceId, string? tableId)
+    {
+        var tags = new TagList { { "rpc.peer", peerIdentifier ?? string.Empty } };
+        if (!string.IsNullOrWhiteSpace(namespaceId))
+        {
+            tags.Add("lease.namespace", namespaceId!);
+        }
+
+        if (!string.IsNullOrWhiteSpace(tableId))
+        {
+            tags.Add("lease.table", tableId!);
+        }
+
+        LeaseAssignmentCounter.Add(1, tags);
+    }
+
+    internal static void RecordLeaseHeartbeatSignal(string peerIdentifier) =>
+        LeaseHeartbeatCounter.Add(1, new TagList { { "rpc.peer", peerIdentifier ?? string.Empty } });
+
+    internal static void RecordLeaseDisconnectSignal(string peerIdentifier, string? reason = null)
+    {
+        var tags = new TagList { { "rpc.peer", peerIdentifier ?? string.Empty } };
+        if (!string.IsNullOrWhiteSpace(reason))
+        {
+            tags.Add("lease.disconnect.reason", reason!);
+        }
+
+        LeaseDisconnectCounter.Add(1, tags);
+    }
+
 
     private static TagList CreatePeerTags(RequestMeta meta, string peerIdentifier)
     {

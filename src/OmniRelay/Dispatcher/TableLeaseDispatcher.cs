@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Hugo;
 using OmniRelay.Core;
+using OmniRelay.Core.Peers;
 using OmniRelay.Errors;
 using static Hugo.Go;
 
@@ -22,6 +23,8 @@ public sealed class TableLeaseDispatcherComponent : IAsyncDisposable
     private readonly TaskQueue<TableLeaseWorkItem> _queue;
     private readonly SafeTaskQueueWrapper<TableLeaseWorkItem> _safeQueue;
     private readonly ConcurrentDictionary<TaskQueueOwnershipToken, SafeTaskQueueLease<TableLeaseWorkItem>> _leases = new();
+    private readonly ConcurrentDictionary<TaskQueueOwnershipToken, string> _leaseOwners = new();
+    private readonly PeerLeaseHealthTracker? _leaseHealthTracker;
     private readonly string _enqueueProcedure;
     private readonly string _leaseProcedure;
     private readonly string _completeProcedure;
@@ -53,6 +56,7 @@ public sealed class TableLeaseDispatcherComponent : IAsyncDisposable
 
         _queue = new TaskQueue<TableLeaseWorkItem>(queueOptions);
         _safeQueue = new SafeTaskQueueWrapper<TableLeaseWorkItem>(_queue, ownsQueue: false);
+        _leaseHealthTracker = _options.LeaseHealthTracker;
 
         RegisterProcedures();
     }
@@ -118,7 +122,19 @@ public sealed class TableLeaseDispatcherComponent : IAsyncDisposable
             throw new ResultException(Error.From("duplicate ownership token detected", "error.tablelease.duplicate_token", cause: null!, metadata: null));
         }
 
-        return TableLeaseLeaseResponse.FromLease(lease);
+        var ownerPeerId = ResolvePeerId(context.RequestMeta, request?.PeerId);
+        if (!string.IsNullOrWhiteSpace(ownerPeerId))
+        {
+            _leaseOwners[lease.OwnershipToken] = ownerPeerId!;
+            var peerHandle = ToPeerHandle(lease.OwnershipToken);
+            _leaseHealthTracker?.RecordLeaseAssignment(ownerPeerId!, peerHandle, lease.Value.Namespace, lease.Value.Table);
+            if (lease.Value.Attributes.Count > 0)
+            {
+                _leaseHealthTracker?.RecordGossip(ownerPeerId!, lease.Value.Attributes);
+            }
+        }
+
+        return TableLeaseLeaseResponse.FromLease(lease, ownerPeerId);
     }
 
     private async ValueTask<TableLeaseAcknowledgeResponse> HandleComplete(JsonUnaryContext context, TableLeaseCompleteRequest request)
@@ -128,13 +144,15 @@ public sealed class TableLeaseDispatcherComponent : IAsyncDisposable
             return TableLeaseAcknowledgeResponse.NotFound("error.tablelease.unknown_token", "Lease token was not found.");
         }
 
-        var complete = await lease.CompleteAsync(context.CancellationToken).ConfigureAwait(false);
+        var ownerId = TryGetLeaseOwner(request.OwnershipToken, out var resolvedOwner) ? resolvedOwner : null;
+
+        var complete = await lease!.CompleteAsync(context.CancellationToken).ConfigureAwait(false);
         if (complete.IsFailure)
         {
             return TableLeaseAcknowledgeResponse.FromError(complete.Error!);
         }
 
-        CleanupLease(request.OwnershipToken);
+        CleanupLease(request.OwnershipToken, ownerId, requeued: false);
         return TableLeaseAcknowledgeResponse.Ack();
     }
 
@@ -145,10 +163,18 @@ public sealed class TableLeaseDispatcherComponent : IAsyncDisposable
             return TableLeaseAcknowledgeResponse.NotFound("error.tablelease.unknown_token", "Lease token was not found.");
         }
 
-        var heartbeat = await lease.HeartbeatAsync(context.CancellationToken).ConfigureAwait(false);
-        return heartbeat.IsSuccess
-            ? TableLeaseAcknowledgeResponse.Ack()
-            : TableLeaseAcknowledgeResponse.FromError(heartbeat.Error!);
+        var heartbeat = await lease!.HeartbeatAsync(context.CancellationToken).ConfigureAwait(false);
+        if (heartbeat.IsFailure)
+        {
+            return TableLeaseAcknowledgeResponse.FromError(heartbeat.Error!);
+        }
+
+        if (TryGetLeaseOwner(request.OwnershipToken, out var ownerId) && ownerId is not null)
+        {
+            _leaseHealthTracker?.RecordLeaseHeartbeat(ownerId, ToPeerHandle(request.OwnershipToken), _queue.PendingCount);
+        }
+
+        return TableLeaseAcknowledgeResponse.Ack();
     }
 
     private async ValueTask<TableLeaseAcknowledgeResponse> HandleFail(JsonUnaryContext context, TableLeaseFailRequest request)
@@ -159,13 +185,20 @@ public sealed class TableLeaseDispatcherComponent : IAsyncDisposable
         }
 
         var error = request.ToError();
-        var fail = await lease.FailAsync(error, request.Requeue, context.CancellationToken).ConfigureAwait(false);
+        var ownerId = TryGetLeaseOwner(request.OwnershipToken, out var resolvedOwner) ? resolvedOwner : null;
+
+        var fail = await lease!.FailAsync(error, request.Requeue, context.CancellationToken).ConfigureAwait(false);
         if (fail.IsFailure)
         {
             return TableLeaseAcknowledgeResponse.FromError(fail.Error!);
         }
 
-        CleanupLease(request.OwnershipToken);
+        CleanupLease(request.OwnershipToken, ownerId, requeued: request.Requeue);
+        if (!request.Requeue && ownerId is not null)
+        {
+            _leaseHealthTracker?.RecordDisconnect(ownerId, request.Reason);
+        }
+
         return TableLeaseAcknowledgeResponse.Ack();
     }
 
@@ -198,21 +231,84 @@ public sealed class TableLeaseDispatcherComponent : IAsyncDisposable
     private TableLeaseQueueStats GetStats() =>
         new(_queue.PendingCount, _queue.ActiveLeaseCount);
 
-    private bool TryGetLease(TableLeaseOwnershipHandle handle, out SafeTaskQueueLease<TableLeaseWorkItem> lease)
+    private bool TryGetLease(TableLeaseOwnershipHandle? handle, out SafeTaskQueueLease<TableLeaseWorkItem>? lease)
     {
+        if (handle is null)
+        {
+            lease = null;
+            return false;
+        }
+
         var token = handle.ToToken();
-        return _leases.TryGetValue(token, out lease);
+        if (_leases.TryGetValue(token, out var existing))
+        {
+            lease = existing;
+            return true;
+        }
+
+        lease = null;
+        return false;
     }
 
-    private void CleanupLease(TableLeaseOwnershipHandle? handle)
+    private bool TryGetLeaseOwner(TableLeaseOwnershipHandle? handle, out string? ownerId)
+    {
+        ownerId = null;
+        if (handle is null)
+        {
+            return false;
+        }
+
+        return _leaseOwners.TryGetValue(handle.ToToken(), out ownerId);
+    }
+
+    private void CleanupLease(TableLeaseOwnershipHandle? handle, string? explicitOwner = null, bool requeued = false)
     {
         if (handle is null)
         {
             return;
         }
 
-        var token = handle!.ToToken();
+        var token = handle.ToToken();
         _leases.TryRemove(token, out _);
+
+        var owner = explicitOwner;
+        if (owner is null && _leaseOwners.TryGetValue(token, out var trackedOwner))
+        {
+            owner = trackedOwner;
+        }
+
+        _leaseOwners.TryRemove(token, out _);
+
+        if (owner is not null)
+        {
+            _leaseHealthTracker?.RecordLeaseReleased(owner, ToPeerHandle(handle), requeued);
+        }
+    }
+
+    private static PeerLeaseHandle ToPeerHandle(TableLeaseOwnershipHandle handle) =>
+        PeerLeaseHandle.FromToken(handle.ToToken());
+
+    private static PeerLeaseHandle ToPeerHandle(TaskQueueOwnershipToken token) =>
+        PeerLeaseHandle.FromToken(token);
+
+    private static string ResolvePeerId(RequestMeta meta, string? explicitPeer)
+    {
+        if (!string.IsNullOrWhiteSpace(explicitPeer))
+        {
+            return explicitPeer!;
+        }
+
+        if (!string.IsNullOrWhiteSpace(meta.Caller))
+        {
+            return meta.Caller!;
+        }
+
+        if (meta.Headers.TryGetValue("x-peer-id", out var header) && !string.IsNullOrWhiteSpace(header))
+        {
+            return header!;
+        }
+
+        return string.Empty;
     }
 
     /// <inheritdoc />
@@ -249,6 +345,9 @@ public sealed class TableLeaseDispatcherOptions
 
     /// <summary>Task queue options that control capacity, lease duration, and heartbeat cadence.</summary>
     public TaskQueueOptions? QueueOptions { get; init; } = new();
+
+    /// <summary>Optional tracker used for peer membership gossip and health propagation.</summary>
+    public PeerLeaseHealthTracker? LeaseHealthTracker { get; init; }
 }
 
 /// <summary>Represents the serialized form of a work item stored in the queue.</summary>
@@ -265,7 +364,7 @@ public sealed record TableLeaseEnqueueRequest(TableLeaseItemPayload? Payload);
 
 public sealed record TableLeaseEnqueueResponse(TableLeaseQueueStats Stats);
 
-public sealed record TableLeaseLeaseRequest;
+public sealed record TableLeaseLeaseRequest(string? PeerId = null);
 
 public sealed record TableLeaseLeaseResponse(
     TableLeaseItemPayload Payload,
@@ -273,9 +372,12 @@ public sealed record TableLeaseLeaseResponse(
     int Attempt,
     DateTimeOffset EnqueuedAt,
     TableLeaseErrorInfo? LastError,
-    TableLeaseOwnershipHandle OwnershipToken)
+    TableLeaseOwnershipHandle OwnershipToken,
+    string? OwnerPeerId)
 {
-    internal static TableLeaseLeaseResponse FromLease(SafeTaskQueueLease<TableLeaseWorkItem> lease)
+    internal static TableLeaseLeaseResponse FromLease(
+        SafeTaskQueueLease<TableLeaseWorkItem> lease,
+        string? peerId)
     {
         var payload = lease.Value.ToPayload();
         return new TableLeaseLeaseResponse(
@@ -284,7 +386,8 @@ public sealed record TableLeaseLeaseResponse(
             lease.Attempt,
             lease.EnqueuedAt,
             TableLeaseErrorInfo.FromError(lease.LastError),
-            TableLeaseOwnershipHandle.FromToken(lease.OwnershipToken));
+            TableLeaseOwnershipHandle.FromToken(lease.OwnershipToken),
+            peerId);
     }
 }
 

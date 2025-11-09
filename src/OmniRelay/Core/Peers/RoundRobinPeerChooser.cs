@@ -14,20 +14,20 @@ public sealed class RoundRobinPeerChooser : IPeerChooser
     private long _next = -1;
 
     public RoundRobinPeerChooser(params IPeer[] peers)
-        : this(peers is null ? throw new ArgumentNullException(nameof(peers)) : peers.AsEnumerable())
+        : this(peers is null ? throw new ArgumentNullException(nameof(peers)) : peers.AsEnumerable(), null)
     {
     }
 
     public RoundRobinPeerChooser(ImmutableArray<IPeer> peers)
-        : this(peers.AsEnumerable())
+        : this(peers.AsEnumerable(), null)
     {
     }
 
-    public RoundRobinPeerChooser(IEnumerable<IPeer> peers)
+    public RoundRobinPeerChooser(IEnumerable<IPeer> peers, PeerLeaseHealthTracker? leaseHealthTracker = null)
     {
         ArgumentNullException.ThrowIfNull(peers);
         var snapshot = peers.ToList();
-        _coordinator = new PeerListCoordinator(snapshot);
+        _coordinator = new PeerListCoordinator(snapshot, leaseHealthTracker);
     }
 
     public void UpdatePeers(IEnumerable<IPeer> peers)
