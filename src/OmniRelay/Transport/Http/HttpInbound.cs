@@ -10,6 +10,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Channels;
 using Hugo;
+using System.Linq;
 using static Hugo.Go;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -18,6 +19,7 @@ using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
 using Microsoft.AspNetCore.Server.Kestrel.Transport.Quic;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Primitives;
 using OmniRelay.Core;
@@ -43,6 +45,8 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
     private volatile bool _isDraining;
     private readonly WaitGroup _activeRequests = new();
     private int _activeRequestCount;
+    private readonly object _contextLock = new();
+    private readonly HashSet<HttpContext> _activeHttpContexts = [];
     private static readonly JsonSerializerOptions IntrospectionSerializerOptions = CreateIntrospectionSerializerOptions();
     private static readonly JsonSerializerOptions HealthSerializerOptions = CreateHealthSerializerOptions();
     private const string RetryAfterHeaderValue = "1";
@@ -376,9 +380,19 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
             // fall through for fast shutdown
         }
 
+        var cancellationRequested = cancellationToken.IsCancellationRequested;
+        var stopToken = cancellationRequested ? CancellationToken.None : cancellationToken;
+
+        if (cancellationRequested)
+        {
+            var lifetime = _app.Services.GetService<IHostApplicationLifetime>();
+            lifetime?.StopApplication();
+            AbortActiveRequests();
+        }
+
         try
         {
-            await _app.StopAsync(cancellationToken).ConfigureAwait(false);
+            await _app.StopAsync(stopToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -440,13 +454,42 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
 
         _activeRequests.Add(1);
         Interlocked.Increment(ref _activeRequestCount);
+        lock (_contextLock)
+        {
+            _activeHttpContexts.Add(context);
+        }
         return true;
     }
 
-    private void CompleteRequest()
+    private void CompleteRequest(HttpContext context)
     {
         _activeRequests.Done();
         Interlocked.Decrement(ref _activeRequestCount);
+        lock (_contextLock)
+        {
+            _activeHttpContexts.Remove(context);
+        }
+    }
+
+    private void AbortActiveRequests()
+    {
+        List<HttpContext> contexts;
+        lock (_contextLock)
+        {
+            contexts = _activeHttpContexts.ToList();
+        }
+
+        foreach (var httpContext in contexts)
+        {
+            try
+            {
+                httpContext.Abort();
+            }
+            catch
+            {
+                // ignore abort failures
+            }
+        }
     }
 
     private async Task HandleIntrospectAsync(HttpContext context)
@@ -694,7 +737,7 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
         }
         finally
         {
-            CompleteRequest();
+            CompleteRequest(context);
         }
     }
 
@@ -937,7 +980,7 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
         }
         finally
         {
-            CompleteRequest();
+            CompleteRequest(context);
         }
     }
 
@@ -1227,7 +1270,7 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
         }
         finally
         {
-            CompleteRequest();
+            CompleteRequest(context);
         }
     }
 

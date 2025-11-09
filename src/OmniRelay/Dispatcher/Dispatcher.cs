@@ -467,7 +467,7 @@ public sealed class Dispatcher
                         return startResult;
                     }
 
-                    exceptions.Enqueue(new ResultException(startResult.Error!));
+                    exceptions.Enqueue(CreateLifecycleException(startResult.Error!));
                     return startResult;
                 });
             }
@@ -534,7 +534,7 @@ public sealed class Dispatcher
 
                 if (stopResult.IsFailure)
                 {
-                    exceptions.Enqueue(new ResultException(stopResult.Error!));
+                    exceptions.Enqueue(CreateLifecycleException(stopResult.Error!));
                 }
             }, cancellationToken);
         }
@@ -828,7 +828,7 @@ public sealed class Dispatcher
 
             if (rollbackResult.IsFailure && rollbackResult.Error is not null)
             {
-                rollbackExceptions.Add(new ResultException(rollbackResult.Error));
+                rollbackExceptions.Add(CreateLifecycleException(rollbackResult.Error));
             }
         }
 
@@ -863,6 +863,16 @@ public sealed class Dispatcher
         }
 
         return null;
+    }
+
+    private static Exception CreateLifecycleException(Error error)
+    {
+        if (error.Cause is Exception cause)
+        {
+            return cause;
+        }
+
+        return new ResultException(error);
     }
 
     private static ImmutableDictionary<string, OutboundCollection> BuildOutboundCollections(

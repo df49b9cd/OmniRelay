@@ -308,12 +308,17 @@ public sealed class HttpOutbound : IUnaryOutbound, IOnewayOutbound, IOutboundDia
     /// <param name="response">The HTTP response.</param>
     /// <param name="transport">The transport name used for error attribution.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <param name="cachedPayload">Optional cached payload to avoid re-reading the response stream.</param>
     /// <returns>A normalized error.</returns>
-    private static async Task<Error> ReadErrorAsync(HttpResponseMessage response, string transport, CancellationToken cancellationToken)
+    private static async Task<Error> ReadErrorAsync(
+        HttpResponseMessage response,
+        string transport,
+        CancellationToken cancellationToken,
+        byte[]? cachedPayload = null)
     {
         try
         {
-            var payload = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+            var payload = cachedPayload ?? await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
             if (payload.Length > 0)
             {
                 using var document = JsonDocument.Parse(payload);
@@ -372,7 +377,15 @@ public sealed class HttpOutbound : IUnaryOutbound, IOnewayOutbound, IOutboundDia
 
                 return await handler(httpRequest, response, token).ConfigureAwait(false);
             },
-            errorFactory: ex => OmniRelayErrors.FromException(ex, transport: "http").Error,
+            errorFactory: ex =>
+            {
+                if (ex is ResultException resultException && resultException.Error is not null)
+                {
+                    return resultException.Error;
+                }
+
+                return OmniRelayErrors.FromException(ex, transport: "http").Error;
+            },
             cancellationToken: cancellationToken));
     }
 
@@ -392,7 +405,7 @@ public sealed class HttpOutbound : IUnaryOutbound, IOnewayOutbound, IOutboundDia
             return Response<ReadOnlyMemory<byte>>.Create(payload, responseMeta);
         }
 
-        var error = await ReadErrorAsync(response, "http", cancellationToken).ConfigureAwait(false);
+        var error = await ReadErrorAsync(response, "http", cancellationToken, payload).ConfigureAwait(false);
         throw new ResultException(error);
     }
 

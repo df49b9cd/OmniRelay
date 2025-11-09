@@ -77,6 +77,16 @@ public sealed class RetryMiddleware(RetryOptions? options = null) : IUnaryOutbou
 
         var timeProvider = _options.TimeProvider ?? TimeProvider.System;
         var attempt = 0;
+        var retryPolicy = policy.Retry;
+        RetryState? instrumentationState = null;
+        if (retryPolicy is not null && retryPolicy != ResultRetryPolicy.None)
+        {
+            instrumentationState = retryPolicy.CreateState(timeProvider);
+        }
+        else
+        {
+            retryPolicy = null;
+        }
 
         var result = await Result.RetryWithPolicyAsync<Response<ReadOnlyMemory<byte>>>(
             async (_, token) =>
@@ -90,9 +100,23 @@ public sealed class RetryMiddleware(RetryOptions? options = null) : IUnaryOutbou
                     PeerMetrics.RecordRetrySucceeded(meta, attempt);
                 }
 
-                if (attemptResult.IsFailure && !IsRetryable(attemptResult.Error!))
+                if (attemptResult.IsFailure)
                 {
-                    return Result.Fail<Response<ReadOnlyMemory<byte>>>(WrapNonRetryable(attemptResult.Error!));
+                    var error = attemptResult.Error!;
+                    if (!IsRetryable(error))
+                    {
+                        return Result.Fail<Response<ReadOnlyMemory<byte>>>(WrapNonRetryable(error));
+                    }
+
+                    if (retryPolicy is not null && instrumentationState is not null)
+                    {
+                        var decision = await retryPolicy.EvaluateAsync(instrumentationState, error, token).ConfigureAwait(false);
+                        if (decision.ShouldRetry)
+                        {
+                            var delay = ResolveRetryDelay(decision, timeProvider);
+                            PeerMetrics.RecordRetryScheduled(meta, error, attempt, delay);
+                        }
+                    }
                 }
 
                 return attemptResult;
@@ -179,6 +203,22 @@ public sealed class RetryMiddleware(RetryOptions? options = null) : IUnaryOutbou
                 await Task.Delay(sleep, cancellationToken).ConfigureAwait(false);
             }
         }
+    }
+
+    private static TimeSpan? ResolveRetryDelay(RetryDecision decision, TimeProvider timeProvider)
+    {
+        if (decision.Delay is { } delay)
+        {
+            return delay;
+        }
+
+        if (decision.ScheduledAt is not null)
+        {
+            var delta = decision.ScheduledAt.Value - timeProvider.GetUtcNow();
+            return delta > TimeSpan.Zero ? delta : TimeSpan.Zero;
+        }
+
+        return null;
     }
 
     private static Error WrapNonRetryable(Error error) =>

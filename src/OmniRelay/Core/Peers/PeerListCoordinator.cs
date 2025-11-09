@@ -128,6 +128,15 @@ internal sealed class PeerListCoordinator : IPeerSubscriber, IDisposable
 
             if (attemptResult == AcquisitionAttemptResult.NoAvailablePeers)
             {
+                if (waitDeadline is not null && PeerChooserHelpers.HasDeadlineElapsed(waitDeadline))
+                {
+                    var deadlineError = OmniRelayErrorAdapter.FromStatus(
+                        OmniRelayStatusCode.DeadlineExceeded,
+                        "Peer acquisition deadline expired.",
+                        transport: meta.Transport ?? "unknown");
+                    return Err<PeerLease>(deadlineError);
+                }
+
                 PeerMetrics.RecordPoolExhausted(meta);
                 var unavailable = OmniRelayErrorAdapter.FromStatus(
                     OmniRelayStatusCode.ResourceExhausted,
