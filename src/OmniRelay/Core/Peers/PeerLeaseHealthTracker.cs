@@ -21,12 +21,12 @@ public sealed class PeerLeaseHealthTracker
     }
 
     /// <summary>Records a new lease assignment for the specified peer.</summary>
-    public void RecordLeaseAssignment(string peerId, PeerLeaseHandle handle, string? namespaceId = null, string? tableId = null)
+    public void RecordLeaseAssignment(string peerId, PeerLeaseHandle handle, string? resourceType = null, string? resourceId = null)
     {
         var state = GetOrCreateState(peerId);
         var now = _timeProvider.GetUtcNow();
-        state.RecordAssignment(handle, now, namespaceId, tableId);
-        PeerMetrics.RecordLeaseAssignmentSignal(peerId, namespaceId, tableId);
+        state.RecordAssignment(handle, now, resourceType, resourceId);
+        PeerMetrics.RecordLeaseAssignmentSignal(peerId, resourceType, resourceId);
     }
 
     /// <summary>Marks the lease as released and records whether it was requeued.</summary>
@@ -107,21 +107,21 @@ public sealed class PeerLeaseHealthTracker
             _peerId = peerId;
         }
 
-        public void RecordAssignment(PeerLeaseHandle handle, DateTimeOffset observedAt, string? namespaceId, string? tableId)
+        public void RecordAssignment(PeerLeaseHandle handle, DateTimeOffset observedAt, string? resourceType, string? resourceId)
         {
             lock (_lock)
             {
                 _activeLeases[handle.LeaseId] = handle;
                 _lastHeartbeat = observedAt;
                 _isDisconnected = false;
-                if (namespaceId is not null)
+                if (resourceType is not null)
                 {
-                    _metadata = _metadata.SetItem("namespace", namespaceId);
+                    _metadata = _metadata.SetItem("resource.type", resourceType);
                 }
 
-                if (tableId is not null)
+                if (resourceId is not null)
                 {
-                    _metadata = _metadata.SetItem("table", tableId);
+                    _metadata = _metadata.SetItem("resource.id", resourceId);
                 }
 
                 if (_pendingReassignments > 0)

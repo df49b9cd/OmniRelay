@@ -8,13 +8,13 @@ using Xunit;
 
 namespace OmniRelay.Dispatcher.UnitTests;
 
-public sealed class TableLeaseReplicationTests
+public sealed class ResourceLeaseReplicationTests
 {
     [Fact]
     public async Task InMemoryReplicator_SequencesAndDeliversEvents()
     {
         var sink = new RecordingSink();
-        var replicator = new InMemoryTableLeaseReplicator(new[] { sink });
+        var replicator = new InMemoryResourceLeaseReplicator(new[] { sink });
 
         await replicator.PublishAsync(CreateEvent(), CancellationToken.None);
         await replicator.PublishAsync(CreateEvent(), CancellationToken.None);
@@ -26,7 +26,7 @@ public sealed class TableLeaseReplicationTests
     public async Task InMemoryReplicator_IgnoresProvidedSequenceAndUsesStartingOffset()
     {
         var sink = new RecordingSink();
-        var replicator = new InMemoryTableLeaseReplicator(new[] { sink }, startingSequence: 10);
+        var replicator = new InMemoryResourceLeaseReplicator(new[] { sink }, startingSequence: 10);
 
         await replicator.PublishAsync(CreateEvent(sequence: 42), CancellationToken.None);
 
@@ -49,7 +49,7 @@ public sealed class TableLeaseReplicationTests
     [Fact]
     public async Task DeterministicCoordinator_IgnoresDuplicateEffects()
     {
-        var coordinator = new DeterministicTableLeaseCoordinator(new TableLeaseDeterministicOptions
+        var coordinator = new DeterministicResourceLeaseCoordinator(new ResourceLeaseDeterministicOptions
         {
             ChangeId = "leases",
             MinVersion = 1,
@@ -63,39 +63,39 @@ public sealed class TableLeaseReplicationTests
         await coordinator.RecordAsync(evt, CancellationToken.None); // duplicate should be ignored without throwing
     }
 
-    private static TableLeaseReplicationEvent CreateEvent(long sequence = 0) =>
+    private static ResourceLeaseReplicationEvent CreateEvent(long sequence = 0) =>
         new(
             sequence,
-            TableLeaseReplicationEventType.LeaseGranted,
+            ResourceLeaseReplicationEventType.LeaseGranted,
             DateTimeOffset.UtcNow,
-            new TableLeaseOwnershipHandle(5, 1, Guid.NewGuid()),
+            new ResourceLeaseOwnershipHandle(5, 1, Guid.NewGuid()),
             "peer-a",
-            new TableLeaseItemPayload("ns", "table", "pk", "json", Array.Empty<byte>()),
+            new ResourceLeaseItemPayload("workflow", "job-123", "pk", "json", Array.Empty<byte>()),
             null,
             ImmutableDictionary<string, string>.Empty);
 
-    private sealed class RecordingSink : ITableLeaseReplicationSink
+    private sealed class RecordingSink : IResourceLeaseReplicationSink
     {
-        public List<TableLeaseReplicationEvent> Events
+        public List<ResourceLeaseReplicationEvent> Events
         {
             get => field;
         } = new();
 
-        public ValueTask ApplyAsync(TableLeaseReplicationEvent replicationEvent, CancellationToken cancellationToken)
+        public ValueTask ApplyAsync(ResourceLeaseReplicationEvent replicationEvent, CancellationToken cancellationToken)
         {
             Events.Add(replicationEvent);
             return ValueTask.CompletedTask;
         }
     }
 
-    private sealed class CountingCheckpointSink : CheckpointingTableLeaseReplicationSink
+    private sealed class CountingCheckpointSink : CheckpointingResourceLeaseReplicationSink
     {
         public List<long> AppliedSequences
         {
             get => field;
         } = new();
 
-        protected override ValueTask ApplyInternalAsync(TableLeaseReplicationEvent replicationEvent, CancellationToken cancellationToken)
+        protected override ValueTask ApplyInternalAsync(ResourceLeaseReplicationEvent replicationEvent, CancellationToken cancellationToken)
         {
             AppliedSequences.Add(replicationEvent.SequenceNumber);
             return ValueTask.CompletedTask;

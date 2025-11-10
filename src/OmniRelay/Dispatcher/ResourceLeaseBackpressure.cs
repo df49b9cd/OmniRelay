@@ -1,7 +1,7 @@
 namespace OmniRelay.Dispatcher;
 
-/// <summary>Describes the current backpressure state observed on the table lease queue.</summary>
-public sealed record TableLeaseBackpressureSignal(
+/// <summary>Describes the current backpressure state observed on the resource lease queue.</summary>
+public sealed record ResourceLeaseBackpressureSignal(
     bool IsActive,
     long PendingCount,
     DateTimeOffset ObservedAt,
@@ -40,7 +40,7 @@ public sealed record TableLeaseBackpressureSignal(
 }
 
 /// <summary>Consumers implement this to adjust throttling or instrumentation when backpressure toggles.</summary>
-public interface ITableLeaseBackpressureListener
+public interface IResourceLeaseBackpressureListener
 {
-    ValueTask OnBackpressureChanged(TableLeaseBackpressureSignal signal, CancellationToken cancellationToken);
+    ValueTask OnBackpressureChanged(ResourceLeaseBackpressureSignal signal, CancellationToken cancellationToken);
 }

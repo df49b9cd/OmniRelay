@@ -3,23 +3,23 @@ using System.Collections.Immutable;
 
 namespace OmniRelay.Dispatcher;
 
-/// <summary>Represents an ordered replication event emitted whenever the table lease queue mutates.</summary>
-public sealed record TableLeaseReplicationEvent(
+/// <summary>Represents an ordered replication event emitted whenever the resource lease queue mutates.</summary>
+public sealed record ResourceLeaseReplicationEvent(
     long SequenceNumber,
-    TableLeaseReplicationEventType EventType,
+    ResourceLeaseReplicationEventType EventType,
     DateTimeOffset Timestamp,
-    TableLeaseOwnershipHandle? Ownership,
+    ResourceLeaseOwnershipHandle? Ownership,
     string? PeerId,
-    TableLeaseItemPayload? Payload,
-    TableLeaseErrorInfo? Error,
+    ResourceLeaseItemPayload? Payload,
+    ResourceLeaseErrorInfo? Error,
     ImmutableDictionary<string, string> Metadata)
 {
-    public static TableLeaseReplicationEvent Create(
-        TableLeaseReplicationEventType eventType,
-        TableLeaseOwnershipHandle? ownership,
+    public static ResourceLeaseReplicationEvent Create(
+        ResourceLeaseReplicationEventType eventType,
+        ResourceLeaseOwnershipHandle? ownership,
         string? peerId,
-        TableLeaseItemPayload? payload,
-        TableLeaseErrorInfo? error,
+        ResourceLeaseItemPayload? payload,
+        ResourceLeaseErrorInfo? error,
         IReadOnlyDictionary<string, string>? metadata) =>
         new(
             SequenceNumber: 0,
@@ -39,7 +39,7 @@ public sealed record TableLeaseReplicationEvent(
         init => field = value;
     } = SequenceNumber;
 
-    public TableLeaseReplicationEventType EventType
+    public ResourceLeaseReplicationEventType EventType
     {
         get => field;
         init => field = value;
@@ -51,7 +51,7 @@ public sealed record TableLeaseReplicationEvent(
         init => field = value;
     } = Timestamp;
 
-    public TableLeaseOwnershipHandle? Ownership
+    public ResourceLeaseOwnershipHandle? Ownership
     {
         get => field;
         init => field = value;
@@ -63,13 +63,13 @@ public sealed record TableLeaseReplicationEvent(
         init => field = value;
     } = PeerId;
 
-    public TableLeaseItemPayload? Payload
+    public ResourceLeaseItemPayload? Payload
     {
         get => field;
         init => field = value;
     } = Payload;
 
-    public TableLeaseErrorInfo? Error
+    public ResourceLeaseErrorInfo? Error
     {
         get => field;
         init => field = value;
@@ -82,8 +82,8 @@ public sealed record TableLeaseReplicationEvent(
     } = Metadata;
 }
 
-/// <summary>Enumerates table lease event types replicated across metadata nodes.</summary>
-public enum TableLeaseReplicationEventType
+/// <summary>Enumerates resource lease event types replicated across metadata nodes.</summary>
+public enum ResourceLeaseReplicationEventType
 {
     Enqueue = 1,
     LeaseGranted = 2,
@@ -94,27 +94,27 @@ public enum TableLeaseReplicationEventType
     RestoreSnapshot = 7
 }
 
-/// <summary>Replicates ordered table lease events to downstream sinks.</summary>
-public interface ITableLeaseReplicator
+/// <summary>Replicates ordered resource lease events to downstream sinks.</summary>
+public interface IResourceLeaseReplicator
 {
-    ValueTask PublishAsync(TableLeaseReplicationEvent replicationEvent, CancellationToken cancellationToken);
+    ValueTask PublishAsync(ResourceLeaseReplicationEvent replicationEvent, CancellationToken cancellationToken);
 }
 
 /// <summary>Consumers implement this interface to apply ordered replication events and optionally checkpoint progress.</summary>
-public interface ITableLeaseReplicationSink
+public interface IResourceLeaseReplicationSink
 {
-    ValueTask ApplyAsync(TableLeaseReplicationEvent replicationEvent, CancellationToken cancellationToken);
+    ValueTask ApplyAsync(ResourceLeaseReplicationEvent replicationEvent, CancellationToken cancellationToken);
 }
 
 /// <summary>
 /// In-memory hub that sequences replication events and fan-outs to registered sinks with basic deduplication guarantees.
 /// </summary>
-public sealed class InMemoryTableLeaseReplicator : ITableLeaseReplicator
+public sealed class InMemoryResourceLeaseReplicator : IResourceLeaseReplicator
 {
-    private readonly List<ITableLeaseReplicationSink> _sinks = new();
+    private readonly List<IResourceLeaseReplicationSink> _sinks = new();
     private long _sequenceId;
 
-    public InMemoryTableLeaseReplicator(IEnumerable<ITableLeaseReplicationSink>? sinks = null, long startingSequence = 0)
+    public InMemoryResourceLeaseReplicator(IEnumerable<IResourceLeaseReplicationSink>? sinks = null, long startingSequence = 0)
     {
         _sequenceId = startingSequence;
         if (sinks is not null)
@@ -123,7 +123,7 @@ public sealed class InMemoryTableLeaseReplicator : ITableLeaseReplicator
         }
     }
 
-    public void RegisterSink(ITableLeaseReplicationSink sink)
+    public void RegisterSink(IResourceLeaseReplicationSink sink)
     {
         ArgumentNullException.ThrowIfNull(sink);
         lock (_sinks)
@@ -132,7 +132,7 @@ public sealed class InMemoryTableLeaseReplicator : ITableLeaseReplicator
         }
     }
 
-    public async ValueTask PublishAsync(TableLeaseReplicationEvent replicationEvent, CancellationToken cancellationToken)
+    public async ValueTask PublishAsync(ResourceLeaseReplicationEvent replicationEvent, CancellationToken cancellationToken)
     {
         var ordered = replicationEvent with
         {
@@ -140,7 +140,7 @@ public sealed class InMemoryTableLeaseReplicator : ITableLeaseReplicator
             Timestamp = DateTimeOffset.UtcNow
         };
 
-        ITableLeaseReplicationSink[] sinks;
+        IResourceLeaseReplicationSink[] sinks;
         lock (_sinks)
         {
             sinks = _sinks.ToArray();
@@ -157,12 +157,12 @@ public sealed class InMemoryTableLeaseReplicator : ITableLeaseReplicator
 /// <summary>
 /// Base sink that ensures events are applied exactly once by tracking the last processed sequence number per peer.
 /// </summary>
-public abstract class CheckpointingTableLeaseReplicationSink : ITableLeaseReplicationSink
+public abstract class CheckpointingResourceLeaseReplicationSink : IResourceLeaseReplicationSink
 {
     private readonly ConcurrentDictionary<string, long> _peerCheckpoints = new(StringComparer.Ordinal);
     private long _globalCheckpoint = -1;
 
-    public async ValueTask ApplyAsync(TableLeaseReplicationEvent replicationEvent, CancellationToken cancellationToken)
+    public async ValueTask ApplyAsync(ResourceLeaseReplicationEvent replicationEvent, CancellationToken cancellationToken)
     {
         if (replicationEvent.SequenceNumber <= Volatile.Read(ref _globalCheckpoint))
         {
@@ -187,5 +187,5 @@ public abstract class CheckpointingTableLeaseReplicationSink : ITableLeaseReplic
         }
     }
 
-    protected abstract ValueTask ApplyInternalAsync(TableLeaseReplicationEvent replicationEvent, CancellationToken cancellationToken);
+    protected abstract ValueTask ApplyInternalAsync(ResourceLeaseReplicationEvent replicationEvent, CancellationToken cancellationToken);
 }

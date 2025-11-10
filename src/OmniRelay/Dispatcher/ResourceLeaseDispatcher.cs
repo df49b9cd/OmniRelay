@@ -16,20 +16,20 @@ using static Hugo.Go;
 namespace OmniRelay.Dispatcher;
 
 /// <summary>
-/// Hosts a SafeTaskQueue-backed table lease queue and exposes canonical procedures for enqueue, lease, ack, and drain flows.
+/// Hosts a SafeTaskQueue-backed resource lease queue and exposes canonical procedures for enqueue, lease, ack, and drain flows.
 /// </summary>
-public sealed class TableLeaseDispatcherComponent : IAsyncDisposable
+public sealed class ResourceLeaseDispatcherComponent : IAsyncDisposable
 {
     private readonly Dispatcher _dispatcher;
-    private readonly TableLeaseDispatcherOptions _options;
-    private readonly TaskQueue<TableLeaseWorkItem> _queue;
-    private readonly SafeTaskQueueWrapper<TableLeaseWorkItem> _safeQueue;
-    private readonly ConcurrentDictionary<TaskQueueOwnershipToken, SafeTaskQueueLease<TableLeaseWorkItem>> _leases = new();
+    private readonly ResourceLeaseDispatcherOptions _options;
+    private readonly TaskQueue<ResourceLeaseWorkItem> _queue;
+    private readonly SafeTaskQueueWrapper<ResourceLeaseWorkItem> _safeQueue;
+    private readonly ConcurrentDictionary<TaskQueueOwnershipToken, SafeTaskQueueLease<ResourceLeaseWorkItem>> _leases = new();
     private readonly ConcurrentDictionary<TaskQueueOwnershipToken, string> _leaseOwners = new();
     private readonly PeerLeaseHealthTracker? _leaseHealthTracker;
-    private readonly ITableLeaseReplicator? _replicator;
-    private readonly ITableLeaseBackpressureListener? _backpressureListener;
-    private readonly ITableLeaseDeterministicCoordinator? _deterministicCoordinator;
+    private readonly IResourceLeaseReplicator? _replicator;
+    private readonly IResourceLeaseBackpressureListener? _backpressureListener;
+    private readonly IResourceLeaseDeterministicCoordinator? _deterministicCoordinator;
     private readonly long? _backpressureHighWatermark;
     private readonly long? _backpressureLowWatermark;
     private readonly TimeSpan? _backpressureCooldown;
@@ -45,9 +45,9 @@ public sealed class TableLeaseDispatcherComponent : IAsyncDisposable
     private readonly string _restoreProcedure;
 
     /// <summary>
-    /// Creates a table lease component and immediately registers the standard procedures on the supplied dispatcher.
+    /// Creates a resource lease component and immediately registers the standard procedures on the supplied dispatcher.
     /// </summary>
-    public TableLeaseDispatcherComponent(Dispatcher dispatcher, TableLeaseDispatcherOptions options)
+    public ResourceLeaseDispatcherComponent(Dispatcher dispatcher, ResourceLeaseDispatcherOptions options)
     {
         _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
         _options = options ?? throw new ArgumentNullException(nameof(options));
@@ -57,7 +57,7 @@ public sealed class TableLeaseDispatcherComponent : IAsyncDisposable
         _backpressureCooldown = queueOptions.Backpressure?.Cooldown;
 
         var prefix = string.IsNullOrWhiteSpace(_options.Namespace)
-            ? "tablelease"
+            ? "resourcelease"
             : _options.Namespace.Trim();
 
         _enqueueProcedure = $"{prefix}::enqueue";
@@ -68,13 +68,13 @@ public sealed class TableLeaseDispatcherComponent : IAsyncDisposable
         _drainProcedure = $"{prefix}::drain";
         _restoreProcedure = $"{prefix}::restore";
 
-        _queue = new TaskQueue<TableLeaseWorkItem>(queueOptions);
-        _safeQueue = new SafeTaskQueueWrapper<TableLeaseWorkItem>(_queue, ownsQueue: false);
+        _queue = new TaskQueue<ResourceLeaseWorkItem>(queueOptions);
+        _safeQueue = new SafeTaskQueueWrapper<ResourceLeaseWorkItem>(_queue, ownsQueue: false);
         _leaseHealthTracker = _options.LeaseHealthTracker;
         _replicator = _options.Replicator;
         _backpressureListener = _options.BackpressureListener;
         _deterministicCoordinator = _options.DeterministicCoordinator ?? (_options.DeterministicOptions is not null
-            ? new DeterministicTableLeaseCoordinator(_options.DeterministicOptions!)
+            ? new DeterministicResourceLeaseCoordinator(_options.DeterministicOptions!)
             : null);
 
         RegisterProcedures();
@@ -82,50 +82,50 @@ public sealed class TableLeaseDispatcherComponent : IAsyncDisposable
 
     private void RegisterProcedures()
     {
-        _dispatcher.RegisterJsonUnary<TableLeaseEnqueueRequest, TableLeaseEnqueueResponse>(
+        _dispatcher.RegisterJsonUnary<ResourceLeaseEnqueueRequest, ResourceLeaseEnqueueResponse>(
             _enqueueProcedure,
             HandleEnqueue);
 
-        _dispatcher.RegisterJsonUnary<TableLeaseLeaseRequest, TableLeaseLeaseResponse>(
+        _dispatcher.RegisterJsonUnary<ResourceLeaseLeaseRequest, ResourceLeaseLeaseResponse>(
             _leaseProcedure,
             HandleLease);
 
-        _dispatcher.RegisterJsonUnary<TableLeaseCompleteRequest, TableLeaseAcknowledgeResponse>(
+        _dispatcher.RegisterJsonUnary<ResourceLeaseCompleteRequest, ResourceLeaseAcknowledgeResponse>(
             _completeProcedure,
             HandleComplete);
 
-        _dispatcher.RegisterJsonUnary<TableLeaseHeartbeatRequest, TableLeaseAcknowledgeResponse>(
+        _dispatcher.RegisterJsonUnary<ResourceLeaseHeartbeatRequest, ResourceLeaseAcknowledgeResponse>(
             _heartbeatProcedure,
             HandleHeartbeat);
 
-        _dispatcher.RegisterJsonUnary<TableLeaseFailRequest, TableLeaseAcknowledgeResponse>(
+        _dispatcher.RegisterJsonUnary<ResourceLeaseFailRequest, ResourceLeaseAcknowledgeResponse>(
             _failProcedure,
             HandleFail);
 
-        _dispatcher.RegisterJsonUnary<TableLeaseDrainRequest, TableLeaseDrainResponse>(
+        _dispatcher.RegisterJsonUnary<ResourceLeaseDrainRequest, ResourceLeaseDrainResponse>(
             _drainProcedure,
             HandleDrain);
 
-        _dispatcher.RegisterJsonUnary<TableLeaseRestoreRequest, TableLeaseRestoreResponse>(
+        _dispatcher.RegisterJsonUnary<ResourceLeaseRestoreRequest, ResourceLeaseRestoreResponse>(
             _restoreProcedure,
             HandleRestore);
     }
 
-    private async ValueTask<TableLeaseEnqueueResponse> HandleEnqueue(JsonUnaryContext context, TableLeaseEnqueueRequest request)
+    private async ValueTask<ResourceLeaseEnqueueResponse> HandleEnqueue(JsonUnaryContext context, ResourceLeaseEnqueueRequest request)
     {
         await WaitForBackpressureAsync(context.CancellationToken).ConfigureAwait(false);
 
         if (request.Payload is null)
         {
-            throw new ResultException(Error.From("table lease payload is required", "error.tablelease.payload_missing", cause: null!, metadata: null));
+            throw new ResultException(Error.From("resource lease payload is required", "error.resourcelease.payload_missing", cause: null!, metadata: null));
         }
 
-        var workItem = TableLeaseWorkItem.FromPayload(request.Payload);
+        var workItem = ResourceLeaseWorkItem.FromPayload(request.Payload);
         var enqueue = await _safeQueue.EnqueueAsync(workItem, context.CancellationToken).ConfigureAwait(false);
         enqueue.ThrowIfFailure();
 
         await PublishReplicationAsync(
-            TableLeaseReplicationEventType.Enqueue,
+            ResourceLeaseReplicationEventType.Enqueue,
             ownership: null,
             ResolvePeerId(context.RequestMeta, null),
             workItem.ToPayload(),
@@ -134,10 +134,10 @@ public sealed class TableLeaseDispatcherComponent : IAsyncDisposable
             context.CancellationToken).ConfigureAwait(false);
 
         EvaluateBackpressure();
-        return new TableLeaseEnqueueResponse(GetStats());
+        return new ResourceLeaseEnqueueResponse(GetStats());
     }
 
-    private async ValueTask<TableLeaseLeaseResponse> HandleLease(JsonUnaryContext context, TableLeaseLeaseRequest request)
+    private async ValueTask<ResourceLeaseLeaseResponse> HandleLease(JsonUnaryContext context, ResourceLeaseLeaseRequest request)
     {
         var leaseResult = await _safeQueue.LeaseAsync(context.CancellationToken).ConfigureAwait(false);
         var lease = leaseResult.ValueOrThrow();
@@ -146,21 +146,21 @@ public sealed class TableLeaseDispatcherComponent : IAsyncDisposable
         {
             // Extremely unlikely: duplicate token. Fail the lease so it is re-queued.
             await lease.FailAsync(
-                Error.From("duplicate ownership token detected", "error.tablelease.duplicate_token", cause: null!, metadata: null),
+                Error.From("duplicate ownership token detected", "error.resourcelease.duplicate_token", cause: null!, metadata: null),
                 requeue: true,
                 context.CancellationToken).ConfigureAwait(false);
 
-            throw new ResultException(Error.From("duplicate ownership token detected", "error.tablelease.duplicate_token", cause: null!, metadata: null));
+            throw new ResultException(Error.From("duplicate ownership token detected", "error.resourcelease.duplicate_token", cause: null!, metadata: null));
         }
 
         var ownerPeerId = ResolvePeerId(context.RequestMeta, request?.PeerId);
-        var leaseHandle = TableLeaseOwnershipHandle.FromToken(lease.OwnershipToken);
+        var leaseHandle = ResourceLeaseOwnershipHandle.FromToken(lease.OwnershipToken);
 
         if (!string.IsNullOrWhiteSpace(ownerPeerId))
         {
             _leaseOwners[lease.OwnershipToken] = ownerPeerId!;
             var peerHandle = ToPeerHandle(leaseHandle);
-            _leaseHealthTracker?.RecordLeaseAssignment(ownerPeerId!, peerHandle, lease.Value.Namespace, lease.Value.Table);
+            _leaseHealthTracker?.RecordLeaseAssignment(ownerPeerId!, peerHandle, lease.Value.ResourceType, lease.Value.ResourceId);
             if (lease.Value.Attributes.Count > 0)
             {
                 _leaseHealthTracker?.RecordGossip(ownerPeerId!, lease.Value.Attributes);
@@ -168,23 +168,23 @@ public sealed class TableLeaseDispatcherComponent : IAsyncDisposable
         }
 
         await PublishReplicationAsync(
-            TableLeaseReplicationEventType.LeaseGranted,
+            ResourceLeaseReplicationEventType.LeaseGranted,
             leaseHandle,
             ownerPeerId,
             lease.Value.ToPayload(),
-            TableLeaseErrorInfo.FromError(lease.LastError),
+            ResourceLeaseErrorInfo.FromError(lease.LastError),
             additionalMetadata: null,
             context.CancellationToken).ConfigureAwait(false);
 
         EvaluateBackpressure();
-        return TableLeaseLeaseResponse.FromLease(lease, ownerPeerId);
+        return ResourceLeaseLeaseResponse.FromLease(lease, ownerPeerId);
     }
 
-    private async ValueTask<TableLeaseAcknowledgeResponse> HandleComplete(JsonUnaryContext context, TableLeaseCompleteRequest request)
+    private async ValueTask<ResourceLeaseAcknowledgeResponse> HandleComplete(JsonUnaryContext context, ResourceLeaseCompleteRequest request)
     {
         if (!TryGetLease(request.OwnershipToken, out var lease))
         {
-            return TableLeaseAcknowledgeResponse.NotFound("error.tablelease.unknown_token", "Lease token was not found.");
+            return ResourceLeaseAcknowledgeResponse.NotFound("error.resourcelease.unknown_token", "Lease token was not found.");
         }
 
         var ownerId = TryGetLeaseOwner(request.OwnershipToken, out var resolvedOwner) ? resolvedOwner : null;
@@ -192,13 +192,13 @@ public sealed class TableLeaseDispatcherComponent : IAsyncDisposable
         var complete = await lease!.CompleteAsync(context.CancellationToken).ConfigureAwait(false);
         if (complete.IsFailure)
         {
-            return TableLeaseAcknowledgeResponse.FromError(complete.Error!);
+            return ResourceLeaseAcknowledgeResponse.FromError(complete.Error!);
         }
 
         CleanupLease(request.OwnershipToken, ownerId, requeued: false);
 
         await PublishReplicationAsync(
-            TableLeaseReplicationEventType.Completed,
+            ResourceLeaseReplicationEventType.Completed,
             request.OwnershipToken,
             ownerId,
             lease.Value.ToPayload(),
@@ -207,7 +207,7 @@ public sealed class TableLeaseDispatcherComponent : IAsyncDisposable
             context.CancellationToken).ConfigureAwait(false);
 
         await PublishReplicationAsync(
-            TableLeaseReplicationEventType.Heartbeat,
+            ResourceLeaseReplicationEventType.Heartbeat,
             request.OwnershipToken,
             ownerId,
             payload: null,
@@ -216,20 +216,20 @@ public sealed class TableLeaseDispatcherComponent : IAsyncDisposable
             context.CancellationToken).ConfigureAwait(false);
 
         EvaluateBackpressure();
-        return TableLeaseAcknowledgeResponse.Ack();
+        return ResourceLeaseAcknowledgeResponse.Ack();
     }
 
-    private async ValueTask<TableLeaseAcknowledgeResponse> HandleHeartbeat(JsonUnaryContext context, TableLeaseHeartbeatRequest request)
+    private async ValueTask<ResourceLeaseAcknowledgeResponse> HandleHeartbeat(JsonUnaryContext context, ResourceLeaseHeartbeatRequest request)
     {
         if (!TryGetLease(request.OwnershipToken, out var lease))
         {
-            return TableLeaseAcknowledgeResponse.NotFound("error.tablelease.unknown_token", "Lease token was not found.");
+            return ResourceLeaseAcknowledgeResponse.NotFound("error.resourcelease.unknown_token", "Lease token was not found.");
         }
 
         var heartbeat = await lease!.HeartbeatAsync(context.CancellationToken).ConfigureAwait(false);
         if (heartbeat.IsFailure)
         {
-            return TableLeaseAcknowledgeResponse.FromError(heartbeat.Error!);
+            return ResourceLeaseAcknowledgeResponse.FromError(heartbeat.Error!);
         }
 
         string? ownerId = null;
@@ -239,14 +239,14 @@ public sealed class TableLeaseDispatcherComponent : IAsyncDisposable
             _leaseHealthTracker?.RecordLeaseHeartbeat(resolvedHeartbeatOwner, ToPeerHandle(request.OwnershipToken), _queue.PendingCount);
         }
 
-        return TableLeaseAcknowledgeResponse.Ack();
+        return ResourceLeaseAcknowledgeResponse.Ack();
     }
 
-    private async ValueTask<TableLeaseAcknowledgeResponse> HandleFail(JsonUnaryContext context, TableLeaseFailRequest request)
+    private async ValueTask<ResourceLeaseAcknowledgeResponse> HandleFail(JsonUnaryContext context, ResourceLeaseFailRequest request)
     {
         if (!TryGetLease(request.OwnershipToken, out var lease))
         {
-            return TableLeaseAcknowledgeResponse.NotFound("error.tablelease.unknown_token", "Lease token was not found.");
+            return ResourceLeaseAcknowledgeResponse.NotFound("error.resourcelease.unknown_token", "Lease token was not found.");
         }
 
         var error = request.ToError();
@@ -255,7 +255,7 @@ public sealed class TableLeaseDispatcherComponent : IAsyncDisposable
         var fail = await lease!.FailAsync(error, request.Requeue, context.CancellationToken).ConfigureAwait(false);
         if (fail.IsFailure)
         {
-            return TableLeaseAcknowledgeResponse.FromError(fail.Error!);
+            return ResourceLeaseAcknowledgeResponse.FromError(fail.Error!);
         }
 
         CleanupLease(request.OwnershipToken, ownerId, requeued: request.Requeue);
@@ -265,11 +265,11 @@ public sealed class TableLeaseDispatcherComponent : IAsyncDisposable
         }
 
         await PublishReplicationAsync(
-            TableLeaseReplicationEventType.Failed,
+            ResourceLeaseReplicationEventType.Failed,
             request.OwnershipToken,
             ownerId,
             lease.Value.ToPayload(),
-            TableLeaseErrorInfo.FromError(error),
+            ResourceLeaseErrorInfo.FromError(error),
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 { "failure.requeued", request.Requeue.ToString(CultureInfo.InvariantCulture) }
@@ -277,14 +277,14 @@ public sealed class TableLeaseDispatcherComponent : IAsyncDisposable
             context.CancellationToken).ConfigureAwait(false);
 
         EvaluateBackpressure();
-        return TableLeaseAcknowledgeResponse.Ack();
+        return ResourceLeaseAcknowledgeResponse.Ack();
     }
 
-    private async ValueTask<TableLeaseDrainResponse> HandleDrain(JsonUnaryContext context, TableLeaseDrainRequest request)
+    private async ValueTask<ResourceLeaseDrainResponse> HandleDrain(JsonUnaryContext context, ResourceLeaseDrainRequest request)
     {
         var drained = await _queue.DrainPendingItemsAsync(context.CancellationToken).ConfigureAwait(false);
         var payloads = drained
-            .Select(TableLeasePendingItemDto.FromPending)
+            .Select(ResourceLeasePendingItemDto.FromPending)
             .ToImmutableArray();
 
         // Drain removes the work from the queue; reset stats so operators can see the impact.
@@ -294,7 +294,7 @@ public sealed class TableLeaseDispatcherComponent : IAsyncDisposable
         };
 
         await PublishReplicationAsync(
-            TableLeaseReplicationEventType.DrainSnapshot,
+            ResourceLeaseReplicationEventType.DrainSnapshot,
             ownership: null,
             peerId: null,
             payload: null,
@@ -303,14 +303,14 @@ public sealed class TableLeaseDispatcherComponent : IAsyncDisposable
             context.CancellationToken).ConfigureAwait(false);
 
         EvaluateBackpressure();
-        return new TableLeaseDrainResponse(payloads);
+        return new ResourceLeaseDrainResponse(payloads);
     }
 
-    private async ValueTask<TableLeaseRestoreResponse> HandleRestore(JsonUnaryContext context, TableLeaseRestoreRequest request)
+    private async ValueTask<ResourceLeaseRestoreResponse> HandleRestore(JsonUnaryContext context, ResourceLeaseRestoreRequest request)
     {
         if (request.Items is null || request.Items.Count == 0)
         {
-            return new TableLeaseRestoreResponse(0);
+            return new ResourceLeaseRestoreResponse(0);
         }
 
         var pending = request.Items
@@ -324,7 +324,7 @@ public sealed class TableLeaseDispatcherComponent : IAsyncDisposable
         };
 
         await PublishReplicationAsync(
-            TableLeaseReplicationEventType.RestoreSnapshot,
+            ResourceLeaseReplicationEventType.RestoreSnapshot,
             ownership: null,
             peerId: null,
             payload: null,
@@ -333,17 +333,17 @@ public sealed class TableLeaseDispatcherComponent : IAsyncDisposable
             context.CancellationToken).ConfigureAwait(false);
 
         EvaluateBackpressure();
-        return new TableLeaseRestoreResponse(pending.Count);
+        return new ResourceLeaseRestoreResponse(pending.Count);
     }
 
-    private TableLeaseQueueStats GetStats()
+    private ResourceLeaseQueueStats GetStats()
     {
-        var stats = new TableLeaseQueueStats(_queue.PendingCount, _queue.ActiveLeaseCount);
-        TableLeaseMetrics.RecordQueueStats(stats.PendingCount, stats.ActiveLeaseCount);
+        var stats = new ResourceLeaseQueueStats(_queue.PendingCount, _queue.ActiveLeaseCount);
+        ResourceLeaseMetrics.RecordQueueStats(stats.PendingCount, stats.ActiveLeaseCount);
         return stats;
     }
 
-    private bool TryGetLease(TableLeaseOwnershipHandle? handle, out SafeTaskQueueLease<TableLeaseWorkItem>? lease)
+    private bool TryGetLease(ResourceLeaseOwnershipHandle? handle, out SafeTaskQueueLease<ResourceLeaseWorkItem>? lease)
     {
         if (handle is null)
         {
@@ -362,7 +362,7 @@ public sealed class TableLeaseDispatcherComponent : IAsyncDisposable
         return false;
     }
 
-    private bool TryGetLeaseOwner(TableLeaseOwnershipHandle? handle, out string? ownerId)
+    private bool TryGetLeaseOwner(ResourceLeaseOwnershipHandle? handle, out string? ownerId)
     {
         ownerId = null;
         if (handle is null)
@@ -373,7 +373,7 @@ public sealed class TableLeaseDispatcherComponent : IAsyncDisposable
         return _leaseOwners.TryGetValue(handle.ToToken(), out ownerId);
     }
 
-    private void CleanupLease(TableLeaseOwnershipHandle? handle, string? explicitOwner = null, bool requeued = false)
+    private void CleanupLease(ResourceLeaseOwnershipHandle? handle, string? explicitOwner = null, bool requeued = false)
     {
         if (handle is null)
         {
@@ -481,11 +481,11 @@ public sealed class TableLeaseDispatcherComponent : IAsyncDisposable
     private void PublishBackpressureSignal(bool isActive, long pending)
     {
         _lastBackpressureTransition = DateTimeOffset.UtcNow;
-        TableLeaseMetrics.RecordBackpressureState(isActive);
+        ResourceLeaseMetrics.RecordBackpressureState(isActive);
 
         if (_backpressureListener is not null)
         {
-            var signal = new TableLeaseBackpressureSignal(
+            var signal = new ResourceLeaseBackpressureSignal(
                 isActive,
                 pending,
                 _lastBackpressureTransition,
@@ -511,16 +511,16 @@ public sealed class TableLeaseDispatcherComponent : IAsyncDisposable
     }
 
     private async ValueTask PublishReplicationAsync(
-        TableLeaseReplicationEventType eventType,
-        TableLeaseOwnershipHandle? ownership,
+        ResourceLeaseReplicationEventType eventType,
+        ResourceLeaseOwnershipHandle? ownership,
         string? peerId,
-        TableLeaseItemPayload? payload,
-        TableLeaseErrorInfo? error,
+        ResourceLeaseItemPayload? payload,
+        ResourceLeaseErrorInfo? error,
         IReadOnlyDictionary<string, string>? additionalMetadata,
         CancellationToken cancellationToken)
     {
         var metadata = MergeMetadata(additionalMetadata);
-        var replicationEvent = TableLeaseReplicationEvent.Create(
+        var replicationEvent = ResourceLeaseReplicationEvent.Create(
             eventType,
             ownership,
             string.IsNullOrWhiteSpace(peerId) ? null : peerId,
@@ -558,7 +558,7 @@ public sealed class TableLeaseDispatcherComponent : IAsyncDisposable
         return snapshot;
     }
 
-    private static PeerLeaseHandle ToPeerHandle(TableLeaseOwnershipHandle handle) =>
+    private static PeerLeaseHandle ToPeerHandle(ResourceLeaseOwnershipHandle handle) =>
         PeerLeaseHandle.FromToken(handle.ToToken());
 
     private static PeerLeaseHandle ToPeerHandle(TaskQueueOwnershipToken token) =>
@@ -615,12 +615,12 @@ public sealed class TableLeaseDispatcherComponent : IAsyncDisposable
 }
 
 /// <summary>
-/// Options used by <see cref="TableLeaseDispatcherComponent"/>.
+/// Options used by <see cref="ResourceLeaseDispatcherComponent"/>.
 /// </summary>
-public sealed class TableLeaseDispatcherOptions
+public sealed class ResourceLeaseDispatcherOptions
 {
-    /// <summary>The namespace prefix applied to the registered procedures. Defaults to 'tablelease'.</summary>
-    public string Namespace { get; init; } = "tablelease";
+    /// <summary>The namespace prefix applied to the registered procedures. Defaults to 'resourcelease'.</summary>
+    public string Namespace { get; init; } = "resourcelease";
 
     /// <summary>Task queue options that control capacity, lease duration, and heartbeat cadence.</summary>
     public TaskQueueOptions? QueueOptions { get; init; } = new();
@@ -629,65 +629,65 @@ public sealed class TableLeaseDispatcherOptions
     public PeerLeaseHealthTracker? LeaseHealthTracker { get; init; }
 
     /// <summary>Optional replication hub used to broadcast ordered lease events.</summary>
-    public ITableLeaseReplicator? Replicator { get; init; }
+    public IResourceLeaseReplicator? Replicator { get; init; }
 
     /// <summary>Optional deterministic coordinator used to persist replication effects.</summary>
-    public ITableLeaseDeterministicCoordinator? DeterministicCoordinator { get; init; }
+    public IResourceLeaseDeterministicCoordinator? DeterministicCoordinator { get; init; }
 
-    /// <summary>Convenience options to spawn a <see cref="DeterministicTableLeaseCoordinator"/>.</summary>
-    public TableLeaseDeterministicOptions? DeterministicOptions { get; init; }
+    /// <summary>Convenience options to spawn a <see cref="DeterministicResourceLeaseCoordinator"/>.</summary>
+    public ResourceLeaseDeterministicOptions? DeterministicOptions { get; init; }
 
     /// <summary>Optional listener invoked whenever SafeTaskQueue backpressure toggles.</summary>
-    public ITableLeaseBackpressureListener? BackpressureListener { get; init; }
+    public IResourceLeaseBackpressureListener? BackpressureListener { get; init; }
 }
 
 /// <summary>Represents the serialized form of a work item stored in the queue.</summary>
-public sealed record TableLeaseItemPayload(
-    string Namespace,
-    string Table,
+public sealed record ResourceLeaseItemPayload(
+    string ResourceType,
+    string ResourceId,
     string PartitionKey,
     string PayloadEncoding,
     byte[] Body,
     IReadOnlyDictionary<string, string>? Attributes = null,
     string? RequestId = null);
 
-public sealed record TableLeaseEnqueueRequest(TableLeaseItemPayload? Payload);
+public sealed record ResourceLeaseEnqueueRequest(ResourceLeaseItemPayload? Payload);
 
-public sealed record TableLeaseEnqueueResponse(TableLeaseQueueStats Stats);
+public sealed record ResourceLeaseEnqueueResponse(ResourceLeaseQueueStats Stats);
 
-public sealed record TableLeaseLeaseRequest(string? PeerId = null);
+public sealed record ResourceLeaseLeaseRequest(string? PeerId = null);
 
-public sealed record TableLeaseLeaseResponse(
-    TableLeaseItemPayload Payload,
+public sealed record ResourceLeaseLeaseResponse(
+    ResourceLeaseItemPayload Payload,
     long SequenceId,
     int Attempt,
     DateTimeOffset EnqueuedAt,
-    TableLeaseErrorInfo? LastError,
-    TableLeaseOwnershipHandle OwnershipToken,
+    ResourceLeaseErrorInfo? LastError,
+    ResourceLeaseOwnershipHandle OwnershipToken,
     string? OwnerPeerId)
 {
-    internal static TableLeaseLeaseResponse FromLease(
-        SafeTaskQueueLease<TableLeaseWorkItem> lease,
+    internal static ResourceLeaseLeaseResponse FromLease(
+        SafeTaskQueueLease<ResourceLeaseWorkItem> lease,
         string? peerId)
     {
         var payload = lease.Value.ToPayload();
-        return new TableLeaseLeaseResponse(
+        return new ResourceLeaseLeaseResponse(
             payload,
             lease.SequenceId,
             lease.Attempt,
             lease.EnqueuedAt,
-            TableLeaseErrorInfo.FromError(lease.LastError),
-            TableLeaseOwnershipHandle.FromToken(lease.OwnershipToken),
+            ResourceLeaseErrorInfo.FromError(lease.LastError),
+            ResourceLeaseOwnershipHandle.FromToken(lease.OwnershipToken),
             peerId);
     }
 }
 
-public sealed record TableLeaseCompleteRequest(TableLeaseOwnershipHandle OwnershipToken);
+public sealed record ResourceLeaseCompleteRequest(ResourceLeaseOwnershipHandle OwnershipToken);
 
-public sealed record TableLeaseHeartbeatRequest(TableLeaseOwnershipHandle OwnershipToken);
+public sealed record ResourceLeaseHeartbeatRequest(ResourceLeaseOwnershipHandle OwnershipToken);
 
-public sealed record TableLeaseFailRequest(
-    TableLeaseOwnershipHandle OwnershipToken,
+public sealed record ResourceLeaseFailRequest(
+    ResourceLeaseOwnershipHandle OwnershipToken,
     string? Reason,
     string? ErrorCode,
     bool Requeue = true,
@@ -696,7 +696,7 @@ public sealed record TableLeaseFailRequest(
     public Error ToError()
     {
         var message = string.IsNullOrWhiteSpace(Reason) ? "lease failed" : Reason!;
-        var code = string.IsNullOrWhiteSpace(ErrorCode) ? "error.tablelease.failed" : ErrorCode!;
+        var code = string.IsNullOrWhiteSpace(ErrorCode) ? "error.resourcelease.failed" : ErrorCode!;
 
         IReadOnlyDictionary<string, object?>? metadata = null;
         if (Metadata is { Count: > 0 })
@@ -708,57 +708,57 @@ public sealed record TableLeaseFailRequest(
     }
 }
 
-public sealed record TableLeaseDrainRequest;
+public sealed record ResourceLeaseDrainRequest;
 
-public sealed record TableLeaseDrainResponse(IReadOnlyList<TableLeasePendingItemDto> Items);
+public sealed record ResourceLeaseDrainResponse(IReadOnlyList<ResourceLeasePendingItemDto> Items);
 
-public sealed record TableLeaseRestoreRequest(IReadOnlyList<TableLeasePendingItemDto> Items);
+public sealed record ResourceLeaseRestoreRequest(IReadOnlyList<ResourceLeasePendingItemDto> Items);
 
-public sealed record TableLeaseRestoreResponse(int RestoredCount);
+public sealed record ResourceLeaseRestoreResponse(int RestoredCount);
 
-public sealed record TableLeaseQueueStats(long PendingCount, long ActiveLeaseCount);
+public sealed record ResourceLeaseQueueStats(long PendingCount, long ActiveLeaseCount);
 
-public sealed record TableLeaseAcknowledgeResponse(bool Success, string? ErrorCode = null, string? ErrorMessage = null)
+public sealed record ResourceLeaseAcknowledgeResponse(bool Success, string? ErrorCode = null, string? ErrorMessage = null)
 {
-    public static TableLeaseAcknowledgeResponse Ack() => new(true);
+    public static ResourceLeaseAcknowledgeResponse Ack() => new(true);
 
-    public static TableLeaseAcknowledgeResponse NotFound(string code, string message) =>
+    public static ResourceLeaseAcknowledgeResponse NotFound(string code, string message) =>
         new(false, code, message);
 
-    public static TableLeaseAcknowledgeResponse FromError(Error error) =>
+    public static ResourceLeaseAcknowledgeResponse FromError(Error error) =>
         new(false, error.Code, error.Message);
 }
 
-public sealed record TableLeasePendingItemDto(
-    TableLeaseItemPayload Payload,
+public sealed record ResourceLeasePendingItemDto(
+    ResourceLeaseItemPayload Payload,
     int Attempt,
     DateTimeOffset EnqueuedAt,
-    TableLeaseErrorInfo? LastError,
+    ResourceLeaseErrorInfo? LastError,
     long SequenceId,
-    TableLeaseOwnershipHandle? LastOwnershipToken)
+    ResourceLeaseOwnershipHandle? LastOwnershipToken)
 {
-    public static TableLeasePendingItemDto FromPending(TaskQueuePendingItem<TableLeaseWorkItem> pending)
+    public static ResourceLeasePendingItemDto FromPending(TaskQueuePendingItem<ResourceLeaseWorkItem> pending)
     {
         var payload = pending.Value.ToPayload();
         var handle = pending.LastOwnershipToken.HasValue
-            ? TableLeaseOwnershipHandle.FromToken(pending.LastOwnershipToken.Value)
+            ? ResourceLeaseOwnershipHandle.FromToken(pending.LastOwnershipToken.Value)
             : null;
 
-        return new TableLeasePendingItemDto(
+        return new ResourceLeasePendingItemDto(
             payload,
             pending.Attempt,
             pending.EnqueuedAt,
-            TableLeaseErrorInfo.FromError(pending.LastError),
+            ResourceLeaseErrorInfo.FromError(pending.LastError),
             pending.SequenceId,
             handle);
     }
 
-    public TaskQueuePendingItem<TableLeaseWorkItem> ToPending()
+    public TaskQueuePendingItem<ResourceLeaseWorkItem> ToPending()
     {
-        var workItem = TableLeaseWorkItem.FromPayload(Payload);
+        var workItem = ResourceLeaseWorkItem.FromPayload(Payload);
         var lastToken = LastOwnershipToken?.ToToken();
         var error = LastError?.ToError() ?? Error.Unspecified("restored pending item");
-        return new TaskQueuePendingItem<TableLeaseWorkItem>(
+        return new TaskQueuePendingItem<ResourceLeaseWorkItem>(
             workItem,
             Attempt,
             EnqueuedAt,
@@ -768,54 +768,54 @@ public sealed record TableLeasePendingItemDto(
     }
 }
 
-public sealed record TableLeaseOwnershipHandle(long SequenceId, int Attempt, Guid LeaseId)
+public sealed record ResourceLeaseOwnershipHandle(long SequenceId, int Attempt, Guid LeaseId)
 {
     public TaskQueueOwnershipToken ToToken() => new(SequenceId, Attempt, LeaseId);
 
-    public static TableLeaseOwnershipHandle FromToken(TaskQueueOwnershipToken token) =>
+    public static ResourceLeaseOwnershipHandle FromToken(TaskQueueOwnershipToken token) =>
         new(token.SequenceId, token.Attempt, token.LeaseId);
 }
 
-public sealed record TableLeaseErrorInfo(string Message, string? Code)
+public sealed record ResourceLeaseErrorInfo(string Message, string? Code)
 {
-    public static TableLeaseErrorInfo? FromError(Error? error)
+    public static ResourceLeaseErrorInfo? FromError(Error? error)
     {
         if (error is null)
         {
             return null;
         }
 
-        return new TableLeaseErrorInfo(error.Message, error.Code);
+        return new ResourceLeaseErrorInfo(error.Message, error.Code);
     }
 
     public Error ToError()
     {
-        var code = string.IsNullOrWhiteSpace(Code) ? "error.tablelease.pending" : Code!;
+        var code = string.IsNullOrWhiteSpace(Code) ? "error.resourcelease.pending" : Code!;
         return Error.From(Message, code, cause: null!, metadata: null);
     }
 }
 
-public sealed record TableLeaseWorkItem(
-    string Namespace,
-    string Table,
+public sealed record ResourceLeaseWorkItem(
+    string ResourceType,
+    string ResourceId,
     string PartitionKey,
     string PayloadEncoding,
     byte[] Body,
     ImmutableDictionary<string, string> Attributes,
     string? RequestId)
 {
-    public static TableLeaseWorkItem FromPayload(TableLeaseItemPayload payload)
+    public static ResourceLeaseWorkItem FromPayload(ResourceLeaseItemPayload payload)
     {
         ArgumentNullException.ThrowIfNull(payload);
 
-        if (string.IsNullOrWhiteSpace(payload.Namespace))
+        if (string.IsNullOrWhiteSpace(payload.ResourceType))
         {
-            throw new ArgumentException("Namespace is required.", nameof(payload));
+            throw new ArgumentException("ResourceType is required.", nameof(payload));
         }
 
-        if (string.IsNullOrWhiteSpace(payload.Table))
+        if (string.IsNullOrWhiteSpace(payload.ResourceId))
         {
-            throw new ArgumentException("Table is required.", nameof(payload));
+            throw new ArgumentException("ResourceId is required.", nameof(payload));
         }
 
         if (string.IsNullOrWhiteSpace(payload.PartitionKey))
@@ -834,9 +834,9 @@ public sealed record TableLeaseWorkItem(
 
         var body = payload.Body ?? Array.Empty<byte>();
 
-        return new TableLeaseWorkItem(
-            payload.Namespace,
-            payload.Table,
+        return new ResourceLeaseWorkItem(
+            payload.ResourceType,
+            payload.ResourceId,
             payload.PartitionKey,
             payload.PayloadEncoding,
             body,
@@ -844,15 +844,15 @@ public sealed record TableLeaseWorkItem(
             payload.RequestId);
     }
 
-    public TableLeaseItemPayload ToPayload()
+    public ResourceLeaseItemPayload ToPayload()
     {
         var attributes = Attributes.Count == 0
             ? ImmutableDictionary<string, string>.Empty
             : Attributes;
 
-        return new TableLeaseItemPayload(
-            Namespace,
-            Table,
+        return new ResourceLeaseItemPayload(
+            ResourceType,
+            ResourceId,
             PartitionKey,
             PayloadEncoding,
             Body,

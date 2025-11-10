@@ -12,12 +12,12 @@ using Xunit;
 
 namespace OmniRelay.IntegrationTests;
 
-public sealed class TableLeaseIntegrationTests
+public sealed class ResourceLeaseIntegrationTests
 {
     [Fact(Timeout = 30_000)]
-    public async Task TableLeaseDispatcher_PropagatesPrincipalAndReplicatesEvents()
+    public async Task ResourceLeaseDispatcher_PropagatesPrincipalAndReplicatesEvents()
     {
-        var dispatcherOptions = new DispatcherOptions("tablelease-endpoint");
+        var dispatcherOptions = new DispatcherOptions("resourcelease-endpoint");
         dispatcherOptions.UnaryInboundMiddleware.Add(new PrincipalBindingMiddleware(new PrincipalBindingOptions
         {
             PrincipalHeaderNames = ImmutableArray.Create("x-client-principal"),
@@ -29,9 +29,9 @@ public sealed class TableLeaseIntegrationTests
         var dispatcher = new Dispatcher.Dispatcher(dispatcherOptions);
 
         var replicationSink = new RecordingReplicationSink();
-        var replicator = new InMemoryTableLeaseReplicator(new[] { replicationSink });
+        var replicator = new InMemoryResourceLeaseReplicator(new[] { replicationSink });
 
-        await using var component = new TableLeaseDispatcherComponent(dispatcher, new TableLeaseDispatcherOptions
+        await using var component = new ResourceLeaseDispatcherComponent(dispatcher, new ResourceLeaseDispatcherOptions
         {
             Replicator = replicator
         });
@@ -43,49 +43,49 @@ public sealed class TableLeaseIntegrationTests
             { "x-mtls-thumbprint", "thumb-42" }
         };
 
-        var payload = new TableLeaseItemPayload(
-            Namespace: "lakeview",
-            Table: "leases",
+        var payload = new ResourceLeaseItemPayload(
+            ResourceType: "lakeview",
+            ResourceId: "leases",
             PartitionKey: "partition-1",
             PayloadEncoding: "json",
             Body: Encoding.UTF8.GetBytes("{\"job\":\"sync\"}"),
             Attributes: new Dictionary<string, string> { ["owner"] = "integration" },
             RequestId: "request-1");
 
-        var enqueueResponse = await InvokeJsonAsync<TableLeaseEnqueueRequest, TableLeaseEnqueueResponse>(
+        var enqueueResponse = await InvokeJsonAsync<ResourceLeaseEnqueueRequest, ResourceLeaseEnqueueResponse>(
             dispatcher,
-            "tablelease::enqueue",
-            new TableLeaseEnqueueRequest(payload),
+            "resourcelease::enqueue",
+            new ResourceLeaseEnqueueRequest(payload),
             headers,
             cancellationToken);
 
         Assert.Equal(1, enqueueResponse.Stats.PendingCount);
         Assert.Equal(0, enqueueResponse.Stats.ActiveLeaseCount);
 
-        var leaseResponse = await InvokeJsonAsync<TableLeaseLeaseRequest, TableLeaseLeaseResponse>(
+        var leaseResponse = await InvokeJsonAsync<ResourceLeaseLeaseRequest, ResourceLeaseLeaseResponse>(
             dispatcher,
-            "tablelease::lease",
-            new TableLeaseLeaseRequest(),
+            "resourcelease::lease",
+            new ResourceLeaseLeaseRequest(),
             headers,
             cancellationToken);
 
         Assert.Equal("integration-peer", leaseResponse.OwnerPeerId);
-        Assert.Equal(payload.Namespace, leaseResponse.Payload.Namespace);
-        Assert.Equal(payload.Table, leaseResponse.Payload.Table);
+        Assert.Equal(payload.ResourceType, leaseResponse.Payload.ResourceType);
+        Assert.Equal(payload.ResourceId, leaseResponse.Payload.ResourceId);
 
-        var ack = await InvokeJsonAsync<TableLeaseCompleteRequest, TableLeaseAcknowledgeResponse>(
+        var ack = await InvokeJsonAsync<ResourceLeaseCompleteRequest, ResourceLeaseAcknowledgeResponse>(
             dispatcher,
-            "tablelease::complete",
-            new TableLeaseCompleteRequest(leaseResponse.OwnershipToken),
+            "resourcelease::complete",
+            new ResourceLeaseCompleteRequest(leaseResponse.OwnershipToken),
             headers,
             cancellationToken);
 
         Assert.True(ack.Success);
 
-        var drainResponse = await InvokeJsonAsync<TableLeaseDrainRequest, TableLeaseDrainResponse>(
+        var drainResponse = await InvokeJsonAsync<ResourceLeaseDrainRequest, ResourceLeaseDrainResponse>(
             dispatcher,
-            "tablelease::drain",
-            new TableLeaseDrainRequest(),
+            "resourcelease::drain",
+            new ResourceLeaseDrainRequest(),
             headers,
             cancellationToken);
 
@@ -94,11 +94,11 @@ public sealed class TableLeaseIntegrationTests
         Assert.Equal(
             new[]
             {
-                TableLeaseReplicationEventType.Enqueue,
-                TableLeaseReplicationEventType.LeaseGranted,
-                TableLeaseReplicationEventType.Completed,
-                TableLeaseReplicationEventType.Heartbeat,
-                TableLeaseReplicationEventType.DrainSnapshot
+                ResourceLeaseReplicationEventType.Enqueue,
+                ResourceLeaseReplicationEventType.LeaseGranted,
+                ResourceLeaseReplicationEventType.Completed,
+                ResourceLeaseReplicationEventType.Heartbeat,
+                ResourceLeaseReplicationEventType.DrainSnapshot
             },
             replicationSink.Events.Select(evt => evt.EventType).ToArray());
 
@@ -132,13 +132,13 @@ public sealed class TableLeaseIntegrationTests
         return codec.DecodeResponse(rawResponse.Body, rawResponse.Meta).ValueOrThrow();
     }
 
-    private sealed class RecordingReplicationSink : ITableLeaseReplicationSink
+    private sealed class RecordingReplicationSink : IResourceLeaseReplicationSink
     {
-        private readonly List<TableLeaseReplicationEvent> _events = new();
+        private readonly List<ResourceLeaseReplicationEvent> _events = new();
 
-        public IReadOnlyList<TableLeaseReplicationEvent> Events => _events;
+        public IReadOnlyList<ResourceLeaseReplicationEvent> Events => _events;
 
-        public ValueTask ApplyAsync(TableLeaseReplicationEvent replicationEvent, CancellationToken cancellationToken)
+        public ValueTask ApplyAsync(ResourceLeaseReplicationEvent replicationEvent, CancellationToken cancellationToken)
         {
             _events.Add(replicationEvent);
             return ValueTask.CompletedTask;
