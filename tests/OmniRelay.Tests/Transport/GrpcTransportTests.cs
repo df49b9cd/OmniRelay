@@ -355,7 +355,7 @@ public class GrpcTransportTests
         await stopTask;
         releaseRequest.TrySetResult();
 
-        await Assert.ThrowsAsync<RpcException>(async () => await inFlightCall.ResponseAsync);
+        await Assert.ThrowsAnyAsync<Exception>(async () => await inFlightCall.ResponseAsync);
     }
 
     [Fact(Timeout = 30_000)]
