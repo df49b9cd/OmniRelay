@@ -118,7 +118,7 @@ OmniRelay already supplies the core pieces (SafeTaskQueue, replication, health g
    - Add unit/integration tests covering unhealthy peer eviction and reactivation after heartbeat.
    - See “Peer Chooser Integrations” below for recommended diagnostics and test coverage.
 5. **Backpressure Hooks**
-   - Implement sample `IResourceLeaseBackpressureListener` adapters (e.g., toggle RateLimitingMiddleware, emit control-plane events) and document integration points.
+   - Leverage the new `BackpressureAwareRateLimiter`, `RateLimitingBackpressureListener`, and `ResourceLeaseBackpressureDiagnosticsListener` helpers (see “Backpressure Hooks” below) so nodes automatically shed traffic and publish control-plane signals whenever SafeTaskQueue backpressure toggles.
 6. **Sharding Strategy**
    - Author guidance (and optional helper utilities) for running multiple ResourceLease queues per resource type or other lease identity boundary, including how to route payloads and aggregate replication streams.
 7. **Mesh Health Dashboard**
@@ -249,3 +249,44 @@ Tracking these TODO items will take the existing ResourceLease + health + replic
 4. **Operational hooks**
    - Expose derived metrics (`omnirelay.peer.unhealthy`, `omnirelay.peer.evictions`) so SREs can spot cluster-wide issues quickly.
    - Provide CLI/UX tools that query the diagnostics endpoint and show a ranked list of peers (`pending leases`, `last heartbeat`, `disconnect reason`) to speed up incident response.
+
+### Backpressure Hooks
+1. **Throttling via RateLimitingMiddleware**
+   - `BackpressureAwareRateLimiter` and `RateLimitingBackpressureListener` (both under `src/OmniRelay/Dispatcher/ResourceLeaseBackpressureListeners.cs`) bridge SafeTaskQueue signals into OmniRelay’s `RateLimitingMiddleware`.
+   - Create two limiters: one for steady-state traffic and one for backpressure mode (for example, a `ConcurrencyLimiter` that only allows a handful of concurrent RPCs). Register the selector with the middleware and the listener with the dispatcher:
+     ```csharp
+     var limiterGate = new BackpressureAwareRateLimiter(
+         normalLimiter: new ConcurrencyLimiter(new() { PermitLimit = 512 }),
+         backpressureLimiter: new ConcurrencyLimiter(new() { PermitLimit = 32 }));
+
+     services.AddSingleton(limiterGate);
+     services.AddSingleton<IResourceLeaseBackpressureListener>(sp =>
+         new RateLimitingBackpressureListener(
+             limiterGate,
+             sp.GetRequiredService<ILogger<RateLimitingBackpressureListener>>()));
+
+     dispatcherOptions.AddMiddleware(new RateLimitingMiddleware(new RateLimitingOptions
+     {
+         LimiterSelector = limiterGate.SelectLimiter
+     }));
+     ```
+   - Whenever the dispatcher toggles backpressure, the listener flips the gate so every inbound/outbound RPC automatically slows down. Operators can swap in other `RateLimiter` implementations (token bucket, sliding window) without touching the dispatcher.
+2. **Control-plane and streaming diagnostics**
+   - `ResourceLeaseBackpressureDiagnosticsListener` captures the latest `ResourceLeaseBackpressureSignal` and exposes a bounded `ChannelReader` so HTTP/gRPC endpoints or CLI tools can stream transitions.
+   - Register it alongside the dispatcher and map lightweight endpoints:
+     ```csharp
+     services.AddSingleton<ResourceLeaseBackpressureDiagnosticsListener>();
+     services.AddSingleton<IResourceLeaseBackpressureListener>(sp =>
+         sp.GetRequiredService<ResourceLeaseBackpressureDiagnosticsListener>());
+
+     app.MapGet("/omnirelay/control/backpressure", (ResourceLeaseBackpressureDiagnosticsListener listener) =>
+         listener.Latest is { } latest ? Results.Json(latest) : Results.NoContent());
+     app.MapGet("/omnirelay/control/backpressure/stream", async (HttpContext ctx, ResourceLeaseBackpressureDiagnosticsListener listener) =>
+     {
+         await foreach (var update in listener.ReadAllAsync(ctx.RequestAborted))
+         {
+             await ctx.Response.WriteAsJsonAsync(update, ctx.RequestAborted);
+         }
+     });
+     ```
+   - Use the streaming endpoint for dashboards, CLI “watch” commands, or to fan out signals to orchestrators that drain upstream gateways automatically.

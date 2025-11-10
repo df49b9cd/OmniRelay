@@ -246,3 +246,4 @@ public class GeneratedClientHttp3Tests
         value = default!;
         return false;
     }
+}

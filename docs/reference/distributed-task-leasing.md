@@ -47,6 +47,31 @@ Use `ResourceLeaseDispatcherOptions.QueueOptions` to align lease duration, heart
 
 - `TaskQueueOptions.Backpressure` is always wired to the dispatcher. When the SafeTaskQueue crosses its configured `HighWatermark`, `resourcelease::enqueue` calls pause until the queue drains below the `LowWatermark`, preventing unbounded buffering inside OmniRelay transports.
 - Register an `IResourceLeaseBackpressureListener` through `ResourceLeaseDispatcherOptions.BackpressureListener` to integrate the signal with upstream throttling (for example toggling `RateLimitingMiddleware` or nudging clients via side channels). Each callback receives a `ResourceLeaseBackpressureSignal` describing the active state, pending depth, observed timestamp, and configured watermarks.
+- Sample adapters live in `src/OmniRelay/Dispatcher/ResourceLeaseBackpressureListeners.cs`:
+  - `BackpressureAwareRateLimiter` + `RateLimitingBackpressureListener` toggle the limiter used by `RateLimitingMiddleware`. Wire the selector like this:
+    ```csharp
+    var limiterGate = new BackpressureAwareRateLimiter(
+        normalLimiter: new ConcurrencyLimiter(new() { PermitLimit = 1024 }),
+        backpressureLimiter: new ConcurrencyLimiter(new() { PermitLimit = 64 }));
+
+    services.AddSingleton(limiterGate);
+    services.AddSingleton<IResourceLeaseBackpressureListener>(sp =>
+        new RateLimitingBackpressureListener(limiterGate, sp.GetRequiredService<ILogger<RateLimitingBackpressureListener>>()));
+
+    dispatcherOptions.AddMiddleware(new RateLimitingMiddleware(new RateLimitingOptions
+    {
+        LimiterSelector = limiterGate.SelectLimiter
+    }));
+    ```
+  - `ResourceLeaseBackpressureDiagnosticsListener` exposes the latest signal plus a `ChannelReader` so control-plane endpoints or SSE/gRPC streams can publish transitions:
+    ```csharp
+    services.AddSingleton<ResourceLeaseBackpressureDiagnosticsListener>();
+    services.AddSingleton<IResourceLeaseBackpressureListener>(sp =>
+        sp.GetRequiredService<ResourceLeaseBackpressureDiagnosticsListener>());
+
+    app.MapGet("/omnirelay/control/backpressure", (ResourceLeaseBackpressureDiagnosticsListener listener) =>
+        listener.Latest is { } latest ? Results.Json(latest) : Results.NoContent());
+    ```
 - `ResourceLeaseMetrics` emits `omnirelay.resourcelease.pending`, `omnirelay.resourcelease.active`, and `omnirelay.resourcelease.backpressure.transitions` so dashboards can visualize queue depth and backpressure churn over time.
 
 ### Security & identity propagation

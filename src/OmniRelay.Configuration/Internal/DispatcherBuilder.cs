@@ -1056,7 +1056,7 @@ internal sealed class DispatcherBuilder
 
         var hasPeerHealthProviders = _serviceProvider.GetServices<IPeerHealthSnapshotProvider>().Any();
 
-        options = new DiagnosticsControlPlaneOptions(enableLogging, enableSampling, enableLeaseHealthDiagnostics: hasPeerHealthProviders);
+        options = new DiagnosticsControlPlaneOptions(enableLogging, enableSampling, hasPeerHealthProviders);
         return enableLogging || enableSampling || hasPeerHealthProviders;
     }
 
