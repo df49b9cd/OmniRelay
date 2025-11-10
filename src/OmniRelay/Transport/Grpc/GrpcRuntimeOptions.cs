@@ -8,23 +8,59 @@ namespace OmniRelay.Transport.Grpc;
 /// </summary>
 public sealed record GrpcClientRuntimeOptions
 {
-    public bool EnableHttp3 { get; init; }
+    public bool EnableHttp3
+    {
+        get => field;
+        init => field = value;
+    }
 
-    public Version? RequestVersion { get; init; }
+    public Version? RequestVersion
+    {
+        get => field;
+        init => field = value;
+    }
 
-    public HttpVersionPolicy? VersionPolicy { get; init; }
+    public HttpVersionPolicy? VersionPolicy
+    {
+        get => field;
+        init => field = value;
+    }
 
-    public int? MaxReceiveMessageSize { get; init; }
+    public int? MaxReceiveMessageSize
+    {
+        get => field;
+        init => field = value;
+    }
 
-    public int? MaxSendMessageSize { get; init; }
+    public int? MaxSendMessageSize
+    {
+        get => field;
+        init => field = value;
+    }
 
-    public TimeSpan? KeepAlivePingDelay { get; init; }
+    public TimeSpan? KeepAlivePingDelay
+    {
+        get => field;
+        init => field = value;
+    }
 
-    public TimeSpan? KeepAlivePingTimeout { get; init; }
+    public TimeSpan? KeepAlivePingTimeout
+    {
+        get => field;
+        init => field = value;
+    }
 
-    public HttpKeepAlivePingPolicy? KeepAlivePingPolicy { get; init; }
+    public HttpKeepAlivePingPolicy? KeepAlivePingPolicy
+    {
+        get => field;
+        init => field = value;
+    }
 
-    public IReadOnlyList<Interceptor> Interceptors { get; init; } = [];
+    public IReadOnlyList<Interceptor> Interceptors
+    {
+        get => field;
+        init => field = value;
+    } = [];
 }
 
 /// <summary>
@@ -32,27 +68,75 @@ public sealed record GrpcClientRuntimeOptions
 /// </summary>
 public sealed record GrpcServerRuntimeOptions
 {
-    public bool EnableHttp3 { get; init; }
+    public bool EnableHttp3
+    {
+        get => field;
+        init => field = value;
+    }
 
-    public int? MaxReceiveMessageSize { get; init; }
+    public int? MaxReceiveMessageSize
+    {
+        get => field;
+        init => field = value;
+    }
 
-    public int? MaxSendMessageSize { get; init; }
+    public int? MaxSendMessageSize
+    {
+        get => field;
+        init => field = value;
+    }
 
-    public TimeSpan? KeepAlivePingDelay { get; init; }
+    public TimeSpan? KeepAlivePingDelay
+    {
+        get => field;
+        init => field = value;
+    }
 
-    public TimeSpan? KeepAlivePingTimeout { get; init; }
+    public TimeSpan? KeepAlivePingTimeout
+    {
+        get => field;
+        init => field = value;
+    }
 
-    public bool? EnableDetailedErrors { get; init; }
+    public bool? EnableDetailedErrors
+    {
+        get => field;
+        init => field = value;
+    }
 
-    public IReadOnlyList<Type> Interceptors { get; init; } = [];
+    public IReadOnlyList<Type> Interceptors
+    {
+        get => field;
+        init => field = value;
+    } = [];
 
-    public TimeSpan? ServerStreamWriteTimeout { get; init; }
+    public TimeSpan? ServerStreamWriteTimeout
+    {
+        get => field;
+        init => field = value;
+    }
 
-    public TimeSpan? DuplexWriteTimeout { get; init; }
+    public TimeSpan? DuplexWriteTimeout
+    {
+        get => field;
+        init => field = value;
+    }
 
-    public int? ServerStreamMaxMessageBytes { get; init; }
+    public int? ServerStreamMaxMessageBytes
+    {
+        get => field;
+        init => field = value;
+    }
 
-    public int? DuplexMaxMessageBytes { get; init; }
+    public int? DuplexMaxMessageBytes
+    {
+        get => field;
+        init => field = value;
+    }
 
-    public Http3RuntimeOptions? Http3 { get; init; }
+    public Http3RuntimeOptions? Http3
+    {
+        get => field;
+        init => field = value;
+    }
 }

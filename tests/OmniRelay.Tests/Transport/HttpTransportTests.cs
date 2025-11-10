@@ -78,14 +78,32 @@ public class HttpTransportTests
         await dispatcher.StopOrThrowAsync(ct);
     }
 
-    private sealed record EchoRequest(string Message);
+    private sealed record EchoRequest(string Message)
+    {
+        public string Message
+        {
+            get => field;
+            init => field = value;
+        } = Message;
+    }
 
     private sealed record EchoResponse
     {
-        public string Message { get; init; } = string.Empty;
+        public string Message
+        {
+            get => field;
+            init => field = value;
+        } = string.Empty;
     }
 
-    private sealed record ChatMessage(string Message);
+    private sealed record ChatMessage(string Message)
+    {
+        public string Message
+        {
+            get => field;
+            init => field = value;
+        } = Message;
+    }
 
     [Fact(Timeout = 30000)]
     public async Task OnewayRoundtrip_SucceedsWithAck()

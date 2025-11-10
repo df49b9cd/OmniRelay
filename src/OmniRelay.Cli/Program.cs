@@ -1959,37 +1959,170 @@ public static class Program
 
     private sealed record AutomationScript
     {
-        public AutomationStep[] Steps { get; init; } = [];
+        public AutomationStep[] Steps
+        {
+            get => field;
+            init => field = value;
+        } = [];
     }
 
     private sealed record AutomationStep
     {
-        public string Type { get; init; } = string.Empty;
-        public string? Description { get; init; }
-        public string? Transport { get; init; }
-        public string? Service { get; init; }
-        public string? Procedure { get; init; }
-        public string? Caller { get; init; }
-        public string? Encoding { get; init; }
-        public Dictionary<string, string>? Headers { get; init; }
-        public string[]? Profiles { get; init; }
-        public string? ShardKey { get; init; }
-        public string? RoutingKey { get; init; }
-        public string? RoutingDelegate { get; init; }
-        public string[]? ProtoFiles { get; init; }
-        public string? ProtoMessage { get; init; }
-        public string? Ttl { get; init; }
-        public string? Deadline { get; init; }
-        public string? Timeout { get; init; }
-        public string? Body { get; init; }
-        public string? BodyFile { get; init; }
-        public string? BodyBase64 { get; init; }
-        public string? Url { get; init; }
-        public string? Address { get; init; }
-        public string[]? Addresses { get; init; }
-        public string? Format { get; init; }
-        public string? Duration { get; init; }
-        public string? Delay { get; init; }
+        public string Type
+        {
+            get => field;
+            init => field = value;
+        } = string.Empty;
+
+        public string? Description
+        {
+            get => field;
+            init => field = value;
+        }
+
+        public string? Transport
+        {
+            get => field;
+            init => field = value;
+        }
+
+        public string? Service
+        {
+            get => field;
+            init => field = value;
+        }
+
+        public string? Procedure
+        {
+            get => field;
+            init => field = value;
+        }
+
+        public string? Caller
+        {
+            get => field;
+            init => field = value;
+        }
+
+        public string? Encoding
+        {
+            get => field;
+            init => field = value;
+        }
+
+        public Dictionary<string, string>? Headers
+        {
+            get => field;
+            init => field = value;
+        }
+
+        public string[]? Profiles
+        {
+            get => field;
+            init => field = value;
+        }
+
+        public string? ShardKey
+        {
+            get => field;
+            init => field = value;
+        }
+
+        public string? RoutingKey
+        {
+            get => field;
+            init => field = value;
+        }
+
+        public string? RoutingDelegate
+        {
+            get => field;
+            init => field = value;
+        }
+
+        public string[]? ProtoFiles
+        {
+            get => field;
+            init => field = value;
+        }
+
+        public string? ProtoMessage
+        {
+            get => field;
+            init => field = value;
+        }
+
+        public string? Ttl
+        {
+            get => field;
+            init => field = value;
+        }
+
+        public string? Deadline
+        {
+            get => field;
+            init => field = value;
+        }
+
+        public string? Timeout
+        {
+            get => field;
+            init => field = value;
+        }
+
+        public string? Body
+        {
+            get => field;
+            init => field = value;
+        }
+
+        public string? BodyFile
+        {
+            get => field;
+            init => field = value;
+        }
+
+        public string? BodyBase64
+        {
+            get => field;
+            init => field = value;
+        }
+
+        public string? Url
+        {
+            get => field;
+            init => field = value;
+        }
+
+        public string? Address
+        {
+            get => field;
+            init => field = value;
+        }
+
+        public string[]? Addresses
+        {
+            get => field;
+            init => field = value;
+        }
+
+        public string? Format
+        {
+            get => field;
+            init => field = value;
+        }
+
+        public string? Duration
+        {
+            get => field;
+            init => field = value;
+        }
+
+        public string? Delay
+        {
+            get => field;
+            init => field = value;
+        }
     }
 
     private static void PrintBenchmarkSummary(
@@ -3327,11 +3460,33 @@ public static class Program
 
     private sealed class ProfileProcessingState
     {
-        public bool PrettyPrintJson { get; set; }
-        public ProtoProcessingState? Proto { get; set; }
+        public bool PrettyPrintJson
+        {
+            get => field;
+            set => field = value;
+        }
+
+        public ProtoProcessingState? Proto
+        {
+            get => field;
+            set => field = value;
+        }
     }
 
-    private sealed record ProtoProcessingState(string[] DescriptorPaths, string MessageName);
+    private sealed record ProtoProcessingState(string[] DescriptorPaths, string MessageName)
+    {
+        public string[] DescriptorPaths
+        {
+            get => field;
+            init => field = value;
+        } = DescriptorPaths;
+
+        public string MessageName
+        {
+            get => field;
+            init => field = value;
+        } = MessageName;
+    }
 
     private enum PayloadSource
     {
@@ -3343,7 +3498,20 @@ public static class Program
 
     private sealed record DescriptorCacheEntry(
         Dictionary<string, FileDescriptor> Files,
-        Dictionary<string, MessageDescriptor> Messages);
+        Dictionary<string, MessageDescriptor> Messages)
+    {
+        public Dictionary<string, FileDescriptor> Files
+        {
+            get => field;
+            init => field = value;
+        } = Files;
+
+        public Dictionary<string, MessageDescriptor> Messages
+        {
+            get => field;
+            init => field = value;
+        } = Messages;
+    }
 
     private static bool TryDecodeUtf8(ReadOnlySpan<byte> data, out string text)
     {

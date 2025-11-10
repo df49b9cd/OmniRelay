@@ -86,9 +86,35 @@ internal static class GatewayBootstrap
     }
 }
 
-internal sealed record TenantConfig(string TenantId, Uri Backend);
+internal sealed record TenantConfig(string TenantId, Uri Backend)
+{
+    public string TenantId
+    {
+        get => field;
+        init => field = value;
+    } = TenantId;
 
-internal sealed record GatewayRuntime(OmniRelayDispatcher Dispatcher, HttpInbound HttpInbound);
+    public Uri Backend
+    {
+        get => field;
+        init => field = value;
+    } = Backend;
+}
+
+internal sealed record GatewayRuntime(OmniRelayDispatcher Dispatcher, HttpInbound HttpInbound)
+{
+    public OmniRelayDispatcher Dispatcher
+    {
+        get => field;
+        init => field = value;
+    } = Dispatcher;
+
+    public HttpInbound HttpInbound
+    {
+        get => field;
+        init => field = value;
+    } = HttpInbound;
+}
 
 internal static class TenantProcedures
 {
@@ -191,5 +217,26 @@ internal sealed class TenantLoggingMiddleware : IUnaryInboundMiddleware
     }
 }
 
-internal sealed record OrderRequest(string Portfolio, decimal Notional);
-internal sealed record OrderResponse(string Status);
+internal sealed record OrderRequest(string Portfolio, decimal Notional)
+{
+    public string Portfolio
+    {
+        get => field;
+        init => field = value;
+    } = Portfolio;
+
+    public decimal Notional
+    {
+        get => field;
+        init => field = value;
+    } = Notional;
+}
+
+internal sealed record OrderResponse(string Status)
+{
+    public string Status
+    {
+        get => field;
+        init => field = value;
+    } = Status;
+}

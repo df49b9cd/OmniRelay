@@ -32,6 +32,54 @@ public sealed record TableLeaseReplicationEvent(
             metadata is null
                 ? ImmutableDictionary<string, string>.Empty
                 : metadata.ToImmutableDictionary(StringComparer.OrdinalIgnoreCase));
+
+    public long SequenceNumber
+    {
+        get => field;
+        init => field = value;
+    } = SequenceNumber;
+
+    public TableLeaseReplicationEventType EventType
+    {
+        get => field;
+        init => field = value;
+    } = EventType;
+
+    public DateTimeOffset Timestamp
+    {
+        get => field;
+        init => field = value;
+    } = Timestamp;
+
+    public TableLeaseOwnershipHandle? Ownership
+    {
+        get => field;
+        init => field = value;
+    } = Ownership;
+
+    public string? PeerId
+    {
+        get => field;
+        init => field = value;
+    } = PeerId;
+
+    public TableLeaseItemPayload? Payload
+    {
+        get => field;
+        init => field = value;
+    } = Payload;
+
+    public TableLeaseErrorInfo? Error
+    {
+        get => field;
+        init => field = value;
+    } = Error;
+
+    public ImmutableDictionary<string, string> Metadata
+    {
+        get => field;
+        init => field = value;
+    } = Metadata;
 }
 
 /// <summary>Enumerates table lease event types replicated across metadata nodes.</summary>

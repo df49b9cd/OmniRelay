@@ -11,12 +11,41 @@ namespace OmniRelay.Core.Transport;
 /// </summary>
 public sealed class TeeOptions
 {
-    public double SampleRate { get; init; } = 1.0;
-    public bool ShadowOnSuccessOnly { get; init; } = true;
-    public Func<RequestMeta, bool>? Predicate { get; init; }
-    public string ShadowHeaderName { get; init; } = "rpc-shadow";
-    public string ShadowHeaderValue { get; init; } = "true";
-    public ILoggerFactory? LoggerFactory { get; init; }
+    public double SampleRate
+    {
+        get => field;
+        init => field = value;
+    } = 1.0;
+
+    public bool ShadowOnSuccessOnly
+    {
+        get => field;
+        init => field = value;
+    } = true;
+
+    public Func<RequestMeta, bool>? Predicate
+    {
+        get => field;
+        init => field = value;
+    }
+
+    public string ShadowHeaderName
+    {
+        get => field;
+        init => field = value;
+    } = "rpc-shadow";
+
+    public string ShadowHeaderValue
+    {
+        get => field;
+        init => field = value;
+    } = "true";
+
+    public ILoggerFactory? LoggerFactory
+    {
+        get => field;
+        init => field = value;
+    }
 }
 
 public sealed record TeeOutboundDiagnostics(
@@ -25,7 +54,44 @@ public sealed record TeeOutboundDiagnostics(
     double SampleRate,
     bool ShadowOnSuccessOnly,
     string ShadowHeaderName,
-    string ShadowHeaderValue);
+    string ShadowHeaderValue)
+{
+    public object? Primary
+    {
+        get => field;
+        init => field = value;
+    } = Primary;
+
+    public object? Shadow
+    {
+        get => field;
+        init => field = value;
+    } = Shadow;
+
+    public double SampleRate
+    {
+        get => field;
+        init => field = value;
+    } = SampleRate;
+
+    public bool ShadowOnSuccessOnly
+    {
+        get => field;
+        init => field = value;
+    } = ShadowOnSuccessOnly;
+
+    public string ShadowHeaderName
+    {
+        get => field;
+        init => field = value;
+    } = ShadowHeaderName;
+
+    public string ShadowHeaderValue
+    {
+        get => field;
+        init => field = value;
+    } = ShadowHeaderValue;
+}
 
 /// <summary>
 /// Unary outbound that forwards calls to a primary outbound and optionally shadows to a secondary outbound.

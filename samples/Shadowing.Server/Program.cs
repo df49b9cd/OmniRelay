@@ -256,12 +256,119 @@ internal sealed class ConsoleLoggingMiddleware :
 internal readonly record struct ShadowingRuntime(
     Dispatcher.Dispatcher Dispatcher,
     HttpInbound HttpInbound,
-    GrpcInbound GrpcInbound);
+    GrpcInbound GrpcInbound)
+{
+    public Dispatcher.Dispatcher Dispatcher
+    {
+        get => field;
+        init => field = value;
+    } = Dispatcher;
 
-internal sealed record SubmitPaymentRequest(string SessionId, string MerchantId, decimal Amount, string Currency, string CardToken);
+    public HttpInbound HttpInbound
+    {
+        get => field;
+        init => field = value;
+    } = HttpInbound;
 
-internal sealed record PaymentDecision(string AuthorizationId, string Decision);
+    public GrpcInbound GrpcInbound
+    {
+        get => field;
+        init => field = value;
+    } = GrpcInbound;
+}
 
-internal sealed record PaymentReceipt(string AuthorizationId, string Decision, string ShadowReplica);
+internal sealed record SubmitPaymentRequest(string SessionId, string MerchantId, decimal Amount, string Currency, string CardToken)
+{
+    public string SessionId
+    {
+        get => field;
+        init => field = value;
+    } = SessionId;
 
-internal sealed record AuditLogEntry(string MerchantId, string AuthorizationId, string Decision, DateTimeOffset OccurredAt);
+    public string MerchantId
+    {
+        get => field;
+        init => field = value;
+    } = MerchantId;
+
+    public decimal Amount
+    {
+        get => field;
+        init => field = value;
+    } = Amount;
+
+    public string Currency
+    {
+        get => field;
+        init => field = value;
+    } = Currency;
+
+    public string CardToken
+    {
+        get => field;
+        init => field = value;
+    } = CardToken;
+}
+
+internal sealed record PaymentDecision(string AuthorizationId, string Decision)
+{
+    public string AuthorizationId
+    {
+        get => field;
+        init => field = value;
+    } = AuthorizationId;
+
+    public string Decision
+    {
+        get => field;
+        init => field = value;
+    } = Decision;
+}
+
+internal sealed record PaymentReceipt(string AuthorizationId, string Decision, string ShadowReplica)
+{
+    public string AuthorizationId
+    {
+        get => field;
+        init => field = value;
+    } = AuthorizationId;
+
+    public string Decision
+    {
+        get => field;
+        init => field = value;
+    } = Decision;
+
+    public string ShadowReplica
+    {
+        get => field;
+        init => field = value;
+    } = ShadowReplica;
+}
+
+internal sealed record AuditLogEntry(string MerchantId, string AuthorizationId, string Decision, DateTimeOffset OccurredAt)
+{
+    public string MerchantId
+    {
+        get => field;
+        init => field = value;
+    } = MerchantId;
+
+    public string AuthorizationId
+    {
+        get => field;
+        init => field = value;
+    } = AuthorizationId;
+
+    public string Decision
+    {
+        get => field;
+        init => field = value;
+    } = Decision;
+
+    public DateTimeOffset OccurredAt
+    {
+        get => field;
+        init => field = value;
+    } = OccurredAt;
+}

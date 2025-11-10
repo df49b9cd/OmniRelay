@@ -337,57 +337,37 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         }
         catch (RpcException rpcEx)
         {
+            // Fallback: if HTTP version negotiation failed to establish HTTP/2, retry with a forced HTTP/2 client.
+            var shouldFallback = _clientRuntimeOptions?.EnableHttp3 == true &&
+                ShouldForceHttp2Fallback(rpcEx);
 
-            // Fallback: if HTTP version negotiation failed to establish HTTP/2 under an OrHigher policy, retry with a forced HTTP/2 client.
-            if (_clientRuntimeOptions?.EnableHttp3 == true && _clientRuntimeOptions?.VersionPolicy == HttpVersionPolicy.RequestVersionOrHigher)
+            if (shouldFallback)
             {
-                var detail = rpcEx.Status.Detail ?? string.Empty;
-                if (detail.Contains("unable to establish HTTP/2 connection", StringComparison.OrdinalIgnoreCase) ||
-                    detail.Contains("Requesting HTTP version 2.0", StringComparison.OrdinalIgnoreCase))
+                try
                 {
-                    try
+                    using var fallbackChannel = GrpcChannel.ForAddress(peer.Address, CreateHttp2FallbackOptions());
+                    var fallbackInvoker = fallbackChannel.CreateCallInvoker();
+                    var retryCall = fallbackInvoker.AsyncUnaryCall(method, null, callOptions, request.Body.ToArray());
+                    var retryResponse = await retryCall.ResponseAsync.ConfigureAwait(false);
+
+                    // Metrics: count explicit OrHigher fallback to HTTP/2
+                    if (_clientRuntimeOptions?.EnableHttp3 == true)
                     {
-                        var forcedHandler = new SocketsHttpHandler { EnableMultipleHttp2Connections = true };
-                        var httpClient = new HttpClient(forcedHandler)
-                        {
-                            DefaultRequestVersion = HttpVersion.Version20,
-                            DefaultVersionPolicy = HttpVersionPolicy.RequestVersionExact
-                        };
-
-                        using var fallbackChannel = GrpcChannel.ForAddress(peer.Address, new GrpcChannelOptions
-                        {
-                            HttpClient = httpClient,
-                            LoggerFactory = _channelOptions.LoggerFactory,
-                            Credentials = _channelOptions.Credentials,
-                            CompressionProviders = _channelOptions.CompressionProviders,
-                            MaxReceiveMessageSize = _channelOptions.MaxReceiveMessageSize,
-                            MaxSendMessageSize = _channelOptions.MaxSendMessageSize,
-                            UnsafeUseInsecureChannelCallCredentials = _channelOptions.UnsafeUseInsecureChannelCallCredentials
-                        });
-
-                        var fallbackInvoker = fallbackChannel.CreateCallInvoker();
-                        var retryCall = fallbackInvoker.AsyncUnaryCall(method, null, callOptions, request.Body.ToArray());
-                        var retryResponse = await retryCall.ResponseAsync.ConfigureAwait(false);
-
-                        // Metrics: count explicit OrHigher fallback to HTTP/2
-                        if (_clientRuntimeOptions?.EnableHttp3 == true)
-                        {
-                            var metaForTags = request.Meta;
-                            GrpcTransportMetrics.RecordClientFallback(metaForTags, http3Desired: true);
-                        }
-
-                        var retryHeaders = await retryCall.ResponseHeadersAsync.ConfigureAwait(false);
-                        var retryTrailers = retryCall.GetTrailers();
-                        var retryMeta = GrpcMetadataAdapter.CreateResponseMeta(retryHeaders, retryTrailers);
-
-                        GrpcTransportDiagnostics.SetStatus(activity, StatusCode.OK);
-                        lease.MarkSuccess();
-                        return Ok(Response<ReadOnlyMemory<byte>>.Create(retryResponse, retryMeta));
+                        var metaForTags = request.Meta;
+                        GrpcTransportMetrics.RecordClientFallback(metaForTags, http3Desired: true);
                     }
-                    catch
-                    {
-                        // Ignore and fall through to normal error handling
-                    }
+
+                    var retryHeaders = await retryCall.ResponseHeadersAsync.ConfigureAwait(false);
+                    var retryTrailers = retryCall.GetTrailers();
+                    var retryMeta = GrpcMetadataAdapter.CreateResponseMeta(retryHeaders, retryTrailers);
+
+                    GrpcTransportDiagnostics.SetStatus(activity, StatusCode.OK);
+                    lease.MarkSuccess();
+                    return Ok(Response<ReadOnlyMemory<byte>>.Create(retryResponse, retryMeta));
+                }
+                catch
+                {
+                    // Ignore and fall through to normal error handling
                 }
             }
             var status = GrpcStatusMapper.FromStatus(rpcEx.Status);
@@ -399,6 +379,36 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         }
         catch (Exception ex)
         {
+            if (_clientRuntimeOptions?.EnableHttp3 == true &&
+                ShouldForceHttp2Fallback(ex))
+            {
+                try
+                {
+                    using var fallbackChannel = GrpcChannel.ForAddress(peer.Address, CreateHttp2FallbackOptions());
+                    var fallbackInvoker = fallbackChannel.CreateCallInvoker();
+                    var retryCall = fallbackInvoker.AsyncUnaryCall(method, null, callOptions, request.Body.ToArray());
+                    var retryResponse = await retryCall.ResponseAsync.ConfigureAwait(false);
+
+                    if (_clientRuntimeOptions?.EnableHttp3 == true)
+                    {
+                        var metaForTags = request.Meta;
+                        GrpcTransportMetrics.RecordClientFallback(metaForTags, http3Desired: true);
+                    }
+
+                    var retryHeaders = await retryCall.ResponseHeadersAsync.ConfigureAwait(false);
+                    var retryTrailers = retryCall.GetTrailers();
+                    var retryMeta = GrpcMetadataAdapter.CreateResponseMeta(retryHeaders, retryTrailers);
+
+                    GrpcTransportDiagnostics.SetStatus(activity, StatusCode.OK);
+                    lease.MarkSuccess();
+                    return Ok(Response<ReadOnlyMemory<byte>>.Create(retryResponse, retryMeta));
+                }
+                catch
+                {
+                    // Ignore and fall through to normal error handling.
+                }
+            }
+
             GrpcTransportDiagnostics.RecordException(activity, ex, StatusCode.Unknown, ex.Message);
             var result = OmniRelayErrors.ToResult<Response<ReadOnlyMemory<byte>>>(ex, transport: GrpcTransportConstants.TransportName);
             RecordPeerOutcome(lease, result.Error!);
@@ -806,10 +816,10 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
             ? new CallOptions(metadata, deadline.Value, cancellationToken)
             : new CallOptions(metadata, cancellationToken: cancellationToken);
 
-        if (_compressionAlgorithms is { Count: > 0 } algorithms &&
+        if (_compressionAlgorithms is { Count: > 0 } &&
             metadata.GetValue(GrpcTransportConstants.GrpcAcceptEncodingHeader) is null)
         {
-            metadata.Add(GrpcTransportConstants.GrpcAcceptEncodingHeader, string.Join(",", algorithms));
+            metadata.Add(GrpcTransportConstants.GrpcAcceptEncodingHeader, string.Join(",", _compressionAlgorithms));
         }
 
         return callOptions;
@@ -1500,6 +1510,96 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         }
 
         lease.MarkSuccess();
+    }
+
+    private static bool ShouldForceHttp2Fallback(Exception exception)
+    {
+        if (exception is null)
+        {
+            return false;
+        }
+
+        static IEnumerable<string> GetCandidateMessages(Exception ex)
+        {
+            if (ex is RpcException rpc)
+            {
+                if (!string.IsNullOrWhiteSpace(rpc.Status.Detail))
+                {
+                    yield return rpc.Status.Detail!;
+                }
+
+                if (!string.IsNullOrWhiteSpace(rpc.Status.DebugException?.Message))
+                {
+                    yield return rpc.Status.DebugException!.Message!;
+                }
+            }
+
+            var current = ex;
+            while (current is not null)
+            {
+                if (!string.IsNullOrWhiteSpace(current.Message))
+                {
+                    yield return current.Message;
+                }
+
+                current = current.InnerException;
+            }
+        }
+
+        foreach (var message in GetCandidateMessages(exception))
+        {
+            if (message.Contains("unable to establish HTTP/2 connection", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("Requesting HTTP version 2.0", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("unreachable host", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("connection attempt failed", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("error starting grpc call", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("Error starting gRPC call", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private GrpcChannelOptions CreateHttp2FallbackOptions()
+    {
+        var handler = new SocketsHttpHandler
+        {
+            EnableMultipleHttp2Connections = true
+        };
+
+        var options = new GrpcChannelOptions
+        {
+            LoggerFactory = _channelOptions.LoggerFactory,
+            CompressionProviders = _channelOptions.CompressionProviders,
+            MaxReceiveMessageSize = _channelOptions.MaxReceiveMessageSize,
+            MaxSendMessageSize = _channelOptions.MaxSendMessageSize,
+            UnsafeUseInsecureChannelCallCredentials = _channelOptions.UnsafeUseInsecureChannelCallCredentials,
+            Credentials = _channelOptions.Credentials
+        };
+
+        if (_clientTlsOptions is not null)
+        {
+            options.HttpHandler = handler;
+            ApplyClientTlsOptions(options, _clientTlsOptions);
+        }
+        else
+        {
+            var allLoopback = _addresses.All(uri =>
+                uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
+                (IPAddress.TryParse(uri.Host, out var ip) && IPAddress.IsLoopback(ip)));
+
+            if (allLoopback)
+            {
+                handler.SslOptions.RemoteCertificateValidationCallback = static (_, _, _, _) => true;
+            }
+
+            options.HttpHandler = handler;
+        }
+
+        options.HttpHandler = new HttpVersionHandler(handler, HttpVersion.Version20, HttpVersionPolicy.RequestVersionExact);
+        return options;
     }
 
     private static bool ShouldPenalizePeer(Error error)

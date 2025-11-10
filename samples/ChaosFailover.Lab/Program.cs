@@ -87,7 +87,20 @@ internal static class ChaosLabBootstrap
     }
 }
 
-internal sealed record ChaosLabRuntime(OmniRelayDispatcher Dispatcher, HttpInbound HttpInbound);
+internal sealed record ChaosLabRuntime(OmniRelayDispatcher Dispatcher, HttpInbound HttpInbound)
+{
+    public OmniRelayDispatcher Dispatcher
+    {
+        get => field;
+        init => field = value;
+    } = Dispatcher;
+
+    public HttpInbound HttpInbound
+    {
+        get => field;
+        init => field = value;
+    } = HttpInbound;
+}
 
 internal sealed class ChaosBackend : IAsyncDisposable
 {
@@ -180,8 +193,35 @@ internal static class TrafficGenerator
     }
 }
 
-internal sealed record ChaosRequest(bool UseSecondary);
-internal sealed record ChaosResponse(string Backend, string Status, string? Error);
+internal sealed record ChaosRequest(bool UseSecondary)
+{
+    public bool UseSecondary
+    {
+        get => field;
+        init => field = value;
+    } = UseSecondary;
+}
+
+internal sealed record ChaosResponse(string Backend, string Status, string? Error)
+{
+    public string Backend
+    {
+        get => field;
+        init => field = value;
+    } = Backend;
+
+    public string Status
+    {
+        get => field;
+        init => field = value;
+    } = Status;
+
+    public string? Error
+    {
+        get => field;
+        init => field = value;
+    } = Error;
+}
 
 internal sealed class OutboundRetryMiddleware(int maxAttempts) : IUnaryOutboundMiddleware
 {

@@ -27,7 +27,7 @@ public sealed class RawCodec : ICodec<byte[], byte[]>
     }
 
     /// <inheritdoc />
-    public string Encoding { get; }
+    public string Encoding => field;
 
     /// <inheritdoc />
     public Result<byte[]> EncodeRequest(byte[] value, RequestMeta meta)

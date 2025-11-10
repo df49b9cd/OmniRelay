@@ -434,7 +434,26 @@ public class ObservabilityDiagnosticsIntegrationTests
             Equals(tag.Value, expected));
     }
 
-    private sealed record MeasurementRecord(string Instrument, double Value, KeyValuePair<string, object?>[] Tags);
+    private sealed record MeasurementRecord(string Instrument, double Value, KeyValuePair<string, object?>[] Tags)
+    {
+        public string Instrument
+        {
+            get => field;
+            init => field = value;
+        } = Instrument;
+
+        public double Value
+        {
+            get => field;
+            init => field = value;
+        } = Value;
+
+        public KeyValuePair<string, object?>[] Tags
+        {
+            get => field;
+            init => field = value;
+        } = Tags;
+    }
 
     private sealed class HttpMetricCollector : IDisposable
     {
@@ -483,7 +502,38 @@ public class ObservabilityDiagnosticsIntegrationTests
         LogLevel Level,
         string Message,
         IReadOnlyList<KeyValuePair<string, object?>>? State,
-        IReadOnlyList<KeyValuePair<string, object?>> Scope);
+        IReadOnlyList<KeyValuePair<string, object?>> Scope)
+    {
+        public string Category
+        {
+            get => field;
+            init => field = value;
+        } = Category;
+
+        public LogLevel Level
+        {
+            get => field;
+            init => field = value;
+        } = Level;
+
+        public string Message
+        {
+            get => field;
+            init => field = value;
+        } = Message;
+
+        public IReadOnlyList<KeyValuePair<string, object?>>? State
+        {
+            get => field;
+            init => field = value;
+        } = State;
+
+        public IReadOnlyList<KeyValuePair<string, object?>> Scope
+        {
+            get => field;
+            init => field = value;
+        } = Scope;
+    }
 
     private sealed class CapturingLoggerProvider : ILoggerProvider, ISupportExternalScope
     {
@@ -549,7 +599,10 @@ public class ObservabilityDiagnosticsIntegrationTests
 
     private sealed class NullScope : IDisposable
     {
-        public static NullScope Instance { get; } = new();
+        public static NullScope Instance
+        {
+            get => field;
+        } = new();
 
         public void Dispose()
         {

@@ -2547,7 +2547,7 @@ public class GrpcTransportTests
             InstrumentPublished = (instrument, l) =>
             {
                 if (string.Equals(instrument.Meter.Name, GrpcTransportMetrics.MeterName, StringComparison.Ordinal) &&
-                    string.Equals(instrument.Name, "yarpcore.grpc.server.unary.duration", StringComparison.Ordinal))
+                    string.Equals(instrument.Name, "omnirelay.grpc.server.unary.duration", StringComparison.Ordinal))
                 {
                     l.EnableMeasurementEvents(instrument);
                 }
@@ -2556,7 +2556,7 @@ public class GrpcTransportTests
 
         listener.SetMeasurementEventCallback<double>((instrument, measurement, _, _) =>
         {
-            if (string.Equals(instrument.Name, "yarpcore.grpc.server.unary.duration", StringComparison.Ordinal))
+            if (string.Equals(instrument.Name, "omnirelay.grpc.server.unary.duration", StringComparison.Ordinal))
             {
                 serverDuration = measurement;
             }
@@ -2630,7 +2630,26 @@ public class GrpcTransportTests
         {
         }
 
-        internal sealed record LogEntry(string CategoryName, LogLevel LogLevel, string Message);
+        internal sealed record LogEntry(string CategoryName, LogLevel LogLevel, string Message)
+        {
+            public string CategoryName
+            {
+                get => field;
+                init => field = value;
+            } = CategoryName;
+
+            public LogLevel LogLevel
+            {
+                get => field;
+                init => field = value;
+            } = LogLevel;
+
+            public string Message
+            {
+                get => field;
+                init => field = value;
+            } = Message;
+        }
 
         private sealed class CaptureLogger(string categoryName, ConcurrentBag<LogEntry> entries) : ILogger
         {
@@ -2778,18 +2797,50 @@ public class GrpcTransportTests
         }
     }
 
-    private sealed record EchoRequest(string Message);
+    private sealed record EchoRequest(string Message)
+    {
+        public string Message
+        {
+            get => field;
+            init => field = value;
+        } = Message;
+    }
 
     private sealed record EchoResponse
     {
-        public string Message { get; init; } = string.Empty;
+        public string Message
+        {
+            get => field;
+            init => field = value;
+        } = string.Empty;
     }
 
-    private sealed record AggregateChunk(int Amount);
+    private sealed record AggregateChunk(int Amount)
+    {
+        public int Amount
+        {
+            get => field;
+            init => field = value;
+        } = Amount;
+    }
 
-    private sealed record AggregateResponse(int TotalAmount);
+    private sealed record AggregateResponse(int TotalAmount)
+    {
+        public int TotalAmount
+        {
+            get => field;
+            init => field = value;
+        } = TotalAmount;
+    }
 
-    private sealed record ChatMessage(string Message);
+    private sealed record ChatMessage(string Message)
+    {
+        public string Message
+        {
+            get => field;
+            init => field = value;
+        } = Message;
+    }
 
     private sealed class DummyCompressionProvider : ICompressionProvider
     {
@@ -2803,7 +2854,7 @@ public class GrpcTransportTests
             EncodingName = encodingName;
         }
 
-        public string EncodingName { get; }
+        public string EncodingName => field;
 
         public Stream CreateCompressionStream(Stream stream, CompressionLevel? compressionLevel) => stream;
 

@@ -465,10 +465,25 @@ public class GrpcTransportIntegrationTests
 
     private sealed class GeneratedTestService : TestServiceOmniRelay.ITestService
     {
-        public TaskCompletionSource<RequestMeta> UnaryMeta { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public TaskCompletionSource<RequestMeta> ServerStreamMeta { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public TaskCompletionSource<RequestMeta> ClientStreamMeta { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public TaskCompletionSource<RequestMeta> DuplexMeta { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<RequestMeta> UnaryMeta
+        {
+            get => field;
+        } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource<RequestMeta> ServerStreamMeta
+        {
+            get => field;
+        } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource<RequestMeta> ClientStreamMeta
+        {
+            get => field;
+        } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource<RequestMeta> DuplexMeta
+        {
+            get => field;
+        } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public ValueTask<Response<UnaryResponse>> UnaryCallAsync(Request<UnaryRequest> request, CancellationToken cancellationToken)
         {

@@ -239,20 +239,72 @@ internal static class HttpDuplexProtocol
         }
     }
 
-    internal readonly record struct Frame(WebSocketMessageType MessageType, FrameType Type, ReadOnlyMemory<byte> Payload);
+    internal readonly record struct Frame(WebSocketMessageType MessageType, FrameType Type, ReadOnlyMemory<byte> Payload)
+    {
+        public WebSocketMessageType MessageType
+        {
+            get => field;
+            init => field = value;
+        } = MessageType;
+
+        public FrameType Type
+        {
+            get => field;
+            init => field = value;
+        } = Type;
+
+        public ReadOnlyMemory<byte> Payload
+        {
+            get => field;
+            init => field = value;
+        } = Payload;
+    }
 
     private sealed class ErrorEnvelope
     {
-        public string? Status { get; set; }
-        public string? Message { get; set; }
-        public string? Code { get; set; }
+        public string? Status
+        {
+            get => field;
+            set => field = value;
+        }
+
+        public string? Message
+        {
+            get => field;
+            set => field = value;
+        }
+
+        public string? Code
+        {
+            get => field;
+            set => field = value;
+        }
     }
 
     private sealed class ResponseMetaEnvelope
     {
-        public string? Encoding { get; set; }
-        public string? Transport { get; set; }
-        public double? TtlMs { get; set; }
-        public Dictionary<string, string>? Headers { get; set; }
+        public string? Encoding
+        {
+            get => field;
+            set => field = value;
+        }
+
+        public string? Transport
+        {
+            get => field;
+            set => field = value;
+        }
+
+        public double? TtlMs
+        {
+            get => field;
+            set => field = value;
+        }
+
+        public Dictionary<string, string>? Headers
+        {
+            get => field;
+            set => field = value;
+        }
     }
 }

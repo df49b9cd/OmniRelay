@@ -34,7 +34,10 @@ public sealed class ProtobufCodec<TRequest, TResponse>(
     private readonly JsonFormatter _jsonFormatter = jsonFormatter ?? JsonFormatter.Default;
 
     /// <inheritdoc />
-    public string Encoding { get; } = string.IsNullOrWhiteSpace(defaultEncoding)
+    public string Encoding
+    {
+        get => field;
+    } = string.IsNullOrWhiteSpace(defaultEncoding)
         ? ProtobufEncoding.Protobuf
         : defaultEncoding;
 

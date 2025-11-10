@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Concurrent;
 using System.Diagnostics.Metrics;
 using Hugo.Policies;
@@ -38,7 +39,8 @@ public sealed class PeerMetricsTests : IDisposable
     [Fact]
     public async Task LeaseSuccess_RecordsInflightAndSuccessMetrics()
     {
-        var peer = new CapturingPeer("peer-1");
+        var peerId = CreatePeerId("peer-success");
+        var peer = new CapturingPeer(peerId);
         var chooser = new RoundRobinPeerChooser(peer);
         var meta = new RequestMeta(service: "svc", procedure: "echo::call", transport: "grpc");
 
@@ -51,18 +53,19 @@ public sealed class PeerMetricsTests : IDisposable
         await lease.DisposeAsync();
 
         var inflight = GetMeasurements("omnirelay.peer.inflight");
-        Assert.Contains(inflight, m => m.Value == 1 && HasTag(m, "rpc.peer", "peer-1"));
-        Assert.Contains(inflight, m => m.Value == -1 && HasTag(m, "rpc.peer", "peer-1"));
+        Assert.Contains(inflight, m => m.Value == 1 && HasTag(m, "rpc.peer", peerId));
+        Assert.Contains(inflight, m => m.Value == -1 && HasTag(m, "rpc.peer", peerId));
 
         var successes = GetMeasurements("omnirelay.peer.successes");
-        Assert.Contains(successes, m => m.Value == 1 && HasTag(m, "rpc.peer", "peer-1"));
-        Assert.DoesNotContain(GetMeasurements("omnirelay.peer.failures"), m => HasTag(m, "rpc.peer", "peer-1"));
+        Assert.Contains(successes, m => m.Value == 1 && HasTag(m, "rpc.peer", peerId));
+        Assert.DoesNotContain(GetMeasurements("omnirelay.peer.failures"), m => HasTag(m, "rpc.peer", peerId));
     }
 
     [Fact]
     public async Task LeaseFailure_RecordsFailureMetric()
     {
-        var peer = new CapturingPeer("peer-fail");
+        var peerId = CreatePeerId("peer-fail");
+        var peer = new CapturingPeer(peerId);
         var chooser = new RoundRobinPeerChooser(peer);
         var meta = new RequestMeta(service: "svc", procedure: "echo::call", transport: "grpc");
 
@@ -74,20 +77,21 @@ public sealed class PeerMetricsTests : IDisposable
         await lease.DisposeAsync();
 
         var failures = GetMeasurements("omnirelay.peer.failures");
-        Assert.Contains(failures, m => m.Value == 1 && HasTag(m, "rpc.peer", "peer-fail"));
+        Assert.Contains(failures, m => m.Value == 1 && HasTag(m, "rpc.peer", peerId));
     }
 
     [Fact]
     public async Task BusyPeer_RecordsRejectionsAndPoolExhaustion()
     {
-        var peer = new BusyPeer("peer-busy");
+        var peerId = CreatePeerId("peer-busy");
+        var peer = new BusyPeer(peerId);
         var chooser = new RoundRobinPeerChooser(peer);
         var meta = new RequestMeta(service: "svc", procedure: "echo::call", transport: "grpc");
 
         var leaseResult = await chooser.AcquireAsync(meta, TestContext.Current.CancellationToken);
         Assert.True(leaseResult.IsFailure);
 
-        Assert.Contains(GetMeasurements("omnirelay.peer.lease_rejected"), m => HasTag(m, "rpc.peer", "peer-busy"));
+        Assert.Contains(GetMeasurements("omnirelay.peer.lease_rejected"), m => HasTag(m, "rpc.peer", peerId));
         Assert.Contains(GetMeasurements("omnirelay.peer.pool_exhausted"), m => HasTag(m, "rpc.transport", "grpc"));
     }
 
@@ -144,7 +148,26 @@ public sealed class PeerMetricsTests : IDisposable
         return false;
     }
 
-    private sealed record MetricMeasurement(string Instrument, long Value, KeyValuePair<string, object?>[] Tags);
+    private sealed record MetricMeasurement(string Instrument, long Value, KeyValuePair<string, object?>[] Tags)
+    {
+        public string Instrument
+        {
+            get => field;
+            init => field = value;
+        } = Instrument;
+
+        public long Value
+        {
+            get => field;
+            init => field = value;
+        } = Value;
+
+        public KeyValuePair<string, object?>[] Tags
+        {
+            get => field;
+            init => field = value;
+        } = Tags;
+    }
 
     private sealed class MetricListener : IDisposable
     {
@@ -218,4 +241,6 @@ public sealed class PeerMetricsTests : IDisposable
         {
         }
     }
+
+    private static string CreatePeerId(string prefix) => $"{prefix}-{Guid.NewGuid():N}";
 }

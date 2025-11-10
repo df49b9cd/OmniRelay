@@ -1,5 +1,8 @@
+using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Security.Authentication;
+using Grpc.AspNetCore.Server;
 using Grpc.AspNetCore.Server.Model;
 using Grpc.Core;
 using Hugo;
@@ -37,6 +40,8 @@ public sealed class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcServerInter
     private int _interceptorsConfigured;
     private volatile bool _isDraining;
     private readonly WaitGroup _activeCalls = new();
+    private readonly HashSet<ServerCallContext> _activeCallContexts = new();
+    private readonly object _callContextLock = new();
     private const string RetryAfterMetadataName = "retry-after";
     private const string RetryAfterMetadataValue = "1";
 
@@ -174,14 +179,14 @@ public sealed class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcServerInter
 
         builder.WebHost.UseKestrel(options =>
         {
-            if (_serverRuntimeOptions is { } runtimeOptions)
+            if (_serverRuntimeOptions != null)
             {
-                if (runtimeOptions.KeepAlivePingDelay is { } delay)
+                if (_serverRuntimeOptions.KeepAlivePingDelay is { } delay)
                 {
                     options.Limits.Http2.KeepAlivePingDelay = delay;
                 }
 
-                if (runtimeOptions.KeepAlivePingTimeout is { } timeout)
+                if (_serverRuntimeOptions.KeepAlivePingTimeout is { } timeout)
                 {
                     options.Limits.Http2.KeepAlivePingTimeout = timeout;
                 }
@@ -219,9 +224,9 @@ public sealed class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcServerInter
                         listenOptions.Protocols = HttpProtocols.Http2;
                     }
 
-                    if (_serverTlsOptions is { } tlsOptions)
+                    if (_serverTlsOptions != null)
                     {
-                        var enabledProtocols = tlsOptions.EnabledProtocols;
+                        var enabledProtocols = _serverTlsOptions.EnabledProtocols;
                         if (enableHttp3 && enabledProtocols is { } specifiedProtocols && (specifiedProtocols & SslProtocols.Tls13) == 0)
                         {
                             throw new InvalidOperationException($"HTTP/3 requires TLS 1.3 but the configured protocol set for '{url}' excludes it.");
@@ -229,8 +234,8 @@ public sealed class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcServerInter
 
                         var httpsOptions = new HttpsConnectionAdapterOptions
                         {
-                            ServerCertificate = tlsOptions.Certificate,
-                            ClientCertificateMode = tlsOptions.ClientCertificateMode
+                            ServerCertificate = _serverTlsOptions.Certificate,
+                            ClientCertificateMode = _serverTlsOptions.ClientCertificateMode
                         };
 
                         if (enableHttp3)
@@ -242,12 +247,12 @@ public sealed class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcServerInter
                             httpsOptions.SslProtocols = enabledProtocols.Value;
                         }
 
-                        if (tlsOptions.CheckCertificateRevocation is { } checkRevocation)
+                        if (_serverTlsOptions.CheckCertificateRevocation is { } checkRevocation)
                         {
                             httpsOptions.CheckCertificateRevocation = checkRevocation;
                         }
 
-                        if (tlsOptions.ClientCertificateValidation is { } validator)
+                        if (_serverTlsOptions.ClientCertificateValidation is { } validator)
                         {
                             httpsOptions.ClientCertificateValidation = (certificate, chain, errors) =>
                                 validator(certificate, chain, errors);
@@ -292,24 +297,24 @@ public sealed class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcServerInter
                 options.Interceptors.Add<CompositeServerInterceptor>();
             }
 
-            if (_serverRuntimeOptions is { } runtimeOptions)
+            if (_serverRuntimeOptions != null)
             {
-                if (runtimeOptions.MaxReceiveMessageSize is { } maxReceive)
+                if (_serverRuntimeOptions.MaxReceiveMessageSize is { } maxReceive)
                 {
                     options.MaxReceiveMessageSize = maxReceive;
                 }
 
-                if (runtimeOptions.MaxSendMessageSize is { } maxSend)
+                if (_serverRuntimeOptions.MaxSendMessageSize is { } maxSend)
                 {
                     options.MaxSendMessageSize = maxSend;
                 }
 
-                if (runtimeOptions.EnableDetailedErrors is { } detailedErrors)
+                if (_serverRuntimeOptions.EnableDetailedErrors is { } detailedErrors)
                 {
                     options.EnableDetailedErrors = detailedErrors;
                 }
 
-                if (runtimeOptions.Interceptors is { Count: > 0 } interceptors)
+                if (_serverRuntimeOptions.Interceptors is { Count: > 0 } interceptors)
                 {
                     foreach (var interceptorType in interceptors)
                     {
@@ -333,25 +338,25 @@ public sealed class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcServerInter
                 options.Interceptors.Add<GrpcServerLoggingInterceptor>();
             }
 
-            if (_compressionOptions is { } compressionOptions)
+            if (_compressionOptions != null)
             {
-                compressionOptions.Validate();
+                _compressionOptions.Validate();
 
-                if (compressionOptions.Providers.Count > 0)
+                if (_compressionOptions.Providers.Count > 0)
                 {
                     options.CompressionProviders.Clear();
-                    foreach (var provider in compressionOptions.Providers)
+                    foreach (var provider in _compressionOptions.Providers)
                     {
                         options.CompressionProviders.Add(provider);
                     }
                 }
 
-                if (!string.IsNullOrWhiteSpace(compressionOptions.DefaultAlgorithm))
+                if (!string.IsNullOrWhiteSpace(_compressionOptions.DefaultAlgorithm))
                 {
-                    options.ResponseCompressionAlgorithm = compressionOptions.DefaultAlgorithm;
+                    options.ResponseCompressionAlgorithm = _compressionOptions.DefaultAlgorithm;
                 }
 
-                if (compressionOptions.DefaultCompressionLevel is { } compressionLevel)
+                if (_compressionOptions.DefaultCompressionLevel is { } compressionLevel)
                 {
                     options.ResponseCompressionLevel = compressionLevel;
                 }
@@ -431,12 +436,56 @@ public sealed class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcServerInter
         }
 
         _activeCalls.Add(1);
-        scope = new CallScope(this);
+        TrackCall(context);
+        scope = new CallScope(this, context);
         rejection = null;
         return true;
     }
 
-    private void OnCallCompleted() => _activeCalls.Done();
+    private void TrackCall(ServerCallContext context)
+    {
+        lock (_callContextLock)
+        {
+            _activeCallContexts.Add(context);
+        }
+    }
+
+    private void OnCallCompleted(ServerCallContext context)
+    {
+        lock (_callContextLock)
+        {
+            _activeCallContexts.Remove(context);
+        }
+
+        _activeCalls.Done();
+    }
+
+    private void AbortActiveCalls()
+    {
+        List<ServerCallContext> contexts;
+        lock (_callContextLock)
+        {
+            if (_activeCallContexts.Count == 0)
+            {
+                return;
+            }
+
+            contexts = _activeCallContexts.ToList();
+        }
+
+        foreach (var call in contexts)
+        {
+            try
+            {
+                var httpContext = call.GetHttpContext();
+                httpContext?.Abort();
+            }
+            catch
+            {
+                // ignore abort failures
+            }
+        }
+    }
 
     private static bool TrySetQuicOption(QuicTransportOptions options, string propertyName, object value)
     {
@@ -467,16 +516,17 @@ public sealed class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcServerInter
         return new RpcException(new Status(StatusCode.Unavailable, "server shutting down"), metadata);
     }
 
-    private sealed class CallScope(GrpcInbound owner) : IDisposable
+    private sealed class CallScope(GrpcInbound owner, ServerCallContext context) : IDisposable
     {
         private readonly GrpcInbound _owner = owner;
+        private readonly ServerCallContext _context = context;
         private int _disposed;
 
         public void Dispose()
         {
             if (Interlocked.Exchange(ref _disposed, 1) == 0)
             {
-                _owner.OnCallCompleted();
+                _owner.OnCallCompleted(_context);
             }
         }
     }
@@ -493,6 +543,7 @@ public sealed class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcServerInter
         }
 
         _isDraining = true;
+        var cancellationRequested = false;
 
         try
         {
@@ -501,11 +552,20 @@ public sealed class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcServerInter
         catch (OperationCanceledException)
         {
             // Allow fast shutdown when cancellation is requested.
+            cancellationRequested = true;
+        }
+
+        cancellationRequested |= cancellationToken.IsCancellationRequested;
+        var stopToken = cancellationRequested ? CancellationToken.None : cancellationToken;
+
+        if (cancellationRequested)
+        {
+            AbortActiveCalls();
         }
 
         try
         {
-            await _app.StopAsync(cancellationToken).ConfigureAwait(false);
+            await _app.StopAsync(stopToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {

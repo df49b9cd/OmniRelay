@@ -8,7 +8,14 @@ namespace OmniRelay.Core.Transport;
 public readonly struct ClientStreamRequestContext(RequestMeta meta, ChannelReader<ReadOnlyMemory<byte>> requests)
 {
     /// <summary>Gets the request metadata.</summary>
-    public RequestMeta Meta { get; } = meta;
+    public RequestMeta Meta
+    {
+        get => field;
+    } = meta;
+
     /// <summary>Gets the raw request message reader.</summary>
-    public ChannelReader<ReadOnlyMemory<byte>> Requests { get; } = requests;
+    public ChannelReader<ReadOnlyMemory<byte>> Requests
+    {
+        get => field;
+    } = requests;
 }

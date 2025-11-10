@@ -167,9 +167,17 @@ public class GrpcInterceptorPipelineTests
 
         protected override Metadata ResponseTrailersCore => _responseTrailers;
 
-        protected override Status StatusCore { get; set; }
+        protected override Status StatusCore
+        {
+            get => field;
+            set => field = value;
+        }
 
-        protected override WriteOptions? WriteOptionsCore { get; set; }
+        protected override WriteOptions? WriteOptionsCore
+        {
+            get => field;
+            set => field = value;
+        }
 
         protected override AuthContext AuthContextCore => _authContext;
     }

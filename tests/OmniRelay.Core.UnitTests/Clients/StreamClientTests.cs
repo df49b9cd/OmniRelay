@@ -18,8 +18,20 @@ namespace OmniRelay.Core.UnitTests.Clients;
 
 public class StreamClientTests
 {
-    public sealed class Req { public int V { get; init; } }
-    public sealed class Res { public string? S { get; init; } }
+    public sealed class Req {
+        public int V
+        {
+            get => field;
+            init => field = value;
+        }
+    }
+    public sealed class Res {
+        public string? S
+        {
+            get => field;
+            init => field = value;
+        }
+    }
 
     [Fact(Timeout = TestTimeouts.Default)]
     public async Task CallAsync_Yields_Decoded_Responses()

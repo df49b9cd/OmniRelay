@@ -87,20 +87,9 @@ internal sealed class DispatcherBuilder
 
     private void ConfigureHttpInbounds(DispatcherOptions dispatcherOptions)
     {
-        if (_options.Inbounds is null)
-        {
-            return;
-        }
-
         var index = 0;
         foreach (var inbound in _options.Inbounds.Http)
         {
-            if (inbound is null)
-            {
-                index++;
-                continue;
-            }
-
             if (inbound.Urls.Count == 0)
             {
                 throw new OmniRelayConfigurationException($"HTTP inbound at index {index} must specify at least one url.");
@@ -147,20 +136,9 @@ internal sealed class DispatcherBuilder
 
     private void ConfigureGrpcInbounds(DispatcherOptions dispatcherOptions)
     {
-        if (_options.Inbounds is null)
-        {
-            return;
-        }
-
         var index = 0;
         foreach (var inbound in _options.Inbounds.Grpc)
         {
-            if (inbound is null)
-            {
-                index++;
-                continue;
-            }
-
             if (inbound.Urls.Count == 0)
             {
                 throw new OmniRelayConfigurationException($"gRPC inbound at index {index} must specify at least one url.");
@@ -235,7 +213,7 @@ internal sealed class DispatcherBuilder
     {
         foreach (var (service, config) in _options.Outbounds)
         {
-            if (string.IsNullOrWhiteSpace(service) || config is null)
+            if (string.IsNullOrWhiteSpace(service))
             {
                 continue;
             }
@@ -267,11 +245,6 @@ internal sealed class DispatcherBuilder
 
         foreach (var http in configuration.Http)
         {
-            if (http is null)
-            {
-                continue;
-            }
-
             if (kind is OutboundKind.Stream or OutboundKind.ClientStream or OutboundKind.Duplex)
             {
                 throw new OmniRelayConfigurationException(
@@ -287,20 +260,19 @@ internal sealed class DispatcherBuilder
                 case OutboundKind.Oneway:
                     dispatcherOptions.AddOnewayOutbound(service, http.Key, outbound);
                     break;
+                case OutboundKind.Stream:
+                case OutboundKind.ClientStream:
+                case OutboundKind.Duplex:
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(kind), kind, null);
             }
         }
 
         var grpcIndex = 0;
         foreach (var grpc in configuration.Grpc)
         {
-            if (grpc is null)
-            {
-                grpcIndex++;
-                continue;
-            }
-
-            var outboundSection = kindSection?.GetSection("grpc")?.GetSection(grpcIndex.ToString(CultureInfo.InvariantCulture))
-                ?? kindSection?.GetSection(grpcIndex.ToString(CultureInfo.InvariantCulture));
+            var outboundSection = kindSection?.GetSection("grpc").GetSection(grpcIndex.ToString(CultureInfo.InvariantCulture))
+                                  ?? kindSection?.GetSection(grpcIndex.ToString(CultureInfo.InvariantCulture));
 
             var outbound = CreateGrpcOutbound(service, grpc, outboundSection);
             switch (kind)
@@ -320,6 +292,8 @@ internal sealed class DispatcherBuilder
                 case OutboundKind.Duplex:
                     dispatcherOptions.AddDuplexOutbound(service, grpc.Key, outbound);
                     break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(kind), kind, null);
             }
 
             grpcIndex++;
@@ -445,25 +419,21 @@ internal sealed class DispatcherBuilder
     private (HttpClient Client, bool Dispose) CreateHttpClient(string? clientName)
     {
         var factory = _serviceProvider.GetService<IHttpClientFactory>();
-        if (factory is not null)
+        if (factory is null)
         {
-            var name = string.IsNullOrWhiteSpace(clientName) ? string.Empty : clientName!;
-            var client = string.IsNullOrEmpty(name)
-                ? factory.CreateClient()
-                : factory.CreateClient(name);
-            return (client, false);
+            return (new HttpClient(), true);
         }
 
-        return (new HttpClient(), true);
+        var name = string.IsNullOrWhiteSpace(clientName) ? string.Empty : clientName!;
+        var client = string.IsNullOrEmpty(name)
+            ? factory.CreateClient()
+            : factory.CreateClient(name);
+        return (client, false);
+
     }
 
     private static HttpClientRuntimeOptions? BuildHttpClientRuntimeOptions(HttpClientRuntimeConfiguration configuration)
     {
-        if (configuration is null)
-        {
-            return null;
-        }
-
         var enableHttp3 = configuration.EnableHttp3 ?? false;
         var version = ParseHttpVersion(configuration.RequestVersion);
         var policy = ParseHttpVersionPolicy(configuration.VersionPolicy);
@@ -488,12 +458,7 @@ internal sealed class DispatcherBuilder
             return null;
         }
 
-        if (Version.TryParse(value, out var parsed))
-        {
-            return parsed;
-        }
-
-        throw new OmniRelayConfigurationException($"Unrecognized HTTP version '{value}'.");
+        return Version.TryParse(value, out var parsed) ? parsed : throw new OmniRelayConfigurationException($"Unrecognized HTTP version '{value}'.");
     }
 
     private static HttpVersionPolicy? ParseHttpVersionPolicy(string? value)
@@ -507,14 +472,18 @@ internal sealed class DispatcherBuilder
         {
             "requestversionexact" or "request-version-exact" or "exact" => HttpVersionPolicy.RequestVersionExact,
             "requestversionorhigher" or "request-version-or-higher" or "orhigher" or "higher" => HttpVersionPolicy.RequestVersionOrHigher,
-            "requestversionlower" or "request-version-lower" or "orlower" or "lower" => HttpVersionPolicy.RequestVersionOrLower,
+            "requestversionlower" or "requestversionorlower" or
+            "request-version-lower" or "request-version-or-lower" or
+            "orlower" or "lower" => HttpVersionPolicy.RequestVersionOrLower,
             _ => throw new OmniRelayConfigurationException($"Unrecognized HTTP version policy '{value}'.")
         };
     }
 
     private GrpcOutbound CreateGrpcOutbound(string service, GrpcOutboundTargetConfiguration configuration, IConfigurationSection? configurationSection)
     {
-        if (configuration.Addresses.Count == 0)
+        var endpoints = configuration.Endpoints;
+        var hasEndpoints = endpoints is { Count: > 0 };
+        if (configuration.Addresses.Count == 0 && !hasEndpoints)
         {
             throw new OmniRelayConfigurationException($"gRPC outbound for service '{service}' must specify peer addresses.");
         }
@@ -523,14 +492,14 @@ internal sealed class DispatcherBuilder
         IReadOnlyDictionary<Uri, bool>? h3Support = null;
         Uri[] uris;
 
-        if (configuration.Endpoints is { Count: > 0 })
+        if (hasEndpoints)
         {
             var map = new Dictionary<Uri, bool>();
-            var list = new List<Uri>(configuration.Endpoints.Count);
+            var list = new List<Uri>(endpoints!.Count);
             var index = 0;
-            foreach (var ep in configuration.Endpoints)
+            foreach (var ep in endpoints!)
             {
-                if (ep is null || string.IsNullOrWhiteSpace(ep.Address))
+                if (string.IsNullOrWhiteSpace(ep.Address))
                 {
                     index++;
                     continue;
@@ -575,16 +544,9 @@ internal sealed class DispatcherBuilder
         var runtimeOptions = BuildGrpcClientRuntimeOptions(configuration.Runtime);
         var tlsOptions = BuildGrpcClientTlsOptions(configuration.Tls);
 
-        if (configuration.Peer?.Spec is null)
+        if (configuration.Peer?.Spec is not null)
         {
-            var cacheKey = FormattableString.Invariant($"{service}|{configuration.Key ?? OutboundCollection.DefaultKey}|{remoteService}|{string.Join(",", uris.Select(u => u.ToString()))}|{configuration.PeerChooser ?? "round-robin"}");
-
-            if (_grpcOutboundCache.TryGetValue(cacheKey, out var cachedOutbound))
-            {
-                return cachedOutbound;
-            }
-
-            var outboundCached = new GrpcOutbound(
+            return new GrpcOutbound(
                 uris,
                 remoteService,
                 clientTlsOptions: tlsOptions,
@@ -593,12 +555,16 @@ internal sealed class DispatcherBuilder
                 peerCircuitBreakerOptions: breakerOptions,
                 telemetryOptions: telemetryOptions,
                 endpointHttp3Support: h3Support);
-
-            _grpcOutboundCache[cacheKey] = outboundCached;
-            return outboundCached;
         }
 
-        return new GrpcOutbound(
+        var cacheKey = FormattableString.Invariant($"{service}|{configuration.Key ?? OutboundCollection.DefaultKey}|{remoteService}|{string.Join(",", uris.Select(u => u.ToString()))}|{configuration.PeerChooser ?? "round-robin"}");
+
+        if (_grpcOutboundCache.TryGetValue(cacheKey, out var cachedOutbound))
+        {
+            return cachedOutbound;
+        }
+
+        var outboundCached = new GrpcOutbound(
             uris,
             remoteService,
             clientTlsOptions: tlsOptions,
@@ -607,6 +573,9 @@ internal sealed class DispatcherBuilder
             peerCircuitBreakerOptions: breakerOptions,
             telemetryOptions: telemetryOptions,
             endpointHttp3Support: h3Support);
+
+        _grpcOutboundCache[cacheKey] = outboundCached;
+        return outboundCached;
     }
 
     private Func<IReadOnlyList<IPeer>, IPeerChooser> CreatePeerChooserFactory(
@@ -1140,19 +1109,41 @@ internal sealed class DispatcherBuilder
         }
     }
 
-    private readonly record struct DiagnosticsControlPlaneOptions(bool EnableLoggingToggle, bool EnableSamplingToggle);
+    private readonly record struct DiagnosticsControlPlaneOptions(bool EnableLoggingToggle, bool EnableSamplingToggle)
+    {
+        public bool EnableLoggingToggle
+        {
+            get => field;
+            init => field = value;
+        } = EnableLoggingToggle;
 
-    private sealed record DiagnosticsLogLevelRequest(string? Level);
+        public bool EnableSamplingToggle
+        {
+            get => field;
+            init => field = value;
+        } = EnableSamplingToggle;
+    }
 
-    private sealed record DiagnosticsSamplingRequest(double? Probability);
+    private sealed record DiagnosticsLogLevelRequest(string? Level)
+    {
+        public string? Level
+        {
+            get => field;
+            init => field = value;
+        } = Level;
+    }
+
+    private sealed record DiagnosticsSamplingRequest(double? Probability)
+    {
+        public double? Probability
+        {
+            get => field;
+            init => field = value;
+        } = Probability;
+    }
 
     private GrpcServerRuntimeOptions? BuildGrpcServerRuntimeOptions(GrpcServerRuntimeConfiguration configuration)
     {
-        if (configuration is null)
-        {
-            return null;
-        }
-
         var interceptors = ResolveServerInterceptorTypes(configuration.Interceptors);
         var enableHttp3 = configuration.EnableHttp3 ?? false;
         var http3Options = BuildHttp3RuntimeOptions(configuration.Http3);
@@ -1192,7 +1183,7 @@ internal sealed class DispatcherBuilder
         };
     }
 
-    private IReadOnlyList<Type> ResolveServerInterceptorTypes(IEnumerable<string> typeNames)
+    private static IReadOnlyList<Type> ResolveServerInterceptorTypes(IEnumerable<string> typeNames)
     {
         var resolved = new List<Type>();
         foreach (var typeName in typeNames)
@@ -1217,7 +1208,7 @@ internal sealed class DispatcherBuilder
 
     private static GrpcServerTlsOptions? BuildGrpcServerTlsOptions(GrpcServerTlsConfiguration configuration)
     {
-        if (configuration is null || string.IsNullOrWhiteSpace(configuration.CertificatePath))
+        if (string.IsNullOrWhiteSpace(configuration.CertificatePath))
         {
             return null;
         }
@@ -1228,9 +1219,8 @@ internal sealed class DispatcherBuilder
             throw new OmniRelayConfigurationException($"gRPC server certificate '{path}' could not be found.");
         }
 
-        X509Certificate2 certificate;
 #pragma warning disable SYSLIB0057
-        certificate = string.IsNullOrEmpty(configuration.CertificatePassword)
+        var certificate = string.IsNullOrEmpty(configuration.CertificatePassword)
             ? new X509Certificate2(path)
             : new X509Certificate2(path, configuration.CertificatePassword);
 #pragma warning restore SYSLIB0057
@@ -1247,11 +1237,6 @@ internal sealed class DispatcherBuilder
 
     private GrpcTelemetryOptions? BuildGrpcTelemetryOptions(GrpcTelemetryConfiguration configuration, bool serverSide)
     {
-        if (configuration is null)
-        {
-            return null;
-        }
-
         var loggerFactory = _serviceProvider.GetService<ILoggerFactory>();
         var hasValues = configuration.EnableClientLogging.HasValue || configuration.EnableServerLogging.HasValue || loggerFactory is not null;
 
@@ -1303,11 +1288,6 @@ internal sealed class DispatcherBuilder
 
         foreach (var entry in configuration.Profiles)
         {
-            if (entry.Value is null)
-            {
-                continue;
-            }
-
             profiles[entry.Key] = new JsonProfileDescriptor(
                 entry.Value.Options,
                 entry.Value.Converters,
@@ -1324,11 +1304,6 @@ internal sealed class DispatcherBuilder
         ProcedureCodecScope scope,
         string basePath)
     {
-        if (registration is null)
-        {
-            return;
-        }
-
         var procedure = registration.Procedure?.Trim();
         if (string.IsNullOrWhiteSpace(procedure))
         {
@@ -1853,15 +1828,29 @@ internal sealed class DispatcherBuilder
     private sealed record JsonProfileDescriptor(
         JsonSerializerOptionsConfiguration Options,
         IList<string> Converters,
-        string? ContextTypeName);
+        string? ContextTypeName)
+    {
+        public JsonSerializerOptionsConfiguration Options
+        {
+            get => field;
+            init => field = value;
+        } = Options;
+
+        public IList<string> Converters
+        {
+            get => field;
+            init => field = value;
+        } = Converters;
+
+        public string? ContextTypeName
+        {
+            get => field;
+            init => field = value;
+        } = ContextTypeName;
+    }
 
     private void ApplyMiddleware(DispatcherOptions dispatcherOptions)
     {
-        if (_options.Middleware is null)
-        {
-            return;
-        }
-
         var inbound = _options.Middleware.Inbound;
         var outbound = _options.Middleware.Outbound;
 
@@ -1943,12 +1932,7 @@ internal sealed class DispatcherBuilder
             return absolute.ToString();
         }
 
-        if (Uri.TryCreate($"http://{value}", UriKind.Absolute, out var fallback))
-        {
-            return fallback.ToString();
-        }
-
-        throw new OmniRelayConfigurationException($"The value '{value}' for {context} is not a valid URI.");
+        return Uri.TryCreate($"http://{value}", UriKind.Absolute, out var fallback) ? fallback.ToString() : throw new OmniRelayConfigurationException($"The value '{value}' for {context} is not a valid URI.");
     }
 
     private static Type ResolveType(string typeName)

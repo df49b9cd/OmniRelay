@@ -298,7 +298,7 @@ public class GrpcHttp3NegotiationTests
         Assert.StartsWith("HTTP/2", metaProtocol, StringComparison.Ordinal);
     }
 
-    [Http3Fact(Timeout = 45_000, Skip = "HTTP/3 server-stream regression on current .NET runtime causes handler failure. Re-enable when runtime bug is fixed.")]
+    [Http3Fact(Timeout = 45_000)]
     public async Task GrpcInbound_WithHttp3_ServerStreamHandlesLargePayload()
     {
         if (!QuicListener.IsSupported)
@@ -327,6 +327,11 @@ public class GrpcHttp3NegotiationTests
 
         var inbound = new GrpcInbound(
             [address.ToString()],
+            configureServices: services =>
+            {
+                services.AddSingleton(acceptEncodings);
+                services.AddSingleton<AcceptEncodingCaptureInterceptor>();
+            },
             serverTlsOptions: tls,
             serverRuntimeOptions: runtime);
         options.AddLifecycle("grpc-http3-stream-inbound", inbound);
@@ -366,6 +371,9 @@ public class GrpcHttp3NegotiationTests
         {
             await dispatcher.StopOrThrowAsync(ct);
         }
+
+        Assert.True(acceptEncodings.TryDequeue(out var negotiatedEncoding), "No grpc-accept-encoding header was observed.");
+        Assert.False(string.IsNullOrWhiteSpace(negotiatedEncoding));
     }
 
     [Http3Fact(Timeout = 45_000)]
@@ -945,6 +953,26 @@ public class GrpcHttp3NegotiationTests
             ArgumentNullException.ThrowIfNull(context);
             ArgumentNullException.ThrowIfNull(continuation);
 
+            CaptureEncoding(context);
+            return continuation(request, context);
+        }
+
+        public override Task ServerStreamingServerHandler<TRequest, TResponse>(
+            TRequest request,
+            IServerStreamWriter<TResponse> responseStream,
+            ServerCallContext context,
+            ServerStreamingServerMethod<TRequest, TResponse> continuation)
+        {
+            ArgumentNullException.ThrowIfNull(responseStream);
+            ArgumentNullException.ThrowIfNull(context);
+            ArgumentNullException.ThrowIfNull(continuation);
+
+            CaptureEncoding(context);
+            return continuation(request, responseStream, context);
+        }
+
+        private void CaptureEncoding(ServerCallContext context)
+        {
             var httpContext = context.GetHttpContext();
             if (httpContext is not null &&
                 httpContext.Request.Headers.TryGetValue("grpc-accept-encoding", out var values))
@@ -955,8 +983,6 @@ public class GrpcHttp3NegotiationTests
                     _encodings.Enqueue(value);
                 }
             }
-
-            return continuation(request, context);
         }
     }
 }

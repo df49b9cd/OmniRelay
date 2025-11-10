@@ -122,43 +122,23 @@ internal sealed class ProcedureRegistry
 
     private static bool IsWildcard(string alias) => alias.Contains('*') || alias.Contains('?');
 
-    private static int ComputeSpecificity(string pattern)
-    {
-        var count = 0;
-        foreach (var ch in pattern)
-        {
-            if (ch != '*' && ch != '?')
-            {
-                count++;
-            }
-        }
-
-        return count;
-    }
+    private static int ComputeSpecificity(string pattern) => pattern.Count(ch => ch != '*' && ch != '?');
 
     private WildcardAlias? FindWildcardMatch(string service, string name, ProcedureKind kind)
     {
-        WildcardAlias? best = null;
+        WildcardAlias? bestMatch = null;
 
-        foreach (var alias in _wildcardAliases)
+        foreach (var alias in _wildcardAliases
+                     .Where(alias =>
+                         string.Equals(alias.Service, service, StringComparison.OrdinalIgnoreCase) &&
+                         alias.Kind == kind)
+                     .Where(alias => WildcardMatch(alias.Pattern, name))
+                     .Where(alias => bestMatch is null || alias.Specificity > bestMatch.Specificity))
         {
-            if (!string.Equals(alias.Service, service, StringComparison.OrdinalIgnoreCase) || alias.Kind != kind)
-            {
-                continue;
-            }
-
-            if (!WildcardMatch(alias.Pattern, name))
-            {
-                continue;
-            }
-
-            if (best is null || alias.Specificity > best.Specificity)
-            {
-                best = alias;
-            }
+            bestMatch = alias;
         }
 
-        return best;
+        return bestMatch;
     }
 
     private static bool WildcardMatch(string pattern, string value)
@@ -187,15 +167,14 @@ internal sealed class ProcedureRegistry
                 continue;
             }
 
-            if (starIndex != -1)
+            if (starIndex == -1)
             {
-                p = starIndex + 1;
-                match++;
-                v = match;
-                continue;
+                return false;
             }
 
-            return false;
+            p = starIndex + 1;
+            match++;
+            v = match;
         }
 
         while (p < patternSpan.Length && patternSpan[p] == '*')
@@ -208,5 +187,10 @@ internal sealed class ProcedureRegistry
 
     private readonly record struct AliasInfo(string Value, bool IsWildcard);
 
-    private sealed record WildcardAlias(string Service, string Pattern, ProcedureKind Kind, string CanonicalKey, int Specificity);
+    private sealed record WildcardAlias(
+        string Service,
+        string Pattern,
+        ProcedureKind Kind,
+        string CanonicalKey,
+        int Specificity);
 }

@@ -313,7 +313,11 @@ public class OmniRelayConfigurationTests
     {
         public const string SpecName = "test-inbound";
 
-        public string? LastEndpoint { get; private set; }
+        public string? LastEndpoint
+        {
+            get => field;
+            private set => field = value;
+        }
 
         public string Name => SpecName;
 
@@ -335,7 +339,11 @@ public class OmniRelayConfigurationTests
     {
         public const string SpecName = "test-outbound";
 
-        public string? LastAddress { get; private set; }
+        public string? LastAddress
+        {
+            get => field;
+            private set => field = value;
+        }
 
         public string Name => SpecName;
 
@@ -348,7 +356,10 @@ public class OmniRelayConfigurationTests
 
     private sealed class TestUnaryOutbound(string address) : IUnaryOutbound
     {
-        public string Address { get; } = address;
+        public string Address
+        {
+            get => field;
+        } = address;
 
         public ValueTask StartAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
 
@@ -361,7 +372,10 @@ public class OmniRelayConfigurationTests
 
     private sealed class RecordingHttpClientFactory : IHttpClientFactory
     {
-        public List<string> CreatedNames { get; } = [];
+        public List<string> CreatedNames
+        {
+            get => field;
+        } = [];
 
         public HttpClient CreateClient(string name = "")
         {
@@ -380,7 +394,11 @@ public class OmniRelayConfigurationTests
     {
         public const string SpecName = "test-peer";
 
-        public string? LastMode { get; private set; }
+        public string? LastMode
+        {
+            get => field;
+            private set => field = value;
+        }
 
         public string Name => SpecName;
 
@@ -425,6 +443,26 @@ internal partial class EchoJsonContext : JsonSerializerContext
 {
 }
 
-internal sealed record EchoRequest(string Name, int Count);
+internal sealed record EchoRequest(string Name, int Count)
+{
+    public string Name
+    {
+        get => field;
+        init => field = value;
+    } = Name;
 
-internal sealed record EchoResponse(string Message);
+    public int Count
+    {
+        get => field;
+        init => field = value;
+    } = Count;
+}
+
+internal sealed record EchoResponse(string Message)
+{
+    public string Message
+    {
+        get => field;
+        init => field = value;
+    } = Message;
+}

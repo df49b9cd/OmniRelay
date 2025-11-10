@@ -14,7 +14,13 @@ namespace OmniRelay.Core.UnitTests.Clients;
 
 public class OnewayClientTests
 {
-    public sealed class Req { public string? V { get; init; } }
+    public sealed class Req {
+        public string? V
+        {
+            get => field;
+            init => field = value;
+        }
+    }
 
     [Fact(Timeout = TestTimeouts.Default)]
     public async Task CallAsync_Success_Encodes_InvokesOutbound()

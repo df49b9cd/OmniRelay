@@ -91,7 +91,11 @@ public class HttpDuplexTransportTests
 
     private sealed class RecordingHandler : HttpMessageHandler
     {
-        public HttpRequestMessage? LastRequest { get; private set; }
+        public HttpRequestMessage? LastRequest
+        {
+            get => field;
+            private set => field = value;
+        }
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {

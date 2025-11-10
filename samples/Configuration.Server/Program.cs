@@ -399,12 +399,119 @@ internal sealed class AuditFanoutOutboundSpec : ICustomOutboundSpec
     }
 }
 
-internal sealed record WeatherRequest(string City, bool Detailed = false);
+internal sealed record WeatherRequest(string City, bool Detailed = false)
+{
+    public string City
+    {
+        get => field;
+        init => field = value;
+    } = City;
 
-internal sealed record WeatherResponse(string City, int TemperatureC, string Summary, DateTimeOffset IssuedAt);
+    public bool Detailed
+    {
+        get => field;
+        init => field = value;
+    } = Detailed;
+}
 
-internal sealed record WeatherStreamRequest(string City, int Count = 5, int IntervalSeconds = 1);
+internal sealed record WeatherResponse(string City, int TemperatureC, string Summary, DateTimeOffset IssuedAt)
+{
+    public string City
+    {
+        get => field;
+        init => field = value;
+    } = City;
 
-internal sealed record WeatherObservation(string City, int Sequence, string Summary, int TemperatureC, DateTimeOffset Timestamp);
+    public int TemperatureC
+    {
+        get => field;
+        init => field = value;
+    } = TemperatureC;
 
-internal sealed record TelemetryEvent(string Area, string Level, string Message);
+    public string Summary
+    {
+        get => field;
+        init => field = value;
+    } = Summary;
+
+    public DateTimeOffset IssuedAt
+    {
+        get => field;
+        init => field = value;
+    } = IssuedAt;
+}
+
+internal sealed record WeatherStreamRequest(string City, int Count = 5, int IntervalSeconds = 1)
+{
+    public string City
+    {
+        get => field;
+        init => field = value;
+    } = City;
+
+    public int Count
+    {
+        get => field;
+        init => field = value;
+    } = Count;
+
+    public int IntervalSeconds
+    {
+        get => field;
+        init => field = value;
+    } = IntervalSeconds;
+}
+
+internal sealed record WeatherObservation(string City, int Sequence, string Summary, int TemperatureC, DateTimeOffset Timestamp)
+{
+    public string City
+    {
+        get => field;
+        init => field = value;
+    } = City;
+
+    public int Sequence
+    {
+        get => field;
+        init => field = value;
+    } = Sequence;
+
+    public string Summary
+    {
+        get => field;
+        init => field = value;
+    } = Summary;
+
+    public int TemperatureC
+    {
+        get => field;
+        init => field = value;
+    } = TemperatureC;
+
+    public DateTimeOffset Timestamp
+    {
+        get => field;
+        init => field = value;
+    } = Timestamp;
+}
+
+internal sealed record TelemetryEvent(string Area, string Level, string Message)
+{
+    public string Area
+    {
+        get => field;
+        init => field = value;
+    } = Area;
+
+    public string Level
+    {
+        get => field;
+        init => field = value;
+    } = Level;
+
+    public string Message
+    {
+        get => field;
+        init => field = value;
+    } = Message;
+}

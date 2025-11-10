@@ -60,5 +60,18 @@ public sealed class GrpcClientInterceptorRegistry
 
     internal sealed record ServiceEntry(
         ImmutableArray<Interceptor> DefaultPipeline,
-        ImmutableDictionary<string, ImmutableArray<Interceptor>> ProcedurePipelines);
+        ImmutableDictionary<string, ImmutableArray<Interceptor>> ProcedurePipelines)
+    {
+        public ImmutableArray<Interceptor> DefaultPipeline
+        {
+            get => field;
+            init => field = value;
+        } = DefaultPipeline;
+
+        public ImmutableDictionary<string, ImmutableArray<Interceptor>> ProcedurePipelines
+        {
+            get => field;
+            init => field = value;
+        } = ProcedurePipelines;
+    }
 }

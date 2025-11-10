@@ -449,6 +449,7 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
         {
             context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
             context.Response.Headers["Retry-After"] = RetryAfterHeaderValue;
+            context.Response.Headers[HttpTransportHeaders.Protocol] = context.Request.Protocol;
             return false;
         }
 

@@ -85,10 +85,14 @@ internal sealed class GrpcClientStreamCall : IStreamCall
     public StreamDirection Direction => StreamDirection.Server;
 
     /// <inheritdoc />
-    public RequestMeta RequestMeta { get; }
+    public RequestMeta RequestMeta => field;
 
     /// <inheritdoc />
-    public ResponseMeta ResponseMeta { get; private set; }
+    public ResponseMeta ResponseMeta
+    {
+        get => field;
+        private set => field = value;
+    }
 
     /// <inheritdoc />
     public StreamCallContext Context => _context;

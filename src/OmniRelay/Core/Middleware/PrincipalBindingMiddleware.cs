@@ -154,29 +154,65 @@ public sealed class PrincipalBindingOptions
     private static readonly string[] DefaultAuthorizationHeaders = [ "authorization" ];
 
     /// <summary>Header names evaluated (in order) for a client principal.</summary>
-    public ImmutableArray<string> PrincipalHeaderNames { get; init; } = [.. DefaultPrincipalHeaders];
+    public ImmutableArray<string> PrincipalHeaderNames
+    {
+        get => field;
+        init => field = value;
+    } = [.. DefaultPrincipalHeaders];
 
     /// <summary>Authorization headers evaluated when no explicit principal header is present.</summary>
-    public ImmutableArray<string> AuthorizationHeaderNames { get; init; } = [.. DefaultAuthorizationHeaders];
+    public ImmutableArray<string> AuthorizationHeaderNames
+    {
+        get => field;
+        init => field = value;
+    } = [.. DefaultAuthorizationHeaders];
 
     /// <summary>When true, the resolved principal replaces <see cref="RequestMeta.Caller"/> when it is empty.</summary>
-    public bool PromoteToCaller { get; init; } = true;
+    public bool PromoteToCaller
+    {
+        get => field;
+        init => field = value;
+    } = true;
 
     /// <summary>Metadata key storing the normalized principal. Defaults to 'rpc.principal'.</summary>
-    public string PrincipalMetadataKey { get; init; } = DefaultPrincipalMetadataKey;
+    public string PrincipalMetadataKey
+    {
+        get => field;
+        init => field = value;
+    } = DefaultPrincipalMetadataKey;
 
     /// <summary>Header that carries the TLS client thumbprint (if termination populates it).</summary>
-    public string ThumbprintHeaderName { get; init; } = "x-mtls-thumbprint";
+    public string ThumbprintHeaderName
+    {
+        get => field;
+        init => field = value;
+    } = "x-mtls-thumbprint";
 
     /// <summary>Metadata key storing the TLS thumbprint when <see cref="IncludeThumbprint"/> is true.</summary>
-    public string PrincipalThumbprintMetadataKey { get; init; } = "rpc.principal_thumbprint";
+    public string PrincipalThumbprintMetadataKey
+    {
+        get => field;
+        init => field = value;
+    } = "rpc.principal_thumbprint";
 
     /// <summary>Captures the certificate thumbprint into metadata when true.</summary>
-    public bool IncludeThumbprint { get; init; } = true;
+    public bool IncludeThumbprint
+    {
+        get => field;
+        init => field = value;
+    } = true;
 
     /// <summary>When true, bearer tokens found in authorization headers will be treated as principals.</summary>
-    public bool AcceptBearerTokens { get; init; } = true;
+    public bool AcceptBearerTokens
+    {
+        get => field;
+        init => field = value;
+    } = true;
 
     /// <summary>When true, authorization headers prefixed with 'mTLS ' are parsed as certificate subjects.</summary>
-    public bool AcceptMutualTlsSubjects { get; init; } = true;
+    public bool AcceptMutualTlsSubjects
+    {
+        get => field;
+        init => field = value;
+    } = true;
 }

@@ -10,9 +10,29 @@ namespace OmniRelay.Core.UnitTests.Core;
 
 public class JsonCodecTests
 {
-    private sealed record TestPayload(string Id, int Count);
+    private sealed record TestPayload(string Id, int Count)
+    {
+        public string Id
+        {
+            get => field;
+            init => field = value;
+        } = Id;
 
-    private sealed record OptionalPayload(string? Name);
+        public int Count
+        {
+            get => field;
+            init => field = value;
+        } = Count;
+    }
+
+    private sealed record OptionalPayload(string? Name)
+    {
+        public string? Name
+        {
+            get => field;
+            init => field = value;
+        } = Name;
+    }
 
     private sealed class ThrowingWriteConverter : JsonConverter<TestPayload>
     {

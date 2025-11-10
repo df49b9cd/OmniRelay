@@ -14,8 +14,20 @@ namespace OmniRelay.Core.UnitTests.Clients;
 
 public class UnaryClientTests
 {
-    public sealed class Req { public int X { get; init; } }
-    public sealed class Res { public int Y { get; init; } }
+    public sealed class Req {
+        public int X
+        {
+            get => field;
+            init => field = value;
+        }
+    }
+    public sealed class Res {
+        public int Y
+        {
+            get => field;
+            init => field = value;
+        }
+    }
 
     [Fact(Timeout = TestTimeouts.Default)]
     public async Task CallAsync_Success_Encodes_InvokesOutbound_Decodes()

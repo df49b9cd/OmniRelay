@@ -77,16 +77,28 @@ public sealed class GrpcExceptionAdapterInterceptorTests
 
         protected override Metadata ResponseTrailersCore => _responseTrailers;
 
-        protected override Status StatusCore { get; set; }
+        protected override Status StatusCore
+        {
+            get => field;
+            set => field = value;
+        }
 
-        protected override WriteOptions? WriteOptionsCore { get; set; }
+        protected override WriteOptions? WriteOptionsCore
+        {
+            get => field;
+            set => field = value;
+        }
 
         protected override AuthContext AuthContextCore => _authContext;
     }
 
     private sealed class NoopServerStreamWriter<T> : IServerStreamWriter<T>
     {
-        public WriteOptions? WriteOptions { get; set; }
+        public WriteOptions? WriteOptions
+        {
+            get => field;
+            set => field = value;
+        }
 
         public Task WriteAsync(T message) => Task.CompletedTask;
     }

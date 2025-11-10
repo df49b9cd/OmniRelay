@@ -106,10 +106,25 @@ public sealed class OmniRelayProtobufGenerator
 
     private sealed class ProtoFileContext(FileDescriptorProto file, string ns)
     {
-        public FileDescriptorProto File { get; } = file ?? throw new ArgumentNullException(nameof(file));
-        public string Namespace { get; } = ns ?? throw new ArgumentNullException(nameof(ns));
-        public IReadOnlyList<ServiceDescriptorProto> Services { get; } = [.. file.Service];
-        public IReadOnlyDictionary<string, string> TypeNameMap { get; } = BuildTypeNameMap(file);
+        public FileDescriptorProto File
+        {
+            get => field;
+        } = file ?? throw new ArgumentNullException(nameof(file));
+
+        public string Namespace
+        {
+            get => field;
+        } = ns ?? throw new ArgumentNullException(nameof(ns));
+
+        public IReadOnlyList<ServiceDescriptorProto> Services
+        {
+            get => field;
+        } = [.. file.Service];
+
+        public IReadOnlyDictionary<string, string> TypeNameMap
+        {
+            get => field;
+        } = BuildTypeNameMap(file);
 
         private static Dictionary<string, string> BuildTypeNameMap(FileDescriptorProto file)
         {
@@ -143,7 +158,20 @@ public sealed class OmniRelayProtobufGenerator
         }
     }
 
-    private sealed record TypeInfo(string Namespace, string CsharpName);
+    private sealed record TypeInfo(string Namespace, string CsharpName)
+    {
+        public string Namespace
+        {
+            get => field;
+            init => field = value;
+        } = Namespace;
+
+        public string CsharpName
+        {
+            get => field;
+            init => field = value;
+        } = CsharpName;
+    }
 
     private sealed class ServiceEmitter(
         ProtoFileContext fileContext,
@@ -545,7 +573,74 @@ public sealed class OmniRelayProtobufGenerator
             string UnaryClientField,
             string StreamClientField,
             string ClientStreamField,
-            string DuplexClientField);
+            string DuplexClientField)
+        {
+            public string Name
+            {
+                get => field;
+                init => field = value;
+            } = Name;
+
+            public string ProcedureName
+            {
+                get => field;
+                init => field = value;
+            } = ProcedureName;
+
+            public string InputType
+            {
+                get => field;
+                init => field = value;
+            } = InputType;
+
+            public string OutputType
+            {
+                get => field;
+                init => field = value;
+            } = OutputType;
+
+            public RpcKind Kind
+            {
+                get => field;
+                init => field = value;
+            } = Kind;
+
+            public string HandlerName
+            {
+                get => field;
+                init => field = value;
+            } = HandlerName;
+
+            public string CodecFieldName
+            {
+                get => field;
+                init => field = value;
+            } = CodecFieldName;
+
+            public string UnaryClientField
+            {
+                get => field;
+                init => field = value;
+            } = UnaryClientField;
+
+            public string StreamClientField
+            {
+                get => field;
+                init => field = value;
+            } = StreamClientField;
+
+            public string ClientStreamField
+            {
+                get => field;
+                init => field = value;
+            } = ClientStreamField;
+
+            public string DuplexClientField
+            {
+                get => field;
+                init => field = value;
+            } = DuplexClientField;
+        }
     }
 
     private static string ResolveNamespace(FileDescriptorProto file)
@@ -642,4 +737,17 @@ public sealed class OmniRelayProtobufGenerator
     }
 }
 
-public sealed record GeneratedFile(string Name, string Content);
+public sealed record GeneratedFile(string Name, string Content)
+{
+    public string Name
+    {
+        get => field;
+        init => field = value;
+    } = Name;
+
+    public string Content
+    {
+        get => field;
+        init => field = value;
+    } = Content;
+}

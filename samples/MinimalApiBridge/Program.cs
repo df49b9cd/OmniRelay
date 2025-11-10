@@ -101,7 +101,26 @@ public static class Program
     }
 }
 
-internal sealed record BridgeRuntime(OmniRelayDispatcher Dispatcher, HttpInbound HttpInbound, GrpcInbound GrpcInbound);
+internal sealed record BridgeRuntime(OmniRelayDispatcher Dispatcher, HttpInbound HttpInbound, GrpcInbound GrpcInbound)
+{
+    public OmniRelayDispatcher Dispatcher
+    {
+        get => field;
+        init => field = value;
+    } = Dispatcher;
+
+    public HttpInbound HttpInbound
+    {
+        get => field;
+        init => field = value;
+    } = HttpInbound;
+
+    public GrpcInbound GrpcInbound
+    {
+        get => field;
+        init => field = value;
+    } = GrpcInbound;
+}
 
 internal sealed class DispatcherHostedService(BridgeRuntime runtime, ILogger<DispatcherHostedService> logger) : IHostedService
 {
@@ -275,18 +294,106 @@ internal sealed class ConsoleLoggingMiddleware(ILogger<ConsoleLoggingMiddleware>
     }
 }
 
-internal sealed record GreetingRequest(string Name, string? Channel = null);
+internal sealed record GreetingRequest(string Name, string? Channel = null)
+{
+    public string Name
+    {
+        get => field;
+        init => field = value;
+    } = Name;
 
-internal sealed record GreetingResponse(string Message, string Channel, DateTimeOffset IssuedAt, string Handler);
+    public string? Channel
+    {
+        get => field;
+        init => field = value;
+    } = Channel;
+}
 
-internal sealed record RebalanceRequest(decimal TargetEquityPercent, decimal TargetFixedIncomePercent, string? Notes);
+internal sealed record GreetingResponse(string Message, string Channel, DateTimeOffset IssuedAt, string Handler)
+{
+    public string Message
+    {
+        get => field;
+        init => field = value;
+    } = Message;
+
+    public string Channel
+    {
+        get => field;
+        init => field = value;
+    } = Channel;
+
+    public DateTimeOffset IssuedAt
+    {
+        get => field;
+        init => field = value;
+    } = IssuedAt;
+
+    public string Handler
+    {
+        get => field;
+        init => field = value;
+    } = Handler;
+}
+
+internal sealed record RebalanceRequest(decimal TargetEquityPercent, decimal TargetFixedIncomePercent, string? Notes)
+{
+    public decimal TargetEquityPercent
+    {
+        get => field;
+        init => field = value;
+    } = TargetEquityPercent;
+
+    public decimal TargetFixedIncomePercent
+    {
+        get => field;
+        init => field = value;
+    } = TargetFixedIncomePercent;
+
+    public string? Notes
+    {
+        get => field;
+        init => field = value;
+    } = Notes;
+}
 
 internal sealed record RebalanceCommand(
     string PortfolioId,
     decimal TargetEquityPercent,
     decimal TargetFixedIncomePercent,
     string? Channel,
-    string? Notes);
+    string? Notes)
+{
+    public string PortfolioId
+    {
+        get => field;
+        init => field = value;
+    } = PortfolioId;
+
+    public decimal TargetEquityPercent
+    {
+        get => field;
+        init => field = value;
+    } = TargetEquityPercent;
+
+    public decimal TargetFixedIncomePercent
+    {
+        get => field;
+        init => field = value;
+    } = TargetFixedIncomePercent;
+
+    public string? Channel
+    {
+        get => field;
+        init => field = value;
+    } = Channel;
+
+    public string? Notes
+    {
+        get => field;
+        init => field = value;
+    } = Notes;
+}
 
 internal sealed record RebalancePlan(
     string PortfolioId,
@@ -294,8 +401,89 @@ internal sealed record RebalancePlan(
     decimal TargetFixedIncomePercent,
     DateTimeOffset GeneratedAt,
     IReadOnlyList<RebalanceAction> Actions,
-    string GeneratedBy);
+    string GeneratedBy)
+{
+    public string PortfolioId
+    {
+        get => field;
+        init => field = value;
+    } = PortfolioId;
 
-internal sealed record RebalanceAction(string AssetClass, string Instruction, decimal Percent);
+    public decimal TargetEquityPercent
+    {
+        get => field;
+        init => field = value;
+    } = TargetEquityPercent;
 
-internal sealed record AlertEvent(string Severity, string Message, string? Channel, string? CorrelationId);
+    public decimal TargetFixedIncomePercent
+    {
+        get => field;
+        init => field = value;
+    } = TargetFixedIncomePercent;
+
+    public DateTimeOffset GeneratedAt
+    {
+        get => field;
+        init => field = value;
+    } = GeneratedAt;
+
+    public IReadOnlyList<RebalanceAction> Actions
+    {
+        get => field;
+        init => field = value;
+    } = Actions;
+
+    public string GeneratedBy
+    {
+        get => field;
+        init => field = value;
+    } = GeneratedBy;
+}
+
+internal sealed record RebalanceAction(string AssetClass, string Instruction, decimal Percent)
+{
+    public string AssetClass
+    {
+        get => field;
+        init => field = value;
+    } = AssetClass;
+
+    public string Instruction
+    {
+        get => field;
+        init => field = value;
+    } = Instruction;
+
+    public decimal Percent
+    {
+        get => field;
+        init => field = value;
+    } = Percent;
+}
+
+internal sealed record AlertEvent(string Severity, string Message, string? Channel, string? CorrelationId)
+{
+    public string Severity
+    {
+        get => field;
+        init => field = value;
+    } = Severity;
+
+    public string Message
+    {
+        get => field;
+        init => field = value;
+    } = Message;
+
+    public string? Channel
+    {
+        get => field;
+        init => field = value;
+    } = Channel;
+
+    public string? CorrelationId
+    {
+        get => field;
+        init => field = value;
+    } = CorrelationId;
+}

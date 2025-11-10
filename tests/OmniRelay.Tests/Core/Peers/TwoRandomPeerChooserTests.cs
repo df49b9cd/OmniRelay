@@ -39,7 +39,10 @@ public sealed class TwoRandomPeerChooserTests
         private readonly int _maxConcurrency = maxConcurrency;
         private int _inflight = inflight;
 
-        public string Identifier { get; } = id;
+        public string Identifier
+        {
+            get => field;
+        } = id;
 
         public PeerStatus Status => new(PeerState.Available, _inflight, null, null);
 

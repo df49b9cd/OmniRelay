@@ -166,17 +166,50 @@ internal sealed class ProbeHealth(PlaygroundState state) : IHealthCheck
 
 internal sealed record PlaygroundOptions
 {
-    public TimeSpan InitialDelay { get; init; } = TimeSpan.FromSeconds(3);
-    public TimeSpan ScriptInterval { get; init; } = TimeSpan.FromSeconds(15);
-    public string IntrospectUrl { get; init; } = "http://127.0.0.1:7130/omnirelay/introspect";
+    public TimeSpan InitialDelay
+    {
+        get => field;
+        init => field = value;
+    } = TimeSpan.FromSeconds(3);
+
+    public TimeSpan ScriptInterval
+    {
+        get => field;
+        init => field = value;
+    } = TimeSpan.FromSeconds(15);
+
+    public string IntrospectUrl
+    {
+        get => field;
+        init => field = value;
+    } = "http://127.0.0.1:7130/omnirelay/introspect";
 }
 
 internal sealed class PlaygroundState
 {
-    public string ServiceName { get; set; } = "observability-cli-playground";
-    public string? LastScriptStatus { get; set; }
-    public bool Ready { get; private set; }
-    public DateTimeOffset? ReadySince { get; private set; }
+    public string ServiceName
+    {
+        get => field;
+        set => field = value;
+    } = "observability-cli-playground";
+
+    public string? LastScriptStatus
+    {
+        get => field;
+        set => field = value;
+    }
+
+    public bool Ready
+    {
+        get => field;
+        private set => field = value;
+    }
+
+    public DateTimeOffset? ReadySince
+    {
+        get => field;
+        private set => field = value;
+    }
 
     public void MarkReady()
     {

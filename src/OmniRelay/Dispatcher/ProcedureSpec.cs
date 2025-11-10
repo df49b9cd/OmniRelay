@@ -36,15 +36,20 @@ public abstract record ProcedureSpec
     }
 
     /// <summary>Gets the service name.</summary>
-    public string Service { get; }
+    public string Service => field;
+
     /// <summary>Gets the procedure name.</summary>
-    public string Name { get; }
+    public string Name => field;
+
     /// <summary>Gets the RPC shape.</summary>
-    public ProcedureKind Kind { get; }
+    public ProcedureKind Kind => field;
+
     /// <summary>Gets the preferred encoding, if specified.</summary>
-    public string? Encoding { get; }
+    public string? Encoding => field;
+
     /// <summary>Gets the list of aliases that resolve to this procedure.</summary>
-    public ImmutableArray<string> Aliases { get; }
+    public ImmutableArray<string> Aliases => field;
+
     /// <summary>Gets the fully qualified procedure name in the form service::name.</summary>
     public string FullName => $"{Service}::{Name}";
 }
@@ -65,8 +70,9 @@ public sealed record UnaryProcedureSpec : ProcedureSpec
         Middleware = middleware ?? [];
     }
 
-    public UnaryInboundDelegate Handler { get; }
-    public IReadOnlyList<IUnaryInboundMiddleware> Middleware { get; }
+    public UnaryInboundDelegate Handler => field;
+
+    public IReadOnlyList<IUnaryInboundMiddleware> Middleware => field;
 }
 
 /// <summary>Descriptor for a oneway procedure.</summary>
@@ -85,8 +91,9 @@ public sealed record OnewayProcedureSpec : ProcedureSpec
         Middleware = middleware ?? [];
     }
 
-    public OnewayInboundDelegate Handler { get; }
-    public IReadOnlyList<IOnewayInboundMiddleware> Middleware { get; }
+    public OnewayInboundDelegate Handler => field;
+
+    public IReadOnlyList<IOnewayInboundMiddleware> Middleware => field;
 }
 
 /// <summary>Descriptor for a server-streaming procedure.</summary>
@@ -107,9 +114,11 @@ public sealed record StreamProcedureSpec : ProcedureSpec
         Metadata = metadata ?? StreamIntrospectionMetadata.Default;
     }
 
-    public StreamInboundDelegate Handler { get; }
-    public IReadOnlyList<IStreamInboundMiddleware> Middleware { get; }
-    public StreamIntrospectionMetadata Metadata { get; }
+    public StreamInboundDelegate Handler => field;
+
+    public IReadOnlyList<IStreamInboundMiddleware> Middleware => field;
+
+    public StreamIntrospectionMetadata Metadata => field;
 }
 
 /// <summary>Descriptor for a client-streaming procedure.</summary>
@@ -130,9 +139,11 @@ public sealed record ClientStreamProcedureSpec : ProcedureSpec
         Metadata = metadata ?? ClientStreamIntrospectionMetadata.Default;
     }
 
-    public ClientStreamInboundDelegate Handler { get; }
-    public IReadOnlyList<IClientStreamInboundMiddleware> Middleware { get; }
-    public ClientStreamIntrospectionMetadata Metadata { get; }
+    public ClientStreamInboundDelegate Handler => field;
+
+    public IReadOnlyList<IClientStreamInboundMiddleware> Middleware => field;
+
+    public ClientStreamIntrospectionMetadata Metadata => field;
 }
 
 /// <summary>Descriptor for a duplex-streaming procedure.</summary>
@@ -153,7 +164,9 @@ public sealed record DuplexProcedureSpec : ProcedureSpec
         Metadata = metadata ?? DuplexIntrospectionMetadata.Default;
     }
 
-    public DuplexInboundDelegate Handler { get; }
-    public IReadOnlyList<IDuplexInboundMiddleware> Middleware { get; }
-    public DuplexIntrospectionMetadata Metadata { get; }
+    public DuplexInboundDelegate Handler => field;
+
+    public IReadOnlyList<IDuplexInboundMiddleware> Middleware => field;
+
+    public DuplexIntrospectionMetadata Metadata => field;
 }

@@ -151,7 +151,7 @@ public class CodegenWorkflowIntegrationTests
             ["omnirelay:outbounds:codegen-host-http2:unary:grpc:0:endpoints:0:supportsHttp3"] = "false",
             ["omnirelay:outbounds:codegen-host-http2:unary:grpc:0:runtime:enableHttp3"] = "true",
             ["omnirelay:outbounds:codegen-host-http2:unary:grpc:0:runtime:requestVersion"] = "3.0",
-            ["omnirelay:outbounds:codegen-host-http2:unary:grpc:0:runtime:versionPolicy"] = "RequestVersionOrLower",
+            ["omnirelay:outbounds:codegen-host-http2:unary:grpc:0:runtime:versionPolicy"] = "RequestVersionExact",
             ["omnirelay:outbounds:codegen-host-http2:unary:grpc:0:tls:allowUntrustedCertificates"] = "true"
         });
         clientBuilder.Services.AddOmniRelayDispatcher(clientBuilder.Configuration.GetSection("omnirelay"));
@@ -427,10 +427,25 @@ public class CodegenWorkflowIntegrationTests
 
     private sealed class LoopbackTestService : TestServiceOmniRelay.ITestService
     {
-        public ConcurrentQueue<RequestMeta> UnaryMetas { get; } = new();
-        public ConcurrentQueue<RequestMeta> ServerStreamMetas { get; } = new();
-        public ConcurrentQueue<RequestMeta> ClientStreamMetas { get; } = new();
-        public ConcurrentQueue<RequestMeta> DuplexStreamMetas { get; } = new();
+        public ConcurrentQueue<RequestMeta> UnaryMetas
+        {
+            get => field;
+        } = new();
+
+        public ConcurrentQueue<RequestMeta> ServerStreamMetas
+        {
+            get => field;
+        } = new();
+
+        public ConcurrentQueue<RequestMeta> ClientStreamMetas
+        {
+            get => field;
+        } = new();
+
+        public ConcurrentQueue<RequestMeta> DuplexStreamMetas
+        {
+            get => field;
+        } = new();
 
         public ValueTask<Response<UnaryResponse>> UnaryCallAsync(Request<UnaryRequest> request, CancellationToken cancellationToken)
         {

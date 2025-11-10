@@ -76,7 +76,10 @@ public sealed class TableLeaseReplicationTests
 
     private sealed class RecordingSink : ITableLeaseReplicationSink
     {
-        public List<TableLeaseReplicationEvent> Events { get; } = new();
+        public List<TableLeaseReplicationEvent> Events
+        {
+            get => field;
+        } = new();
 
         public ValueTask ApplyAsync(TableLeaseReplicationEvent replicationEvent, CancellationToken cancellationToken)
         {
@@ -87,7 +90,10 @@ public sealed class TableLeaseReplicationTests
 
     private sealed class CountingCheckpointSink : CheckpointingTableLeaseReplicationSink
     {
-        public List<long> AppliedSequences { get; } = new();
+        public List<long> AppliedSequences
+        {
+            get => field;
+        } = new();
 
         protected override ValueTask ApplyInternalAsync(TableLeaseReplicationEvent replicationEvent, CancellationToken cancellationToken)
         {

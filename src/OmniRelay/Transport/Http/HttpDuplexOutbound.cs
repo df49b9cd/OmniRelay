@@ -146,4 +146,11 @@ public sealed class HttpDuplexOutbound(Uri baseAddress) : IDuplexOutbound, IOutb
 /// <summary>
 /// Snapshot of the HTTP duplex outbound configuration for diagnostics.
 /// </summary>
-public sealed record HttpDuplexOutboundSnapshot(Uri BaseAddress);
+public sealed record HttpDuplexOutboundSnapshot(Uri BaseAddress)
+{
+    public Uri BaseAddress
+    {
+        get => field;
+        init => field = value;
+    } = BaseAddress;
+}

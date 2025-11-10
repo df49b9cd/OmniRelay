@@ -110,7 +110,11 @@ public class DiagnosticsRuntimeSamplerTests
     {
         public LogLevel? MinimumLogLevel => null;
 
-        public double? Probability { get; set; }
+        public double? Probability
+        {
+            get => field;
+            set => field = value;
+        }
 
         public double? TraceSamplingProbability => Probability;
 

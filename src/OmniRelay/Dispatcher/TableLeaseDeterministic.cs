@@ -12,19 +12,39 @@ public interface ITableLeaseDeterministicCoordinator
 public sealed class TableLeaseDeterministicOptions
 {
     /// <summary>The deterministic state store backing VersionGate and DeterministicEffectStore.</summary>
-    public IDeterministicStateStore StateStore { get; init; } = new InMemoryDeterministicStateStore();
+    public IDeterministicStateStore StateStore
+    {
+        get => field;
+        init => field = value;
+    } = new InMemoryDeterministicStateStore();
 
     /// <summary>Logical change identifier recorded in VersionGate.</summary>
-    public string ChangeId { get; init; } = "tablelease.replication";
+    public string ChangeId
+    {
+        get => field;
+        init => field = value;
+    } = "tablelease.replication";
 
     /// <summary>Minimum supported change version.</summary>
-    public int MinVersion { get; init; } = 1;
+    public int MinVersion
+    {
+        get => field;
+        init => field = value;
+    } = 1;
 
     /// <summary>Maximum supported change version.</summary>
-    public int MaxVersion { get; init; } = 1;
+    public int MaxVersion
+    {
+        get => field;
+        init => field = value;
+    } = 1;
 
     /// <summary>Optional factory that customizes the deterministic effect identifier per event.</summary>
-    public Func<TableLeaseReplicationEvent, string>? EffectIdFactory { get; init; }
+    public Func<TableLeaseReplicationEvent, string>? EffectIdFactory
+    {
+        get => field;
+        init => field = value;
+    }
 }
 
 /// <summary>

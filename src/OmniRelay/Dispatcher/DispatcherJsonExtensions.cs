@@ -146,6 +146,24 @@ public static class DispatcherJsonExtensions
 public readonly record struct JsonUnaryContext(Dispatcher Dispatcher, RequestMeta RequestMeta, CancellationToken CancellationToken)
 {
     public RequestMeta Meta => RequestMeta;
+
+    public Dispatcher Dispatcher
+    {
+        get => field;
+        init => field = value;
+    } = Dispatcher;
+
+    public RequestMeta RequestMeta
+    {
+        get => field;
+        init => field = value;
+    } = RequestMeta;
+
+    public CancellationToken CancellationToken
+    {
+        get => field;
+        init => field = value;
+    } = CancellationToken;
 }
 
 /// <summary>
@@ -153,13 +171,47 @@ public readonly record struct JsonUnaryContext(Dispatcher Dispatcher, RequestMet
 /// </summary>
 public sealed class JsonCodecBuilder<TRequest, TResponse>
 {
-    public JsonSerializerOptions? SerializerOptions { get; set; }
-    public JsonSerializerContext? SerializerContext { get; set; }
-    public JsonSchema? RequestSchema { get; set; }
-    public string? RequestSchemaId { get; set; }
-    public JsonSchema? ResponseSchema { get; set; }
-    public string? ResponseSchemaId { get; set; }
-    public string Encoding { get; set; } = "json";
+    public JsonSerializerOptions? SerializerOptions
+    {
+        get => field;
+        set => field = value;
+    }
+
+    public JsonSerializerContext? SerializerContext
+    {
+        get => field;
+        set => field = value;
+    }
+
+    public JsonSchema? RequestSchema
+    {
+        get => field;
+        set => field = value;
+    }
+
+    public string? RequestSchemaId
+    {
+        get => field;
+        set => field = value;
+    }
+
+    public JsonSchema? ResponseSchema
+    {
+        get => field;
+        set => field = value;
+    }
+
+    public string? ResponseSchemaId
+    {
+        get => field;
+        set => field = value;
+    }
+
+    public string Encoding
+    {
+        get => field;
+        set => field = value;
+    } = "json";
 
     internal JsonCodec<TRequest, TResponse> Build() =>
         new(

@@ -10,7 +10,14 @@ public enum StreamDirection
     Bidirectional
 }
 
-public sealed record StreamCallOptions(StreamDirection Direction);
+public sealed record StreamCallOptions(StreamDirection Direction)
+{
+    public StreamDirection Direction
+    {
+        get => field;
+        init => field = value;
+    } = Direction;
+}
 
 public interface IStreamCall : IAsyncDisposable
 {

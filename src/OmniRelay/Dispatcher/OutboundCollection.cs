@@ -38,7 +38,7 @@ public sealed class OutboundCollection
     }
 
     /// <summary>Gets the remote service name for this collection.</summary>
-    public string Service { get; }
+    public string Service => field;
 
     /// <summary>Gets the unary outbound bindings by key.</summary>
     public IReadOnlyDictionary<string, IUnaryOutbound> Unary => _unary;

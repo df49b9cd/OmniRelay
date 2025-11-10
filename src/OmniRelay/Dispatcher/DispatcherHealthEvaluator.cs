@@ -87,4 +87,17 @@ public static class DispatcherHealthEvaluator
 }
 
 /// <summary>Result of dispatcher readiness evaluation.</summary>
-public sealed record DispatcherReadinessResult(bool IsReady, ImmutableArray<string> Issues);
+public sealed record DispatcherReadinessResult(bool IsReady, ImmutableArray<string> Issues)
+{
+    public bool IsReady
+    {
+        get => field;
+        init => field = value;
+    } = IsReady;
+
+    public ImmutableArray<string> Issues
+    {
+        get => field;
+        init => field = value;
+    } = Issues;
+}

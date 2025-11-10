@@ -227,11 +227,22 @@ public class HttpOutboundIntegrationTests
         return handler;
     }
 
-    private sealed record PingRequest(string Message);
+    private sealed record PingRequest(string Message)
+    {
+        public string Message
+        {
+            get => field;
+            init => field = value;
+        } = Message;
+    }
 
     private sealed record PingResponse
     {
-        public string Message { get; init; } = string.Empty;
+        public string Message
+        {
+            get => field;
+            init => field = value;
+        } = string.Empty;
     }
 
     private sealed class FailoverUnaryOutbound : IUnaryOutbound

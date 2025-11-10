@@ -234,12 +234,14 @@ public class HostingConfigurationIntegrationTests
 
         using var host = builder.Build();
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+        var ex = await Assert.ThrowsAsync<ResultException>(async () =>
         {
             await host.StartAsync(TestContext.Current.CancellationToken);
         });
 
-        Assert.Contains("HTTP/3 requires HTTPS", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.NotNull(ex.InnerException);
+        var inner = Assert.IsType<InvalidOperationException>(ex.InnerException);
+        Assert.Contains("HTTP/3 requires HTTPS", inner.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact(Timeout = 30_000)]

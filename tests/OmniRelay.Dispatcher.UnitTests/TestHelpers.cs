@@ -18,7 +18,11 @@ internal static class TestHelpers
 
         public IReadOnlyCollection<string> Events => [.. _events];
 
-        public Dispatcher? BoundDispatcher { get; private set; }
+        public Dispatcher? BoundDispatcher
+        {
+            get => field;
+            private set => field = value;
+        }
 
         public ValueTask StartAsync(CancellationToken cancellationToken = default)
         {
@@ -75,7 +79,11 @@ internal static class TestHelpers
 
     private sealed class DummyClientStreamTransportCall(RequestMeta requestMeta) : IClientStreamTransportCall
     {
-        public RequestMeta RequestMeta { get; } = requestMeta;
+        public RequestMeta RequestMeta
+        {
+            get => field;
+        } = requestMeta;
+
         public ResponseMeta ResponseMeta => new();
         public ValueTask<Result<Response<ReadOnlyMemory<byte>>>> Response =>
             new(Task.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty))));
@@ -86,7 +94,11 @@ internal static class TestHelpers
 
     internal sealed class TestCodec<TRequest, TResponse> : ICodec<TRequest, TResponse>
     {
-        public string Encoding { get; set; } = "test/encoding";
+        public string Encoding
+        {
+            get => field;
+            set => field = value;
+        } = "test/encoding";
 
         public Result<byte[]> EncodeRequest(TRequest value, RequestMeta meta) => Ok(Array.Empty<byte>());
         public Result<TRequest> DecodeRequest(ReadOnlyMemory<byte> payload, RequestMeta meta) => Ok(default(TRequest)!);

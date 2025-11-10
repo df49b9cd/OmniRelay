@@ -572,4 +572,17 @@ public sealed class HttpOutbound : IUnaryOutbound, IOnewayOutbound, IOutboundDia
 /// <summary>
 /// Snapshot of the HTTP outbound configuration for diagnostics.
 /// </summary>
-public sealed record HttpOutboundSnapshot(Uri RequestUri, bool DisposesClient);
+public sealed record HttpOutboundSnapshot(Uri RequestUri, bool DisposesClient)
+{
+    public Uri RequestUri
+    {
+        get => field;
+        init => field = value;
+    } = RequestUri;
+
+    public bool DisposesClient
+    {
+        get => field;
+        init => field = value;
+    } = DisposesClient;
+}

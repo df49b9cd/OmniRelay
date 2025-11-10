@@ -16,7 +16,11 @@ public class QuicKestrelEventBridgeTests
     {
         private readonly LogLevel _minLevel;
         private readonly AsyncLocal<object?> _currentScope = new();
-        public ConcurrentQueue<(LogLevel level, string message, object? scope)> Entries { get; } = new();
+
+        public ConcurrentQueue<(LogLevel level, string message, object? scope)> Entries
+        {
+            get => field;
+        } = new();
 
         public TestLogger(LogLevel minLevel = LogLevel.Debug)
         {

@@ -28,13 +28,13 @@ public sealed class OmniRelayException : Exception
     }
 
     /// <summary>Gets the normalized status code.</summary>
-    public OmniRelayStatusCode StatusCode { get; }
+    public OmniRelayStatusCode StatusCode => field;
 
     /// <summary>Gets the normalized Hugo <c>Error</c> value.</summary>
-    public Error Error { get; }
+    public Error Error => field;
 
     /// <summary>Gets the transport name, if known.</summary>
-    public string? Transport { get; }
+    public string? Transport => field;
 
     private static Error? NormalizeError(Error? error, OmniRelayStatusCode statusCode, string? transport)
     {

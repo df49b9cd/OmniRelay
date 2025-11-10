@@ -167,9 +167,35 @@ internal sealed class OpsHandlers(ILogger<OpsHandlers> logger)
     }
 }
 
-internal sealed record OpsPingRequest(string Message);
+internal sealed record OpsPingRequest(string Message)
+{
+    public string Message
+    {
+        get => field;
+        init => field = value;
+    } = Message;
+}
 
-internal sealed record OpsPingResponse(string Message, DateTimeOffset IssuedAt, string Transport);
+internal sealed record OpsPingResponse(string Message, DateTimeOffset IssuedAt, string Transport)
+{
+    public string Message
+    {
+        get => field;
+        init => field = value;
+    } = Message;
+
+    public DateTimeOffset IssuedAt
+    {
+        get => field;
+        init => field = value;
+    } = IssuedAt;
+
+    public string Transport
+    {
+        get => field;
+        init => field = value;
+    } = Transport;
+}
 
 internal sealed class DispatcherHealthCheck(OmniRelayDispatcher dispatcher) : IHealthCheck
 {
@@ -215,9 +241,23 @@ internal sealed class ProbeState(IOptions<ProbeOptions> options, ILogger<ProbeSt
 {
     private readonly ProbeOptions _options = options.Value;
 
-    public bool DiagnosticsSatisfied { get; private set; }
-    public bool WarmupComplete { get; private set; }
-    public DateTimeOffset? ReadySinceUtc { get; private set; }
+    public bool DiagnosticsSatisfied
+    {
+        get => field;
+        private set => field = value;
+    }
+
+    public bool WarmupComplete
+    {
+        get => field;
+        private set => field = value;
+    }
+
+    public DateTimeOffset? ReadySinceUtc
+    {
+        get => field;
+        private set => field = value;
+    }
 
     public bool IsReady => WarmupComplete && (!_options.RequireDiagnosticsToggle || DiagnosticsSatisfied);
 
@@ -244,11 +284,24 @@ internal sealed class ProbeState(IOptions<ProbeOptions> options, ILogger<ProbeSt
 
 internal sealed record DiagnosticsControlOptions
 {
-    public bool RuntimeMetricsEnabled { get; init; }
+    public bool RuntimeMetricsEnabled
+    {
+        get => field;
+        init => field = value;
+    }
 }
 
 internal sealed record ProbeOptions
 {
-    public TimeSpan ReadyAfter { get; init; } = TimeSpan.FromSeconds(2);
-    public bool RequireDiagnosticsToggle { get; init; }
+    public TimeSpan ReadyAfter
+    {
+        get => field;
+        init => field = value;
+    } = TimeSpan.FromSeconds(2);
+
+    public bool RequireDiagnosticsToggle
+    {
+        get => field;
+        init => field = value;
+    }
 }

@@ -13,7 +13,10 @@ public sealed class StreamCallContext(StreamDirection direction)
     private long _completedAtUtcTicks;
 
     /// <summary>Gets the stream direction.</summary>
-    public StreamDirection Direction { get; } = direction;
+    public StreamDirection Direction
+    {
+        get => field;
+    } = direction;
 
     /// <summary>Gets the number of messages written to the stream.</summary>
     public long MessageCount => Interlocked.Read(ref _messageCount);

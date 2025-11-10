@@ -95,7 +95,50 @@ internal sealed record StreamingLabRuntime(
     string OutboundKey,
     JsonCodec<TickerSubscription, TickerUpdate> TickerCodec,
     ProtobufCodec<MetricSample, MetricAck> MetricsCodec,
-    ProtobufCodec<InsightRequest, InsightSignal> InsightCodec);
+    ProtobufCodec<InsightRequest, InsightSignal> InsightCodec)
+{
+    public OmniRelayDispatcher Dispatcher
+    {
+        get => field;
+        init => field = value;
+    } = Dispatcher;
+
+    public GrpcInbound GrpcInbound
+    {
+        get => field;
+        init => field = value;
+    } = GrpcInbound;
+
+    public string Service
+    {
+        get => field;
+        init => field = value;
+    } = Service;
+
+    public string OutboundKey
+    {
+        get => field;
+        init => field = value;
+    } = OutboundKey;
+
+    public JsonCodec<TickerSubscription, TickerUpdate> TickerCodec
+    {
+        get => field;
+        init => field = value;
+    } = TickerCodec;
+
+    public ProtobufCodec<MetricSample, MetricAck> MetricsCodec
+    {
+        get => field;
+        init => field = value;
+    } = MetricsCodec;
+
+    public ProtobufCodec<InsightRequest, InsightSignal> InsightCodec
+    {
+        get => field;
+        init => field = value;
+    } = InsightCodec;
+}
 
 internal static class StreamingHandlers
 {
@@ -445,6 +488,56 @@ internal static class InsightScript
     }
 }
 
-internal sealed record TickerSubscription(string Symbol, int BatchSize = 10, int IntervalMs = 500);
+internal sealed record TickerSubscription(string Symbol, int BatchSize = 10, int IntervalMs = 500)
+{
+    public string Symbol
+    {
+        get => field;
+        init => field = value;
+    } = Symbol;
 
-internal sealed record TickerUpdate(string Symbol, decimal Price, decimal Delta, int Sequence, DateTimeOffset AsOf);
+    public int BatchSize
+    {
+        get => field;
+        init => field = value;
+    } = BatchSize;
+
+    public int IntervalMs
+    {
+        get => field;
+        init => field = value;
+    } = IntervalMs;
+}
+
+internal sealed record TickerUpdate(string Symbol, decimal Price, decimal Delta, int Sequence, DateTimeOffset AsOf)
+{
+    public string Symbol
+    {
+        get => field;
+        init => field = value;
+    } = Symbol;
+
+    public decimal Price
+    {
+        get => field;
+        init => field = value;
+    } = Price;
+
+    public decimal Delta
+    {
+        get => field;
+        init => field = value;
+    } = Delta;
+
+    public int Sequence
+    {
+        get => field;
+        init => field = value;
+    } = Sequence;
+
+    public DateTimeOffset AsOf
+    {
+        get => field;
+        init => field = value;
+    } = AsOf;
+}
