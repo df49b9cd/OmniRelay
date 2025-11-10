@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Net;
 using System.Security.Authentication;
@@ -314,14 +315,11 @@ public sealed class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcServerInter
                     options.EnableDetailedErrors = detailedErrors;
                 }
 
-                if (_serverRuntimeOptions.Interceptors is { Count: > 0 } interceptors)
+                if (_serverRuntimeOptions?.AnnotatedInterceptors is { Count: > 0 } interceptors)
                 {
-                    foreach (var interceptorType in interceptors)
+                    foreach (var interceptor in interceptors)
                     {
-                        if (interceptorType is null)
-                        {
-                            continue;
-                        }
+                        var interceptorType = interceptor.Type;
 
                         if (interceptorType == typeof(GrpcServerLoggingInterceptor))
                         {
@@ -576,4 +574,5 @@ public sealed class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcServerInter
         _app = null;
         _isDraining = false;
     }
+
 }

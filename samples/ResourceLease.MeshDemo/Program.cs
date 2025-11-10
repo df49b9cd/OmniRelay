@@ -1,5 +1,5 @@
+using System.Linq;
 using System.Text;
-using System.Text.Json;
 using Microsoft.Extensions.Options;
 using OmniRelay.Core.Peers;
 using OmniRelay.Dispatcher;
@@ -111,25 +111,26 @@ if (activeRoles.HasRole(MeshDemoRole.Diagnostics))
     {
         var payload = request.ToPayload();
         var response = await client.EnqueueAsync(payload, ct).ConfigureAwait(false);
-        return Results.Json(response, MeshJson.Options);
+        return TypedResults.Json(response, ResourceLeaseJson.Context.ResourceLeaseEnqueueResponse);
     });
 
     app.MapGet("/demo/lease-health", (PeerLeaseHealthTracker tracker) =>
     {
         var snapshots = tracker.Snapshot();
-        return Results.Json(PeerLeaseHealthDiagnostics.FromSnapshots(snapshots), MeshJson.Options);
+        return TypedResults.Json(PeerLeaseHealthDiagnostics.FromSnapshots(snapshots), MeshJson.Context.PeerLeaseHealthDiagnostics);
     });
 
     app.MapGet("/demo/backpressure", (ResourceLeaseBackpressureDiagnosticsListener listener) =>
     {
         return listener.Latest is { } latest
-            ? Results.Json(latest, MeshJson.Options)
+            ? TypedResults.Json(latest, MeshJson.Context.ResourceLeaseBackpressureSignal)
             : Results.NoContent();
     });
 
     app.MapGet("/demo/replication", (MeshReplicationLog log) =>
     {
-        return Results.Json(log.GetRecent(), MeshJson.Options);
+        var recent = log.GetRecent().ToArray();
+        return TypedResults.Json(recent, ResourceLeaseJson.Context.ResourceLeaseReplicationEventArray);
     });
 }
 

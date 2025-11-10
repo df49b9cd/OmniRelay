@@ -1,5 +1,6 @@
 using System.Net.WebSockets;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Hugo;
 using OmniRelay.Core;
 using OmniRelay.Errors;
@@ -10,7 +11,7 @@ namespace OmniRelay.Transport.Http;
 /// Internal framing protocol for OmniRelay HTTP duplex streaming over WebSockets.
 /// Handles framing, serialization, and error envelopes.
 /// </summary>
-internal static class HttpDuplexProtocol
+internal static partial class HttpDuplexProtocol
 {
     internal enum FrameType : byte
     {
@@ -23,11 +24,7 @@ internal static class HttpDuplexProtocol
         ResponseError = 0x13
     }
 
-    private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web)
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        PropertyNameCaseInsensitive = true
-    };
+    private static readonly HttpDuplexProtocolJsonContext JsonContext = HttpDuplexProtocolJsonContext.Default;
 
     /// <summary>
     /// Sends a framed WebSocket message with the specified frame type and payload.
@@ -130,7 +127,7 @@ internal static class HttpDuplexProtocol
             Code = error.Code
         };
 
-        return JsonSerializer.SerializeToUtf8Bytes(envelope, SerializerOptions);
+        return JsonSerializer.SerializeToUtf8Bytes(envelope, JsonContext.ErrorEnvelope);
     }
 
     /// <summary>
@@ -152,7 +149,7 @@ internal static class HttpDuplexProtocol
                 : null
         };
 
-        return JsonSerializer.SerializeToUtf8Bytes(envelope, SerializerOptions);
+        return JsonSerializer.SerializeToUtf8Bytes(envelope, JsonContext.ResponseMetaEnvelope);
     }
 
     /// <summary>
@@ -170,7 +167,7 @@ internal static class HttpDuplexProtocol
 
         try
         {
-            var envelope = JsonSerializer.Deserialize<ResponseMetaEnvelope>(payload, SerializerOptions);
+            var envelope = JsonSerializer.Deserialize(payload, JsonContext.ResponseMetaEnvelope);
             if (envelope is null)
             {
                 return new ResponseMeta(transport: transport);
@@ -210,7 +207,7 @@ internal static class HttpDuplexProtocol
     {
         try
         {
-            var envelope = JsonSerializer.Deserialize<ErrorEnvelope>(payload, SerializerOptions);
+            var envelope = JsonSerializer.Deserialize(payload, JsonContext.ErrorEnvelope);
             if (envelope is null)
             {
                 return OmniRelayErrorAdapter.FromStatus(OmniRelayStatusCode.Internal, "duplex error", transport: transport);
@@ -259,6 +256,14 @@ internal static class HttpDuplexProtocol
             init => field = value;
         } = Payload;
     }
+
+    [JsonSourceGenerationOptions(
+        JsonSerializerDefaults.Web,
+        PropertyNameCaseInsensitive = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonSerializable(typeof(ErrorEnvelope))]
+    [JsonSerializable(typeof(ResponseMetaEnvelope))]
+    private sealed partial class HttpDuplexProtocolJsonContext : JsonSerializerContext;
 
     private sealed class ErrorEnvelope
     {

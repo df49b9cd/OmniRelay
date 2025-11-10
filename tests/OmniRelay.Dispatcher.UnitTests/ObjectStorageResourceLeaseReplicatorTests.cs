@@ -29,7 +29,7 @@ public sealed class ObjectStorageResourceLeaseReplicatorTests
 
         var blobPath = Path.Combine(temp.Path, keys[0].Replace('/', Path.DirectorySeparatorChar));
         var json = await File.ReadAllTextAsync(blobPath, cancellationToken);
-        var stored = JsonSerializer.Deserialize<ResourceLeaseReplicationEvent>(json, ResourceLeaseJson.Options);
+        var stored = JsonSerializer.Deserialize(json, ResourceLeaseJsonContext.Default.ResourceLeaseReplicationEvent);
         Assert.Equal(sink.Events[0].SequenceNumber, stored?.SequenceNumber);
     }
 

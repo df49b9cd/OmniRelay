@@ -122,7 +122,7 @@ VALUES ($sequence, $type, $timestamp, $peerId, $json);";
         insert.Parameters.AddWithValue("$timestamp", replicationEvent.Timestamp.ToString("O"));
         insert.Parameters.AddWithValue("$peerId", (object?)replicationEvent.PeerId ?? DBNull.Value);
 
-        var json = JsonSerializer.Serialize(replicationEvent, ResourceLeaseJson.Options);
+        var json = JsonSerializer.Serialize(replicationEvent, ResourceLeaseJsonContext.Default.ResourceLeaseReplicationEvent);
         insert.Parameters.AddWithValue("$json", json);
 
         await insert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);

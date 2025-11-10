@@ -33,7 +33,7 @@ namespace OmniRelay.Transport.Http;
 /// Hosts the OmniRelay HTTP inbound server exposing RPC endpoints, introspection, and health probes.
 /// Supports HTTP/1.1 and HTTP/2, and can enable HTTP/3 (QUIC) when configured with TLS 1.3.
 /// </summary>
-public sealed class HttpInbound : ILifecycle, IDispatcherAware
+public sealed partial class HttpInbound : ILifecycle, IDispatcherAware
 {
     private readonly string[] _urls;
     private readonly Action<IServiceCollection>? _configureServices;
@@ -47,8 +47,7 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
     private int _activeRequestCount;
     private readonly object _contextLock = new();
     private readonly HashSet<HttpContext> _activeHttpContexts = [];
-    private static readonly JsonSerializerOptions IntrospectionSerializerOptions = CreateIntrospectionSerializerOptions();
-    private static readonly JsonSerializerOptions HealthSerializerOptions = CreateHealthSerializerOptions();
+    private static readonly HttpInboundJsonContext JsonContext = HttpInboundJsonContext.Default;
     private const string RetryAfterHeaderValue = "1";
     private const int DefaultDuplexFrameBytes = 16 * 1024;
 
@@ -405,25 +404,6 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
         Interlocked.Exchange(ref _activeRequestCount, 0);
     }
 
-    private static JsonSerializerOptions CreateIntrospectionSerializerOptions()
-    {
-        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
-        {
-            WriteIndented = true,
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-        };
-
-        options.Converters.Add(new JsonStringEnumConverter());
-        return options;
-    }
-
-    private static JsonSerializerOptions CreateHealthSerializerOptions() =>
-        new(JsonSerializerDefaults.Web)
-        {
-            WriteIndented = false,
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-        };
-
     private static bool TrySetQuicOption(QuicTransportOptions options, string propertyName, object value)
     {
         var property = typeof(QuicTransportOptions).GetProperty(propertyName);
@@ -509,7 +489,7 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
         await JsonSerializer.SerializeAsync(
                 context.Response.Body,
                 introspection,
-                IntrospectionSerializerOptions,
+                JsonContext.DispatcherIntrospection,
                 context.RequestAborted)
             .ConfigureAwait(false);
     }
@@ -558,19 +538,17 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
         context.Response.StatusCode = healthy ? StatusCodes.Status200OK : StatusCodes.Status503ServiceUnavailable;
         context.Response.ContentType = MediaTypeNames.Application.Json;
 
-        var payload = new
-        {
-            status = healthy ? "ok" : "unavailable",
-            mode = readiness ? "ready" : "live",
-            issues = issues.Count == 0 ? [] : issues.ToArray(),
-            activeRequests = Math.Max(Volatile.Read(ref _activeRequestCount), 0),
-            draining = _isDraining
-        };
+        var payload = new HealthPayload(
+            healthy ? "ok" : "unavailable",
+            readiness ? "ready" : "live",
+            issues.Count == 0 ? Array.Empty<string>() : issues.ToArray(),
+            Math.Max(Volatile.Read(ref _activeRequestCount), 0),
+            _isDraining);
 
         await JsonSerializer.SerializeAsync(
                 context.Response.Body,
                 payload,
-                HealthSerializerOptions,
+                JsonContext.HealthPayload,
                 context.RequestAborted)
             .ConfigureAwait(false);
     }
@@ -1515,15 +1493,20 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
 
         context.Response.ContentType = MediaTypeNames.Application.Json;
 
-        var payload = new
+        Dictionary<string, string?>? metadata = null;
+        if (error?.Metadata is { Count: > 0 })
         {
-            message,
-            status = payloadStatus,
-            code = error?.Code,
-            metadata = error?.Metadata
-        };
+            metadata = error.Metadata.ToDictionary(kvp => kvp.Key, kvp => kvp.Value?.ToString(), StringComparer.OrdinalIgnoreCase);
+        }
 
-        await JsonSerializer.SerializeAsync(context.Response.Body, payload, cancellationToken: context.RequestAborted).ConfigureAwait(false);
+        var payload = new ErrorPayload(message, payloadStatus, error?.Code, metadata);
+
+        await JsonSerializer.SerializeAsync(
+                context.Response.Body,
+                payload,
+                JsonContext.ErrorPayload,
+                context.RequestAborted)
+            .ConfigureAwait(false);
     }
 
     private static string FormatStatusToken(OmniRelayStatusCode status)
@@ -1564,5 +1547,20 @@ public sealed class HttpInbound : ILifecycle, IDispatcherAware
             return Encoding.UTF8.GetBytes(eventFrame);
         }
     }
+
+
+    private sealed record HealthPayload(string Status, string Mode, string[] Issues, int ActiveRequests, bool Draining);
+
+    private sealed record ErrorPayload(string Message, string Status, string? Code, IDictionary<string, string?>? Metadata);
+
+    [JsonSourceGenerationOptions(
+        JsonSerializerDefaults.Web,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        UseStringEnumConverter = true,
+        WriteIndented = true)]
+    [JsonSerializable(typeof(DispatcherIntrospection))]
+    [JsonSerializable(typeof(HealthPayload))]
+    [JsonSerializable(typeof(ErrorPayload))]
+    private sealed partial class HttpInboundJsonContext : JsonSerializerContext;
 
 }

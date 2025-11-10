@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Extensions.Options;
 using OmniRelay.Dispatcher;
 
@@ -62,10 +63,9 @@ public sealed class LeaseSeederHostedService : BackgroundService
     }
 
     private static byte[] MeshJsonPayload(int id) =>
-        System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new
-        {
-            orderId = id,
-            amount = (id % 5 + 1) * 10,
-            createdAt = DateTimeOffset.UtcNow
-        });
+        JsonSerializer.SerializeToUtf8Bytes(
+            new LeaseSeederPayload(id, (id % 5 + 1) * 10, DateTimeOffset.UtcNow),
+            MeshJson.Context.LeaseSeederPayload);
 }
+
+internal sealed record LeaseSeederPayload(int OrderId, int Amount, DateTimeOffset CreatedAt);

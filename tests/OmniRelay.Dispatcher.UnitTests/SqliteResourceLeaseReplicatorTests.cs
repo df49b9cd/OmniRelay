@@ -31,7 +31,7 @@ public sealed class SqliteResourceLeaseReplicatorTests
         var json = (string?)await command.ExecuteScalarAsync(cancellationToken);
         Assert.NotNull(json);
 
-        var stored = JsonSerializer.Deserialize<ResourceLeaseReplicationEvent>(json!, ResourceLeaseJson.Options);
+        var stored = JsonSerializer.Deserialize(json!, ResourceLeaseJsonContext.Default.ResourceLeaseReplicationEvent);
         Assert.NotNull(stored);
         Assert.Equal(sink.Events[0].SequenceNumber, stored!.SequenceNumber);
     }

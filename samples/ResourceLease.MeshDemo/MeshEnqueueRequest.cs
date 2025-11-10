@@ -15,11 +15,9 @@ public sealed record MeshEnqueueRequest(
     public ResourceLeaseItemPayload ToPayload()
     {
         var effectiveBody = string.IsNullOrWhiteSpace(Body)
-            ? JsonSerializer.SerializeToUtf8Bytes(new
-            {
-                message = $"work:{ResourceId}",
-                createdAt = DateTimeOffset.UtcNow
-            })
+            ? JsonSerializer.SerializeToUtf8Bytes(
+                new MeshEnqueuePayloadBody($"work:{ResourceId}", DateTimeOffset.UtcNow),
+                MeshJson.Context.MeshEnqueuePayloadBody)
             : Encoding.UTF8.GetBytes(Body!);
 
         return new ResourceLeaseItemPayload(
@@ -32,3 +30,5 @@ public sealed record MeshEnqueueRequest(
             RequestId ?? Guid.NewGuid().ToString("N"));
     }
 }
+
+internal sealed record MeshEnqueuePayloadBody(string Message, DateTimeOffset CreatedAt);

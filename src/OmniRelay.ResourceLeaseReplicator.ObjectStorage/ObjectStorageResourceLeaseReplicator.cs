@@ -43,7 +43,7 @@ public sealed class ObjectStorageResourceLeaseReplicator : IResourceLeaseReplica
         };
 
         var key = $"{_keyPrefix}{ordered.SequenceNumber:D20}.json";
-        var payload = JsonSerializer.SerializeToUtf8Bytes(ordered, ResourceLeaseJson.Options);
+        var payload = JsonSerializer.SerializeToUtf8Bytes(ordered, ResourceLeaseJsonContext.Default.ResourceLeaseReplicationEvent);
         await _objectStore.WriteAsync(key, payload, "application/json", cancellationToken).ConfigureAwait(false);
         await FanOutAsync(ordered, cancellationToken).ConfigureAwait(false);
     }

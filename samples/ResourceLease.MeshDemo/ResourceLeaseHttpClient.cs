@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using Microsoft.Extensions.Options;
 using OmniRelay.Dispatcher;
 
@@ -9,7 +10,7 @@ public sealed class ResourceLeaseHttpClient
 {
     private readonly HttpClient _httpClient;
     private readonly MeshDemoOptions _options;
-    private static readonly JsonSerializerOptions SerializerOptions = MeshJson.Options;
+    private static ResourceLeaseJsonContext JsonContext => ResourceLeaseJson.Context;
 
     public ResourceLeaseHttpClient(HttpClient httpClient, IOptions<MeshDemoOptions> options)
     {
@@ -23,6 +24,8 @@ public sealed class ResourceLeaseHttpClient
         return await SendAsync<ResourceLeaseEnqueueRequest, ResourceLeaseEnqueueResponse>(
             "resourcelease.mesh::enqueue",
             request,
+            JsonContext.ResourceLeaseEnqueueRequest,
+            JsonContext.ResourceLeaseEnqueueResponse,
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -32,6 +35,8 @@ public sealed class ResourceLeaseHttpClient
         return await SendAsync<ResourceLeaseLeaseRequest, ResourceLeaseLeaseResponse>(
             "resourcelease.mesh::lease",
             request,
+            JsonContext.ResourceLeaseLeaseRequest,
+            JsonContext.ResourceLeaseLeaseResponse,
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -41,6 +46,8 @@ public sealed class ResourceLeaseHttpClient
         await SendAsync<ResourceLeaseCompleteRequest, ResourceLeaseAcknowledgeResponse>(
             "resourcelease.mesh::complete",
             request,
+            JsonContext.ResourceLeaseCompleteRequest,
+            JsonContext.ResourceLeaseAcknowledgeResponse,
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -50,6 +57,8 @@ public sealed class ResourceLeaseHttpClient
         await SendAsync<ResourceLeaseHeartbeatRequest, ResourceLeaseAcknowledgeResponse>(
             "resourcelease.mesh::heartbeat",
             request,
+            JsonContext.ResourceLeaseHeartbeatRequest,
+            JsonContext.ResourceLeaseAcknowledgeResponse,
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -68,23 +77,37 @@ public sealed class ResourceLeaseHttpClient
         await SendAsync<ResourceLeaseFailRequest, ResourceLeaseAcknowledgeResponse>(
             "resourcelease.mesh::fail",
             request,
+            JsonContext.ResourceLeaseFailRequest,
+            JsonContext.ResourceLeaseAcknowledgeResponse,
             cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task<TResponse> SendAsync<TRequest, TResponse>(string procedure, TRequest body, CancellationToken cancellationToken)
+    private async Task<TResponse> SendAsync<TRequest, TResponse>(
+        string procedure,
+        TRequest body,
+        JsonTypeInfo<TRequest> requestTypeInfo,
+        JsonTypeInfo<TResponse> responseTypeInfo,
+        CancellationToken cancellationToken)
     {
         var httpRequest = new HttpRequestMessage(HttpMethod.Post, _httpClient.BaseAddress);
         httpRequest.Headers.TryAddWithoutValidation("Rpc-Procedure", procedure);
         httpRequest.Headers.TryAddWithoutValidation("Rpc-Service", _options.ServiceName);
         httpRequest.Headers.TryAddWithoutValidation("Rpc-Encoding", "application/json");
         httpRequest.Headers.TryAddWithoutValidation("Rpc-Caller", "mesh-demo-host");
-        httpRequest.Content = JsonContent.Create(body, options: SerializerOptions);
+        httpRequest.Content = JsonContent.Create(body, requestTypeInfo);
 
         using var response = await _httpClient.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
 
-        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        var result = await JsonSerializer.DeserializeAsync<TResponse>(stream, SerializerOptions, cancellationToken).ConfigureAwait(false);
-        return result ?? throw new InvalidOperationException($"RPC '{procedure}' returned no payload.");
+        var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var result = await JsonSerializer.DeserializeAsync(stream, responseTypeInfo, cancellationToken).ConfigureAwait(false);
+            return result ?? throw new InvalidOperationException($"RPC '{procedure}' returned no payload.");
+        }
+        finally
+        {
+            await stream.DisposeAsync().ConfigureAwait(false);
+        }
     }
 }

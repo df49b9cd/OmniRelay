@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Grpc.Core.Interceptors;
 using OmniRelay.Transport.Http;
 
@@ -104,11 +106,40 @@ public sealed record GrpcServerRuntimeOptions
         init => field = value;
     }
 
+    private IReadOnlyList<Type> _interceptors = [];
+
     public IReadOnlyList<Type> Interceptors
     {
-        get => field;
-        init => field = value;
-    } = [];
+        get => _interceptors;
+        init => _interceptors = value ?? [];
+    }
+
+    [UnconditionalSuppressMessage("Trimming", "IL2067", Justification = "Interceptor types are explicitly referenced via typeof() so their constructors remain linked.")]
+    [UnconditionalSuppressMessage("Trimming", "IL2072", Justification = "Interceptor types are explicitly referenced via typeof() so their constructors remain linked.")]
+    internal IReadOnlyList<AnnotatedServerInterceptorType> AnnotatedInterceptors
+    {
+        get
+        {
+            if (_annotatedInterceptors is null)
+            {
+                var list = new List<AnnotatedServerInterceptorType>(_interceptors.Count);
+                foreach (var type in _interceptors)
+                {
+                    if (type is not null)
+                    {
+                        var preserved = EnsureServerInterceptorType(type);
+                        list.Add(new AnnotatedServerInterceptorType(preserved));
+                    }
+                }
+
+                _annotatedInterceptors = list;
+            }
+
+            return _annotatedInterceptors;
+        }
+    }
+
+    private IReadOnlyList<AnnotatedServerInterceptorType>? _annotatedInterceptors;
 
     public TimeSpan? ServerStreamWriteTimeout
     {
@@ -139,4 +170,18 @@ public sealed record GrpcServerRuntimeOptions
         get => field;
         init => field = value;
     }
+    private static Type EnsureServerInterceptorType([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.PublicMethods)] Type type) =>
+        type ?? throw new ArgumentNullException(nameof(type));
+}
+
+internal readonly struct AnnotatedServerInterceptorType
+{
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.PublicMethods)]
+    private readonly Type _type;
+
+    public AnnotatedServerInterceptorType([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.PublicMethods)] Type type) =>
+        _type = type ?? throw new ArgumentNullException(nameof(type));
+
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.PublicMethods)]
+    public Type Type => _type;
 }

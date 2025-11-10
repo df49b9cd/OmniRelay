@@ -3,6 +3,7 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using Hugo;
 
@@ -11,11 +12,11 @@ namespace OmniRelay.Dispatcher;
 /// <summary>
 /// Stores deterministic records as JSON documents on the filesystem.
 /// </summary>
-public sealed class FileSystemDeterministicStateStore : IDeterministicStateStore
+public sealed partial class FileSystemDeterministicStateStore : IDeterministicStateStore
 {
     private readonly string _root;
-    private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
     private readonly ReaderWriterLockSlim _lock = new();
+    private static readonly FileSystemDeterministicStateStoreJsonContext JsonContext = FileSystemDeterministicStateStoreJsonContext.Default;
 
     public FileSystemDeterministicStateStore(string rootDirectory)
     {
@@ -41,7 +42,7 @@ public sealed class FileSystemDeterministicStateStore : IDeterministicStateStore
             }
 
             var json = File.ReadAllText(path, Encoding.UTF8);
-            var model = JsonSerializer.Deserialize<RecordModel>(json, _jsonOptions)!;
+            var model = JsonSerializer.Deserialize(json, JsonContext.RecordModel)!;
             record = model.ToRecord();
             return true;
         }
@@ -55,7 +56,7 @@ public sealed class FileSystemDeterministicStateStore : IDeterministicStateStore
     {
         var path = GetPath(key);
         var model = RecordModel.FromRecord(record);
-        var json = JsonSerializer.Serialize(model, _jsonOptions);
+        var json = JsonSerializer.Serialize(model, JsonContext.RecordModel);
 
         _lock.EnterWriteLock();
         try
@@ -73,7 +74,7 @@ public sealed class FileSystemDeterministicStateStore : IDeterministicStateStore
     {
         var path = GetPath(key);
         var model = RecordModel.FromRecord(record);
-        var json = JsonSerializer.Serialize(model, _jsonOptions);
+        var json = JsonSerializer.Serialize(model, JsonContext.RecordModel);
 
         _lock.EnterWriteLock();
         try
@@ -108,4 +109,8 @@ public sealed class FileSystemDeterministicStateStore : IDeterministicStateStore
         public static RecordModel FromRecord(DeterministicRecord record) =>
             new(record.Kind, record.Version, record.RecordedAt, record.Payload.ToArray());
     }
+
+    [JsonSourceGenerationOptions(JsonSerializerDefaults.Web)]
+    [JsonSerializable(typeof(RecordModel))]
+    private sealed partial class FileSystemDeterministicStateStoreJsonContext : JsonSerializerContext;
 }
