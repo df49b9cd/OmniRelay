@@ -91,13 +91,12 @@ OmniRelay already supplies the core pieces (SafeTaskQueue, replication, health g
    - `SqliteDeterministicStateStore` and `FileSystemDeterministicStateStore` ship with those packages and provide hardened `IDeterministicStateStore` adapters. Wire them through `ResourceLeaseDeterministicOptions` when deterministic capture is enabled.
    - Configuration remains opt-in so clusters can switch from the in-memory defaults gradually.
 3. **Expose mesh diagnostics + tooling**
-   - Add health/metrics endpoints (peer health snapshots, backpressure state, replication checkpoints) and CLI/admin tools for drain/restore/lease inspection.
-   - Provide scripts/operators for zero-downtime deployment/upgrade of the dispatcher component.
+   - Wire the diagnostics control plane, CLI helpers, and zero-downtime deployment workflows described in “Mesh Diagnostics + Tooling” so operators can inspect peers/backpressure, drain queues, and roll out new dispatcher versions without interrupting leases.
 4. **Ship reusable backpressure + routing hooks**
    - Publish reference implementations of `IResourceLeaseBackpressureListener` that integrate with RateLimitingMiddleware, traffic shutters, or orchestrators.
    - Add helper APIs for sharding/routing so services can segment queues without bespoke code.
 5. **Expand observability and governance integrations**
-   - Standardize OTLP metrics/traces/log formats; ship dashboard + alert packs; supply replication sinks that feed lineage/governance systems out-of-the-box.
+   - Use the instrumentation described in “Mesh Health Dashboard” + “Observability & Governance Integrations” to export OTLP metrics/traces/logs consistently and feed replication sinks into lineage/governance stores out-of-the-box.
 6. **Automate chaos/failure validation**
    - Create integration/chaos suites that kill peers, partition networks, corrupt replication logs, and assert deterministic recovery. Run them in CI/CD before releases.
 7. **Complete the resource-lease migration**
@@ -124,7 +123,7 @@ OmniRelay already supplies the core pieces (SafeTaskQueue, replication, health g
 7. **Mesh Health Dashboard**
    - Wire the standard metrics (lease depth, replication lag, peer health, backpressure) and OTLP spans described in “Mesh Health Dashboard” so operators can triage mesh hot spots in seconds with shared dashboards + alerts.
 8. **Failure Drills**
-   - Create playbooks + automated tests that simulate peer loss, partition, and recovery to validate that replication and deterministic replay avoid split-brain.
+   - See “Failure Drills” below for a repeatable chaos-playbook that kills peers, partitions transport links, and replays deterministic logs while automated tests assert lease ordering + replication consistency.
 9. **Resource-Lease Adoption Kit**
    - Provide migration docs + code mods so early adopters can update quickly from the deprecated `tablelease::*` contracts.
    - Ship analyzer/linting guidance that flags usage of removed namespace/table fields in downstream payload builders.
@@ -332,3 +331,68 @@ Tracking these TODO items will take the existing ResourceLease + health + replic
 5. **Dashboards & alerts to ship**
    - Overview board: per-shard pending/active gauges, healthy/unhealthy peer counts, replication lag heatmap, backpressure transition timeline.
    - Alert catalog: (a) Pending depth > 90% of high watermark for 5m, (b) Replication lag > lease duration for any shard, (c) Unhealthy peers >= 1 for 3m, (d) Backpressure toggling more than X times/hour (thrash indicator). Include runbooks referencing drain/restore, shard routing, and peer eviction procedures.
+
+### Failure Drills
+1. **Peer loss simulation**
+   - Procedure: start N dispatcher nodes with shared `PeerLeaseHealthTracker`, replication hub, and deterministic options enabled. Issue a steady load of leases, then kill one node’s process (or revoke its network access) without draining. Expected outcomes:
+     1. `PeerLeaseHealthTracker` marks the peer unhealthy within one heartbeat window (`/omnirelay/control/lease-health` shows `IsHealthy=false`).
+     2. Pending work for the lost peer is requeued automatically (pending depth rises but stabilizes once other peers pick it up).
+     3. Replication events continue with monotonically increasing sequence numbers; deterministic effect store records every event once.
+   - Tests: automate via integration tests that spawn multiple dispatcher hosts (e.g., using the sample `DispatcherHostFixture`), enqueue work, kill one host, and assert the queue drains fully within a timeout.
+2. **Network partition / replication lag**
+   - Procedure: run two dispatcher nodes with a shared `GrpcResourceLeaseReplicator`. Introduce a network partition (iptables drop) between node A and the replication hub. Continue enqueuing on node A while node B leases work. When the partition heals, the replicator should catch up in order.
+   - Validation checklist:
+     - `omnirelay.resourcelease.replication.lag` spikes during the partition but returns below SLA after recovery.
+     - Deterministic coordinator prevents replay divergence: compare deterministic store snapshots on both nodes before and after the partition; they should match.
+   - Tests: add a chaos test harness (e.g., in `OmniRelay.IntegrationTests`) that subclasses `CheckpointingResourceLeaseReplicationSink`, injects artificial lag, and asserts `ResourceLeaseReplicationMetrics` histograms stay bounded.
+3. **Split-brain avoidance**
+   - Procedure: simultaneously enqueue to multiple shards/regions, then restart half the nodes while replaying deterministic logs. Ensure only one owner processes each lease.
+   - Steps:
+     1. Enable `DeterministicResourceLeaseCoordinator` with a durable store (SQLite or FileSystem).
+     2. Enqueue unique payloads tagged with `RequestId`.
+     3. Crash nodes mid-processing (kill -9) to force recovery.
+     4. On restart, replay logs and assert each `RequestId` exists exactly once in downstream sinks (use integration test assertions or a verifying sink).
+   - Tooling: instrument `ResourceLeaseReplicationEvent` sinks to emit `lease.replay=true/false` tags so dashboards can display replay progress during drills.
+4. **Runbooks + automation**
+   - Capture each drill as a markdown playbook (preconditions, steps, expected metrics) and wrap it in scripts:
+     - `dotnet test tests/OmniRelay.IntegrationTests --filter PeerFailoverChaos` – spins up multi-node fixture and enforces the assertions above.
+     - `./tools/mesh-chaos.sh --partition grpc` – CLI that toggles iptables rules, monitors `replication.lag`, and rolls back after verifying convergence.
+   - Schedule drills (e.g., monthly) and require operators to log evidence: screenshots of dashboards, deterministic store hashes, and replication lag graphs that confirm no split-brain occurred.
+
+### Mesh Diagnostics + Tooling
+1. **Diagnostics control plane**
+   - Enable `DiagnosticsConfiguration.Runtime.EnableControlPlane=true` so every HTTP inbound automatically hosts `/omnirelay/control/*` endpoints. Current set:
+     - `/omnirelay/control/logging` + `/omnirelay/control/tracing` (existing runtime toggles).
+     - `/omnirelay/control/lease-health` (added when a `IPeerHealthSnapshotProvider` is registered) returns the full `PeerLeaseHealthDiagnostics` payload plus healthy/unhealthy counts.
+     - `/omnirelay/control/backpressure` and `/omnirelay/control/backpressure/stream` (when `ResourceLeaseBackpressureDiagnosticsListener` is registered) publish the latest SafeTaskQueue state and a streaming feed for dashboards/CLI “watch” commands.
+   - Extend the inbound app with checkpoint endpoints when durable replicators are in use: e.g., `/omnirelay/control/replication/checkpoint` returning the last applied sequence per sink or shard (implement as thin wrappers over `CheckpointingResourceLeaseReplicationSink` instances).
+2. **CLI/admin workflows**
+   - Ship CLI verbs (or scripts built on `OmniRelay.Cli`) that wrap the canonical procedures:
+     - `omnirelay resourcelease drain --service metadata --namespace resourcelease.billing` → calls `resourcelease.billing::drain`, writes JSON to disk for backup/audit.
+     - `omnirelay resourcelease restore --file drained.json` → replays `ResourceLeasePendingItemDto` records into the matching namespace.
+     - `omnirelay resourcelease stats --watch` → polls the diagnostics control plane and prints pending/active/backpressure state every few seconds.
+   - Provide runbooks for peer triage: “List peers with last heartbeat + pending reassignments”, “Evict unhealthy peer and reintroduce after restart”, etc. Reference the control-plane endpoints so on-call engineers can copy/paste curl commands.
+3. **Zero-downtime dispatcher rollout**
+   - Build a simple operator script (PowerShell/Bash) that:
+     1. Sets `resourcelease::drain` on the target node and waits for pending=0.
+     2. Stops the node, upgrades binaries/container, and re-applies config.
+     3. Calls `resourcelease::restore` with the drained payloads and `resourcelease::restore` for deterministic checkpoints if needed.
+     4. Rejoins the node to the pool and verifies `lease-health` shows healthy within one heartbeat window.
+   - For rolling upgrades, stagger the script across nodes so at least two peers remain healthy at all times. Pair with a `PeerListCoordinator` alert that pages if available peers < quorum.
+
+### Observability & Governance Integrations
+1. **OTLP signal consistency**
+   - Metrics: reuse the meters `OmniRelay.Core.Peers`, `OmniRelay.Dispatcher.ResourceLease`, and `OmniRelay.Dispatcher.ResourceLeaseReplication` so every shard emits the same metric names/units. Set `service.name`, `service.namespace`, `shard.id`, and `rpc.service` resource attributes via OpenTelemetry resource builder to keep dashboards consistent across regions.
+   - Traces: ensure `RpcTracingMiddleware` runs before ResourceLease procedures so spans carry `rpc.shard_key`, `rpc.peer`, and `resourcelease.operation`. When enqueueing from other services, propagate context so you can trace from client enqueue → peer execution → downstream workflows.
+   - Logs: standardize log formats with `ILogger` scopes capturing `shard.id`, `lease.sequence`, and `owner.peer`. If you forward logs to OTLP/Log Analytics, add parsing rules that link logs back to replication events (e.g., `lease.sequence` matches replication `SequenceNumber`).
+2. **Governance-ready replication sinks**
+   - Provide sample `IResourceLeaseReplicationSink` implementations that push events into:
+     - Data Lake / object storage for audit (JSON lines per event with `shard.id`, `resource.type/id`, `owner.peer`, `deterministic.effect_id`).
+     - Lineage/catalog systems (e.g., emit Kafka records tagged with `resource.type`, `operation`, and `requestId` so governance tooling can track who touched what).
+   - Document schema expectations: use a versioned envelope with `sequenceNumber`, `timestamp`, `eventType`, `resourceLeaseItemPayload`, `ownerPeerId`, `metadata`, `deterministic.effectId`. Publish JSON schema so downstream teams can validate ingestion jobs.
+3. **Dashboards + alert packs**
+   - Provide ready-to-import Grafana/Chronograf dashboards: “Mesh Overview”, “Replication Health”, “Peer Health”. Each board references the metric names above and highlights key tags (service/shard/region).
+   - Ship alert definitions tailored to governance requirements, e.g., “Missing replication events for shard.id X for >5m”, “Lease replay count differs between region A and B”, “Deterministic store growth > threshold (possible stuck retention job)”.
+4. **Runway for compliance**
+   - Pair deterministic effect stores with retention policies and backup scripts. Document how to snapshot SQLite/FileSystem stores and push them to long-term retention buckets.
+   - Include guidance for reconstituting a shard from replication + deterministic logs (step-by-step instructions, expected metrics during rebuild, verification queries). This doubles as both a disaster-recovery drill and a compliance/audit deliverable.
