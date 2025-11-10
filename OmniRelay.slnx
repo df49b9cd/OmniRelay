@@ -32,6 +32,9 @@
     <Project Path="src/OmniRelay.Codegen.Protobuf.Generator/OmniRelay.Codegen.Protobuf.Generator.csproj" />
     <Project Path="src/OmniRelay.Codegen.Protobuf/OmniRelay.Codegen.Protobuf.csproj" />
     <Project Path="src/OmniRelay.Configuration/OmniRelay.Configuration.csproj" />
+    <Project Path="src/OmniRelay.ResourceLeaseReplicator.Sqlite/OmniRelay.ResourceLeaseReplicator.Sqlite.csproj" />
+    <Project Path="src/OmniRelay.ResourceLeaseReplicator.ObjectStorage/OmniRelay.ResourceLeaseReplicator.ObjectStorage.csproj" />
+    <Project Path="src/OmniRelay.ResourceLeaseReplicator.Grpc/OmniRelay.ResourceLeaseReplicator.Grpc.csproj" />
     <Project Path="src/OmniRelay/OmniRelay.csproj" />
   </Folder>
   <Folder Name="/tests/">

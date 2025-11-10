@@ -21,7 +21,7 @@ public sealed class GrpcResourceLeaseReplicator : IResourceLeaseReplicator
     {
     }
 
-    internal GrpcResourceLeaseReplicator(
+public GrpcResourceLeaseReplicator(
         IGrpcResourceLeaseReplicatorClient client,
         IEnumerable<IResourceLeaseReplicationSink>? sinks = null,
         long startingSequence = 0)

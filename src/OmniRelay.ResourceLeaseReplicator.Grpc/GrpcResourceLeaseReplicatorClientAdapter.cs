@@ -4,7 +4,7 @@ using OmniRelay.Dispatcher.Grpc;
 
 namespace OmniRelay.Dispatcher;
 
-internal interface IGrpcResourceLeaseReplicatorClient
+public interface IGrpcResourceLeaseReplicatorClient
 {
     Task PublishAsync(ResourceLeaseReplicationEventMessage message, CancellationToken cancellationToken);
 }

@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 
 namespace OmniRelay.Dispatcher;
 
-internal static class ResourceLeaseJson
+public static class ResourceLeaseJson
 {
     public static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web)
     {
