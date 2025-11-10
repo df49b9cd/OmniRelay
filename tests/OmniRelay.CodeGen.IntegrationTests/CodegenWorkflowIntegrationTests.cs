@@ -19,7 +19,7 @@ using OmniRelay.Tests;
 using OmniRelay.Tests.Protos;
 using Xunit;
 
-namespace OmniRelay.IntegrationTests;
+namespace OmniRelay.CodeGen.IntegrationTests;
 
 public class CodegenWorkflowIntegrationTests
 {

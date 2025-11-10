@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CA2007</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Hugo" />
+    <PackageReference Include="Google.Protobuf" />
+    <PackageReference Include="Grpc.Tools">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="NSubstitute" />
+    <PackageReference Include="Yarp.ReverseProxy" />
+    <PackageReference Include="coverlet.collector">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="../OmniRelay.Tests/TestPortAllocator.cs" Link="Support/TestPortAllocator.cs" />
+    <Compile Include="../OmniRelay.Codegen.Tests/Generated/TestService.OmniRelay.g.cs" Link="Support/Generated/TestService.OmniRelay.g.cs" />
+    <Compile Include="../TestSupport/Http3FactAttribute.cs" Link="Support/Http3FactAttribute.cs" />
+    <Compile Include="../TestSupport/Http3TestHelper.cs" Link="Support/Http3TestHelper.cs" />
+    <Compile Include="../OmniRelay.IntegrationTests/Support/TestCertificateFactory.cs" Link="Support/TestCertificateFactory.cs" />
+    <Compile Include="../OmniRelay.IntegrationTests/Support/HostedProtocolCaptureInterceptor.cs" Link="Support/HostedProtocolCaptureInterceptor.cs" />
+    <Compile Include="../OmniRelay.IntegrationTests/Support/GeneratedTestService.cs" Link="Support/GeneratedTestService.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/OmniRelay/OmniRelay.csproj" />
+    <ProjectReference Include="../../src/OmniRelay.Configuration/OmniRelay.Configuration.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Protobuf Include="../OmniRelay.Codegen.Tests/Protos/test_service.proto" Link="Protos/test_service.proto" GrpcServices="None" />
+  </ItemGroup>
+</Project>

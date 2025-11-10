@@ -7,9 +7,11 @@ using System.Net.Security;
 using System.Security.Authentication;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using System.Threading;
 using System.Threading.Tasks;
 using Grpc.Core;
 using Grpc.Core.Interceptors;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using OmniRelay.Core;
 using OmniRelay.Dispatcher;
@@ -30,7 +32,6 @@ public class GeneratedClientHttp3Tests
         {
             return;
         }
-
         using var certificate = CreateSelfSigned("CN=omnirelay-codegen-http3");
         var port = GetFreeTcpPort();
         var address = new Uri($"https://127.0.0.1:{port}");
@@ -38,18 +39,20 @@ public class GeneratedClientHttp3Tests
         var observed = new ConcurrentQueue<string>();
         var serverRuntime = new GrpcServerRuntimeOptions
         {
-            EnableHttp3 = true,
-            Interceptors = [typeof(ProtocolCaptureInterceptor)]
+            EnableHttp3 = true
         };
         var tls = new GrpcServerTlsOptions { Certificate = certificate };
 
         var options = new DispatcherOptions("codegen-svc");
         var inbound = new GrpcInbound(
             [address.ToString()],
-            configureServices: services =>
+            configureApp: app =>
             {
-                services.AddSingleton(observed);
-                services.AddSingleton<ProtocolCaptureInterceptor>();
+                app.Use(async (context, next) =>
+                {
+                    observed.Enqueue(context.Request.Protocol ?? string.Empty);
+                    await next();
+                });
             },
             serverTlsOptions: tls,
             serverRuntimeOptions: serverRuntime);
@@ -66,7 +69,13 @@ public class GeneratedClientHttp3Tests
         var outbound = new GrpcOutbound(
             [address],
             remoteService: "codegen-svc",
-            clientRuntimeOptions: new GrpcClientRuntimeOptions { EnableHttp3 = true });
+            clientRuntimeOptions: new GrpcClientRuntimeOptions { EnableHttp3 = true },
+            clientTlsOptions: new GrpcClientTlsOptions
+            {
+                EnabledProtocols = SslProtocols.Tls13,
+                CheckCertificateRevocation = false,
+                ServerCertificateValidationCallback = static (_, _, _, _) => true
+            });
 
         var clientOptions = new DispatcherOptions("client-gw");
         clientOptions.AddUnaryOutbound("codegen-svc", null, outbound);
@@ -85,7 +94,7 @@ public class GeneratedClientHttp3Tests
             await dispatcher.StopOrThrowAsync(ct);
         }
 
-        Assert.True(observed.TryDequeue(out var protocol), "No protocol captured.");
+        Assert.True(TryDequeueWithWait(observed, out var protocol), "No protocol captured.");
         Assert.StartsWith("HTTP/3", protocol, StringComparison.Ordinal);
     }
 
@@ -99,18 +108,20 @@ public class GeneratedClientHttp3Tests
         var observed = new ConcurrentQueue<string>();
         var serverRuntime = new GrpcServerRuntimeOptions
         {
-            EnableHttp3 = false,
-            Interceptors = [typeof(ProtocolCaptureInterceptor)]
+            EnableHttp3 = false
         };
         var tls = new GrpcServerTlsOptions { Certificate = certificate };
 
         var options = new DispatcherOptions("codegen-svc-h2");
         var inbound = new GrpcInbound(
             [address.ToString()],
-            configureServices: services =>
+            configureApp: app =>
             {
-                services.AddSingleton(observed);
-                services.AddSingleton<ProtocolCaptureInterceptor>();
+                app.Use(async (context, next) =>
+                {
+                    observed.Enqueue(context.Request.Protocol ?? string.Empty);
+                    await next();
+                });
             },
             serverTlsOptions: tls,
             serverRuntimeOptions: serverRuntime);
@@ -130,7 +141,13 @@ public class GeneratedClientHttp3Tests
             clientRuntimeOptions: new GrpcClientRuntimeOptions
             {
                 EnableHttp3 = true,
-                VersionPolicy = HttpVersionPolicy.RequestVersionOrLower
+                VersionPolicy = HttpVersionPolicy.RequestVersionOrHigher
+            },
+            clientTlsOptions: new GrpcClientTlsOptions
+            {
+                EnabledProtocols = SslProtocols.Tls13,
+                CheckCertificateRevocation = false,
+                ServerCertificateValidationCallback = static (_, _, _, _) => true
             });
 
         var clientOptions = new DispatcherOptions("client-gw-h2");
@@ -150,7 +167,7 @@ public class GeneratedClientHttp3Tests
             await dispatcher.StopOrThrowAsync(ct);
         }
 
-        Assert.True(observed.TryDequeue(out var protocol), "No protocol captured.");
+        Assert.True(TryDequeueWithWait(observed, out var protocol), "No protocol captured.");
         Assert.StartsWith("HTTP/2", protocol, StringComparison.Ordinal);
     }
 
@@ -213,18 +230,19 @@ public class GeneratedClientHttp3Tests
         listener.Stop();
         return port;
     }
-
-    private sealed class ProtocolCaptureInterceptor(ConcurrentQueue<string> observed) : Interceptor
+    private static bool TryDequeueWithWait<T>(ConcurrentQueue<T> queue, out T value, int timeoutMilliseconds = 5000)
     {
-        private readonly ConcurrentQueue<string> _observed = observed;
-        public override async Task<TResponse> UnaryServerHandler<TRequest, TResponse>(TRequest request, ServerCallContext context, UnaryServerMethod<TRequest, TResponse> continuation)
+        var start = Environment.TickCount64;
+        while (Environment.TickCount64 - start < timeoutMilliseconds)
         {
-            var httpContext = context.GetHttpContext();
-            if (httpContext is not null)
+            if (queue.TryDequeue(out value!))
             {
-                _observed.Enqueue(httpContext.Request.Protocol);
+                return true;
             }
-            return await continuation(request, context);
+
+            Thread.Sleep(10);
         }
+
+        value = default!;
+        return false;
     }
-}

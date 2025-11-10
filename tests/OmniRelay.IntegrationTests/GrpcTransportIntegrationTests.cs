@@ -324,48 +324,6 @@ public class GrpcTransportIntegrationTests
         AssertLogContains(observed, "gRPC HTTP/3 enabled on");
     }
 
-    [Fact(Timeout = 30_000)]
-    public async Task GeneratedServiceHonorsProtobufCodegen()
-    {
-        var port = TestPortAllocator.GetRandomPort();
-        var address = new Uri($"http://127.0.0.1:{port}");
-
-        var options = new DispatcherOptions(ServiceName);
-        var inbound = new GrpcInbound([address.ToString()]);
-        options.AddLifecycle("grpc-generated-inbound", inbound);
-        var dispatcher = new Dispatcher.Dispatcher(options);
-        dispatcher.RegisterTestService(new GeneratedTestService());
-
-        var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
-        await WaitForGrpcReadyAsync(address, ct);
-
-        try
-        {
-            using var channel = Grpc.Net.Client.GrpcChannel.ForAddress(address);
-            var invoker = channel.CreateCallInvoker();
-            var marshaller = Marshallers.Create(
-                (byte[] payload) => payload ?? Array.Empty<byte>(),
-                payload => payload ?? Array.Empty<byte>());
-            var method = new Method<byte[], byte[]>(MethodType.Unary, ServiceName, "UnaryCall", marshaller, marshaller);
-
-            var metadata = new Metadata
-            {
-                { "rpc-service", ServiceName },
-                { "rpc-procedure", "UnaryCall" },
-                { "rpc-encoding", "protobuf" }
-            };
-
-            var call = invoker.AsyncUnaryCall(method, null, new CallOptions(metadata, cancellationToken: ct), []);
-            var response = await call.ResponseAsync.WaitAsync(ct);
-            Assert.NotNull(response);
-        }
-        finally
-        {
-            await dispatcher.StopOrThrowAsync(CancellationToken.None);
-        }
-    }
-
     private static async Task ExerciseGeneratedClientAsync(TestServiceOmniRelay.TestServiceClient client, GeneratedTestService impl, CancellationToken cancellationToken)
     {
         var deadline = DateTimeOffset.UtcNow.AddSeconds(5);
@@ -463,75 +421,6 @@ public class GrpcTransportIntegrationTests
         throw new TimeoutException("The gRPC inbound failed to bind within the allotted time.");
     }
 
-    private sealed class GeneratedTestService : TestServiceOmniRelay.ITestService
-    {
-        public TaskCompletionSource<RequestMeta> UnaryMeta
-        {
-            get => field;
-        } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public TaskCompletionSource<RequestMeta> ServerStreamMeta
-        {
-            get => field;
-        } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public TaskCompletionSource<RequestMeta> ClientStreamMeta
-        {
-            get => field;
-        } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public TaskCompletionSource<RequestMeta> DuplexMeta
-        {
-            get => field;
-        } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public ValueTask<Response<UnaryResponse>> UnaryCallAsync(Request<UnaryRequest> request, CancellationToken cancellationToken)
-        {
-            UnaryMeta.TrySetResult(request.Meta);
-            var payload = new UnaryResponse { Message = $"{request.Body.Message}-unary-response" };
-            return ValueTask.FromResult(Response<UnaryResponse>.Create(payload, new ResponseMeta(encoding: "protobuf")));
-        }
-
-        public async ValueTask ServerStreamAsync(Request<StreamRequest> request, ProtobufCallAdapters.ProtobufServerStreamWriter<StreamRequest, StreamResponse> stream, CancellationToken cancellationToken)
-        {
-            ServerStreamMeta.TrySetResult(request.Meta);
-            for (var index = 0; index < 3; index++)
-            {
-                var writeResult = await stream.WriteAsync(new StreamResponse { Value = $"{request.Body.Value}#{index}" }, cancellationToken).ConfigureAwait(false);
-                writeResult.ThrowIfFailure();
-            }
-        }
-
-        public async ValueTask<Response<UnaryResponse>> ClientStreamAsync(ProtobufCallAdapters.ProtobufClientStreamContext<StreamRequest, UnaryResponse> context, CancellationToken cancellationToken)
-        {
-            ClientStreamMeta.TrySetResult(context.Meta);
-            var sum = 0;
-            await foreach (var chunkResult in context.ReadAllAsync(cancellationToken).ConfigureAwait(false))
-            {
-                var chunk = chunkResult.ValueOrThrow();
-                _ = int.TryParse(chunk.Value, out var value);
-                sum += value;
-            }
-
-            var payload = new UnaryResponse { Message = $"sum:{sum}" };
-            return Response<UnaryResponse>.Create(payload, new ResponseMeta(encoding: "protobuf"));
-        }
-
-        public async ValueTask DuplexStreamAsync(ProtobufCallAdapters.ProtobufDuplexStreamContext<StreamRequest, StreamResponse> context, CancellationToken cancellationToken)
-        {
-            DuplexMeta.TrySetResult(context.RequestMeta);
-            var initialWrite = await context.WriteAsync(new StreamResponse { Value = "ready" }, cancellationToken).ConfigureAwait(false);
-            initialWrite.ThrowIfFailure();
-
-            await foreach (var chunkResult in context.ReadAllAsync(cancellationToken).ConfigureAwait(false))
-            {
-                var chunk = chunkResult.ValueOrThrow();
-                var writeResult = await context.WriteAsync(new StreamResponse { Value = $"echo:{chunk.Value}" }, cancellationToken).ConfigureAwait(false);
-                writeResult.ThrowIfFailure();
-            }
-        }
-    }
-
     private sealed class RecordingServerInterceptor(string id, ConcurrentQueue<string> log) : Interceptor
     {
         public override async Task<TResponse> UnaryServerHandler<TRequest, TResponse>(
@@ -617,7 +506,7 @@ public class GrpcTransportIntegrationTests
             ServerCallContext context,
             UnaryServerMethod<TRequest, TResponse> continuation)
         {
-            observed.Enqueue(context.GetHttpContext()?.Request.Protocol ?? "unknown");
+            observed.Enqueue(context.GetHttpContext().Request.Protocol);
             return await base.UnaryServerHandler(request, context, continuation).ConfigureAwait(false);
         }
     }
