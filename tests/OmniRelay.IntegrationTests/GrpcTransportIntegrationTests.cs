@@ -5,6 +5,7 @@ using System.Net.Http;
 using System.Net.Mime;
 using System.Net.Quic;
 using System.Net.Security;
+using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Threading;
@@ -153,9 +154,16 @@ public class GrpcTransportIntegrationTests
             ServiceName,
             clientTlsOptions: new GrpcClientTlsOptions
             {
+                EnabledProtocols = SslProtocols.Tls13,
+                CheckCertificateRevocation = false,
                 ServerCertificateValidationCallback = static (_, _, _, _) => true
             },
-            clientRuntimeOptions: new GrpcClientRuntimeOptions { EnableHttp3 = true });
+            clientRuntimeOptions: new GrpcClientRuntimeOptions
+            {
+                EnableHttp3 = true,
+                RequestVersion = HttpVersion.Version30,
+                VersionPolicy = HttpVersionPolicy.RequestVersionExact
+            });
 
         var clientOptions = new DispatcherOptions("grpc-client-http3");
         clientOptions.AddUnaryOutbound(ServiceName, null, outbound);
