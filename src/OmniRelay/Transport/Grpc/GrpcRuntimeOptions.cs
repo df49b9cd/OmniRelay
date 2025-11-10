@@ -61,6 +61,12 @@ public sealed record GrpcClientRuntimeOptions
         get => field;
         init => field = value;
     } = [];
+
+    public bool AllowHttp2Fallback
+    {
+        get => field;
+        init => field = value;
+    } = true;
 }
 
 /// <summary>

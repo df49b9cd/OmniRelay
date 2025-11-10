@@ -201,7 +201,8 @@ public class GrpcOutboundHttp3ClientTests
             {
                 EnableHttp3 = true,
                 RequestVersion = HttpVersion.Version30,
-                VersionPolicy = HttpVersionPolicy.RequestVersionExact
+                VersionPolicy = HttpVersionPolicy.RequestVersionExact,
+                AllowHttp2Fallback = false
             });
 
         try
