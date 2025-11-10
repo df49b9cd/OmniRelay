@@ -498,15 +498,10 @@ public class HttpTransportTests
         var sessionResult = await client.StartAsync(requestMeta, ct);
         await using var session = sessionResult.ValueOrThrow();
 
-        var ex = await Assert.ThrowsAsync<OmniRelayException>(async () =>
-        {
-            await foreach (var response in session.ReadResponsesAsync(ct))
-            {
-                _ = response;
-            }
-        });
-
-        Assert.Equal(OmniRelayStatusCode.Cancelled, ex.StatusCode);
+        await using var enumerator = session.ReadResponsesAsync(ct).GetAsyncEnumerator(ct);
+        Assert.True(await enumerator.MoveNextAsync());
+        Assert.True(enumerator.Current.IsFailure);
+        Assert.Equal(OmniRelayStatusCode.Cancelled, OmniRelayErrorAdapter.ToStatus(enumerator.Current.Error!));
 
         await dispatcher.StopOrThrowAsync(ct);
     }

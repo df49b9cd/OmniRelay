@@ -105,17 +105,53 @@ public sealed class DuplexStreamClient<TRequest, TResponse>
         /// </summary>
         public async IAsyncEnumerable<Result<Response<TResponse>>> ReadResponsesAsync([EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
-            await foreach (var payload in _call.ResponseReader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+            var responses = _call.ResponseReader.ReadAllAsync(cancellationToken).ConfigureAwait(false);
+            var enumerator = responses.GetAsyncEnumerator();
+            Result<Response<TResponse>>? pendingFailure = null;
+            try
             {
-                var decode = _codec.DecodeResponse(payload, _call.ResponseMeta);
-                if (decode.IsFailure)
+                while (true)
                 {
-                    await _call.CompleteResponsesAsync(decode.Error!, cancellationToken).ConfigureAwait(false);
-                    yield return OmniRelayErrors.ToResult<Response<TResponse>>(decode.Error!, _meta.Transport ?? "unknown");
-                    yield break;
-                }
+                    bool hasNext;
+                    try
+                    {
+                        hasNext = await enumerator.MoveNextAsync();
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        pendingFailure = OmniRelayErrors.ToResult<Response<TResponse>>(ex, _meta.Transport ?? "unknown");
+                        break;
+                    }
 
-                yield return Ok(Response<TResponse>.Create(decode.Value, _call.ResponseMeta));
+                    if (!hasNext)
+                    {
+                        break;
+                    }
+
+                    var payload = enumerator.Current;
+                    var decode = _codec.DecodeResponse(payload, _call.ResponseMeta);
+                    if (decode.IsFailure)
+                    {
+                        await _call.CompleteResponsesAsync(decode.Error!, cancellationToken).ConfigureAwait(false);
+                        yield return OmniRelayErrors.ToResult<Response<TResponse>>(decode.Error!, _meta.Transport ?? "unknown");
+                        yield break;
+                    }
+
+                    yield return Ok(Response<TResponse>.Create(decode.Value, _call.ResponseMeta));
+                }
+            }
+            finally
+            {
+                await enumerator.DisposeAsync();
+            }
+
+            if (pendingFailure is not null)
+            {
+                yield return pendingFailure.Value;
             }
         }
 

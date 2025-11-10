@@ -1699,15 +1699,13 @@ public class GrpcTransportTests
             Assert.True(await enumerator.MoveNextAsync());
             Assert.Equal("ack:first", enumerator.Current.ValueOrThrow().Body.Message);
 
-            var exception = await Assert.ThrowsAsync<OmniRelayException>(async () =>
-            {
-                await enumerator.MoveNextAsync();
-            });
+            Assert.True(await enumerator.MoveNextAsync());
+            Assert.True(enumerator.Current.IsFailure);
+            Assert.Equal(OmniRelayStatusCode.Cancelled, OmniRelayErrorAdapter.ToStatus(enumerator.Current.Error!));
+            Assert.Contains("server cancelled", enumerator.Current.Error!.Message, StringComparison.OrdinalIgnoreCase);
 
+            Assert.False(await enumerator.MoveNextAsync());
             await enumerator.DisposeAsync();
-
-            Assert.Equal(OmniRelayStatusCode.Cancelled, exception.StatusCode);
-            Assert.Contains("server cancelled", exception.Message, StringComparison.OrdinalIgnoreCase);
         }
         finally
         {
@@ -1812,14 +1810,10 @@ public class GrpcTransportTests
 
             await callCts.CancelAsync();
 
-            var exception = await Assert.ThrowsAsync<OmniRelayException>(async () =>
-            {
-                await foreach (var _ in session.ReadResponsesAsync(ct))
-                {
-                }
-            });
-
-            Assert.Equal(OmniRelayStatusCode.Cancelled, exception.StatusCode);
+            await using var enumerator = session.ReadResponsesAsync(ct).GetAsyncEnumerator(ct);
+            Assert.True(await enumerator.MoveNextAsync());
+            Assert.True(enumerator.Current.IsFailure);
+            Assert.Equal(OmniRelayStatusCode.Cancelled, OmniRelayErrorAdapter.ToStatus(enumerator.Current.Error!));
         }
         finally
         {

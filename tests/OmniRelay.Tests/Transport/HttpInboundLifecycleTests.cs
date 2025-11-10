@@ -122,17 +122,17 @@ public class HttpInboundLifecycleTests
 
         releaseRequest.TrySetResult();
 
-        using (var firstResponse = await inFlightTask.ConfigureAwait(false))
+        using (var firstResponse = await inFlightTask)
         {
             Assert.Equal(HttpStatusCode.OK, firstResponse.StatusCode);
         }
 
-        await stopTask.ConfigureAwait(false);
+        await stopTask;
 
         await dispatcher.StartOrThrowAsync(ct);
         await WaitForHttpReadyAsync(baseAddress, ct);
 
-        using (var secondResponse = await httpClient.PostAsync("/", new ByteArrayContent([]), ct).ConfigureAwait(false))
+        using (var secondResponse = await httpClient.PostAsync("/", new ByteArrayContent([]), ct))
         {
             Assert.Equal(HttpStatusCode.OK, secondResponse.StatusCode);
         }
