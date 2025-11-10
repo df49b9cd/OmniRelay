@@ -31,7 +31,7 @@ public sealed class GrpcResourceLeaseReplicator : IResourceLeaseReplicator
         _sequenceNumber = startingSequence;
         _sinks = sinks is null
             ? ImmutableArray<IResourceLeaseReplicationSink>.Empty
-            : sinks.Where(s => s is not null).ToImmutableArray();
+            : [.. sinks.Where(s => s is not null)];
     }
 
     public async ValueTask PublishAsync(ResourceLeaseReplicationEvent replicationEvent, CancellationToken cancellationToken)
