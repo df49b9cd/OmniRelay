@@ -2,6 +2,7 @@
   <Folder Name="/samples/">
     <Project Path="samples/Quickstart.Server/Quickstart.Server.csproj" />
     <Project Path="samples/MinimalApiBridge/MinimalApiBridge.csproj" />
+    <Project Path="samples/ResourceLease.MeshDemo/ResourceLease.MeshDemo.csproj" />
     <Project Path="samples/StreamingAnalytics.Lab/StreamingAnalytics.Lab.csproj" />
     <Project Path="samples/ConfigToProd.Template/ConfigToProd.Template.csproj" />
     <Project Path="samples/CodegenTee.Rollout/CodegenTee.Rollout.csproj" />
@@ -9,14 +10,14 @@
     <Project Path="samples/MultiTenant.Gateway/MultiTenant.Gateway.csproj" />
     <Project Path="samples/HybridRunner/HybridRunner.csproj" />
     <Project Path="samples/ChaosFailover.Lab/ChaosFailover.Lab.csproj" />
-    <Project Path="samples\Configuration.Server\Configuration.Server.csproj" Type="Classic C#" />
-    <Project Path="samples\Shadowing.Server\Shadowing.Server.csproj" Type="Classic C#" />
+    <Project Path="samples\Configuration.Server\Configuration.Server.csproj" Type="C#" />
+    <Project Path="samples\Shadowing.Server\Shadowing.Server.csproj" Type="C#" />
   </Folder>
   <Folder Name="/samples/DistributedDemo/">
-    <Project Path="samples\DistributedDemo\Audit\Audit.Service.csproj" Type="Classic C#" />
-    <Project Path="samples\DistributedDemo\Gateway\Gateway.csproj" Type="Classic C#" />
-    <Project Path="samples\DistributedDemo\Inventory\Inventory.Service.csproj" Type="Classic C#" />
-    <Project Path="samples\DistributedDemo\Shared\DistributedDemo.Shared.csproj" Type="Classic C#" />
+    <Project Path="samples\DistributedDemo\Audit\Audit.Service.csproj" Type="C#" />
+    <Project Path="samples\DistributedDemo\Gateway\Gateway.csproj" Type="C#" />
+    <Project Path="samples\DistributedDemo\Inventory\Inventory.Service.csproj" Type="C#" />
+    <Project Path="samples\DistributedDemo\Shared\DistributedDemo.Shared.csproj" Type="C#" />
   </Folder>
   <Folder Name="/SolutionFolder/">
     <File Path="LICENSE" />

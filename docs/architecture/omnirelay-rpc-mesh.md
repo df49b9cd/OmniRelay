@@ -5,6 +5,15 @@ This document outlines how to operate OmniRelay as a self-healing, peer-aware RP
 ### Release Status
 - OmniRelay is currently in **alpha (v0.4.1)**. APIs may change, and we are free to introduce breaking adjustments while we converge on the final mesh shape. Document every major change and provide upgrade notes, but do not block necessary redesigns on backward compatibility at this stage.
 
+#### Current feature set
+- **Resource-neutral lease contracts**: `ResourceLease*` DTOs operate on `<ResourceType, ResourceId>` identities with compatibility adapters removed.
+- **Durable replication hubs**: SQLite, gRPC, and object-storage replicators plus lineage/governance sinks are available out-of-the-box (see “Shared Replication Hub”).
+- **Deterministic state stores**: production adapters for SQLite + filesystem with guidance for Cosmos DB, Redis, SQL Server (see “Deterministic Store Providers”).
+- **Diagnostics + tooling**: control-plane endpoints, CLI drain/restore helpers, and zero-downtime upgrade scripts (see “Mesh Diagnostics + Tooling”).
+- **Backpressure & sharding utilities**: reusable listeners and sharding replicators for automatic throttling and per-shard routing (“Backpressure Hooks”, “Sharding Strategy”).
+- **Observability suite**: standardized metrics/OTLP spans and alert packs across lease depth, peer health, replication lag (“Mesh Health Dashboard”, “Observability & Governance Integrations”).
+- **Failure drills**: documented chaos scenarios for peer loss, partitions, and deterministic replay validation (“Failure Drills”).
+
 ### Goals
 - Every metadata node exposes the same lease-aware RPC surface through OmniRelay.
 - Peers route work based on live health/lease state rather than static config.
@@ -132,7 +141,7 @@ Tracking these TODO items will take the existing ResourceLease + health + replic
 
 ### ResourceLease Mesh Deployment Guide
 1. **Install OmniRelay + replicator packages**
-   - Add `OmniRelay`, `OmniRelay.Configuration`, and the replicators you need (`OmniRelay.ResourceLeaseReplicator.Sqlite`, `.Grpc`, `.ObjectStorage`) to every metadata node.
+   - Add `OmniRelay`, `OmniRelay.Configuration`, and the replicators you need (`OmniRelay.ResourceLeaseReplicator.Sqlite`, `.Grpc`, `.ObjectStorage`) to every metadata node. See `samples/ResourceLease.MeshDemo` for a runnable configuration that wires SQLite replication/deterministic stores plus diagnostics.
    - Ensure the host has .NET 8+ runtimes, OpenTelemetry exporters, and any native dependencies (for example `libsqlite3`).
 2. **Configure dispatcher + middleware**
    - Register `ResourceLeaseDispatcherComponent` inside your DI container, wiring `PrincipalBindingMiddleware`, health trackers, and transport codecs (HTTP/gRPC) just like other OmniRelay dispatchers.
