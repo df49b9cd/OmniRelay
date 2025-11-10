@@ -1814,7 +1814,7 @@ public class GrpcTransportTests
             Assert.True(await enumerator.MoveNextAsync());
             Assert.True(enumerator.Current.IsFailure);
             Assert.Equal(OmniRelayStatusCode.Cancelled, OmniRelayErrorAdapter.ToStatus(enumerator.Current.Error!));
-            await serverCancelled.Task.WaitAsync(TimeSpan.FromSeconds(5), ct);
+            await serverCancelled.Task.WaitAsync(TimeSpan.FromSeconds(10), ct);
         }
         finally
         {

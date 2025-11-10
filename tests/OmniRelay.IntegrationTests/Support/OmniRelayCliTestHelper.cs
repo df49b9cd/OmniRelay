@@ -8,6 +8,8 @@ internal static class OmniRelayCliTestHelper
 {
     private static readonly string RepositoryRoot = RepositoryPaths.Root;
     private static readonly string CliProjectPath = Path.Combine(RepositoryRoot, "src", "OmniRelay.Cli", "OmniRelay.Cli.csproj");
+    private static readonly object BuildLock = new();
+    private static bool _cliBuilt;
 
     public static Task<CliResult> RunAsync(IEnumerable<string> arguments, CancellationToken cancellationToken) =>
         RunCliAsync([.. arguments], cancellationToken);
@@ -59,6 +61,8 @@ internal static class OmniRelayCliTestHelper
 
     private static ProcessStartInfo CreateProcessStartInfo(IEnumerable<string> cliArguments)
     {
+        EnsureCliBuilt();
+
         var psi = new ProcessStartInfo
         {
             FileName = "dotnet",
@@ -82,6 +86,51 @@ internal static class OmniRelayCliTestHelper
         psi.Environment["DOTNET_CLI_UI_LANGUAGE"] = "en";
         psi.Environment["DOTNET_SKIP_FIRST_TIME_EXPERIENCE"] = "1";
         return psi;
+    }
+
+    private static void EnsureCliBuilt()
+    {
+        if (_cliBuilt)
+        {
+            return;
+        }
+
+        lock (BuildLock)
+        {
+            if (_cliBuilt)
+            {
+                return;
+            }
+
+            var psi = new ProcessStartInfo
+            {
+                FileName = "dotnet",
+                WorkingDirectory = RepositoryRoot,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+            psi.ArgumentList.Add("build");
+            psi.ArgumentList.Add(CliProjectPath);
+            psi.ArgumentList.Add("--configuration");
+            psi.ArgumentList.Add("Debug");
+
+            using var process = new Process { StartInfo = psi };
+            if (!process.Start())
+            {
+                throw new InvalidOperationException("Failed to start OmniRelay CLI build.");
+            }
+
+            var stdout = process.StandardOutput.ReadToEndAsync();
+            var stderr = process.StandardError.ReadToEndAsync();
+            process.WaitForExit();
+            if (process.ExitCode != 0)
+            {
+                throw new InvalidOperationException($"Failed to build OmniRelay CLI:{Environment.NewLine}{stderr.Result}{Environment.NewLine}{stdout.Result}");
+            }
+
+            _cliBuilt = true;
+        }
     }
 
     private static void TryKill(Process process)
