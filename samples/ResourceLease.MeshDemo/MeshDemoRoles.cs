@@ -34,7 +34,7 @@ public static class MeshDemoRoleExtensions
             var segments = role.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
             if (segments.Length == 0)
             {
-                segments = new[] { role };
+                segments = [role];
             }
 
             foreach (var segment in segments)

@@ -13,7 +13,7 @@ public sealed class SqliteDeterministicStateStoreTests
     {
         using var temp = new TempFile();
         var store = new SqliteDeterministicStateStore($"Data Source={temp.Path}");
-        var record = new DeterministicRecord("kind", 1, new byte[] { 1, 2 }, DateTimeOffset.UtcNow);
+        var record = new DeterministicRecord("kind", 1, [1, 2], DateTimeOffset.UtcNow);
 
         Assert.True(store.TryAdd("key", record));
         Assert.False(store.TryAdd("key", record));

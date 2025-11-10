@@ -8,7 +8,7 @@ public sealed class MeshDemoOptions
 
     public string Namespace { get; set; } = "resourcelease.mesh";
 
-    public string RpcUrl { get; set; } = "http://127.0.0.1:7420";
+    public string RpcUrl { get; set; } = "http://127.0.0.1:7421";
 
     public string DataDirectory { get; set; } = "mesh-data";
 
@@ -16,21 +16,24 @@ public sealed class MeshDemoOptions
 
     public double SeederIntervalSeconds { get; set; } = 5;
 
-    public string[] Roles { get; set; } = new[]
-    {
+    public string[] Roles { get; set; } =
+    [
         nameof(MeshDemoRole.Dispatcher),
         nameof(MeshDemoRole.Seeder),
         nameof(MeshDemoRole.Worker),
         nameof(MeshDemoRole.Diagnostics)
-    };
+    ];
+
+    public string[]? Urls { get; set; }
 
     public Uri GetRpcBaseUri()
     {
-        var baseUri = RpcUrl.EndsWith("/", StringComparison.Ordinal)
-            ? RpcUrl
-            : $"{RpcUrl}/";
-        return new Uri($"{baseUri}yarpc/v1/resourcelease.mesh", UriKind.Absolute);
+        var baseUri = RpcUrl?.TrimEnd('/') ?? "http://127.0.0.1:7420";
+        return new Uri($"{baseUri}/omnirelay/v1/resourcelease.mesh", UriKind.Absolute);
     }
+
+    public string[] GetHostingUrls() =>
+        Urls is { Length: > 0 } values ? values : Array.Empty<string>();
 
     public TimeSpan GetSeederInterval() =>
         TimeSpan.FromSeconds(Math.Max(1, SeederIntervalSeconds));

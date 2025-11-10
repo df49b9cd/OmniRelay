@@ -14,10 +14,10 @@ public sealed class FileSystemDeterministicStateStoreTests
         using var temp = new TempDirectory();
         var store = new FileSystemDeterministicStateStore(temp.Path);
 
-        var record1 = new DeterministicRecord("kind", 1, new byte[] { 1 }, DateTimeOffset.UtcNow);
+        var record1 = new DeterministicRecord("kind", 1, [1], DateTimeOffset.UtcNow);
         store.Set("key", record1);
 
-        var record2 = new DeterministicRecord("kind", 2, new byte[] { 2 }, DateTimeOffset.UtcNow.AddMinutes(1));
+        var record2 = new DeterministicRecord("kind", 2, [2], DateTimeOffset.UtcNow.AddMinutes(1));
         store.Set("key", record2);
 
         Assert.True(store.TryGet("key", out var fetched));
@@ -29,7 +29,7 @@ public sealed class FileSystemDeterministicStateStoreTests
     {
         using var temp = new TempDirectory();
         var store = new FileSystemDeterministicStateStore(temp.Path);
-        var record = new DeterministicRecord("kind", 1, new byte[] { 1 }, DateTimeOffset.UtcNow);
+        var record = new DeterministicRecord("kind", 1, [1], DateTimeOffset.UtcNow);
 
         Assert.True(store.TryAdd("key", record));
         Assert.False(store.TryAdd("key", record));

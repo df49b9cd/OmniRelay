@@ -6,7 +6,7 @@ An end-to-end sample that highlights the OmniRelay ResourceLease RPC mesh featur
 
 | Component | Description |
 | --- | --- |
-| ResourceLease dispatcher | Runs on `http://127.0.0.1:7420/yarpc/v1` (service `resourcelease-mesh-demo`, namespace `resourcelease.mesh`). |
+| ResourceLease dispatcher | Runs on `http://127.0.0.1:7420/omnirelay/v1` (service `resourcelease-mesh-demo`, namespace `resourcelease.mesh`). |
 | Durable replication | `SqliteResourceLeaseReplicator` persists events to `mesh-data/replication.db` and mirrors them to an in-memory log served at `/demo/replication`. |
 | Deterministic store | `SqliteDeterministicStateStore` captures effect ids in `mesh-data/deterministic.db`. |
 | Backpressure hooks | `BackpressureAwareRateLimiter` + diagnostics listener keep the HTTP worker pool in sync with SafeTaskQueue backpressure. |
@@ -79,6 +79,17 @@ Services:
 
 Dashboards highlight queue depth, active leases, replication throughput, peer health, HTTP traffic, and backpressure transitions by reading the OmniRelay meters exported via OpenTelemetry/Prometheus.
 
+### Grafana dashboard bundle
+
+- The `grafana/dashboards/resourcelease-mesh.json` export ships a **ResourceLease Mesh Overview** board with production-oriented panels for queue depth (p50/p95/p99), replication lag, peer health, pending reassignments, lease signals, HTTP success/error rates, request latency, and retry churn.
+- Dashboard variables (`$service`, `$role`, `$instance`) pivot every panel by `service_name`, `mesh_role`, and `instance` labels so you can focus on a single dispatcher, worker role, or the entire fleet.
+- Provisioning manifests under `grafana/provisioning/*` pre-create the Prometheus datasource (`uid: mesh-prom`) and pin the dashboard into the **OmniRelay** folder when you run `docker compose up`.
+- To bring the dashboard into an existing Grafana:
+  1. Copy `grafana/dashboards/resourcelease-mesh.json` into your ops repo (or use Grafana’s “Import dashboard” flow).
+  2. Update the datasource UID if your Prometheus instance does not use `mesh-prom`.
+  3. Make sure your Prometheus scrape config adds `service_name`, `mesh_role`, and `instance` labels (the demo’s `prometheus.yml` shows one option via static labels).
+  4. Optionally reuse the provisioning snippets provided in `grafana/provisioning/` to auto-install the datasource + dashboard during infrastructure rollout.
+
 ## Run it (single process)
 
 ```bash
@@ -87,7 +98,7 @@ dotnet run --project samples/ResourceLease.MeshDemo
 
 Outputs:
 
-- ResourceLease RPC endpoint: `http://127.0.0.1:7420/yarpc/v1`
+- ResourceLease RPC endpoint: `http://127.0.0.1:7420/omnirelay/v1`
 - Diagnostics UI: `http://localhost:5158/` (default ASP.NET port; see console)
 
 ## Interact with the dispatcher
@@ -105,7 +116,7 @@ curl -X POST http://localhost:5158/demo/enqueue \
 ```bash
 omnirelay request \
   --transport http \
-  --url http://127.0.0.1:7420/yarpc/v1 \
+  --url http://127.0.0.1:7420/omnirelay/v1 \
   --service resourcelease-mesh-demo \
   --procedure resourcelease.mesh::enqueue \
   --encoding application/json \
@@ -125,9 +136,10 @@ curl http://localhost:5158/demo/replication       # Recent replication events fr
 - `appsettings.json` (`meshDemo` section) controls:
   - `rpcUrl`: HTTP inbound for ResourceLease RPCs.
   - `dataDirectory`: where SQLite replication/deterministic files are stored.
-  - `workerPeerId`: peer identifier used by the background worker.
-  - `seederIntervalSeconds`: cadence for seeding demo work.
-  - `roles`: enables one or more of `dispatcher`, `diagnostics`, `seeder`, `worker`.
+- `workerPeerId`: peer identifier used by the background worker.
+- `seederIntervalSeconds`: cadence for seeding demo work.
+- `roles`: enables one or more of `dispatcher`, `diagnostics`, `seeder`, `worker`.
+- `urls`: optional array of ASP.NET Core listener URLs (for example `["http://0.0.0.0:5158"]`). When omitted, the default ASP.NET Core port selection applies. Override individual entries via `--meshDemo:urls:0=...` or environment variables like `MESHDEMO_meshDemo__urls__0`.
 - Override any value via environment variables prefixed with `MESHDEMO_` (e.g., `MESHDEMO_meshDemo__rpcUrl`, `MESHDEMO_meshDemo__roles=dispatcher,worker`).
 
 ## Concepts showcased

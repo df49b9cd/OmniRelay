@@ -49,10 +49,10 @@ public static class Program
 internal static class GatewayBootstrap
 {
     private static readonly TenantConfig[] Tenants =
-    {
+    [
         new("tenant-a", new Uri("http://localhost:7201")),
         new("tenant-b", new Uri("http://localhost:7202"))
-    };
+    ];
 
     public static GatewayRuntime Build()
     {

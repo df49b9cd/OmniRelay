@@ -17,6 +17,11 @@ var meshDemoSection = builder.Configuration.GetSection("meshDemo");
 var bootstrapOptions = new MeshDemoOptions();
 meshDemoSection.Bind(bootstrapOptions);
 var activeRoles = MeshDemoRoleExtensions.ResolveRoles(bootstrapOptions.Roles);
+var hostingUrls = bootstrapOptions.GetHostingUrls();
+if (hostingUrls.Length > 0)
+{
+    builder.WebHost.UseUrls(hostingUrls);
+}
 
 if (activeRoles.HasRole(MeshDemoRole.Diagnostics) && !activeRoles.HasRole(MeshDemoRole.Dispatcher))
 {
@@ -160,13 +165,14 @@ static string BuildBanner(MeshDemoOptions options, MeshDemoRole roles)
         sb.AppendLine();
     }
 
-    var rpcBase = (options.RpcUrl ?? "http://127.0.0.1:7420").TrimEnd('/');
+    var rpcBase = (options.RpcUrl ?? "http://127.0.0.1:7421").TrimEnd('/');
+    var rpcEndpoint = $"{rpcBase}/omnirelay/yarpc/v1";
     var ns = string.IsNullOrWhiteSpace(options.Namespace) ? "resourcelease.mesh" : options.Namespace;
     sb.AppendLine("RPC endpoints:");
-    sb.AppendLine($"- ResourceLease dispatcher listens on {rpcBase}/yarpc/v1 (namespace {ns})");
+    sb.AppendLine($"- ResourceLease dispatcher listens on {rpcEndpoint} (namespace {ns})");
     sb.AppendLine();
     sb.AppendLine("Try commands:");
-    sb.AppendLine($"  omnirelay request --transport http --url {rpcBase}/yarpc/v1 \\");
+    sb.AppendLine($"  omnirelay request --transport http --url {rpcEndpoint} \\");
     sb.AppendLine($"    --service {options.ServiceName ?? "resourcelease-mesh-demo"} \\");
     sb.AppendLine($"    --procedure {ns}::enqueue \\");
     sb.AppendLine("    --encoding application/json \\");

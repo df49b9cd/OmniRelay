@@ -24,6 +24,7 @@
 
   <PropertyGroup>
     <IsAotCompatible>true</IsAotCompatible>
+    <PublishAot>true</PublishAot>
   </PropertyGroup>
 
 

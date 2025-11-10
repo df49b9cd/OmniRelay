@@ -10,11 +10,11 @@ services:
     environment:
       ASPNETCORE_URLS: http://0.0.0.0:8080
       DOTNET_gcServer: "1"
-      MESHDEMO_meshDemo__rpcUrl: http://0.0.0.0:7420
+      MESHDEMO_meshDemo__rpcUrl: http://0.0.0.0:7421
       MESHDEMO_meshDemo__roles: dispatcher,diagnostics
       MESHDEMO_meshDemo__dataDirectory: mesh-data
     ports:
-      - "7420:7420"
+      - "7421:7421"
       - "5158:8080"
     volumes:
       - mesh-data:/app/mesh-data
@@ -29,7 +29,7 @@ services:
     environment:
       ASPNETCORE_URLS: http://0.0.0.0:8080
       MESHDEMO_meshDemo__roles: seeder
-      MESHDEMO_meshDemo__rpcUrl: http://mesh-dispatcher:7420
+      MESHDEMO_meshDemo__rpcUrl: http://mesh-dispatcher:7421
       MESHDEMO_meshDemo__seederIntervalSeconds: "2"
     networks:
       - mesh
@@ -42,7 +42,7 @@ services:
     environment:
       ASPNETCORE_URLS: http://0.0.0.0:8080
       MESHDEMO_meshDemo__roles: worker
-      MESHDEMO_meshDemo__rpcUrl: http://mesh-dispatcher:7420
+      MESHDEMO_meshDemo__rpcUrl: http://mesh-dispatcher:7421
       MESHDEMO_meshDemo__workerPeerId: mesh-worker-a
     networks:
       - mesh
@@ -55,7 +55,7 @@ services:
     environment:
       ASPNETCORE_URLS: http://0.0.0.0:8080
       MESHDEMO_meshDemo__roles: worker
-      MESHDEMO_meshDemo__rpcUrl: http://mesh-dispatcher:7420
+      MESHDEMO_meshDemo__rpcUrl: http://mesh-dispatcher:7421
       MESHDEMO_meshDemo__workerPeerId: mesh-worker-b
     networks:
       - mesh

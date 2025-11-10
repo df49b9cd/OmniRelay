@@ -1,17 +1,13 @@
-FROM mcr.microsoft.com/dotnet/nightly/sdk:10.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0.100-rc.2-noble-aot-arm64v8 AS build
 ARG BUILD_CONFIGURATION=Release
 ARG DOTNET_RUNTIME_VERSION=10.0.0-rc.2.25502.107
 WORKDIR /src
 COPY . .
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends clang zlib1g-dev \
-    && rm -rf /var/lib/apt/lists/*
-
 RUN dotnet publish samples/ResourceLease.MeshDemo/ResourceLease.MeshDemo.csproj \
     --configuration $BUILD_CONFIGURATION \
     --output /app/publish \
-    -r linux-x64 \
+    -r linux-arm64 \
     -p:PublishAot=true \
     -p:StripSymbols=true \
     -p:InvariantGlobalization=true \
@@ -20,7 +16,7 @@ RUN dotnet publish samples/ResourceLease.MeshDemo/ResourceLease.MeshDemo.csproj 
     -p:MicrosoftNETCoreAppRuntimeVersion=$DOTNET_RUNTIME_VERSION \
     --self-contained true
 
-FROM mcr.microsoft.com/dotnet/nightly/runtime-deps:10.0 AS final
+FROM mcr.microsoft.com/dotnet/runtime-deps:10.0.0-rc.2-noble-chiseled-arm64v8 AS final
 WORKDIR /app
 COPY --from=build /app/publish .
 

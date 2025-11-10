@@ -92,14 +92,13 @@ public sealed class ResourceLeaseIntegrationTests
         Assert.Empty(drainResponse.Items);
 
         Assert.Equal(
-            new[]
-            {
+            [
                 ResourceLeaseReplicationEventType.Enqueue,
                 ResourceLeaseReplicationEventType.LeaseGranted,
                 ResourceLeaseReplicationEventType.Completed,
                 ResourceLeaseReplicationEventType.Heartbeat,
                 ResourceLeaseReplicationEventType.DrainSnapshot
-            },
+            ],
             replicationSink.Events.Select(evt => evt.EventType).ToArray());
 
         Assert.Equal("integration-peer", replicationSink.Events[0].PeerId);

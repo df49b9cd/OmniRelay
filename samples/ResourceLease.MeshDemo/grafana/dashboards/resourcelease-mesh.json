@@ -32,32 +32,16 @@
           "custom": {
             "drawStyle": "line",
             "lineInterpolation": "smooth",
-            "lineWidth": 2
+            "lineWidth": 2,
+            "showPoints": "never"
           },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "orange",
-                "value": 64
-              },
-              {
-                "color": "red",
-                "value": 96
-              }
-            ]
-          }
+          "unit": "items"
         },
         "overrides": []
       },
       "gridPos": {
-        "h": 8,
-        "w": 12,
+        "h": 7,
+        "w": 8,
         "x": 0,
         "y": 0
       },
@@ -66,24 +50,29 @@
         "legend": {
           "calcs": [],
           "displayMode": "list",
-          "placement": "right",
+          "placement": "bottom",
           "showLegend": true
         },
         "tooltip": {
-          "mode": "single",
+          "mode": "multi",
           "sort": "none"
         }
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.5, sum(rate(omnirelay_resourcelease_pending_bucket[2m])) by (le))",
+          "expr": "histogram_quantile(0.5, sum(rate(omnirelay_resourcelease_pending_bucket{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])) by (le))",
           "legendFormat": "p50",
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.95, sum(rate(omnirelay_resourcelease_pending_bucket[2m])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(omnirelay_resourcelease_pending_bucket{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])) by (le))",
           "legendFormat": "p95",
           "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(omnirelay_resourcelease_pending_bucket{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])) by (le))",
+          "legendFormat": "p99",
+          "refId": "C"
         }
       ],
       "title": "Pending Queue Depth",
@@ -99,15 +88,17 @@
           "custom": {
             "drawStyle": "line",
             "lineInterpolation": "smooth",
-            "lineWidth": 2
-          }
+            "lineWidth": 2,
+            "showPoints": "never"
+          },
+          "unit": "leases"
         },
         "overrides": []
       },
       "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
+        "h": 7,
+        "w": 8,
+        "x": 8,
         "y": 0
       },
       "id": 2,
@@ -115,7 +106,7 @@
         "legend": {
           "calcs": [],
           "displayMode": "list",
-          "placement": "right",
+          "placement": "bottom",
           "showLegend": true
         },
         "tooltip": {
@@ -125,14 +116,19 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.5, sum(rate(omnirelay_resourcelease_active_bucket[2m])) by (le))",
+          "expr": "histogram_quantile(0.5, sum(rate(omnirelay_resourcelease_active_bucket{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])) by (le))",
           "legendFormat": "p50",
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.95, sum(rate(omnirelay_resourcelease_active_bucket[2m])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(omnirelay_resourcelease_active_bucket{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])) by (le))",
           "legendFormat": "p95",
           "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(omnirelay_resourcelease_active_bucket{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])) by (le))",
+          "legendFormat": "p99",
+          "refId": "C"
         }
       ],
       "title": "Active Leases",
@@ -146,27 +142,26 @@
       "fieldConfig": {
         "defaults": {
           "custom": {
-            "drawStyle": "bars",
+            "drawStyle": "line",
             "lineInterpolation": "smooth",
-            "stacking": {
-              "mode": "percent",
-              "group": "A"
-            }
-          }
+            "lineWidth": 2,
+            "showPoints": "never"
+          },
+          "unit": "ms"
         },
         "overrides": []
       },
       "gridPos": {
         "h": 7,
         "w": 8,
-        "x": 0,
-        "y": 8
+        "x": 16,
+        "y": 0
       },
       "id": 3,
       "options": {
         "legend": {
           "calcs": [],
-          "displayMode": "table",
+          "displayMode": "list",
           "placement": "bottom",
           "showLegend": true
         },
@@ -177,22 +172,22 @@
       },
       "targets": [
         {
-          "expr": "omnirelay_peer_lease_healthy",
-          "legendFormat": "healthy",
+          "expr": "histogram_quantile(0.5, sum(rate(omnirelay_resourcelease_replication_lag_bucket{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])) by (le))",
+          "legendFormat": "p50",
           "refId": "A"
         },
         {
-          "expr": "omnirelay_peer_lease_unhealthy",
-          "legendFormat": "unhealthy",
+          "expr": "histogram_quantile(0.95, sum(rate(omnirelay_resourcelease_replication_lag_bucket{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])) by (le))",
+          "legendFormat": "p95",
           "refId": "B"
         },
         {
-          "expr": "omnirelay_peer_lease_pending_reassignments",
-          "legendFormat": "pending reassignments",
+          "expr": "histogram_quantile(0.99, sum(rate(omnirelay_resourcelease_replication_lag_bucket{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])) by (le))",
+          "legendFormat": "p99",
           "refId": "C"
         }
       ],
-      "title": "Peer Lease Health",
+      "title": "Replication Lag (ms)",
       "type": "timeseries"
     },
     {
@@ -201,62 +196,16 @@
         "uid": "mesh-prom"
       },
       "fieldConfig": {
-        "defaults": {
-          "unit": "ops",
-          "custom": {
-            "drawStyle": "line",
-            "lineInterpolation": "smooth",
-            "lineWidth": 2
-          }
-        },
+        "defaults": {},
         "overrides": []
       },
       "gridPos": {
-        "h": 7,
-        "w": 8,
-        "x": 8,
-        "y": 8
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 7
       },
       "id": 4,
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "right",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "expr": "sum by (lease_event_type) (rate(omnirelay_resourcelease_replication_events_total[30s]))",
-          "legendFormat": "{{lease_event_type}}",
-          "refId": "A"
-        }
-      ],
-      "title": "Replication Events / s",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "mesh-prom"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short"
-        }
-      },
-      "gridPos": {
-        "h": 7,
-        "w": 8,
-        "x": 16,
-        "y": 8
-      },
-      "id": 5,
       "options": {
         "colorMode": "value",
         "graphMode": "area",
@@ -273,12 +222,12 @@
       },
       "targets": [
         {
-          "expr": "increase(omnirelay_resourcelease_backpressure_transitions_total[5m])",
-          "legendFormat": "transitions (5m)",
+          "expr": "increase(omnirelay_resourcelease_backpressure_transitions_total{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])",
+          "legendFormat": "",
           "refId": "A"
         }
       ],
-      "title": "Backpressure transitions (5m)",
+      "title": "Backpressure transitions (last interval)",
       "type": "stat"
     },
     {
@@ -291,36 +240,406 @@
           "custom": {
             "drawStyle": "line",
             "lineInterpolation": "smooth",
-            "lineWidth": 2
-          }
-        }
+            "lineWidth": 2,
+            "showPoints": "never",
+            "stacking": {
+              "group": "A",
+              "mode": "normal"
+            }
+          },
+          "unit": "peers"
+        },
+        "overrides": []
       },
       "gridPos": {
-        "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 15
+        "h": 7,
+        "w": 9,
+        "x": 6,
+        "y": 7
       },
-      "id": 6,
+      "id": 5,
       "options": {
         "legend": {
+          "calcs": [],
           "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
         },
         "tooltip": {
-          "mode": "single",
+          "mode": "multi",
           "sort": "none"
         }
       },
       "targets": [
         {
-          "expr": "sum by (instance) (rate(omnirelay_http_requests_completed_total[1m]))",
-          "legendFormat": "{{instance}}",
+          "expr": "sum(omnirelay_peer_lease_healthy{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"})",
+          "legendFormat": "healthy",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(omnirelay_peer_lease_unhealthy{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"})",
+          "legendFormat": "unhealthy",
+          "refId": "B"
+        }
+      ],
+      "title": "Peer Lease Health",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mesh-prom"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "showPoints": "never"
+          },
+          "unit": "leases"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 9,
+        "x": 15,
+        "y": 7
+      },
+      "id": 6,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(omnirelay_peer_lease_pending_reassignments{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"})",
+          "legendFormat": "pending",
           "refId": "A"
         }
       ],
-      "title": "HTTP Dispatcher Requests / s",
+      "title": "Pending Reassignments",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mesh-prom"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "showPoints": "never"
+          },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 14
+      },
+      "id": 7,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(omnirelay_peer_lease_assignments_total{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "assignments",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(omnirelay_peer_lease_heartbeats_total{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "heartbeats",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(rate(omnirelay_peer_lease_disconnects_total{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "disconnects",
+          "refId": "C"
+        }
+      ],
+      "title": "Peer Lease Signals / s",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mesh-prom"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "showPoints": "never"
+          },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 14
+      },
+      "id": 8,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "expr": "topk(5, rate(omnirelay_peer_lease_disconnects_total{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "{{rpc_peer}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Peer Disconnects (top 5)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mesh-prom"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "showPoints": "never"
+          },
+          "unit": "req/s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 22
+      },
+      "id": 9,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(omnirelay_http_requests_completed_total{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "{{outcome}}",
+          "refId": "A"
+        }
+      ],
+      "title": "HTTP Requests / s",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mesh-prom"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "showPoints": "never"
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 22
+      },
+      "id": 10,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, sum(rate(omnirelay_http_request_duration_bucket{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])) by (le))",
+          "legendFormat": "p50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(omnirelay_http_request_duration_bucket{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])) by (le))",
+          "legendFormat": "p95",
+          "refId": "B"
+        }
+      ],
+      "title": "HTTP Request Latency (ms)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mesh-prom"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "showPoints": "never"
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 30
+      },
+      "id": 11,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, sum(rate(omnirelay_peer_lease_duration_bucket{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])) by (le))",
+          "legendFormat": "p50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(omnirelay_peer_lease_duration_bucket{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])) by (le))",
+          "legendFormat": "p95",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(omnirelay_peer_lease_duration_bucket{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])) by (le))",
+          "legendFormat": "p99",
+          "refId": "C"
+        }
+      ],
+      "title": "Lease Duration (ms)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mesh-prom"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "showPoints": "never"
+          },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 30
+      },
+      "id": 12,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(omnirelay_retry_scheduled_total{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "scheduled",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(omnirelay_retry_succeeded_total{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "succeeded",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(rate(omnirelay_retry_exhausted_total{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "exhausted",
+          "refId": "C"
+        }
+      ],
+      "title": "Retry Outcomes / s",
       "type": "timeseries"
     }
   ],
@@ -332,7 +651,104 @@
     "resourcelease"
   ],
   "templating": {
-    "list": []
+    "list": [
+      {
+        "name": "service",
+        "label": "Service",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "mesh-prom"
+        },
+        "definition": "label_values(omnirelay_resourcelease_pending_bucket, service_name)",
+        "query": {
+          "query": "label_values(omnirelay_resourcelease_pending_bucket, service_name)",
+          "refId": "service"
+        },
+        "multi": true,
+        "includeAll": true,
+        "refresh": 1,
+        "sort": 1,
+        "options": [
+          {
+            "text": "All",
+            "value": "$__all",
+            "selected": true
+          }
+        ],
+        "current": {
+          "text": "All",
+          "value": "$__all",
+          "selected": true
+        },
+        "hide": 0,
+        "regex": ""
+      },
+      {
+        "name": "role",
+        "label": "Mesh role",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "mesh-prom"
+        },
+        "definition": "label_values(up{job=\"resourcelease-mesh\"}, mesh_role)",
+        "query": {
+          "query": "label_values(up{job=\"resourcelease-mesh\"}, mesh_role)",
+          "refId": "role"
+        },
+        "multi": true,
+        "includeAll": true,
+        "refresh": 1,
+        "sort": 1,
+        "options": [
+          {
+            "text": "All",
+            "value": "$__all",
+            "selected": true
+          }
+        ],
+        "current": {
+          "text": "All",
+          "value": "$__all",
+          "selected": true
+        },
+        "hide": 0,
+        "regex": ""
+      },
+      {
+        "name": "instance",
+        "label": "Instance",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "mesh-prom"
+        },
+        "definition": "label_values(up{job=\"resourcelease-mesh\"}, instance)",
+        "query": {
+          "query": "label_values(up{job=\"resourcelease-mesh\"}, instance)",
+          "refId": "instance"
+        },
+        "multi": true,
+        "includeAll": true,
+        "refresh": 1,
+        "sort": 1,
+        "options": [
+          {
+            "text": "All",
+            "value": "$__all",
+            "selected": true
+          }
+        ],
+        "current": {
+          "text": "All",
+          "value": "$__all",
+          "selected": true
+        },
+        "hide": 0,
+        "regex": ""
+      }
+    ]
   },
   "time": {
     "from": "now-30m",
@@ -351,6 +767,6 @@
   "timezone": "",
   "title": "ResourceLease Mesh Overview",
   "uid": "resourcelease-mesh",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }
