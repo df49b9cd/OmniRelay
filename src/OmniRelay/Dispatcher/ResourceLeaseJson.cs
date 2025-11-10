@@ -1,12 +1,31 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 using Hugo;
 
 namespace OmniRelay.Dispatcher;
 
 public static class ResourceLeaseJson
 {
-    public static ResourceLeaseJsonContext Context { get; } = ResourceLeaseJsonContext.Default;
+    public static ResourceLeaseJsonContext Context { get; } = CreateContext();
+
+    private static ResourceLeaseJsonContext CreateContext()
+    {
+        var baseContext = ResourceLeaseJsonContext.Default;
+        var baseOptions = baseContext.Options ?? new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var deterministicResolver = DeterministicJsonSerialization.DefaultContext;
+
+        var resolver = baseOptions.TypeInfoResolver is null
+            ? deterministicResolver
+            : JsonTypeInfoResolver.Combine(baseOptions.TypeInfoResolver, deterministicResolver);
+
+        var options = new JsonSerializerOptions(baseOptions)
+        {
+            TypeInfoResolver = resolver
+        };
+
+        return new ResourceLeaseJsonContext(options);
+    }
 }
 
 [JsonSourceGenerationOptions(
@@ -32,7 +51,6 @@ public static class ResourceLeaseJson
 [JsonSerializable(typeof(ResourceLeasePendingItemDto))]
 [JsonSerializable(typeof(ResourceLeaseOwnershipHandle))]
 [JsonSerializable(typeof(ResourceLeaseErrorInfo))]
-[JsonSerializable(typeof(Error))]
 [JsonSerializable(typeof(ResourceLeaseBackpressureSignal))]
 [JsonSerializable(typeof(ResourceLeaseWorkItem))]
 public sealed partial class ResourceLeaseJsonContext : JsonSerializerContext;

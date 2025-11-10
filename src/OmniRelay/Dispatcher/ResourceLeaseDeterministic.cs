@@ -1,6 +1,7 @@
-using System.Reflection;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 using Hugo;
 
 namespace OmniRelay.Dispatcher;
@@ -49,12 +50,12 @@ public sealed class ResourceLeaseDeterministicOptions
         init => field = value;
     }
 
-    /// <summary>Serializer context used to persist deterministic effects (defaults to <see cref="ResourceLeaseJson"/> context).</summary>
+    /// <summary>Serializer context used to persist deterministic helper types (defaults to <see cref="Hugo.DeterministicJsonSerialization.DefaultContext"/>).</summary>
     public JsonSerializerContext? SerializerContext
     {
         get => field;
         init => field = value;
-    } = ResourceLeaseJson.Context;
+    } = DeterministicJsonSerialization.DefaultContext;
 
     /// <summary>Overrides serializer options used for deterministic persistence.</summary>
     public JsonSerializerOptions? SerializerOptions
@@ -83,13 +84,17 @@ public sealed class DeterministicResourceLeaseCoordinator : IResourceLeaseDeterm
         var stateStore = options.StateStore ?? throw new ArgumentException("StateStore is required for deterministic coordination.", nameof(options));
 
         var serializerOptions = CreateSerializerOptions(options);
-        _effectStore = serializerOptions is null
-            ? new DeterministicEffectStore(stateStore)
-            : new DeterministicEffectStore(stateStore, serializerOptions: serializerOptions);
+        var serializerContext = ResolveSerializerContext(options, serializerOptions);
 
-        var versionGate = serializerOptions is null
-            ? new VersionGate(stateStore)
-            : new VersionGate(stateStore, serializerOptions: serializerOptions);
+        _effectStore = new DeterministicEffectStore(
+            stateStore,
+            serializerOptions: serializerOptions,
+            serializerContext: serializerContext);
+
+        var versionGate = new VersionGate(
+            stateStore,
+            serializerOptions: serializerOptions,
+            serializerContext: serializerContext);
 
         _gate = new DeterministicGate(versionGate, _effectStore);
         _changeId = string.IsNullOrWhiteSpace(options.ChangeId) ? "resourcelease.replication" : options.ChangeId!;
@@ -123,182 +128,34 @@ public sealed class DeterministicResourceLeaseCoordinator : IResourceLeaseDeterm
             _ => Task.FromResult(Result.Ok(evt.SequenceNumber)),
             cancellationToken).ConfigureAwait(false);
 
-    private static JsonSerializerOptions? CreateSerializerOptions(ResourceLeaseDeterministicOptions options)
+    [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Deterministic effect payloads may require runtime metadata.")]
+    [UnconditionalSuppressMessage("AOT", "IL3050", Justification = "Deterministic effect payloads may require runtime metadata.")]
+    private static JsonSerializerOptions CreateSerializerOptions(ResourceLeaseDeterministicOptions options)
     {
-        var source = options.SerializerOptions ?? options.SerializerContext?.Options;
-        if (source is null)
-        {
-            return null;
-        }
+        var serializerOptions = options.SerializerOptions is not null
+            ? new JsonSerializerOptions(options.SerializerOptions)
+            : new JsonSerializerOptions(JsonSerializerDefaults.Web);
 
-        var serializerOptions = new JsonSerializerOptions(source);
-        serializerOptions.Converters.Add(DeterministicInternalConverter.Instance);
+        var runtimeResolver = new DefaultJsonTypeInfoResolver();
+        serializerOptions.TypeInfoResolver = serializerOptions.TypeInfoResolver is null
+            ? runtimeResolver
+            : JsonTypeInfoResolver.Combine(serializerOptions.TypeInfoResolver, runtimeResolver);
+
         return serializerOptions;
     }
 
-    private sealed class DeterministicInternalConverter : JsonConverter<object>
+    private static JsonSerializerContext ResolveSerializerContext(ResourceLeaseDeterministicOptions options, JsonSerializerOptions serializerOptions)
     {
-        public static DeterministicInternalConverter Instance { get; } = new();
-
-        private static readonly Type? VersionMarkerType = Type.GetType("Hugo.VersionGate+VersionMarker, Hugo");
-        private static readonly Type? EffectEnvelopeType = Type.GetType("Hugo.DeterministicEffectStore+EffectEnvelope, Hugo");
-
-        private static readonly ConstructorInfo? VersionMarkerCtor = VersionMarkerType?.GetConstructors(BindingFlags.Public | BindingFlags.Instance).FirstOrDefault();
-        private static readonly PropertyInfo? VersionMarkerProperty = VersionMarkerType?.GetProperty("Version");
-
-        private static readonly ConstructorInfo? EffectEnvelopeCtor = EffectEnvelopeType?.GetConstructors(BindingFlags.Public | BindingFlags.Instance).FirstOrDefault();
-        private static readonly PropertyInfo? EffectEnvelopeIsSuccess = EffectEnvelopeType?.GetProperty("IsSuccess");
-        private static readonly PropertyInfo? EffectEnvelopeTypeName = EffectEnvelopeType?.GetProperty("TypeName");
-        private static readonly PropertyInfo? EffectEnvelopePayload = EffectEnvelopeType?.GetProperty("SerializedValue");
-        private static readonly PropertyInfo? EffectEnvelopeError = EffectEnvelopeType?.GetProperty("Error");
-        private static readonly PropertyInfo? EffectEnvelopeRecordedAt = EffectEnvelopeType?.GetProperty("RecordedAt");
-
-        private DeterministicInternalConverter()
+        if (options.SerializerContext is not null)
         {
+            return options.SerializerContext;
         }
 
-        public override bool CanConvert(Type typeToConvert)
+        if (options.SerializerOptions is not null)
         {
-            if (VersionMarkerType is not null && typeToConvert == VersionMarkerType)
-            {
-                return true;
-            }
-
-            if (EffectEnvelopeType is not null && typeToConvert == EffectEnvelopeType)
-            {
-                return true;
-            }
-
-            return false;
+            return DeterministicJsonSerialization.CreateContext(serializerOptions);
         }
 
-        public override object? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-        {
-            if (VersionMarkerType is not null && typeToConvert == VersionMarkerType)
-            {
-                return ReadVersionMarker(ref reader);
-            }
-
-            if (EffectEnvelopeType is not null && typeToConvert == EffectEnvelopeType)
-            {
-                return ReadEffectEnvelope(ref reader, options);
-            }
-
-            throw new JsonException($"Unsupported deterministic type '{typeToConvert}'.");
-        }
-
-        public override void Write(Utf8JsonWriter writer, object value, JsonSerializerOptions options)
-        {
-            var valueType = value.GetType();
-            if (VersionMarkerType is not null && valueType == VersionMarkerType)
-            {
-                WriteVersionMarker(writer, value);
-                return;
-            }
-
-            if (EffectEnvelopeType is not null && valueType == EffectEnvelopeType)
-            {
-                WriteEffectEnvelope(writer, value, options);
-                return;
-            }
-
-            throw new JsonException($"Unsupported deterministic type '{valueType}'.");
-        }
-
-        private static object ReadVersionMarker(ref Utf8JsonReader reader)
-        {
-            using var document = JsonDocument.ParseValue(ref reader);
-            var version = document.RootElement.GetProperty("Version").GetInt32();
-            if (VersionMarkerCtor is null)
-            {
-                throw new InvalidOperationException("Unable to construct deterministic version marker.");
-            }
-
-            return VersionMarkerCtor.Invoke(new object?[] { version })!;
-        }
-
-        private static object ReadEffectEnvelope(ref Utf8JsonReader reader, JsonSerializerOptions options)
-        {
-            using var document = JsonDocument.ParseValue(ref reader);
-            var root = document.RootElement;
-
-            var isSuccess = root.GetProperty("IsSuccess").GetBoolean();
-            var typeName = root.GetProperty("TypeName").GetString() ?? string.Empty;
-            byte[]? serializedValue = root.GetProperty("SerializedValue").ValueKind == JsonValueKind.Null
-                ? null
-                : root.GetProperty("SerializedValue").GetBytesFromBase64();
-
-            Error? error = null;
-            if (root.TryGetProperty("Error", out var errorElement) && errorElement.ValueKind != JsonValueKind.Null)
-            {
-                error = errorElement.Deserialize<Error>(options);
-            }
-
-            var recordedAt = root.GetProperty("RecordedAt").GetDateTimeOffset();
-
-            if (EffectEnvelopeCtor is null)
-            {
-                throw new InvalidOperationException("Unable to construct deterministic effect envelope.");
-            }
-
-            return EffectEnvelopeCtor.Invoke(new object?[] { isSuccess, typeName, serializedValue, error, recordedAt })!;
-        }
-
-        private static void WriteVersionMarker(Utf8JsonWriter writer, object value)
-        {
-            if (VersionMarkerProperty is null)
-            {
-                throw new InvalidOperationException("Unable to access deterministic version marker.");
-            }
-
-            var version = (int)(VersionMarkerProperty.GetValue(value) ?? 0);
-            writer.WriteStartObject();
-            writer.WriteNumber("Version", version);
-            writer.WriteEndObject();
-        }
-
-        private static void WriteEffectEnvelope(Utf8JsonWriter writer, object value, JsonSerializerOptions options)
-        {
-            if (EffectEnvelopeIsSuccess is null ||
-                EffectEnvelopeTypeName is null ||
-                EffectEnvelopePayload is null ||
-                EffectEnvelopeError is null ||
-                EffectEnvelopeRecordedAt is null)
-            {
-                throw new InvalidOperationException("Unable to access deterministic effect envelope.");
-            }
-
-            var isSuccess = (bool)(EffectEnvelopeIsSuccess.GetValue(value) ?? false);
-            var typeName = (string?)EffectEnvelopeTypeName.GetValue(value) ?? string.Empty;
-            var payload = (byte[]?)EffectEnvelopePayload.GetValue(value);
-            var error = (Error?)EffectEnvelopeError.GetValue(value);
-            var recordedAt = (DateTimeOffset)(EffectEnvelopeRecordedAt.GetValue(value) ?? DateTimeOffset.MinValue);
-
-            writer.WriteStartObject();
-            writer.WriteBoolean("IsSuccess", isSuccess);
-            writer.WriteString("TypeName", typeName);
-            writer.WritePropertyName("SerializedValue");
-            if (payload is null)
-            {
-                writer.WriteNullValue();
-            }
-            else
-            {
-                writer.WriteBase64StringValue(payload);
-            }
-
-            writer.WritePropertyName("Error");
-            if (error is null)
-            {
-                writer.WriteNullValue();
-            }
-            else
-            {
-                JsonSerializer.Serialize(writer, error, options);
-            }
-
-            writer.WriteString("RecordedAt", recordedAt);
-            writer.WriteEndObject();
-        }
+        return DeterministicJsonSerialization.DefaultContext;
     }
 }
