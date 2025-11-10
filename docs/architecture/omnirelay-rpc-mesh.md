@@ -72,14 +72,14 @@ Running a data-fabric stack (catalogs, ingestion, orchestration, read models, et
 
 ### Enhancements Needed for Data-Fabric-Grade Mesh
 OmniRelay already supplies the core pieces (SafeTaskQueue, replication, health gossip), but turning it into a first-class RPC mesh for a lakehouse fabric requires a few upgrades:
-- **Resource-agnostic lease contracts.** Extract `ResourceLease*` DTOs/handlers into resource-neutral aliases so catalog, event bus, or workflow services can all describe their resources without forcing “table” semantics. Keep compatibility adapters.
-  - Since we are still in alpha, plan for a wholesale rename instead of long-term shims.
-- **Durable replication hub + sinks.** Ship an `IResourceLeaseReplicator` implementation that persists sequences (SQL, object storage, gRPC stream) and sample sinks (e.g., governance feed, lineage store). Today’s in-memory replicator is best-effort only.
-- **Pluggable deterministic state stores.** Provide production-ready `IDeterministicStateStore` adapters (SQL, Cosmos DB, Redis) and configuration guides so deterministic replay is practical outside tests.
-- **Operational playbooks + tooling.** Deliver a mesh deployment guide, health endpoints exposing `PeerLeaseHealthTracker` snapshots, and `ResourceLease` CLI tooling for drain/restore/backpressure inspection.
-- **Backpressure + routing hooks.** Add reusable `IResourceLeaseBackpressureListener` adapters (hooking RateLimitingMiddleware, traffic shutters) and document patterns for multi-shard routing so fabrics can throttle or reroute automatically.
-- **Mesh-wide observability.** Define standard metrics/OTLP spans for replication lag, lease churn, backpressure transitions, and expose dashboards/alerts so governance/ops teams can monitor the mesh.
-- **Failure/chaos validation.** Include automated tests or scripts that kill peers, corrupt replicas, and partition networks to prove the mesh self-heals without split-brain before production rollout.
+- ~~**Resource-agnostic lease contracts.** Extract `ResourceLease*` DTOs/handlers into resource-neutral aliases so catalog, event bus, or workflow services can all describe their resources without forcing “table” semantics. Keep compatibility adapters.~~ *(Completed — see “Ship resource-neutral contracts” + the ResourceLease component overview.)*
+  - ~~Since we are still in alpha, plan for a wholesale rename instead of long-term shims.~~
+- ~~**Durable replication hub + sinks.** Ship an `IResourceLeaseReplicator` implementation that persists sequences (SQL, object storage, gRPC stream) and sample sinks (e.g., governance feed, lineage store). Today’s in-memory replicator is best-effort only.~~ *(Completed — see “Shared Replication Hub”.)*
+- ~~**Pluggable deterministic state stores.** Provide production-ready `IDeterministicStateStore` adapters (SQL, Cosmos DB, Redis) and configuration guides so deterministic replay is practical outside tests.~~ *(Completed — see “Deterministic Store Providers”.)*
+- ~~**Operational playbooks + tooling.** Deliver a mesh deployment guide, health endpoints exposing `PeerLeaseHealthTracker` snapshots, and `ResourceLease` CLI tooling for drain/restore/backpressure inspection.~~ *(Completed — see “Mesh Diagnostics + Tooling”.)*
+- ~~**Backpressure + routing hooks.** Add reusable `IResourceLeaseBackpressureListener` adapters (hooking RateLimitingMiddleware, traffic shutters) and document patterns for multi-shard routing so fabrics can throttle or reroute automatically.~~ *(Completed — see “Backpressure Hooks” + “Sharding Strategy”.)*
+- ~~**Mesh-wide observability.** Define standard metrics/OTLP spans for replication lag, lease churn, backpressure transitions, and expose dashboards/alerts so governance/ops teams can monitor the mesh.~~ *(Completed — see “Mesh Health Dashboard” + “Observability & Governance Integrations”.)*
+- ~~**Failure/chaos validation.** Include automated tests or scripts that kill peers, corrupt replicas, and partition networks to prove the mesh self-heals without split-brain before production rollout.~~ *(Completed — see “Failure Drills”.)*
 
 ### Evolution Plan (alpha-friendly but staged)
 1. **Ship resource-neutral contracts**
@@ -90,12 +90,12 @@ OmniRelay already supplies the core pieces (SafeTaskQueue, replication, health g
    - Durable `IResourceLeaseReplicator` implementations now live in dedicated packages (`OmniRelay.ResourceLeaseReplicator.Sqlite`, `.Grpc`, `.ObjectStorage`) so services can adopt only the transports they need.
    - `SqliteDeterministicStateStore` and `FileSystemDeterministicStateStore` ship with those packages and provide hardened `IDeterministicStateStore` adapters. Wire them through `ResourceLeaseDeterministicOptions` when deterministic capture is enabled.
    - Configuration remains opt-in so clusters can switch from the in-memory defaults gradually.
-3. **Expose mesh diagnostics + tooling**
+3. **Expose mesh diagnostics + tooling** *(Completed — see “Mesh Diagnostics + Tooling”.)*
    - Wire the diagnostics control plane, CLI helpers, and zero-downtime deployment workflows described in “Mesh Diagnostics + Tooling” so operators can inspect peers/backpressure, drain queues, and roll out new dispatcher versions without interrupting leases.
-4. **Ship reusable backpressure + routing hooks**
+4. **Ship reusable backpressure + routing hooks** *(Completed — see “Backpressure Hooks” and “Sharding Strategy”.)*
    - Publish reference implementations of `IResourceLeaseBackpressureListener` that integrate with RateLimitingMiddleware, traffic shutters, or orchestrators.
    - Add helper APIs for sharding/routing so services can segment queues without bespoke code.
-5. **Expand observability and governance integrations**
+5. **Expand observability and governance integrations** *(Completed — see “Mesh Health Dashboard” + “Observability & Governance Integrations”.)*
    - Use the instrumentation described in “Mesh Health Dashboard” + “Observability & Governance Integrations” to export OTLP metrics/traces/logs consistently and feed replication sinks into lineage/governance stores out-of-the-box.
 6. **Automate chaos/failure validation**
    - Create integration/chaos suites that kill peers, partition networks, corrupt replication logs, and assert deterministic recovery. Run them in CI/CD before releases.
