@@ -72,6 +72,7 @@ internal static class OmniRelayCliTestHelper
         psi.ArgumentList.Add(CliProjectPath);
         psi.ArgumentList.Add("--configuration");
         psi.ArgumentList.Add("Debug");
+        psi.ArgumentList.Add("--no-build");
         psi.ArgumentList.Add("--");
         foreach (var argument in cliArguments)
         {
