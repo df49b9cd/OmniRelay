@@ -45,17 +45,14 @@ public sealed class LeadershipEventHub
 
         // Emit snapshot first so clients have immediate state.
         var snapshot = Snapshot();
-        foreach (var token in snapshot.Tokens)
+        foreach (var token in snapshot.Tokens.Where(t => subscription.Matches(t.Scope)))
         {
-            if (subscription.Matches(token.Scope))
+            var snapshotEvent = LeadershipEvent.ForSnapshot(token) with
             {
-                var snapshotEvent = LeadershipEvent.ForSnapshot(token) with
-                {
-                    OccurredAt = _timeProvider.GetUtcNow()
-                };
+                OccurredAt = _timeProvider.GetUtcNow()
+            };
 
-                subscription.TryWrite(snapshotEvent);
-            }
+            subscription.TryWrite(snapshotEvent);
         }
 
         return ReadAsync(subscription, cancellationToken);
