@@ -9,23 +9,23 @@ public sealed class LeadershipOptions
     public bool Enabled { get; set; } = true;
 
     /// <summary>Primary lease duration. Renewals occur before the deadline using <see cref="RenewalLeadTime"/>.</summary>
-    [Range(typeof(TimeSpan), "00:00:01", "00:10:00")]
+    [TimeSpanRange("00:00:01", "00:10:00")]
     public TimeSpan LeaseDuration { get; set; } = TimeSpan.FromSeconds(8);
 
     /// <summary>How long before expiry the coordinator should renew its lease.</summary>
-    [Range(typeof(TimeSpan), "00:00:01", "00:05:00")]
+    [TimeSpanRange("00:00:01", "00:05:00")]
     public TimeSpan RenewalLeadTime { get; set; } = TimeSpan.FromSeconds(3);
 
     /// <summary>Interval between election evaluations per scope.</summary>
-    [Range(typeof(TimeSpan), "00:00:00.100", "00:00:10")]
+    [TimeSpanRange("00:00:00.100", "00:00:10")]
     public TimeSpan EvaluationInterval { get; set; } = TimeSpan.FromMilliseconds(750);
 
     /// <summary>Maximum amount of time leadership acquisition should take under healthy conditions.</summary>
-    [Range(typeof(TimeSpan), "00:00:01", "00:00:30")]
+    [TimeSpanRange("00:00:01", "00:00:30")]
     public TimeSpan MaxElectionWindow { get; set; } = TimeSpan.FromSeconds(5);
 
     /// <summary>Backoff applied after failed elections to avoid thundering herds.</summary>
-    [Range(typeof(TimeSpan), "00:00:00.100", "00:00:05")]
+    [TimeSpanRange("00:00:00.100", "00:00:05")]
     public TimeSpan ElectionBackoff { get; set; } = TimeSpan.FromMilliseconds(500);
 
     /// <summary>Optional explicit node identifier; defaults to the gossip node id.</summary>
