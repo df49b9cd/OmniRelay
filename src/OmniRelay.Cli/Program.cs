@@ -24,7 +24,7 @@ using OmniRelay.Transport.Http;
 
 namespace OmniRelay.Cli;
 
-public static class Program
+internal static class Program
 {
     private const string DefaultConfigSection = "polymer";
     private const string DefaultIntrospectionUrl = "http://127.0.0.1:8080/omnirelay/introspect";
@@ -972,7 +972,7 @@ public static class Program
 
         try
         {
-            await using var provider = services.BuildServiceProvider();
+            await using var provider = services.BuildServiceProvider().ConfigureAwait(false);
             var dispatcher = provider.GetRequiredService<Dispatcher.Dispatcher>();
             var summary = dispatcher.Introspect();
 

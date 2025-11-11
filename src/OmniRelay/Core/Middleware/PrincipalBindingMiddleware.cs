@@ -30,6 +30,9 @@ public sealed class PrincipalBindingMiddleware :
         CancellationToken cancellationToken,
         UnaryInboundDelegate next)
     {
+        request = EnsureNotNull(request, nameof(request));
+        next = EnsureNotNull(next, nameof(next));
+
         var enriched = EnrichRequest(request);
         return next(enriched, cancellationToken);
     }
@@ -39,6 +42,9 @@ public sealed class PrincipalBindingMiddleware :
         CancellationToken cancellationToken,
         OnewayInboundDelegate next)
     {
+        request = EnsureNotNull(request, nameof(request));
+        next = EnsureNotNull(next, nameof(next));
+
         var enriched = EnrichRequest(request);
         return next(enriched, cancellationToken);
     }
@@ -49,6 +55,11 @@ public sealed class PrincipalBindingMiddleware :
         CancellationToken cancellationToken,
         StreamInboundDelegate next)
     {
+        request = EnsureNotNull(request, nameof(request));
+        options = EnsureNotNull(options, nameof(options));
+
+        next = EnsureNotNull(next, nameof(next));
+
         var enriched = EnrichRequest(request);
         return next(enriched, options, cancellationToken);
     }
@@ -58,6 +69,8 @@ public sealed class PrincipalBindingMiddleware :
         CancellationToken cancellationToken,
         ClientStreamInboundDelegate next)
     {
+        next = EnsureNotNull(next, nameof(next));
+
         var enriched = EnrichContext(context);
         return next(enriched, cancellationToken);
     }
@@ -67,6 +80,9 @@ public sealed class PrincipalBindingMiddleware :
         CancellationToken cancellationToken,
         DuplexInboundDelegate next)
     {
+        request = EnsureNotNull(request, nameof(request));
+        next = EnsureNotNull(next, nameof(next));
+
         var enriched = EnrichRequest(request);
         return next(enriched, cancellationToken);
     }
@@ -143,6 +159,12 @@ public sealed class PrincipalBindingMiddleware :
 
         return null;
     }
+
+    private static T EnsureNotNull<T>(T? value, string paramName) where T : class
+    {
+        ArgumentNullException.ThrowIfNull(value, paramName);
+        return value;
+    }
 }
 
 /// <summary>Options controlling how principals are inferred from inbound metadata.</summary>
@@ -180,3 +202,4 @@ public sealed class PrincipalBindingOptions
     /// <summary>When true, authorization headers prefixed with 'mTLS ' are parsed as certificate subjects.</summary>
     public bool AcceptMutualTlsSubjects { get; init; } = true;
 }
+

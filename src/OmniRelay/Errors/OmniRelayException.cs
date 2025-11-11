@@ -70,4 +70,12 @@ public sealed class OmniRelayException : Exception
     public OmniRelayException()
     {
     }
+
+    public OmniRelayException(string message) : base(message)
+    {
+    }
+
+    public OmniRelayException(string message, Exception innerException) : base(message, innerException)
+    {
+    }
 }

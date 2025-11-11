@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Hugo;
 using Microsoft.Extensions.Logging;
 using OmniRelay.Core;
@@ -9,7 +10,8 @@ namespace OmniRelay.Samples.CodegenTee.Rollout;
 
 internal static class Program
 {
-    public static async Task Main(string[] args)
+    [SuppressMessage("Globalization", "CA1303:Do not pass literals as localized parameters", Justification = "Sample-only console output.")]
+    public static async Task Main()
     {
         await using var primary = await RiskDeployment.StartAsync(new RiskServiceV1("risk-primary")).ConfigureAwait(false);
         await using var shadow = await RiskDeployment.StartAsync(new RiskServiceV2("risk-shadow")).ConfigureAwait(false);
