@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
@@ -38,12 +40,20 @@ public sealed class JsonCodec<TRequest, TResponse> : ICodec<TRequest, TResponse>
         _requestTypeInfo = ResolveTypeInfo<TRequest>(serializerContext);
         _responseTypeInfo = ResolveTypeInfo<TResponse>(serializerContext);
 
-        if (_requestTypeInfo is null)
+        var needsRequestRuntimeType = _requestTypeInfo is null;
+        var needsResponseRuntimeType = _responseTypeInfo is null;
+
+        if (needsRequestRuntimeType || needsResponseRuntimeType)
+        {
+            EnsureRuntimeTypeResolver(_options);
+        }
+
+        if (needsRequestRuntimeType)
         {
             _requestRuntimeTypeInfo = CreateRuntimeTypeInfoFactory<TRequest>(_options);
         }
 
-        if (_responseTypeInfo is null)
+        if (needsResponseRuntimeType)
         {
             _responseRuntimeTypeInfo = CreateRuntimeTypeInfoFactory<TResponse>(_options);
         }
@@ -231,6 +241,27 @@ public sealed class JsonCodec<TRequest, TResponse> : ICodec<TRequest, TResponse>
         throw new InvalidOperationException($"Json metadata for '{typeof(T).FullName}' is not available. Provide a JsonSerializerContext.");
     }
 
+    [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Reflection-based JSON fallback is only used when dynamic code is available; trimmed/AOT deployments must provide a JsonSerializerContext.")]
+    [UnconditionalSuppressMessage("AOT", "IL3050", Justification = "Reflection-based JSON fallback is only used when dynamic code is available; native AOT deployments must provide a JsonSerializerContext.")]
+    private static void EnsureRuntimeTypeResolver(JsonSerializerOptions options)
+    {
+        if (options.TypeInfoResolver is not null)
+        {
+            return;
+        }
+
+        if (!RuntimeFeature.IsDynamicCodeSupported)
+        {
+            throw new InvalidOperationException("JsonCodec requires a JsonSerializerContext when dynamic code is unavailable.");
+        }
+
+        options.TypeInfoResolver = DefaultRuntimeResolver.Value;
+    }
+
+    [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Reflection-based JSON fallback is only used when dynamic code is available; native AOT deployments must supply a JsonSerializerContext.")]
+    [UnconditionalSuppressMessage("AOT", "IL3050", Justification = "Reflection-based JSON fallback is only used when dynamic code is available; native AOT deployments must supply a JsonSerializerContext.")]
+    private static readonly Lazy<IJsonTypeInfoResolver> DefaultRuntimeResolver = new(static () => new DefaultJsonTypeInfoResolver());
+
     private Error? ValidateSchema(
         JsonSchema? schema,
         string? schemaId,
@@ -304,7 +335,7 @@ public sealed class JsonCodec<TRequest, TResponse> : ICodec<TRequest, TResponse>
             PropertyNameCaseInsensitive = true
         };
 
-    private static IReadOnlyDictionary<string, object?> BuildSchemaMetadata(
+    private static Dictionary<string, object?> BuildSchemaMetadata(
         string stage,
         string? schemaId,
         EvaluationResults evaluation,
@@ -344,7 +375,7 @@ public sealed class JsonCodec<TRequest, TResponse> : ICodec<TRequest, TResponse>
         }
     }
 
-    private IReadOnlyDictionary<string, object?> BuildExceptionMetadata(Exception exception, string stage) => new Dictionary<string, object?>
+    private Dictionary<string, object?> BuildExceptionMetadata(Exception exception, string stage) => new Dictionary<string, object?>
     {
         ["encoding"] = Encoding,
         ["stage"] = stage,
