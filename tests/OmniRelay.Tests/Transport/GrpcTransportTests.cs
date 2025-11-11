@@ -2812,7 +2812,7 @@ public partial class GrpcTransportTests
     }
 
     [JsonSourceGenerationOptions(
-        GenerationMode = JsonSourceGenerationMode.Serialization,
+        GenerationMode = JsonSourceGenerationMode.Metadata,
         PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
     [JsonSerializable(typeof(EchoRequest))]
     [JsonSerializable(typeof(EchoResponse))]

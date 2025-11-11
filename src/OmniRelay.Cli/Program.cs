@@ -6,6 +6,7 @@ using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 using Google.Protobuf;
 using Google.Protobuf.Reflection;
 using Google.Protobuf.WellKnownTypes;
@@ -1148,10 +1149,10 @@ public static class Program
 
             await using ((await response.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false)).AsAsyncDisposable(out var stream))
             {
-                var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
+                var options = CreateJsonOptions(configure: static options =>
                 {
-                    PropertyNameCaseInsensitive = true
-                };
+                    options.PropertyNameCaseInsensitive = true;
+                });
                 options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
 
                 var snapshot = await JsonSerializer.DeserializeAsync<DispatcherIntrospection>(stream, options, cts.Token).ConfigureAwait(false);
@@ -1163,10 +1164,10 @@ public static class Program
 
                 if (normalizedFormat is "json" or "raw")
                 {
-                    var outputOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web)
+                    var outputOptions = CreateJsonOptions(configure: static options =>
                     {
-                        WriteIndented = true
-                    };
+                        options.WriteIndented = true;
+                    });
                     outputOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
                     var json = JsonSerializer.Serialize(snapshot, outputOptions);
                     Console.WriteLine(json);
@@ -1778,11 +1779,11 @@ public static class Program
         {
             await using (File.OpenRead(scriptPath).AsAsyncDisposable(out var stream))
             {
-                var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
+                var options = CreateJsonOptions(configure: static options =>
                 {
-                    PropertyNameCaseInsensitive = true,
-                    AllowTrailingCommas = true
-                };
+                    options.PropertyNameCaseInsensitive = true;
+                    options.AllowTrailingCommas = true;
+                });
                 script = await JsonSerializer.DeserializeAsync<AutomationScript>(stream, options).ConfigureAwait(false);
             }
         }
@@ -1955,66 +1956,6 @@ public static class Program
         }
 
         return exitCode;
-    }
-
-    private sealed record AutomationScript
-    {
-        public AutomationStep[] Steps { get; init; } = [];
-    }
-
-    private sealed record AutomationStep
-    {
-        public string Type { get; init; } = string.Empty;
-
-        public static string? Description { get; set; }
-
-        public static string? Transport { get; set; }
-
-        public static string? Service { get; set; }
-
-        public static string? Procedure { get; set; }
-
-        public static string? Caller { get; set; }
-
-        public static string? Encoding { get; set; }
-
-        public static Dictionary<string, string>? Headers { get; set; }
-
-        public static string[]? Profiles { get; set; }
-
-        public static string? ShardKey { get; set; }
-
-        public static string? RoutingKey { get; set; }
-
-        public static string? RoutingDelegate { get; set; }
-
-        public static string[]? ProtoFiles { get; set; }
-
-        public static string? ProtoMessage { get; set; }
-
-        public static string? Ttl { get; set; }
-
-        public static string? Deadline { get; set; }
-
-        public static string? Timeout { get; set; }
-
-        public static string? Body { get; set; }
-
-        public static string? BodyFile { get; set; }
-
-        public static string? BodyBase64 { get; set; }
-
-        public static string? Url { get; set; }
-
-        public static string? Address { get; set; }
-
-        public static string[]? Addresses { get; set; }
-
-        public static string? Format { get; set; }
-
-        public static string? Duration { get; set; }
-
-        public static string? Delay { get; set; }
     }
 
     private static void PrintBenchmarkSummary(
@@ -3374,4 +3315,32 @@ public static class Program
         value = source[(separatorIndex + 1)..];
         return true;
     }
+
+    private static JsonSerializerOptions CreateJsonOptions(
+        JsonSerializerDefaults defaults = JsonSerializerDefaults.Web,
+        Action<JsonSerializerOptions>? configure = null)
+    {
+        var options = new JsonSerializerOptions(defaults);
+        EnsureSerializerTypeInfo(options);
+        configure?.Invoke(options);
+        return options;
+    }
+
+    private static void EnsureSerializerTypeInfo(JsonSerializerOptions options)
+    {
+        var additionalResolver = JsonSerializer.IsReflectionEnabledByDefault
+            ? ReflectionBackedResolver.Value
+            : CliOnlyResolver.Value;
+
+        options.TypeInfoResolver = options.TypeInfoResolver is null
+            ? additionalResolver
+            : JsonTypeInfoResolver.Combine(options.TypeInfoResolver, additionalResolver);
+    }
+
+    private static readonly Lazy<IJsonTypeInfoResolver> CliOnlyResolver = new(static () => OmniRelayCliJsonContext.Default);
+
+    [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Reflection-based JSON fallback is only used when dynamic code is available.")]
+    [UnconditionalSuppressMessage("AOT", "IL3050", Justification = "Reflection-based JSON fallback is only used when dynamic code is available.")]
+    private static readonly Lazy<IJsonTypeInfoResolver> ReflectionBackedResolver = new(static () =>
+        JsonTypeInfoResolver.Combine(OmniRelayCliJsonContext.Default, new DefaultJsonTypeInfoResolver()));
 }

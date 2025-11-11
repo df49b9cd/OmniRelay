@@ -782,7 +782,8 @@ internal sealed record ShadowPingRequest(string Phase);
 internal sealed record ShadowPingResponse(string Cluster, string ShadowFlag);
 
 [JsonSourceGenerationOptions(
-    GenerationMode = JsonSourceGenerationMode.Serialization,
+    GenerationMode = JsonSourceGenerationMode.Metadata,
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
+[JsonSerializable(typeof(ShadowPingRequest))]
 [JsonSerializable(typeof(ShadowPingResponse))]
 internal partial class CompatibilityInteropJsonContext : JsonSerializerContext;
