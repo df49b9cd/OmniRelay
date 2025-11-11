@@ -18,13 +18,13 @@ public sealed class RetryMiddleware(RetryOptions? options = null) : IUnaryOutbou
     public ValueTask<Result<Response<ReadOnlyMemory<byte>>>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
-        UnaryOutboundDelegate next) =>
+        UnaryOutboundHandler next) =>
         ExecuteWithRetryAsync(request, cancellationToken, next);
 
     private async ValueTask<Result<Response<ReadOnlyMemory<byte>>>> ExecuteWithRetryAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
-        UnaryOutboundDelegate next)
+        UnaryOutboundHandler next)
     {
         var meta = request.Meta;
 
@@ -66,7 +66,7 @@ public sealed class RetryMiddleware(RetryOptions? options = null) : IUnaryOutbou
     private async ValueTask<Result<Response<ReadOnlyMemory<byte>>>> ExecuteWithPolicyAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
-        UnaryOutboundDelegate next,
+        UnaryOutboundHandler next,
         RequestMeta meta,
         ResultExecutionPolicy policy)
     {
@@ -141,7 +141,7 @@ public sealed class RetryMiddleware(RetryOptions? options = null) : IUnaryOutbou
     private async ValueTask<Result<Response<ReadOnlyMemory<byte>>>> ExecuteWithCustomPredicateAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
-        UnaryOutboundDelegate next,
+        UnaryOutboundHandler next,
         RequestMeta meta,
         ResultExecutionPolicy policy)
     {

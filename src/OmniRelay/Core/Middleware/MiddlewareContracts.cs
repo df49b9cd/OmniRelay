@@ -10,7 +10,7 @@ public interface IUnaryOutboundMiddleware
     ValueTask<Result<Response<ReadOnlyMemory<byte>>>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
-        UnaryOutboundDelegate next);
+        UnaryOutboundHandler next);
 }
 
 /// <summary>Unary inbound middleware contract.</summary>
@@ -20,7 +20,7 @@ public interface IUnaryInboundMiddleware
     ValueTask<Result<Response<ReadOnlyMemory<byte>>>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
-        UnaryInboundDelegate next);
+        UnaryInboundHandler next);
 }
 
 /// <summary>Oneway outbound middleware contract.</summary>
@@ -30,7 +30,7 @@ public interface IOnewayOutboundMiddleware
     ValueTask<Result<OnewayAck>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
-        OnewayOutboundDelegate next);
+        OnewayOutboundHandler next);
 }
 
 /// <summary>Oneway inbound middleware contract.</summary>
@@ -40,7 +40,7 @@ public interface IOnewayInboundMiddleware
     ValueTask<Result<OnewayAck>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
-        OnewayInboundDelegate next);
+        OnewayInboundHandler next);
 }
 
 /// <summary>Server-streaming outbound middleware contract.</summary>
@@ -51,7 +51,7 @@ public interface IStreamOutboundMiddleware
         IRequest<ReadOnlyMemory<byte>> request,
         StreamCallOptions options,
         CancellationToken cancellationToken,
-        StreamOutboundDelegate next);
+        StreamOutboundHandler next);
 }
 
 /// <summary>Server-streaming inbound middleware contract.</summary>
@@ -62,7 +62,7 @@ public interface IStreamInboundMiddleware
         IRequest<ReadOnlyMemory<byte>> request,
         StreamCallOptions options,
         CancellationToken cancellationToken,
-        StreamInboundDelegate next);
+        StreamInboundHandler next);
 }
 
 /// <summary>Client-stream inbound middleware contract.</summary>
@@ -72,7 +72,7 @@ public interface IClientStreamInboundMiddleware
     ValueTask<Result<Response<ReadOnlyMemory<byte>>>> InvokeAsync(
         ClientStreamRequestContext context,
         CancellationToken cancellationToken,
-        ClientStreamInboundDelegate next);
+        ClientStreamInboundHandler next);
 }
 
 /// <summary>Client-stream outbound middleware contract.</summary>
@@ -82,7 +82,7 @@ public interface IClientStreamOutboundMiddleware
     ValueTask<Result<IClientStreamTransportCall>> InvokeAsync(
         RequestMeta requestMeta,
         CancellationToken cancellationToken,
-        ClientStreamOutboundDelegate next);
+        ClientStreamOutboundHandler next);
 }
 
 /// <summary>Duplex inbound middleware contract.</summary>
@@ -92,7 +92,7 @@ public interface IDuplexInboundMiddleware
     ValueTask<Result<IDuplexStreamCall>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
-        DuplexInboundDelegate next);
+        DuplexInboundHandler next);
 }
 
 /// <summary>Duplex outbound middleware contract.</summary>
@@ -102,5 +102,5 @@ public interface IDuplexOutboundMiddleware
     ValueTask<Result<IDuplexStreamCall>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
-        DuplexOutboundDelegate next);
+        DuplexOutboundHandler next);
 }

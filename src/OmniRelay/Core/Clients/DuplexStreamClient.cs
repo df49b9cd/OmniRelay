@@ -13,7 +13,7 @@ namespace OmniRelay.Core.Clients;
 /// </summary>
 public sealed class DuplexStreamClient<TRequest, TResponse>
 {
-    private readonly DuplexOutboundDelegate _pipeline;
+    private readonly DuplexOutboundHandler _pipeline;
     private readonly ICodec<TRequest, TResponse> _codec;
 
     /// <summary>

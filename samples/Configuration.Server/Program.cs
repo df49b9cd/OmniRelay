@@ -308,7 +308,7 @@ internal sealed class RequestLoggingMiddleware(ILogger<RequestLoggingMiddleware>
     public async ValueTask<Result<Response<ReadOnlyMemory<byte>>>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
-        UnaryInboundDelegate next)
+        UnaryInboundHandler next)
     {
         logger.LogInformation("--> unary {Procedure}", request.Meta.Procedure);
         var response = await next(request, cancellationToken).ConfigureAwait(false);
@@ -327,7 +327,7 @@ internal sealed class RequestLoggingMiddleware(ILogger<RequestLoggingMiddleware>
     public async ValueTask<Result<OnewayAck>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
-        OnewayInboundDelegate next)
+        OnewayInboundHandler next)
     {
         logger.LogInformation("--> oneway {Procedure}", request.Meta.Procedure);
         var response = await next(request, cancellationToken).ConfigureAwait(false);
@@ -347,7 +347,7 @@ internal sealed class RequestLoggingMiddleware(ILogger<RequestLoggingMiddleware>
         IRequest<ReadOnlyMemory<byte>> request,
         StreamCallOptions options,
         CancellationToken cancellationToken,
-        StreamInboundDelegate next)
+        StreamInboundHandler next)
     {
         logger.LogInformation("--> stream {Procedure} ({Direction})", request.Meta.Procedure, options.Direction);
         var response = await next(request, options, cancellationToken).ConfigureAwait(false);

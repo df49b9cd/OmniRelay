@@ -131,7 +131,7 @@ public sealed class Dispatcher
     /// <summary>
     /// Registers a unary procedure with an optional per-procedure middleware/encoding configuration.
     /// </summary>
-    public Result<Unit> RegisterUnary(string name, UnaryInboundDelegate handler, Action<UnaryProcedureBuilder>? configure = null)
+    public Result<Unit> RegisterUnary(string name, UnaryInboundHandler handler, Action<UnaryProcedureBuilder>? configure = null)
     {
         ArgumentNullException.ThrowIfNull(handler);
 
@@ -155,7 +155,7 @@ public sealed class Dispatcher
     /// <summary>
     /// Registers a oneway procedure with an optional per-procedure configuration.
     /// </summary>
-    public Result<Unit> RegisterOneway(string name, OnewayInboundDelegate handler, Action<OnewayProcedureBuilder>? configure = null)
+    public Result<Unit> RegisterOneway(string name, OnewayInboundHandler handler, Action<OnewayProcedureBuilder>? configure = null)
     {
         ArgumentNullException.ThrowIfNull(handler);
 
@@ -179,7 +179,7 @@ public sealed class Dispatcher
     /// <summary>
     /// Registers a server-streaming procedure with an optional per-procedure configuration.
     /// </summary>
-    public Result<Unit> RegisterStream(string name, StreamInboundDelegate handler, Action<StreamProcedureBuilder>? configure = null)
+    public Result<Unit> RegisterStream(string name, StreamInboundHandler handler, Action<StreamProcedureBuilder>? configure = null)
     {
         ArgumentNullException.ThrowIfNull(handler);
 
@@ -203,7 +203,7 @@ public sealed class Dispatcher
     /// <summary>
     /// Registers a client-streaming procedure with an optional per-procedure configuration.
     /// </summary>
-    public Result<Unit> RegisterClientStream(string name, ClientStreamInboundDelegate handler, Action<ClientStreamProcedureBuilder>? configure = null)
+    public Result<Unit> RegisterClientStream(string name, ClientStreamInboundHandler handler, Action<ClientStreamProcedureBuilder>? configure = null)
     {
         ArgumentNullException.ThrowIfNull(handler);
 
@@ -227,7 +227,7 @@ public sealed class Dispatcher
     /// <summary>
     /// Registers a duplex-streaming procedure with an optional per-procedure configuration.
     /// </summary>
-    public Result<Unit> RegisterDuplex(string name, DuplexInboundDelegate handler, Action<DuplexProcedureBuilder>? configure = null)
+    public Result<Unit> RegisterDuplex(string name, DuplexInboundHandler handler, Action<DuplexProcedureBuilder>? configure = null)
     {
         ArgumentNullException.ThrowIfNull(handler);
 
@@ -748,7 +748,7 @@ public sealed class Dispatcher
     private static async Task ProcessClientStreamAsync(
         ClientStreamCall call,
         ClientStreamRequestContext context,
-        ClientStreamInboundDelegate pipeline,
+        ClientStreamInboundHandler pipeline,
         CancellationToken cancellationToken)
     {
         try

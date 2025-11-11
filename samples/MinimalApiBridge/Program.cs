@@ -266,7 +266,7 @@ internal sealed class ConsoleLoggingMiddleware(ILogger<ConsoleLoggingMiddleware>
     public async ValueTask<Result<Response<ReadOnlyMemory<byte>>>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
-        UnaryInboundDelegate next)
+        UnaryInboundHandler next)
     {
         logger.LogInformation("[{Transport}] {Procedure} unary inbound", request.Meta.Transport ?? "unknown", request.Meta.Procedure ?? "unknown");
         return await next(request, cancellationToken).ConfigureAwait(false);
@@ -275,7 +275,7 @@ internal sealed class ConsoleLoggingMiddleware(ILogger<ConsoleLoggingMiddleware>
     public async ValueTask<Result<OnewayAck>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
-        OnewayInboundDelegate next)
+        OnewayInboundHandler next)
     {
         logger.LogInformation("[{Transport}] {Procedure} oneway inbound", request.Meta.Transport ?? "unknown", request.Meta.Procedure ?? "unknown");
         return await next(request, cancellationToken).ConfigureAwait(false);

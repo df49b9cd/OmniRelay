@@ -169,7 +169,7 @@ internal sealed class DeadlineMiddleware(TimeSpan deadline) : IOnewayInboundMidd
     public ValueTask<Result<OnewayAck>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
-        OnewayInboundDelegate next)
+        OnewayInboundHandler next)
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(deadline);
@@ -184,7 +184,7 @@ internal sealed class RetryBudgetMiddleware(int maxRetries) : IOnewayInboundMidd
     public async ValueTask<Result<OnewayAck>> InvokeAsync(
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken,
-        OnewayInboundDelegate next)
+        OnewayInboundHandler next)
     {
         var attempts = 0;
         Result<OnewayAck> result;
@@ -205,7 +205,7 @@ internal sealed class DashboardLoggingMiddleware : IStreamInboundMiddleware
         IRequest<ReadOnlyMemory<byte>> request,
         StreamCallOptions options,
         CancellationToken cancellationToken,
-        StreamInboundDelegate next)
+        StreamInboundHandler next)
     {
         Console.WriteLine($"[dashboard] stream requested from {request.Meta.Caller ?? "unknown"}");
         var result = await next(request, options, cancellationToken).ConfigureAwait(false);
