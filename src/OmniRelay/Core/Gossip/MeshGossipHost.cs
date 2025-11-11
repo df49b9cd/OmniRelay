@@ -304,9 +304,8 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
         var snapshot = _membership.Snapshot();
         var members = _membership.PickFanout(_options.Fanout);
         var targets = members
-            .Select(member => (member, endpoint: ParseEndpoint(member.Metadata.Endpoint)))
-            .Where(x => x.endpoint is not null)
-            .Select(x => x.endpoint!)
+            .Select(member => ParseEndpoint(member.Metadata.Endpoint))
+            .OfType<MeshGossipPeerEndpoint>()
             .ToList();
 
         if (targets.Count == 0 && _seedPeers.Count > 0)
@@ -353,7 +352,7 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
             catch (Exception ex)
             {
                 MeshGossipMetrics.RecordMessage("outbound", "failure");
-                MeshGossipHostLog.GossipRequestFailed(_logger, target.ToString(), ex);
+                MeshGossipHostLog.GossipRequestFailed(_logger, target.ToString() ?? "unknown", ex);
             }
         }
 
