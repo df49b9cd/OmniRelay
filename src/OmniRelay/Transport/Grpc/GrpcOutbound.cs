@@ -338,16 +338,16 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         catch (RpcException rpcEx)
         {
             // Fallback: if HTTP version negotiation failed to establish HTTP/2, retry with a forced HTTP/2 client.
-            var shouldFallback = _clientRuntimeOptions?.EnableHttp3 == true &&
-                ShouldForceHttp2Fallback(rpcEx);
+            var shouldFallback = CanFallbackToHttp2(rpcEx);
 
             if (shouldFallback)
             {
                 try
                 {
                     using var fallbackChannel = GrpcChannel.ForAddress(peer.Address, CreateHttp2FallbackOptions());
-                    var fallbackInvoker = fallbackChannel.CreateCallInvoker();
-                    var retryCall = fallbackInvoker.AsyncUnaryCall(method, null, callOptions, request.Body.ToArray());
+                    var fallbackInvoker = AttachClientInterceptors(fallbackChannel.CreateCallInvoker());
+                    var fallbackCallOptions = callOptions;
+                    var retryCall = fallbackInvoker.AsyncUnaryCall(method, null, fallbackCallOptions, request.Body.ToArray());
                     var retryResponse = await retryCall.ResponseAsync.ConfigureAwait(false);
 
                     // Metrics: count explicit OrHigher fallback to HTTP/2
@@ -379,14 +379,14 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         }
         catch (Exception ex)
         {
-            if (_clientRuntimeOptions?.EnableHttp3 == true &&
-                ShouldForceHttp2Fallback(ex))
+            if (CanFallbackToHttp2(ex))
             {
                 try
                 {
                     using var fallbackChannel = GrpcChannel.ForAddress(peer.Address, CreateHttp2FallbackOptions());
-                    var fallbackInvoker = fallbackChannel.CreateCallInvoker();
-                    var retryCall = fallbackInvoker.AsyncUnaryCall(method, null, callOptions, request.Body.ToArray());
+                    var fallbackInvoker = AttachClientInterceptors(fallbackChannel.CreateCallInvoker());
+                    var fallbackCallOptions = callOptions;
+                    var retryCall = fallbackInvoker.AsyncUnaryCall(method, null, fallbackCallOptions, request.Body.ToArray());
                     var retryResponse = await retryCall.ResponseAsync.ConfigureAwait(false);
 
                     if (_clientRuntimeOptions?.EnableHttp3 == true)
@@ -967,36 +967,7 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         {
             var options = CloneChannelOptions();
             _channel = GrpcChannel.ForAddress(_address, options);
-            var invoker = _channel.CreateCallInvoker();
-
-            var interceptors = new List<Interceptor>();
-
-            if (_owner._compositeClientInterceptor is { } composite)
-            {
-                interceptors.Add(composite);
-            }
-
-            if (_owner._clientRuntimeOptions is { Interceptors.Count: > 0 } runtimeOptions)
-            {
-                foreach (var interceptor in runtimeOptions.Interceptors)
-                {
-                    if (interceptor is not null)
-                    {
-                        interceptors.Add(interceptor);
-                    }
-                }
-            }
-
-            if (_owner._telemetryOptions?.EnableClientLogging == true)
-            {
-                var loggerFactory = _owner._telemetryOptions.ResolveLoggerFactory();
-                interceptors.Add(new GrpcClientLoggingInterceptor(loggerFactory.CreateLogger<GrpcClientLoggingInterceptor>()));
-            }
-
-            if (interceptors.Count > 0)
-            {
-                invoker = invoker.Intercept([.. interceptors]);
-            }
+            var invoker = _owner.AttachClientInterceptors(_channel.CreateCallInvoker());
 
             _callInvoker = invoker;
             _state = PeerState.Available;
@@ -1560,6 +1531,49 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         }
 
         return false;
+    }
+
+    private bool CanFallbackToHttp2(Exception exception) =>
+        _clientRuntimeOptions?.EnableHttp3 == true &&
+        (_clientRuntimeOptions?.AllowHttp2Fallback ?? true) &&
+        ShouldForceHttp2Fallback(exception);
+
+    private CallInvoker AttachClientInterceptors(CallInvoker invoker)
+    {
+        var interceptors = CreateClientInterceptors();
+        return interceptors.Length > 0 ? invoker.Intercept(interceptors) : invoker;
+    }
+
+    private Interceptor[] CreateClientInterceptors()
+    {
+        List<Interceptor>? interceptors = null;
+
+        if (_compositeClientInterceptor is { } composite)
+        {
+            interceptors ??= [];
+            interceptors.Add(composite);
+        }
+
+        if (_clientRuntimeOptions is { Interceptors.Count: > 0 } runtimeOptions)
+        {
+            interceptors ??= [];
+            foreach (var interceptor in runtimeOptions.Interceptors)
+            {
+                if (interceptor is not null)
+                {
+                    interceptors.Add(interceptor);
+                }
+            }
+        }
+
+        if (_telemetryOptions?.EnableClientLogging == true)
+        {
+            interceptors ??= [];
+            var loggerFactory = _telemetryOptions.ResolveLoggerFactory();
+            interceptors.Add(new GrpcClientLoggingInterceptor(loggerFactory.CreateLogger<GrpcClientLoggingInterceptor>()));
+        }
+
+        return interceptors?.ToArray() ?? Array.Empty<Interceptor>();
     }
 
     private GrpcChannelOptions CreateHttp2FallbackOptions()
