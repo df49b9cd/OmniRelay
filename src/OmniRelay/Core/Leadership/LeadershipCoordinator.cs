@@ -121,8 +121,13 @@ public sealed partial class LeadershipCoordinator : ILifecycle, ILeadershipObser
                 {
                     await _store.TryReleaseAsync(state.Scope.ScopeId, lease, cancellationToken).ConfigureAwait(false);
                 }
-                catch (Exception ex)
+                catch (OperationCanceledException)
                 {
+                    // Shutdown was cancelled; skip store release but still publish local loss event
+                }
+                catch (Exception ex) when (!IsFatal(ex))
+                {
+                    // Best-effort cleanup during shutdown; log and continue if store release fails
                     LeadershipCoordinatorLog.FailedToReleaseScope(_logger, state.Scope.ScopeId, ex);
                 }
 
@@ -570,6 +575,9 @@ public sealed partial class LeadershipCoordinator : ILifecycle, ILeadershipObser
 
         _leaseHealthTracker.RecordGossip(NodeId, metadata);
     }
+
+    private static bool IsFatal(Exception ex) =>
+        ex is OutOfMemoryException or StackOverflowException;
 
     private sealed class ScopeState
     {
