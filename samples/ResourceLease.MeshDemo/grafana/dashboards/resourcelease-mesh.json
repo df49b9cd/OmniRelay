@@ -60,17 +60,17 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.5, sum(rate(omnirelay_resourcelease_pending_bucket{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])) by (le))",
+          "expr": "histogram_quantile(0.5, sum(rate(omnirelay_resourcelease_pending_items_bucket{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])) by (le))",
           "legendFormat": "p50",
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.95, sum(rate(omnirelay_resourcelease_pending_bucket{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(omnirelay_resourcelease_pending_items_bucket{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])) by (le))",
           "legendFormat": "p95",
           "refId": "B"
         },
         {
-          "expr": "histogram_quantile(0.99, sum(rate(omnirelay_resourcelease_pending_bucket{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])) by (le))",
+          "expr": "histogram_quantile(0.99, sum(rate(omnirelay_resourcelease_pending_items_bucket{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])) by (le))",
           "legendFormat": "p99",
           "refId": "C"
         }
@@ -116,17 +116,17 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.5, sum(rate(omnirelay_resourcelease_active_bucket{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])) by (le))",
+          "expr": "histogram_quantile(0.5, sum(rate(omnirelay_resourcelease_active_leases_bucket{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])) by (le))",
           "legendFormat": "p50",
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.95, sum(rate(omnirelay_resourcelease_active_bucket{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(omnirelay_resourcelease_active_leases_bucket{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])) by (le))",
           "legendFormat": "p95",
           "refId": "B"
         },
         {
-          "expr": "histogram_quantile(0.99, sum(rate(omnirelay_resourcelease_active_bucket{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])) by (le))",
+          "expr": "histogram_quantile(0.99, sum(rate(omnirelay_resourcelease_active_leases_bucket{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])) by (le))",
           "legendFormat": "p99",
           "refId": "C"
         }
@@ -172,17 +172,17 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.5, sum(rate(omnirelay_resourcelease_replication_lag_bucket{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])) by (le))",
+          "expr": "histogram_quantile(0.5, sum(rate(omnirelay_resourcelease_replication_lag_ms_bucket{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])) by (le))",
           "legendFormat": "p50",
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.95, sum(rate(omnirelay_resourcelease_replication_lag_bucket{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(omnirelay_resourcelease_replication_lag_ms_bucket{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])) by (le))",
           "legendFormat": "p95",
           "refId": "B"
         },
         {
-          "expr": "histogram_quantile(0.99, sum(rate(omnirelay_resourcelease_replication_lag_bucket{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])) by (le))",
+          "expr": "histogram_quantile(0.99, sum(rate(omnirelay_resourcelease_replication_lag_ms_bucket{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])) by (le))",
           "legendFormat": "p99",
           "refId": "C"
         }
@@ -222,7 +222,7 @@
       },
       "targets": [
         {
-          "expr": "increase(omnirelay_resourcelease_backpressure_transitions_total{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])",
+          "expr": "increase(omnirelay_resourcelease_backpressure_transitions_events_total{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])",
           "legendFormat": "",
           "refId": "A"
         }
@@ -369,17 +369,17 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(omnirelay_peer_lease_assignments_total{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval]))",
+          "expr": "sum(rate(omnirelay_peer_lease_assignments_leases_total{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval]))",
           "legendFormat": "assignments",
           "refId": "A"
         },
         {
-          "expr": "sum(rate(omnirelay_peer_lease_heartbeats_total{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval]))",
+          "expr": "sum(rate(omnirelay_peer_lease_heartbeats_signals_total{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval]))",
           "legendFormat": "heartbeats",
           "refId": "B"
         },
         {
-          "expr": "sum(rate(omnirelay_peer_lease_disconnects_total{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval]))",
+          "expr": "sum(rate(omnirelay_peer_lease_disconnects_signals_total{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval]))",
           "legendFormat": "disconnects",
           "refId": "C"
         }
@@ -425,7 +425,7 @@
       },
       "targets": [
         {
-          "expr": "topk(5, rate(omnirelay_peer_lease_disconnects_total{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval]))",
+          "expr": "topk(5, rate(omnirelay_peer_lease_disconnects_signals_total{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval]))",
           "legendFormat": "{{rpc_peer}}",
           "refId": "A"
         }
@@ -517,12 +517,12 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.5, sum(rate(omnirelay_http_request_duration_bucket{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])) by (le))",
+          "expr": "histogram_quantile(0.5, sum(rate(omnirelay_http_request_duration_ms_bucket{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])) by (le))",
           "legendFormat": "p50",
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.95, sum(rate(omnirelay_http_request_duration_bucket{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(omnirelay_http_request_duration_ms_bucket{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])) by (le))",
           "legendFormat": "p95",
           "refId": "B"
         }
@@ -568,17 +568,17 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.5, sum(rate(omnirelay_peer_lease_duration_bucket{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])) by (le))",
+          "expr": "histogram_quantile(0.5, sum(rate(omnirelay_peer_lease_duration_ms_bucket{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])) by (le))",
           "legendFormat": "p50",
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.95, sum(rate(omnirelay_peer_lease_duration_bucket{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(omnirelay_peer_lease_duration_ms_bucket{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])) by (le))",
           "legendFormat": "p95",
           "refId": "B"
         },
         {
-          "expr": "histogram_quantile(0.99, sum(rate(omnirelay_peer_lease_duration_bucket{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])) by (le))",
+          "expr": "histogram_quantile(0.99, sum(rate(omnirelay_peer_lease_duration_ms_bucket{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval])) by (le))",
           "legendFormat": "p99",
           "refId": "C"
         }
@@ -624,17 +624,17 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(omnirelay_retry_scheduled_total{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval]))",
+          "expr": "sum(rate(omnirelay_retry_scheduled_attempts_total{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval]))",
           "legendFormat": "scheduled",
           "refId": "A"
         },
         {
-          "expr": "sum(rate(omnirelay_retry_succeeded_total{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval]))",
+          "expr": "sum(rate(omnirelay_retry_succeeded_requests_total{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval]))",
           "legendFormat": "succeeded",
           "refId": "B"
         },
         {
-          "expr": "sum(rate(omnirelay_retry_exhausted_total{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval]))",
+          "expr": "sum(rate(omnirelay_retry_exhausted_requests_total{service_name=~\"$service\",mesh_role=~\"$role\",instance=~\"$instance\"}[$__rate_interval]))",
           "legendFormat": "exhausted",
           "refId": "C"
         }
@@ -660,9 +660,9 @@
           "type": "prometheus",
           "uid": "mesh-prom"
         },
-        "definition": "label_values(omnirelay_resourcelease_pending_bucket, service_name)",
+        "definition": "label_values(omnirelay_resourcelease_pending_items_bucket, service_name)",
         "query": {
-          "query": "label_values(omnirelay_resourcelease_pending_bucket, service_name)",
+          "query": "label_values(omnirelay_resourcelease_pending_items_bucket, service_name)",
           "refId": "service"
         },
         "multi": true,

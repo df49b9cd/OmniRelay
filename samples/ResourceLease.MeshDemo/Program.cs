@@ -1,5 +1,6 @@
 using System.Linq;
 using System.Text;
+using Microsoft.AspNetCore.Http.Json;
 using Microsoft.Extensions.Options;
 using OmniRelay.Core.Peers;
 using OmniRelay.Dispatcher;
@@ -29,6 +30,10 @@ if (activeRoles.HasRole(MeshDemoRole.Diagnostics) && !activeRoles.HasRole(MeshDe
 }
 
 builder.Services.Configure<MeshDemoOptions>(meshDemoSection);
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.TypeInfoResolverChain.Insert(0, MeshJsonContext.Default);
+});
 builder.Services.AddSingleton<LakehouseCatalogState>();
 ConfigureMeshMetrics(builder, bootstrapOptions);
 
@@ -64,11 +69,10 @@ if (activeRoles.HasRole(MeshDemoRole.Dispatcher))
             sp.GetRequiredService<BackpressureAwareRateLimiter>(),
             sp.GetRequiredService<ILogger<RateLimitingBackpressureListener>>()));
 
-    builder.Services.AddSingleton(sp =>
+    builder.Services.AddSingleton<IResourceLeaseReplicator>(sp =>
     {
-        var paths = sp.GetRequiredService<MeshDemoPaths>();
         var sinks = sp.GetServices<IResourceLeaseReplicationSink>();
-        return new SqliteResourceLeaseReplicator(paths.ReplicationConnectionString, tableName: "LeaseEvents", sinks: sinks);
+        return new InMemoryResourceLeaseReplicator(sinks);
     });
 
     builder.Services.AddSingleton(sp =>

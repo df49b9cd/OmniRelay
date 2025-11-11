@@ -22,6 +22,7 @@ internal static class MeshJson
 [JsonSerializable(typeof(PeerLeaseHealthDiagnostics))]
 [JsonSerializable(typeof(PeerLeaseHealthSummary))]
 [JsonSerializable(typeof(ResourceLeaseBackpressureSignal))]
+[JsonSerializable(typeof(MeshEnqueueRequest))]
 [JsonSerializable(typeof(LakehouseCatalogOperation))]
 [JsonSerializable(typeof(LakehouseCatalogSnapshot))]
 [JsonSerializable(typeof(LakehouseCatalogTableState))]

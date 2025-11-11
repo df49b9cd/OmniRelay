@@ -1,5 +1,5 @@
+using System.Collections.Concurrent;
 using System.Diagnostics.Metrics;
-using System.Threading;
 
 namespace OmniRelay.Core.Peers;
 
@@ -7,29 +7,43 @@ namespace OmniRelay.Core.Peers;
 internal static class PeerLeaseHealthMetrics
 {
     private static readonly Meter Meter = new("OmniRelay.Core.Peers");
-    private static long _healthy;
-    private static long _unhealthy;
-    private static long _pendingReassignments;
+    private static readonly ConcurrentBag<PeerLeaseHealthTracker> Trackers = new();
 
     static PeerLeaseHealthMetrics()
     {
         Meter.CreateObservableGauge(
             "omnirelay.peer.lease.healthy",
-            () => new Measurement<long>(Volatile.Read(ref _healthy)));
+            () => new Measurement<long>(AggregateSummary().EligiblePeers));
 
         Meter.CreateObservableGauge(
             "omnirelay.peer.lease.unhealthy",
-            () => new Measurement<long>(Volatile.Read(ref _unhealthy)));
+            () => new Measurement<long>(AggregateSummary().UnhealthyPeers));
 
         Meter.CreateObservableGauge(
             "omnirelay.peer.lease.pending_reassignments",
-            () => new Measurement<long>(Volatile.Read(ref _pendingReassignments)));
+            () => new Measurement<long>(AggregateSummary().PendingReassignments));
     }
 
-    internal static void UpdateSnapshot(int healthy, int unhealthy, int pendingReassignments)
+    internal static void RegisterTracker(PeerLeaseHealthTracker tracker)
     {
-        Volatile.Write(ref _healthy, healthy);
-        Volatile.Write(ref _unhealthy, unhealthy);
-        Volatile.Write(ref _pendingReassignments, pendingReassignments);
+        ArgumentNullException.ThrowIfNull(tracker);
+        Trackers.Add(tracker);
+    }
+
+    private static PeerLeaseHealthSummary AggregateSummary()
+    {
+        var healthy = 0;
+        var unhealthy = 0;
+        var pending = 0;
+
+        foreach (var tracker in Trackers)
+        {
+            var summary = tracker.GetSummary();
+            healthy += summary.EligiblePeers;
+            unhealthy += summary.UnhealthyPeers;
+            pending += summary.PendingReassignments;
+        }
+
+        return new PeerLeaseHealthSummary(healthy, unhealthy, pending);
     }
 }

@@ -18,6 +18,7 @@ public sealed class PeerLeaseHealthTracker : IPeerHealthSnapshotProvider
     {
         _heartbeatGracePeriod = heartbeatGracePeriod ?? TimeSpan.FromSeconds(30);
         _timeProvider = timeProvider ?? TimeProvider.System;
+        PeerLeaseHealthMetrics.RegisterTracker(this);
     }
 
     /// <summary>Records a new lease assignment for the specified peer.</summary>
@@ -77,8 +78,17 @@ public sealed class PeerLeaseHealthTracker : IPeerHealthSnapshotProvider
     /// <summary>Returns an immutable snapshot for all tracked peers.</summary>
     public ImmutableArray<PeerLeaseHealthSnapshot> Snapshot()
     {
-        var now = _timeProvider.GetUtcNow();
         var builder = ImmutableArray.CreateBuilder<PeerLeaseHealthSnapshot>(_states.Count);
+        ComputeSummary(builder);
+        return builder.ToImmutable();
+    }
+
+    internal PeerLeaseHealthSummary GetSummary() =>
+        ComputeSummary(builder: null);
+
+    private PeerLeaseHealthSummary ComputeSummary(ImmutableArray<PeerLeaseHealthSnapshot>.Builder? builder)
+    {
+        var now = _timeProvider.GetUtcNow();
         var healthyCount = 0;
         var unhealthyCount = 0;
         var pendingReassignments = 0;
@@ -86,7 +96,7 @@ public sealed class PeerLeaseHealthTracker : IPeerHealthSnapshotProvider
         foreach (var state in _states.Values)
         {
             var snapshot = state.ToSnapshot(now, _heartbeatGracePeriod);
-            builder.Add(snapshot);
+            builder?.Add(snapshot);
             if (snapshot.IsHealthy)
             {
                 healthyCount++;
@@ -99,9 +109,7 @@ public sealed class PeerLeaseHealthTracker : IPeerHealthSnapshotProvider
             pendingReassignments += snapshot.PendingReassignments;
         }
 
-        var snapshots = builder.ToImmutable();
-        PeerLeaseHealthMetrics.UpdateSnapshot(healthyCount, unhealthyCount, pendingReassignments);
-        return snapshots;
+        return new PeerLeaseHealthSummary(healthyCount, unhealthyCount, pendingReassignments);
     }
 
     private PeerLeaseHealthState GetOrCreateState(string peerId) =>

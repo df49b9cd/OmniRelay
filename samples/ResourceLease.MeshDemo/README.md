@@ -127,7 +127,7 @@ omnirelay request \
   --service resourcelease-mesh-demo \
   --procedure resourcelease.mesh::enqueue \
   --encoding application/json \
-  --body '{
+  --body '{cd
     "payload":{
       "resourceType":"lakehouse.catalog",
       "resourceId":"fabric-lakehouse.sales.orders.v0042",
@@ -146,6 +146,54 @@ curl http://localhost:5158/demo/backpressure      # Latest SafeTaskQueue backpre
 curl http://localhost:5158/demo/replication       # Recent replication events from SQLite
 curl http://localhost:5158/demo/catalogs          # Current lakehouse catalog snapshot
 ```
+
+## Generate load with the OmniRelay CLI benchmark
+
+Use the OmniRelay CLI’s `benchmark` command (often shortened to “bench”) to synthesize enqueue traffic and light up the Grafana dashboards.
+
+1. **Expose the CLI** (from the repo root):
+
+   ```bash
+   # Option 1: run in-place via dotnet run
+   alias omnirelay='dotnet run --project src/OmniRelay.Cli/OmniRelay.Cli.csproj --'
+   # Option 2: install the packaged tool once and use it everywhere
+   # dotnet tool install --global OmniRelay.Cli
+   ```
+
+2. **Create a sample enqueue payload** (feel free to tweak catalog/database/table ids):
+
+   ```bash
+   cat > bench-payload.json <<'JSON'
+   {
+     "payload": {
+       "resourceType": "lakehouse.catalog",
+       "resourceId": "fabric-lakehouse.sales.orders.v0042",
+       "partitionKey": "fabric-lakehouse",
+       "payloadEncoding": "application/json",
+       "body": "eyJjYXRhbG9nIjogImZhYnJpYy1sYWtlaG91c2UiLCAiZGF0YWJhc2UiOiAic2FsZXMiLCAidGFibGUiOiAib3JkZXJzIiwgIm9wZXJhdGlvblR5cGUiOiAiQ29tbWl0U25hcHNob3QiLCAidmVyc2lvbiI6IDQyLCAicHJpbmNpcGFsIjogInNwYXJrLWNsaSIsICJjb2x1bW5zIjogWyJpZCBTVFJJTkciLCAicGF5bG9hZCBTVFJJTkciXSwgImNoYW5nZXMiOiBbImNvbW1pdCBzbmFwc2hvdCBmcm9tIENMSSJdLCAic25hcHNob3RJZCI6ICJjbGktc25hcHNob3QiLCAidGltZXN0YW1wIjogIjIwMjQtMDEtMDFUMDA6MDA6MDBaIiwgInJlcXVlc3RJZCI6ICJjbGkifQ=="
+     }
+   }
+   JSON
+   ```
+
+3. **Run the benchmark** (adjust `--rps`, `--concurrency`, or `--duration` to shape load):
+
+   ```bash
+   omnirelay benchmark \
+     --transport http \
+     --url http://127.0.0.1:7420/omnirelay/v1 \
+     --service resourcelease-mesh-demo \
+     --procedure resourcelease.mesh::enqueue \
+     --encoding application/json \
+     --body-file bench-payload.json \
+     --concurrency 16 \
+     --duration 45s \
+     --warmup 5s \
+     --requests 0 \
+     --rps 150
+   ```
+
+The command issues sustained enqueue requests against the dispatcher, causing pending depth, active leases, replication throughput, and retry panels to react within a few seconds. Point `--url` at any remote dispatcher endpoint when exercising a distributed deployment.
 
 ## Configuration
 

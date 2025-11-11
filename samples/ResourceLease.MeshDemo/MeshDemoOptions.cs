@@ -12,6 +12,8 @@ public sealed class MeshDemoOptions
 
     public string RpcUrl { get; set; } = "http://127.0.0.1:7421";
 
+    public string? RpcClientUrl { get; set; }
+
     public string DataDirectory { get; set; } = "mesh-data";
 
     public string WorkerPeerId { get; set; } = $"mesh-worker-{Environment.MachineName}";
@@ -36,7 +38,8 @@ public sealed class MeshDemoOptions
 
     public Uri GetRpcBaseUri()
     {
-        var baseUri = RpcUrl?.TrimEnd('/') ?? "http://127.0.0.1:7420";
+        var clientUri = string.IsNullOrWhiteSpace(RpcClientUrl) ? RpcUrl : RpcClientUrl!;
+        var baseUri = clientUri?.TrimEnd('/') ?? "http://127.0.0.1:7420";
         return new Uri($"{baseUri}/omnirelay/v1/resourcelease.mesh", UriKind.Absolute);
     }
 

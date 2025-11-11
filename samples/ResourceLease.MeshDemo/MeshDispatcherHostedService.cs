@@ -11,7 +11,7 @@ public sealed class MeshDispatcherHostedService : IHostedService, IAsyncDisposab
 {
     private readonly MeshDemoOptions _options;
     private readonly PeerLeaseHealthTracker _leaseHealthTracker;
-    private readonly SqliteResourceLeaseReplicator _replicator;
+    private readonly IResourceLeaseReplicator _replicator;
     private readonly SqliteDeterministicStateStore _deterministicStateStore;
     private readonly IEnumerable<IResourceLeaseBackpressureListener> _backpressureListeners;
     private readonly ILogger<MeshDispatcherHostedService> _logger;
@@ -21,7 +21,7 @@ public sealed class MeshDispatcherHostedService : IHostedService, IAsyncDisposab
     public MeshDispatcherHostedService(
         IOptions<MeshDemoOptions> options,
         PeerLeaseHealthTracker leaseHealthTracker,
-        SqliteResourceLeaseReplicator replicator,
+        IResourceLeaseReplicator replicator,
         SqliteDeterministicStateStore deterministicStateStore,
         IEnumerable<IResourceLeaseBackpressureListener> backpressureListeners,
         ILogger<MeshDispatcherHostedService> logger)
@@ -99,7 +99,10 @@ public sealed class MeshDispatcherHostedService : IHostedService, IAsyncDisposab
             await _dispatcher.StopAsync(CancellationToken.None).ConfigureAwait(false);
         }
 
-        await _replicator.DisposeAsync().ConfigureAwait(false);
+        if (_replicator is IAsyncDisposable asyncReplicator)
+        {
+            await asyncReplicator.DisposeAsync().ConfigureAwait(false);
+        }
 }
 
     private static IResourceLeaseBackpressureListener? ComposeBackpressureListener(IEnumerable<IResourceLeaseBackpressureListener> listeners)
