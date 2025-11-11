@@ -52,7 +52,7 @@ internal static class ChaosLabBootstrap
 {
     public static ChaosLabRuntime Build(ChaosBackend primary, ChaosBackend secondary)
     {
-        var httpInbound = new HttpInbound(new[] { "http://127.0.0.1:7230" });
+        var httpInbound = new HttpInbound(["http://127.0.0.1:7230"]);
 
         var options = new DispatcherOptions("samples.chaos-lab");
         options.AddLifecycle("http-inbound", httpInbound);

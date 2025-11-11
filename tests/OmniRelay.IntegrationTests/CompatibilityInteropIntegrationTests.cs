@@ -388,7 +388,7 @@ public sealed class CompatibilityInteropIntegrationTests
         await backendDispatcher.StartOrThrowAsync(ct);
 
         using var configDir = new TempDirectory();
-        var configPath = configDir.Resolve("envoy.yaml");
+        var configPath = TempDirectory.Resolve("envoy.yaml");
         await File.WriteAllTextAsync(configPath, BuildEnvoyConfig(backendPort), Encoding.UTF8, ct);
 
         var proxyPort = TestPortAllocator.GetRandomPort();

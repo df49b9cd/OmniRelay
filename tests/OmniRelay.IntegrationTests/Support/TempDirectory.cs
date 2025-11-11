@@ -13,20 +13,14 @@ internal sealed class TempDirectory : IDisposable
 
     public static string? Path { get; }
 
-    public string Resolve(params string[] segments)
+    public static string Resolve(params string[]? segments)
     {
         if (segments is null || segments.Length == 0)
         {
             return Path;
         }
 
-        var combined = Path;
-        foreach (var segment in segments)
-        {
-            combined = System.IO.Path.Combine(combined, segment);
-        }
-
-        return combined;
+        return segments.Aggregate(Path, System.IO.Path.Combine);
     }
 
     public void Dispose()

@@ -183,7 +183,7 @@ public sealed class GrpcTransportInterceptorBuilder
     }
 }
 
-public readonly struct GrpcClientServiceInterceptorBuilder
+public readonly struct GrpcClientServiceInterceptorBuilder : IEquatable<GrpcClientServiceInterceptorBuilder>
 {
     private readonly GrpcTransportInterceptorBuilder.ClientServiceBuilder _builder;
 
@@ -220,9 +220,14 @@ public readonly struct GrpcClientServiceInterceptorBuilder
     {
         return !(left == right);
     }
+
+    public bool Equals(GrpcClientServiceInterceptorBuilder other)
+    {
+        throw new NotImplementedException();
+    }
 }
 
-public readonly struct GrpcClientProcedureInterceptorBuilder
+public readonly struct GrpcClientProcedureInterceptorBuilder : IEquatable<GrpcClientProcedureInterceptorBuilder>
 {
     private readonly List<Interceptor> _interceptors;
 
@@ -258,9 +263,14 @@ public readonly struct GrpcClientProcedureInterceptorBuilder
     {
         return !(left == right);
     }
+
+    public bool Equals(GrpcClientProcedureInterceptorBuilder other)
+    {
+        throw new NotImplementedException();
+    }
 }
 
-public readonly struct GrpcServerProcedureInterceptorBuilder
+public readonly struct GrpcServerProcedureInterceptorBuilder : IEquatable<GrpcServerProcedureInterceptorBuilder>
 {
     private readonly List<Interceptor> _interceptors;
 
@@ -295,5 +305,10 @@ public readonly struct GrpcServerProcedureInterceptorBuilder
     public static bool operator !=(GrpcServerProcedureInterceptorBuilder left, GrpcServerProcedureInterceptorBuilder right)
     {
         return !(left == right);
+    }
+
+    public bool Equals(GrpcServerProcedureInterceptorBuilder other)
+    {
+        throw new NotImplementedException();
     }
 }

@@ -53,7 +53,7 @@ internal static class HybridRunnerBootstrap
 {
     public static HybridRunnerRuntime Build()
     {
-        var httpInbound = new HttpInbound(new[] { "http://127.0.0.1:7220" });
+        var httpInbound = new HttpInbound(["http://127.0.0.1:7220"]);
         var options = new DispatcherOptions("samples.hybrid-runner");
         options.AddLifecycle("http-inbound", httpInbound);
 

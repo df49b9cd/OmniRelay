@@ -144,7 +144,7 @@ public sealed class HttpOutboundMiddlewareBuilder
 
 }
 
-public readonly struct HttpOutboundServiceMiddlewareBuilder
+public readonly struct HttpOutboundServiceMiddlewareBuilder : IEquatable<HttpOutboundServiceMiddlewareBuilder>
 {
     private readonly HttpOutboundMiddlewareBuilder.ServiceBuilder _builder;
 
@@ -191,9 +191,14 @@ public readonly struct HttpOutboundServiceMiddlewareBuilder
     {
         return !(left == right);
     }
+
+    public bool Equals(HttpOutboundServiceMiddlewareBuilder other)
+    {
+        throw new NotImplementedException();
+    }
 }
 
-public readonly struct HttpOutboundProcedureMiddlewareBuilder
+public readonly struct HttpOutboundProcedureMiddlewareBuilder : IEquatable<HttpOutboundProcedureMiddlewareBuilder>
 {
     private readonly List<IHttpClientMiddleware> _middleware;
 
@@ -233,5 +238,10 @@ public readonly struct HttpOutboundProcedureMiddlewareBuilder
     public static bool operator !=(HttpOutboundProcedureMiddlewareBuilder left, HttpOutboundProcedureMiddlewareBuilder right)
     {
         return !(left == right);
+    }
+
+    public bool Equals(HttpOutboundProcedureMiddlewareBuilder other)
+    {
+        throw new NotImplementedException();
     }
 }

@@ -11,7 +11,7 @@ internal sealed class LakehouseCatalogSeederHostedService : BackgroundService
     private readonly MeshDemoOptions _options;
     private readonly ILogger<LakehouseCatalogSeederHostedService> _logger;
     private readonly Random _random = new();
-    private readonly List<CatalogTable> _tables = new();
+    private readonly List<CatalogTable> _tables = [];
     private readonly object _lock = new();
     private int _tableCounter;
 
@@ -149,7 +149,7 @@ internal sealed class LakehouseCatalogSeederHostedService : BackgroundService
         var tableName = $"{dbPrefix}_table_{Interlocked.Increment(ref _tableCounter):D3}";
         return new CatalogTable(catalog, database, tableName)
         {
-            Columns = new List<string>()
+            Columns = []
         };
     }
 
@@ -230,6 +230,6 @@ internal sealed class LakehouseCatalogSeederHostedService : BackgroundService
 
         public int Version { get; set; }
 
-        public List<string> Columns { get; set; } = new();
+        public List<string> Columns { get; set; } = [];
     }
 }

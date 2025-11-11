@@ -5,7 +5,7 @@ namespace OmniRelay.Core.Transport;
 /// <summary>
 /// Provides access to request metadata and the raw request message reader for client-streaming handlers.
 /// </summary>
-public readonly struct ClientStreamRequestContext(RequestMeta meta, ChannelReader<ReadOnlyMemory<byte>> requests)
+public readonly struct ClientStreamRequestContext(RequestMeta meta, ChannelReader<ReadOnlyMemory<byte>> requests) : IEquatable<ClientStreamRequestContext>
 {
     /// <summary>Gets the request metadata.</summary>
     public RequestMeta Meta { get; } = meta;
@@ -31,5 +31,10 @@ public readonly struct ClientStreamRequestContext(RequestMeta meta, ChannelReade
     public static bool operator !=(ClientStreamRequestContext left, ClientStreamRequestContext right)
     {
         return !(left == right);
+    }
+
+    public bool Equals(ClientStreamRequestContext other)
+    {
+        throw new NotImplementedException();
     }
 }

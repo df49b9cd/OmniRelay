@@ -44,7 +44,7 @@ internal sealed class MeshDemoOptions
     }
 
     public string[] GetHostingUrls() =>
-        Urls is { Length: > 0 } values ? values : Array.Empty<string>();
+        Urls is { Length: > 0 } values ? values : [];
 
     public TimeSpan GetSeederInterval() =>
         TimeSpan.FromSeconds(Math.Max(1, SeederIntervalSeconds));

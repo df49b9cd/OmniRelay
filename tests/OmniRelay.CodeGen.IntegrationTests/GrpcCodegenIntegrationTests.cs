@@ -39,8 +39,8 @@ public class GrpcCodegenIntegrationTests
             using var channel = GrpcChannel.ForAddress(address);
             var invoker = channel.CreateCallInvoker();
             var marshaller = Marshallers.Create(
-                (byte[] payload) => payload ?? Array.Empty<byte>(),
-                payload => payload ?? Array.Empty<byte>());
+                (byte[] payload) => payload ?? [],
+                payload => payload ?? []);
             var method = new Method<byte[], byte[]>(MethodType.Unary, ServiceName, "UnaryCall", marshaller, marshaller);
 
             var metadata = new Metadata

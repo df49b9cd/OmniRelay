@@ -1571,7 +1571,7 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
             interceptors.Add(new GrpcClientLoggingInterceptor(loggerFactory.CreateLogger<GrpcClientLoggingInterceptor>()));
         }
 
-        return interceptors?.ToArray() ?? Array.Empty<Interceptor>();
+        return interceptors?.ToArray() ?? [];
     }
 
     private GrpcChannelOptions CreateHttp2FallbackOptions()

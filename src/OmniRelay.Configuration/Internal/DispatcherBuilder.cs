@@ -824,7 +824,7 @@ internal sealed class DispatcherBuilder
             ? _serviceProvider.GetServices<IPeerHealthSnapshotProvider>()
                 .Where(static provider => provider is not null)
                 .ToArray()
-            : Array.Empty<IPeerHealthSnapshotProvider>();
+            : [];
 
         return services =>
         {

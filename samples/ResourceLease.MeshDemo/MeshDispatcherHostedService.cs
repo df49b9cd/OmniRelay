@@ -37,7 +37,7 @@ internal sealed class MeshDispatcherHostedService : IHostedService, IAsyncDispos
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         var dispatcherOptions = new DispatcherOptions(_options.ServiceName);
-        dispatcherOptions.AddLifecycle("mesh-http-inbound", new HttpInbound(new[] { _options.RpcUrl }));
+        dispatcherOptions.AddLifecycle("mesh-http-inbound", new HttpInbound([_options.RpcUrl]));
         _dispatcher = new OmniRelayDispatcher(dispatcherOptions);
 
         var queueOptions = new TaskQueueOptions

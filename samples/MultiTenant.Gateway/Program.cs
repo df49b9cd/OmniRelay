@@ -55,7 +55,7 @@ internal static class GatewayBootstrap
 
     public static GatewayRuntime Build()
     {
-        var httpInbound = new HttpInbound(new[] { "http://127.0.0.1:7210" });
+        var httpInbound = new HttpInbound(["http://127.0.0.1:7210"]);
         var options = new DispatcherOptions("samples.multi-tenant");
         options.AddLifecycle("http-inbound", httpInbound);
 

@@ -177,10 +177,10 @@ public class ObservabilityDiagnosticsIntegrationTests
                 caller: "observability-client",
                 encoding: "json",
                 transport: "http",
-                headers: new[]
-                {
+                headers:
+                [
                     new KeyValuePair<string, string>("rpc.peer", "backend-primary")
-                });
+                ]);
 
             var outboundRequest = new Request<ReadOnlyMemory<byte>>(outboundMeta, """{"message":"fanout"}"""u8.ToArray());
 
@@ -208,7 +208,7 @@ public class ObservabilityDiagnosticsIntegrationTests
             {
                 var fakeResponse = new HttpResponseMessage(HttpStatusCode.OK)
                 {
-                    Content = new ByteArrayContent(Array.Empty<byte>())
+                    Content = new ByteArrayContent([])
                 };
                 return ValueTask.FromResult(fakeResponse);
             };

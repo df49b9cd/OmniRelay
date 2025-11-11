@@ -32,7 +32,7 @@ internal sealed record MeshEnqueueRequest(
 
         if (string.IsNullOrWhiteSpace(Body))
         {
-            var columnSet = Columns is { Length: > 0 } cols ? cols : new[] { "id STRING", "payload STRING" };
+            var columnSet = Columns is { Length: > 0 } cols ? cols : ["id STRING", "payload STRING"];
             var changes = Changes is { Length: > 0 } delta ? delta : columnSet;
             var operation = new LakehouseCatalogOperation(
                 Catalog,

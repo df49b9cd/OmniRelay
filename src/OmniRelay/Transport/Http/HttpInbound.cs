@@ -540,7 +540,7 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware
         var payload = new HealthPayload(
             healthy ? "ok" : "unavailable",
             readiness ? "ready" : "live",
-            issues.Count == 0 ? Array.Empty<string>() : issues.ToArray(),
+            issues.Count == 0 ? [] : issues.ToArray(),
             Math.Max(Volatile.Read(ref _activeRequestCount), 0),
             _isDraining);
 

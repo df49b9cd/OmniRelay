@@ -831,7 +831,7 @@ public sealed record ResourceLeaseWorkItem(
             ? ImmutableDictionary<string, string>.Empty
             : payload.Attributes.ToImmutableDictionary(kvp => kvp.Key, kvp => kvp.Value, StringComparer.OrdinalIgnoreCase);
 
-        var body = payload.Body ?? Array.Empty<byte>();
+        var body = payload.Body ?? [];
 
         return new ResourceLeaseWorkItem(
             payload.ResourceType,

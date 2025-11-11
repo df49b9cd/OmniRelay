@@ -501,7 +501,7 @@ public sealed class Dispatcher
                     {
                         var aggregate = AggregateErrors(
                             "Dispatcher start failed and rollback reported additional errors.",
-                            new[] { startError, rollbackResult.Error! });
+                            [startError, rollbackResult.Error!]);
                         return Err<Unit>(aggregate);
                     }
 

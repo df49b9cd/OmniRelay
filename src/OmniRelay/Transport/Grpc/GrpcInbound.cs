@@ -36,7 +36,7 @@ public sealed class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcServerInter
     private int _interceptorsConfigured;
     private volatile bool _isDraining;
     private readonly WaitGroup _activeCalls = new();
-    private readonly HashSet<ServerCallContext> _activeCallContexts = new();
+    private readonly HashSet<ServerCallContext> _activeCallContexts = [];
     private readonly object _callContextLock = new();
     private const string RetryAfterMetadataName = "retry-after";
     private const string RetryAfterMetadataValue = "1";

@@ -56,12 +56,12 @@ internal static class StreamingLabBootstrap
         var metricsCodec = new ProtobufCodec<MetricSample, MetricAck>();
         var insightsCodec = new ProtobufCodec<InsightRequest, InsightSignal>();
 
-        var grpcInbound = new GrpcInbound(new[] { "http://127.0.0.1:7190" });
+        var grpcInbound = new GrpcInbound(["http://127.0.0.1:7190"]);
 
         var options = new DispatcherOptions(ServiceName);
         options.AddLifecycle("grpc-inbound", grpcInbound);
 
-        var grpcOutbound = new GrpcOutbound(new[] { new Uri("http://127.0.0.1:7190") }, ServiceName);
+        var grpcOutbound = new GrpcOutbound([new Uri("http://127.0.0.1:7190")], ServiceName);
         options.AddStreamOutbound(ServiceName, LoopbackOutboundKey, grpcOutbound);
         options.AddClientStreamOutbound(ServiceName, LoopbackOutboundKey, grpcOutbound);
         options.AddDuplexOutbound(ServiceName, LoopbackOutboundKey, grpcOutbound);

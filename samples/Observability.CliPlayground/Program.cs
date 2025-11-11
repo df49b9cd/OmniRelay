@@ -66,14 +66,11 @@ internal static class Program
             }
         });
 
-        app.MapGet("/readyz", (PlaygroundState state) =>
-        {
-            return PlaygroundState.Ready
-                ? TypedResults.Json(
-                    new ReadyStatus(PlaygroundState.ReadySince),
-                    ObservabilityCliJsonContext.Default.ReadyStatus)
-                : Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
-        });
+        app.MapGet("/readyz", (PlaygroundState _) => PlaygroundState.Ready
+            ? TypedResults.Json(
+                new ReadyStatus(PlaygroundState.ReadySince),
+                ObservabilityCliJsonContext.Default.ReadyStatus)
+            : Results.StatusCode(StatusCodes.Status503ServiceUnavailable));
 
         app.MapPrometheusScrapingEndpoint("/metrics");
 
@@ -85,10 +82,9 @@ internal static class Program
     {
         var resourceBuilder = ResourceBuilder.CreateDefault()
             .AddService(serviceName: builder.Configuration.GetValue<string>("omnirelay:service") ?? "observability-cli-playground")
-            .AddAttributes(new KeyValuePair<string, object>[]
-            {
-                new("deployment.environment", builder.Environment.EnvironmentName ?? "Unknown")
-            });
+            .AddAttributes([
+                new KeyValuePair<string, object>("deployment.environment", builder.Environment.EnvironmentName)
+            ]);
 
         builder.Services.AddOpenTelemetry()
             .WithMetrics(metrics =>

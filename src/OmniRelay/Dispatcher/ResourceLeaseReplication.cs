@@ -79,7 +79,7 @@ public interface IResourceLeaseReplicationSink
 /// </summary>
 public sealed class InMemoryResourceLeaseReplicator : IResourceLeaseReplicator
 {
-    private readonly List<IResourceLeaseReplicationSink> _sinks = new();
+    private readonly List<IResourceLeaseReplicationSink> _sinks = [];
     private long _sequenceId;
 
     public InMemoryResourceLeaseReplicator(IEnumerable<IResourceLeaseReplicationSink>? sinks = null, long startingSequence = 0)
