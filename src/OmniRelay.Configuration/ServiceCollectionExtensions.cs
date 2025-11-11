@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 using OmniRelay.Configuration.Internal;
 using OmniRelay.Configuration.Models;
 using OmniRelay.Core.Diagnostics;
+using OmniRelay.Core.Gossip;
 using OpenTelemetry.Exporter;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
@@ -36,6 +37,12 @@ public static class OmniRelayServiceCollectionExtensions
         var (minimumLevel, overrides) = ParseLoggingConfiguration(snapshot.Logging);
 
         services.Configure<OmniRelayConfigurationOptions>(configuration);
+
+        var gossipSection = configuration.GetSection("mesh:gossip");
+        if (gossipSection.Exists())
+        {
+            services.AddMeshGossipAgent(gossipSection);
+        }
 
         // Ensure HttpClientFactory is available so named HTTP outbounds can be used if configured.
         services.AddHttpClient();

@@ -1,5 +1,6 @@
 using Hugo;
 using Microsoft.Extensions.Options;
+using OmniRelay.Core.Gossip;
 using OmniRelay.Core.Peers;
 using OmniRelay.Dispatcher;
 using OmniRelay.Transport.Http;
@@ -14,6 +15,7 @@ public sealed class MeshDispatcherHostedService : IHostedService, IAsyncDisposab
     private readonly IResourceLeaseReplicator _replicator;
     private readonly SqliteDeterministicStateStore _deterministicStateStore;
     private readonly IEnumerable<IResourceLeaseBackpressureListener> _backpressureListeners;
+    private readonly IMeshGossipAgent? _gossipAgent;
     private readonly ILogger<MeshDispatcherHostedService> _logger;
     private OmniRelayDispatcher? _dispatcher;
     private ResourceLeaseDispatcherComponent? _component;
@@ -24,6 +26,7 @@ public sealed class MeshDispatcherHostedService : IHostedService, IAsyncDisposab
         IResourceLeaseReplicator replicator,
         SqliteDeterministicStateStore deterministicStateStore,
         IEnumerable<IResourceLeaseBackpressureListener> backpressureListeners,
+        IMeshGossipAgent? gossipAgent = null,
         ILogger<MeshDispatcherHostedService> logger)
     {
         _options = options.Value;
@@ -31,6 +34,7 @@ public sealed class MeshDispatcherHostedService : IHostedService, IAsyncDisposab
         _replicator = replicator;
         _deterministicStateStore = deterministicStateStore;
         _backpressureListeners = backpressureListeners;
+        _gossipAgent = gossipAgent;
         _logger = logger;
     }
 
@@ -38,6 +42,11 @@ public sealed class MeshDispatcherHostedService : IHostedService, IAsyncDisposab
     {
         var dispatcherOptions = new DispatcherOptions(_options.ServiceName);
         dispatcherOptions.AddLifecycle("mesh-http-inbound", new HttpInbound(new[] { _options.RpcUrl }));
+
+        if (_gossipAgent?.IsEnabled == true)
+        {
+            dispatcherOptions.AddLifecycle("mesh-gossip", _gossipAgent);
+        }
         _dispatcher = new OmniRelayDispatcher(dispatcherOptions);
 
         var queueOptions = new TaskQueueOptions

@@ -17,6 +17,7 @@ using Microsoft.Extensions.Logging;
 using OmniRelay.Configuration.Models;
 using OmniRelay.Core;
 using OmniRelay.Core.Diagnostics;
+using OmniRelay.Core.Gossip;
 using OmniRelay.Core.Peers;
 using OmniRelay.Dispatcher;
 using OmniRelay.Transport.Grpc;
@@ -74,6 +75,7 @@ internal sealed class DispatcherBuilder
         ConfigureInbounds(dispatcherOptions);
         ConfigureOutbounds(dispatcherOptions);
         ConfigureEncodings(dispatcherOptions);
+        ConfigureMeshComponents(dispatcherOptions);
 
         return new Dispatcher.Dispatcher(dispatcherOptions);
     }
@@ -822,6 +824,7 @@ internal sealed class DispatcherBuilder
                 .Where(static provider => provider is not null)
                 .ToArray()
             : Array.Empty<IPeerHealthSnapshotProvider>();
+        var gossipAgent = controlPlaneOptions.GossipAgent;
 
         return services =>
         {
@@ -863,6 +866,11 @@ internal sealed class DispatcherBuilder
                 if (controlPlaneOptions.EnableLeaseHealthDiagnostics && peerHealthProviders.Length > 0)
                 {
                     services.AddSingleton<IEnumerable<IPeerHealthSnapshotProvider>>(peerHealthProviders);
+                }
+
+                if (controlPlaneOptions.EnablePeerDiagnostics && gossipAgent is not null)
+                {
+                    services.AddSingleton(gossipAgent);
                 }
             }
         };
@@ -1055,9 +1063,11 @@ internal sealed class DispatcherBuilder
         }
 
         var hasPeerHealthProviders = _serviceProvider.GetServices<IPeerHealthSnapshotProvider>().Any();
+        var gossipAgent = _serviceProvider.GetService<IMeshGossipAgent>();
+        var enablePeerDiagnostics = gossipAgent is not null && gossipAgent.IsEnabled;
 
-        options = new DiagnosticsControlPlaneOptions(enableLogging, enableSampling, hasPeerHealthProviders);
-        return enableLogging || enableSampling || hasPeerHealthProviders;
+        options = new DiagnosticsControlPlaneOptions(enableLogging, enableSampling, hasPeerHealthProviders, enablePeerDiagnostics, gossipAgent);
+        return enableLogging || enableSampling || hasPeerHealthProviders || enablePeerDiagnostics;
     }
 
     private static void ConfigureDiagnosticsControlPlane(WebApplication app, DiagnosticsControlPlaneOptions options)
@@ -1143,9 +1153,51 @@ internal sealed class DispatcherBuilder
                 return Results.Json(diagnostics);
             });
         }
+
+        if (options.EnablePeerDiagnostics)
+        {
+            static IResult HandlePeers(IMeshGossipAgent agent)
+            {
+                var snapshot = agent.Snapshot();
+                var peers = snapshot.Members.Select(member => new
+                {
+                    member.NodeId,
+                    status = member.Status.ToString(),
+                    member.LastSeen,
+                    rttMs = member.RoundTripTimeMs,
+                    metadata = new
+                    {
+                        member.Metadata.Role,
+                        member.Metadata.ClusterId,
+                        member.Metadata.Region,
+                        member.Metadata.MeshVersion,
+                        member.Metadata.Http3Support,
+                        member.Metadata.Endpoint,
+                        member.Metadata.MetadataVersion,
+                        Labels = member.Metadata.Labels
+                    }
+                });
+
+                return Results.Json(new
+                {
+                    snapshot.SchemaVersion,
+                    snapshot.GeneratedAt,
+                    snapshot.LocalNodeId,
+                    peers
+                });
+            }
+
+            app.MapGet("/control/peers", HandlePeers);
+            app.MapGet("/omnirelay/control/peers", HandlePeers);
+        }
     }
 
-    private readonly record struct DiagnosticsControlPlaneOptions(bool EnableLoggingToggle, bool EnableSamplingToggle, bool EnableLeaseHealthDiagnostics)
+    private readonly record struct DiagnosticsControlPlaneOptions(
+        bool EnableLoggingToggle,
+        bool EnableSamplingToggle,
+        bool EnableLeaseHealthDiagnostics,
+        bool EnablePeerDiagnostics,
+        IMeshGossipAgent? GossipAgent)
     {
         public bool EnableLoggingToggle
         {
@@ -1164,6 +1216,18 @@ internal sealed class DispatcherBuilder
             get => field;
             init => field = value;
         } = EnableLeaseHealthDiagnostics;
+
+        public bool EnablePeerDiagnostics
+        {
+            get => field;
+            init => field = value;
+        } = EnablePeerDiagnostics;
+
+        public IMeshGossipAgent? GossipAgent
+        {
+            get => field;
+            init => field = value;
+        } = GossipAgent;
     }
 
     private sealed record DiagnosticsLogLevelRequest(string? Level)
@@ -1296,6 +1360,15 @@ internal sealed class DispatcherBuilder
     }
 
     private void ConfigureEncodings(DispatcherOptions dispatcherOptions) => ConfigureJsonEncodings(dispatcherOptions);
+
+    private void ConfigureMeshComponents(DispatcherOptions dispatcherOptions)
+    {
+        var gossipAgent = _serviceProvider.GetService<IMeshGossipAgent>();
+        if (gossipAgent is not null && gossipAgent.IsEnabled)
+        {
+            dispatcherOptions.AddLifecycle("mesh-gossip", gossipAgent);
+        }
+    }
 
     private void ConfigureJsonEncodings(DispatcherOptions dispatcherOptions)
     {

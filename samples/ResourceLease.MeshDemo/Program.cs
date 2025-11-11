@@ -3,6 +3,7 @@ using System.Linq;
 using System.Text;
 using Microsoft.AspNetCore.Http.Json;
 using Microsoft.Extensions.Options;
+using OmniRelay.Core.Gossip;
 using OmniRelay.Core.Peers;
 using OmniRelay.Dispatcher;
 using OmniRelay.Samples.ResourceLease.MeshDemo;
@@ -14,6 +15,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Configuration.AddJsonFile("appsettings.json", optional: true, reloadOnChange: true);
 builder.Configuration.AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true);
 builder.Configuration.AddEnvironmentVariables(prefix: "MESHDEMO_");
+var gossipSection = builder.Configuration.GetSection("mesh:gossip");
+var gossipConfigured = gossipSection.Exists();
 
 var meshDemoSection = builder.Configuration.GetSection("meshDemo");
 var bootstrapOptions = new MeshDemoOptions();
@@ -36,6 +39,10 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.TypeInfoResolverChain.Insert(0, MeshJsonContext.Default);
 });
 builder.Services.AddSingleton<LakehouseCatalogState>();
+if (gossipConfigured)
+{
+    builder.Services.AddMeshGossipAgent(gossipSection);
+}
 ConfigureMeshMetrics(builder, bootstrapOptions);
 
 if (activeRoles.HasRole(MeshDemoRole.Dispatcher))
@@ -149,6 +156,38 @@ if (activeRoles.HasRole(MeshDemoRole.Diagnostics))
         var snapshot = catalogState.Snapshot();
         return TypedResults.Json(snapshot, MeshJson.Context.LakehouseCatalogSnapshot);
     });
+    if (gossipConfigured)
+    {
+        app.MapGet("/control/peers", (IMeshGossipAgent agent) =>
+        {
+            var snapshot = agent.Snapshot();
+            var peers = snapshot.Members.Select(peer => new
+            {
+                peer.NodeId,
+                status = peer.Status.ToString(),
+                peer.LastSeen,
+                peer.RoundTripTimeMs,
+                metadata = new
+                {
+                    peer.Metadata.Role,
+                    peer.Metadata.ClusterId,
+                    peer.Metadata.Region,
+                    peer.Metadata.MeshVersion,
+                    peer.Metadata.Http3Support,
+                    peer.Metadata.Endpoint,
+                    peer.Metadata.MetadataVersion,
+                    Labels = peer.Metadata.Labels
+                }
+            });
+            return Results.Json(new
+            {
+                snapshot.SchemaVersion,
+                snapshot.GeneratedAt,
+                snapshot.LocalNodeId,
+                peers
+            });
+        });
+    }
 }
 
 app.MapPrometheusScrapingEndpoint("/metrics");
@@ -208,6 +247,7 @@ static void ConfigureMeshMetrics(WebApplicationBuilder builder, MeshDemoOptions 
                     "OmniRelay.Dispatcher.ResourceLease",
                     "OmniRelay.Dispatcher.ResourceLeaseReplication",
                     "OmniRelay.Core.Peers",
+                    "OmniRelay.Core.Gossip",
                     "OmniRelay.Transport.Http")
                 .AddPrometheusExporter();
         });
