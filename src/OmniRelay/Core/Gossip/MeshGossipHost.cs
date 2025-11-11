@@ -303,15 +303,11 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
 
         var snapshot = _membership.Snapshot();
         var members = _membership.PickFanout(_options.Fanout);
-        var targets = new List<MeshGossipPeerEndpoint>();
-
-        foreach (var member in members)
-        {
-            if (MeshGossipPeerEndpoint.TryParse(member.Metadata.Endpoint ?? string.Empty, out var endpoint))
-            {
-                targets.Add(endpoint);
-            }
-        }
+        var targets = members
+            .Select(member => (member, endpoint: ParseEndpoint(member.Metadata.Endpoint)))
+            .Where(x => x.endpoint is not null)
+            .Select(x => x.endpoint!)
+            .ToList();
 
         if (targets.Count == 0 && _seedPeers.Count > 0)
         {
@@ -578,6 +574,13 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
         {
             throw new ArgumentOutOfRangeException(nameof(options), "mesh:gossip:interval must be positive.");
         }
+    }
+
+    private static MeshGossipPeerEndpoint? ParseEndpoint(string? endpoint)
+    {
+        return MeshGossipPeerEndpoint.TryParse(endpoint ?? string.Empty, out var parsed)
+            ? parsed
+            : null;
     }
 
     private static ILogger<MeshGossipCertificateProvider> CreateCertificateLogger(ILoggerFactory factory) =>
