@@ -449,12 +449,11 @@ public static class Program
     {
         var command = new Command("status", "Show current leadership tokens or stream leadership events.");
 
-        var urlOption = new Option<string>("--url")
+        var urlOption = new Option<string>(new[] { "--url", "-u" })
         {
             Description = "Base control-plane URL (e.g. http://127.0.0.1:8080).",
             DefaultValueFactory = _ => DefaultControlPlaneUrl
         };
-        urlOption.AddAlias("-u");
 
         var scopeOption = new Option<string?>("--scope")
         {
@@ -2386,7 +2385,7 @@ public static class Program
 
         foreach (var token in tokens.OrderBy(static t => t.Scope, StringComparer.OrdinalIgnoreCase))
         {
-            var expires = token.ExpiresAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss\Z", CultureInfo.InvariantCulture);
+            var expires = token.ExpiresAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss\\Z", CultureInfo.InvariantCulture);
             Console.WriteLine($"{token.Scope,-32} {token.LeaderId,-20} {token.Term,6} {token.FenceToken,6} {expires,-24} {token.ScopeKind,-12}");
         }
     }
@@ -2398,7 +2397,7 @@ public static class Program
         var fence = leadershipEvent.Token?.FenceToken ?? 0;
         var expires = leadershipEvent.Token is null
             ? "n/a"
-            : leadershipEvent.Token.ExpiresAt.ToUniversalTime().ToString("HH:mm:ss\Z", CultureInfo.InvariantCulture);
+            : leadershipEvent.Token.ExpiresAt.ToUniversalTime().ToString("HH:mm:ss\\Z", CultureInfo.InvariantCulture);
         var reason = string.IsNullOrWhiteSpace(leadershipEvent.Reason) ? "(none)" : leadershipEvent.Reason!;
         var scope = leadershipEvent.Scope ?? leadershipEvent.Token?.Scope ?? "*";
         Console.WriteLine($"[{leadershipEvent.OccurredAt:HH:mm:ss}] {leadershipEvent.EventKind.ToString().ToUpperInvariant(),-10} scope={scope} leader={leader} term={term} fence={fence} expires={expires} reason={reason}");

@@ -26,8 +26,8 @@ internal sealed class MeshDispatcherHostedService : IHostedService, IAsyncDispos
         IResourceLeaseReplicator replicator,
         SqliteDeterministicStateStore deterministicStateStore,
         IEnumerable<IResourceLeaseBackpressureListener> backpressureListeners,
-        IMeshGossipAgent? gossipAgent = null,
-        ILogger<MeshDispatcherHostedService> logger)
+        ILogger<MeshDispatcherHostedService> logger,
+        IMeshGossipAgent? gossipAgent = null)
     {
         _options = options.Value;
         _leaseHealthTracker = leaseHealthTracker;

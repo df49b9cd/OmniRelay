@@ -44,6 +44,16 @@ public sealed class MeshGossipHost : IMeshGossipAgent, IDisposable
     private Task? _sweepLoop;
     private long _sequence;
     private bool _disposed;
+    private static readonly Action<ILogger, string, int, int, Exception?> GossipListeningLog =
+        LoggerMessage.Define<string, int, int>(
+            LogLevel.Information,
+            new EventId(1, "MeshGossipListening"),
+            "Mesh gossip host listening on {Address}:{Port} (fanout={Fanout})");
+    private static readonly Action<ILogger, string?, Exception?> GossipSchemaRejectedLog =
+        LoggerMessage.Define<string?>(
+            LogLevel.Warning,
+            new EventId(2, "MeshGossipSchemaRejected"),
+            "Rejected gossip envelope with incompatible schema {Schema}");
 
     public MeshGossipHost(
         MeshGossipOptions options,
@@ -101,7 +111,7 @@ public sealed class MeshGossipHost : IMeshGossipAgent, IDisposable
         _gossipLoop = RunGossipLoopAsync(token);
         _sweepLoop = RunSweepLoopAsync(token);
 
-        _logger.LogInformation("Mesh gossip host listening on {Address}:{Port} (fanout={Fanout})", _options.BindAddress, _options.Port, _options.Fanout);
+        GossipListeningLog(_logger, _options.BindAddress, _options.Port, _options.Fanout, null);
     }
 
     public async ValueTask StopAsync(CancellationToken cancellationToken = default)
@@ -234,7 +244,7 @@ public sealed class MeshGossipHost : IMeshGossipAgent, IDisposable
         if (envelope is null || !string.Equals(envelope.SchemaVersion, MeshGossipOptions.CurrentSchemaVersion, StringComparison.OrdinalIgnoreCase))
         {
             MeshGossipMetrics.RecordMessage("inbound", "failure");
-            _logger.LogWarning("Rejected gossip envelope with incompatible schema {Schema}", envelope?.SchemaVersion);
+            GossipSchemaRejectedLog(_logger, envelope?.SchemaVersion, null);
             return BuildEnvelope();
         }
 
@@ -515,7 +525,7 @@ public sealed class MeshGossipHost : IMeshGossipAgent, IDisposable
         var thumbprint = certificate.GetCertHashString()?.ToUpperInvariant();
         if (_options.Tls.AllowedThumbprints.Count > 0)
         {
-            return _options.Tls.AllowedThumbprints.Contains(thumbprint);
+            return thumbprint is not null && _options.Tls.AllowedThumbprints.Contains(thumbprint);
         }
 
         if (chain is not null)

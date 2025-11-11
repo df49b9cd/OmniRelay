@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -10,6 +11,7 @@ namespace OmniRelay.Core.Gossip;
 /// <summary>DI helpers to register the mesh gossip agent.</summary>
 public static class MeshGossipServiceCollectionExtensions
 {
+    [UnconditionalSuppressMessage("TrimAnalysis", "IL2026", Justification = "Mesh gossip options are bound from configuration in non-trimmed hosting scenarios.")]
     public static IServiceCollection AddMeshGossipAgent(this IServiceCollection services, IConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(configuration);

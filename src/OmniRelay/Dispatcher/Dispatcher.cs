@@ -22,7 +22,7 @@ public sealed class Dispatcher
     private readonly ProcedureRegistry _procedures = new();
     private readonly ImmutableArray<DispatcherOptions.DispatcherLifecycleComponent> _lifecycleDescriptors;
     private readonly ImmutableArray<DispatcherOptions.DispatcherLifecycleComponent> _lifecycleStartOrder;
-    private readonly ImmutableDictionary<string, OutboundCollection> _outbounds;
+    private readonly ImmutableDictionary<string, OutboundRegistry> _outbounds;
     private readonly ImmutableArray<IUnaryInboundMiddleware> _inboundUnaryMiddleware;
     private readonly ImmutableArray<IOnewayInboundMiddleware> _inboundOnewayMiddleware;
     private readonly ImmutableArray<IStreamInboundMiddleware> _inboundStreamMiddleware;
@@ -51,7 +51,7 @@ public sealed class Dispatcher
         ServiceName = options.ServiceName;
         _lifecycleDescriptors = [.. options.ComponentDescriptors];
         _lifecycleStartOrder = [.. options.UniqueComponents];
-        _outbounds = BuildOutboundCollections(options.OutboundBuilders);
+        _outbounds = BuildOutboundRegistrys(options.OutboundBuilders);
 
         _inboundUnaryMiddleware = [.. options.UnaryInboundMiddleware];
         _inboundOnewayMiddleware = [.. options.OnewayInboundMiddleware];
@@ -312,7 +312,7 @@ public sealed class Dispatcher
         {
             if (string.Equals(service, ServiceName, StringComparison.OrdinalIgnoreCase))
             {
-                collection = new OutboundCollection(
+                collection = new OutboundRegistry(
                     service,
                     [],
                     [],
@@ -900,15 +900,15 @@ public sealed class Dispatcher
         return Ok(Unit.Value);
     }
 
-    private static ImmutableDictionary<string, OutboundCollection> BuildOutboundCollections(
-        IReadOnlyDictionary<string, DispatcherOptions.OutboundCollectionBuilder> builders)
+    private static ImmutableDictionary<string, OutboundRegistry> BuildOutboundRegistrys(
+        IReadOnlyDictionary<string, DispatcherOptions.OutboundRegistryBuilder> builders)
     {
         if (builders.Count == 0)
         {
             return [];
         }
 
-        var map = ImmutableDictionary.CreateBuilder<string, OutboundCollection>(StringComparer.OrdinalIgnoreCase);
+        var map = ImmutableDictionary.CreateBuilder<string, OutboundRegistry>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var (service, builder) in builders)
         {

@@ -48,7 +48,6 @@ public sealed class MeshGossipOptions
     /// <summary>Advertised port if different from bind port (defaults to <see cref="Port"/>).</summary>
     public int? AdvertisePort { get; set; }
 
-
     /// <summary>Interval between gossip rounds.</summary>
     public TimeSpan Interval { get; set; } = TimeSpan.FromSeconds(1);
 

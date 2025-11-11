@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -8,6 +9,7 @@ namespace OmniRelay.Core.Leadership;
 /// <summary>DI helpers for wiring the leadership coordinator.</summary>
 public static class LeadershipServiceCollectionExtensions
 {
+    [UnconditionalSuppressMessage("TrimAnalysis", "IL2026", Justification = "Leadership options binding occurs in non-trimmed hosting environments.")]
     public static IServiceCollection AddLeadershipCoordinator(this IServiceCollection services, IConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(configuration);

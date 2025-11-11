@@ -416,7 +416,7 @@ internal sealed class DispatcherBuilder
             ? "default"
             : FormattableString.Invariant($"http3={runtimeOptions.EnableHttp3};ver={runtimeOptions.RequestVersion?.ToString() ?? "null"};policy={runtimeOptions.VersionPolicy?.ToString() ?? "null"}");
 
-        var cacheKey = FormattableString.Invariant($"{service}|{configuration.Key ?? OutboundCollection.DefaultKey}|{uri}|{configuration.ClientName ?? string.Empty}|{runtimeKey}");
+        var cacheKey = FormattableString.Invariant($"{service}|{configuration.Key ?? OutboundRegistry.DefaultKey}|{uri}|{configuration.ClientName ?? string.Empty}|{runtimeKey}");
 
         if (_httpOutboundCache.TryGetValue(cacheKey, out var cached))
         {
@@ -570,7 +570,7 @@ internal sealed class DispatcherBuilder
                 endpointHttp3Support: h3Support);
         }
 
-        var cacheKey = FormattableString.Invariant($"{service}|{configuration.Key ?? OutboundCollection.DefaultKey}|{remoteService}|{string.Join(",", uris.Select(u => u.ToString()))}|{configuration.PeerChooser ?? "round-robin"}");
+        var cacheKey = FormattableString.Invariant($"{service}|{configuration.Key ?? OutboundRegistry.DefaultKey}|{remoteService}|{string.Join(",", uris.Select(u => u.ToString()))}|{configuration.PeerChooser ?? "round-robin"}");
 
         if (_grpcOutboundCache.TryGetValue(cacheKey, out var cachedOutbound))
         {

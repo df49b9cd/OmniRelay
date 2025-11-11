@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Globalization;
 using System.Linq;
 using OmniRelay.Core.Gossip;
 using Xunit;
@@ -52,7 +53,9 @@ public sealed class MeshGossipMembershipTableTests
         {
             MeshVersion = "1.1.0",
             MetadataVersion = remoteMetadata.MetadataVersion + 1,
-            Labels = remoteMetadata.Labels.SetItem("mesh.zone", "az-2")
+            Labels = remoteMetadata.Labels
+                .ToImmutableDictionary(StringComparer.OrdinalIgnoreCase)
+                .SetItem("mesh.zone", "az-2")
         };
 
         time.Advance(TimeSpan.FromSeconds(1));
@@ -73,7 +76,7 @@ public sealed class MeshGossipMembershipTableTests
     [Fact]
     public void Sweep_MarksPeersSuspectThenLeft()
     {
-        var time = new TestTimeProvider(DateTimeOffset.Parse("2024-01-01T00:00:00Z"));
+        var time = new TestTimeProvider(DateTimeOffset.Parse("2024-01-01T00:00:00Z", CultureInfo.InvariantCulture));
         var localMetadata = new MeshGossipMemberMetadata
         {
             NodeId = "local",

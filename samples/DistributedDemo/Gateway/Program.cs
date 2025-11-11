@@ -1,5 +1,5 @@
 using DistributedDemo.Inventory.Protos;
-using DistributedDemo.Shared.Contracts;
+using DistributedDemo.Contracts;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;

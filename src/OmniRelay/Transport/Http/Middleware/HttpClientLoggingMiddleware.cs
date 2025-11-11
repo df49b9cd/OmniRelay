@@ -13,14 +13,14 @@ public sealed class HttpClientLoggingMiddleware(ILogger<HttpClientLoggingMiddlew
 
     public async ValueTask<HttpResponseMessage> InvokeAsync(
         HttpClientMiddlewareContext context,
-        CancellationToken cancellationToken,
-        HttpClientMiddlewareDelegate next)
+        HttpClientMiddlewareHandler nextHandler,
+        CancellationToken cancellationToken)
     {
         using var scope = RequestLoggingScope.Begin(_logger, context.RequestMeta);
 
         if (!_logger.IsEnabled(LogLevel.Information))
         {
-            return await next(context, cancellationToken).ConfigureAwait(false);
+            return await nextHandler(context, cancellationToken).ConfigureAwait(false);
         }
 
         var request = context.Request;
@@ -33,7 +33,7 @@ public sealed class HttpClientLoggingMiddleware(ILogger<HttpClientLoggingMiddlew
 
         try
         {
-            var response = await next(context, cancellationToken).ConfigureAwait(false);
+            var response = await nextHandler(context, cancellationToken).ConfigureAwait(false);
             var elapsed = Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds;
 
             _logger.LogInformation(

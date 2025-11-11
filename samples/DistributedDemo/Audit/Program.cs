@@ -1,4 +1,4 @@
-using DistributedDemo.Shared.Contracts;
+using DistributedDemo.Contracts;
 using Hugo;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
