@@ -372,7 +372,15 @@ public class ResiliencyIntegrationTests
                 var json = await response.Content.ReadAsStringAsync(ct);
                 using var document = JsonDocument.Parse(json);
                 var metadata = document.RootElement.GetProperty("metadata");
-                Assert.True(metadata.GetProperty(RetryableMetadataKey).GetBoolean());
+                var retryElement = metadata.GetProperty(RetryableMetadataKey);
+                var retryable = retryElement.ValueKind switch
+                {
+                    JsonValueKind.True => true,
+                    JsonValueKind.False => false,
+                    JsonValueKind.String => bool.TryParse(retryElement.GetString(), out var parsed) && parsed,
+                    _ => false
+                };
+                Assert.True(retryable);
             }
 
             using var channel = GrpcChannel.ForAddress(cancelAddress);

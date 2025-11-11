@@ -13,11 +13,6 @@ public sealed class ProtobufIncrementalGenerator : IIncrementalGenerator
     private static readonly Lazy<string?> DependencyDirectory = new(ResolveDependencyDirectory);
 
     [RequiresAssemblyFiles("Calls OmniRelay.Codegen.Protobuf.Generator.ProtobufIncrementalGenerator.ResolveAssemblyFromDependencies(AssemblyLoadContext, AssemblyName)")]
-    [RequiresAssemblyFiles("Calls OmniRelay.Codegen.Protobuf.Generator.ProtobufIncrementalGenerator.ResolveAssemblyFromDependencies(AssemblyLoadContext, AssemblyName)")]
-    [RequiresAssemblyFiles("Calls OmniRelay.Codegen.Protobuf.Generator.ProtobufIncrementalGenerator.ResolveAssemblyFromDependencies(AssemblyLoadContext, AssemblyName)")]
-    [RequiresAssemblyFiles("Calls OmniRelay.Codegen.Protobuf.Generator.ProtobufIncrementalGenerator.ResolveAssemblyFromDependencies(AssemblyLoadContext, AssemblyName)")]
-    [RequiresAssemblyFiles("Calls OmniRelay.Codegen.Protobuf.Generator.ProtobufIncrementalGenerator.ResolveAssemblyFromDependencies(AssemblyLoadContext, AssemblyName)")]
-    [RequiresAssemblyFiles("Calls OmniRelay.Codegen.Protobuf.Generator.ProtobufIncrementalGenerator.ResolveAssemblyFromDependencies(AssemblyLoadContext, AssemblyName)")]
     static ProtobufIncrementalGenerator()
     {
         var directory = DependencyDirectory.Value;

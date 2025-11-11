@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Text.Json;
+using System.Threading;
 using Microsoft.Data.Sqlite;
 using OmniRelay.Dispatcher;
 using Xunit;
@@ -69,9 +70,24 @@ public sealed class SqliteResourceLeaseReplicatorTests
 
         public void Dispose()
         {
-            if (File.Exists(Path))
+            SqliteConnection.ClearAllPools();
+
+            if (!File.Exists(Path))
             {
-                File.Delete(Path);
+                return;
+            }
+
+            for (var attempt = 0; attempt < 3; attempt++)
+            {
+                try
+                {
+                    File.Delete(Path);
+                    break;
+                }
+                catch (IOException) when (attempt < 2)
+                {
+                    Thread.Sleep(50);
+                }
             }
         }
     }

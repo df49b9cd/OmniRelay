@@ -27,13 +27,13 @@ public class DispatcherTests
         await dispatcher.StartOrThrowAsync(ct);
 
         Assert.Equal(DispatcherStatus.Running, dispatcher.Status);
-        Assert.Equal(1, StubLifecycle.StartCalls);
-        Assert.Equal(0, StubLifecycle.StopCalls);
+        Assert.Equal(1, lifecycle.StartCalls);
+        Assert.Equal(0, lifecycle.StopCalls);
 
         await dispatcher.StopOrThrowAsync(ct);
 
         Assert.Equal(DispatcherStatus.Stopped, dispatcher.Status);
-        Assert.Equal(1, StubLifecycle.StopCalls);
+        Assert.Equal(1, lifecycle.StopCalls);
     }
 
     [Fact]
@@ -463,28 +463,33 @@ public class DispatcherTests
 
     private sealed class StubLifecycle : ILifecycle
     {
-        public static int StartCalls { get; private set; }
+        private int _startCalls;
+        private int _stopCalls;
 
-        public static int StopCalls { get; private set; }
+        public int StartCalls => _startCalls;
+
+        public int StopCalls => _stopCalls;
 
         public ValueTask StartAsync(CancellationToken cancellationToken = default)
         {
-            StartCalls++;
+            Interlocked.Increment(ref _startCalls);
             return ValueTask.CompletedTask;
         }
 
         public ValueTask StopAsync(CancellationToken cancellationToken = default)
         {
-            StopCalls++;
+            Interlocked.Increment(ref _stopCalls);
             return ValueTask.CompletedTask;
         }
     }
 
     private sealed class StubUnaryOutbound : IUnaryOutbound
     {
-        public static int StartCalls { get; private set; }
+        private int _startCalls;
+        private int _stopCalls;
 
-        public static int StopCalls { get; private set; }
+        public int StartCalls => _startCalls;
+        public int StopCalls => _stopCalls;
 
         public ValueTask<Result<Response<ReadOnlyMemory<byte>>>> CallAsync(
             IRequest<ReadOnlyMemory<byte>> request,
@@ -493,13 +498,13 @@ public class DispatcherTests
 
         public ValueTask StartAsync(CancellationToken cancellationToken = default)
         {
-            StartCalls++;
+            Interlocked.Increment(ref _startCalls);
             return ValueTask.CompletedTask;
         }
 
         public ValueTask StopAsync(CancellationToken cancellationToken = default)
         {
-            StopCalls++;
+            Interlocked.Increment(ref _stopCalls);
             return ValueTask.CompletedTask;
         }
     }
