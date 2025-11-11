@@ -126,6 +126,7 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
         }
         catch (OperationCanceledException)
         {
+            // Expected when CTS is cancelled during shutdown
         }
 
         try
@@ -137,6 +138,7 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
         }
         catch (OperationCanceledException)
         {
+            // Expected when CTS is cancelled during shutdown
         }
 
         if (_app is not null)
