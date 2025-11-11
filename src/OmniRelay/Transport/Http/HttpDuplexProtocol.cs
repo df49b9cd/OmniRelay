@@ -238,23 +238,11 @@ internal static partial class HttpDuplexProtocol
 
     internal readonly record struct Frame(WebSocketMessageType MessageType, FrameType Type, ReadOnlyMemory<byte> Payload)
     {
-        public WebSocketMessageType MessageType
-        {
-            get => field;
-            init => field = value;
-        } = MessageType;
+        public WebSocketMessageType MessageType { get; init; } = MessageType;
 
-        public FrameType Type
-        {
-            get => field;
-            init => field = value;
-        } = Type;
+        public FrameType Type { get; init; } = Type;
 
-        public ReadOnlyMemory<byte> Payload
-        {
-            get => field;
-            init => field = value;
-        } = Payload;
+        public ReadOnlyMemory<byte> Payload { get; init; } = Payload;
     }
 
     [JsonSourceGenerationOptions(
@@ -267,49 +255,21 @@ internal static partial class HttpDuplexProtocol
 
     private sealed class ErrorEnvelope
     {
-        public static string? Status
-        {
-            get => field;
-            set => field = value;
-        }
+        public static string? Status { get; set; }
 
-        public static string? Message
-        {
-            get => field;
-            set => field = value;
-        }
+        public static string? Message { get; set; }
 
-        public static string? Code
-        {
-            get => field;
-            set => field = value;
-        }
+        public static string? Code { get; set; }
     }
 
     private sealed class ResponseMetaEnvelope
     {
-        public static string? Encoding
-        {
-            get => field;
-            set => field = value;
-        }
+        public static string? Encoding { get; set; }
 
-        public static string? Transport
-        {
-            get => field;
-            set => field = value;
-        }
+        public static string? Transport { get; set; }
 
-        public static double? TtlMs
-        {
-            get => field;
-            set => field = value;
-        }
+        public static double? TtlMs { get; set; }
 
-        public static Dictionary<string, string>? Headers
-        {
-            get => field;
-            set => field = value;
-        }
+        public static Dictionary<string, string>? Headers { get; set; }
     }
 }

@@ -5,8 +5,8 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using OmniRelay.Core;
 using OmniRelay.Dispatcher;
-using OmniRelay.Transport.Http;
 using OmniRelay.Tests;
+using OmniRelay.Transport.Http;
 using Xunit;
 
 namespace OmniRelay.Tests.Transport.Http;

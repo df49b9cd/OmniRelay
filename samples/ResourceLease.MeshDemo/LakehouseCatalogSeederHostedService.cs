@@ -1,13 +1,11 @@
-using System.Collections.Generic;
 using System.Globalization;
 using System.Text.Json;
-using System.Threading;
 using Microsoft.Extensions.Options;
 using OmniRelay.Dispatcher;
 
 namespace OmniRelay.Samples.ResourceLease.MeshDemo;
 
-public sealed class LakehouseCatalogSeederHostedService : BackgroundService
+internal sealed class LakehouseCatalogSeederHostedService : BackgroundService
 {
     private readonly ResourceLeaseHttpClient _client;
     private readonly MeshDemoOptions _options;

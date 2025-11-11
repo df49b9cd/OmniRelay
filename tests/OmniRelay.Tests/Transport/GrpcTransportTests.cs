@@ -25,8 +25,8 @@ using OmniRelay.Core;
 using OmniRelay.Core.Peers;
 using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
-using OmniRelay.Tests.Support;
 using OmniRelay.Errors;
+using OmniRelay.Tests.Support;
 using OmniRelay.Transport.Grpc;
 using Xunit;
 using static Hugo.Go;
@@ -2634,23 +2634,11 @@ public partial class GrpcTransportTests
 
         internal sealed record LogEntry(string CategoryName, LogLevel LogLevel, string Message)
         {
-            public string CategoryName
-            {
-                get => field;
-                init => field = value;
-            } = CategoryName;
+            public string CategoryName { get; init; } = CategoryName;
 
-            public LogLevel LogLevel
-            {
-                get => field;
-                init => field = value;
-            } = LogLevel;
+            public LogLevel LogLevel { get; init; } = LogLevel;
 
-            public string Message
-            {
-                get => field;
-                init => field = value;
-            } = Message;
+            public string Message { get; init; } = Message;
         }
 
         private sealed class CaptureLogger(string categoryName, ConcurrentBag<LogEntry> entries) : ILogger
@@ -2717,7 +2705,6 @@ public partial class GrpcTransportTests
 
         throw new TimeoutException("The gRPC inbound failed to bind within the allotted time.");
     }
-
 
     private sealed class ServerTaskTracker : IAsyncDisposable
     {
@@ -2801,47 +2788,27 @@ public partial class GrpcTransportTests
 
     internal sealed record EchoRequest(string Message)
     {
-        public string Message
-        {
-            get => field;
-            init => field = value;
-        } = Message;
+        public string Message { get; init; } = Message;
     }
 
     internal sealed record EchoResponse
     {
-        public string Message
-        {
-            get => field;
-            init => field = value;
-        } = string.Empty;
+        public string Message { get; init; } = string.Empty;
     }
 
     internal sealed record AggregateChunk(int Amount)
     {
-        public int Amount
-        {
-            get => field;
-            init => field = value;
-        } = Amount;
+        public int Amount { get; init; } = Amount;
     }
 
     internal sealed record AggregateResponse(int TotalAmount)
     {
-        public int TotalAmount
-        {
-            get => field;
-            init => field = value;
-        } = TotalAmount;
+        public int TotalAmount { get; init; } = TotalAmount;
     }
 
     internal sealed record ChatMessage(string Message)
     {
-        public string Message
-        {
-            get => field;
-            init => field = value;
-        } = Message;
+        public string Message { get; init; } = Message;
     }
 
     [JsonSourceGenerationOptions(
@@ -2863,7 +2830,7 @@ public partial class GrpcTransportTests
             EncodingName = encodingName;
         }
 
-        public string EncodingName => field;
+        public string EncodingName { get; }
 
         public Stream CreateCompressionStream(Stream stream, CompressionLevel? compressionLevel) => stream;
 

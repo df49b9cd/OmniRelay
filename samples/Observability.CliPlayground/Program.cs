@@ -1,14 +1,7 @@
-using System.Diagnostics.Metrics;
-using System.Net.Http;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
-using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OmniRelay.Configuration;
 using OmniRelay.Dispatcher;
@@ -19,8 +12,10 @@ using OpenTelemetry.Trace;
 
 namespace OmniRelay.Samples.ObservabilityCli;
 
-public static class Program
+internal static class Program
 {
+    [RequiresDynamicCode()]
+    [RequiresUnreferencedCode()]
     public static async Task Main(string[] args)
     {
         var builder = WebApplication.CreateBuilder(args);
@@ -85,6 +80,7 @@ public static class Program
         await app.RunAsync().ConfigureAwait(false);
     }
 
+    [RequiresUnreferencedCode("Calls Microsoft.Extensions.Configuration.ConfigurationBinder.GetValue<T>(String)")]
     private static void ConfigureOpenTelemetry(WebApplicationBuilder builder)
     {
         var resourceBuilder = ResourceBuilder.CreateDefault()
@@ -121,7 +117,7 @@ internal sealed class SampleInvocationService(
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await Task.Delay(options.Value.InitialDelay, stoppingToken).ConfigureAwait(false);
-        state.MarkReady();
+        PlaygroundState.MarkReady();
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -167,52 +163,24 @@ internal sealed class ProbeHealth(PlaygroundState state) : IHealthCheck
 
 internal sealed record PlaygroundOptions
 {
-    public TimeSpan InitialDelay
-    {
-        get => field;
-        init => field = value;
-    } = TimeSpan.FromSeconds(3);
+    public TimeSpan InitialDelay { get; init; } = TimeSpan.FromSeconds(3);
 
-    public TimeSpan ScriptInterval
-    {
-        get => field;
-        init => field = value;
-    } = TimeSpan.FromSeconds(15);
+    public TimeSpan ScriptInterval { get; init; } = TimeSpan.FromSeconds(15);
 
-    public string IntrospectUrl
-    {
-        get => field;
-        init => field = value;
-    } = "http://127.0.0.1:7130/omnirelay/introspect";
+    public string IntrospectUrl { get; init; } = "http://127.0.0.1:7130/omnirelay/introspect";
 }
 
 internal sealed class PlaygroundState
 {
-    public string ServiceName
-    {
-        get => field;
-        set => field = value;
-    } = "observability-cli-playground";
+    public string ServiceName { get; set; } = "observability-cli-playground";
 
-    public static string? LastScriptStatus
-    {
-        get => field;
-        set => field = value;
-    }
+    public static string? LastScriptStatus { get; set; }
 
-    public static bool Ready
-    {
-        get => field;
-        private set => field = value;
-    }
+    public static bool Ready { get; private set; }
 
-    public static DateTimeOffset? ReadySince
-    {
-        get => field;
-        private set => field = value;
-    }
+    public static DateTimeOffset? ReadySince { get; private set; }
 
-    public void MarkReady()
+    public static void MarkReady()
     {
         if (!Ready)
         {
@@ -221,7 +189,7 @@ internal sealed class PlaygroundState
         }
     }
 
-    public void Reset()
+    public static void Reset()
     {
         Ready = false;
         ReadySince = null;

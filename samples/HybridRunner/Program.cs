@@ -1,5 +1,5 @@
-using System.Threading.Channels;
 using System.Text.Json;
+using System.Threading.Channels;
 using Hugo;
 using OmniRelay.Core;
 using OmniRelay.Core.Middleware;
@@ -12,7 +12,7 @@ using OmniRelayDispatcher = OmniRelay.Dispatcher.Dispatcher;
 
 namespace OmniRelay.Samples.HybridRunner;
 
-public static class Program
+internal static class Program
 {
     public static async Task Main(string[] args)
     {

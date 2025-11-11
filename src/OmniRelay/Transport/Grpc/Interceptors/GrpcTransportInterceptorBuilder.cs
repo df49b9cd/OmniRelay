@@ -200,6 +200,26 @@ public readonly struct GrpcClientServiceInterceptorBuilder
 
     public GrpcClientProcedureInterceptorBuilder ForProcedure(string procedure) =>
         _builder.ForProcedure(procedure);
+
+    public override bool Equals(object obj)
+    {
+        throw new NotImplementedException();
+    }
+
+    public override int GetHashCode()
+    {
+        throw new NotImplementedException();
+    }
+
+    public static bool operator ==(GrpcClientServiceInterceptorBuilder left, GrpcClientServiceInterceptorBuilder right)
+    {
+        return left.Equals(right);
+    }
+
+    public static bool operator !=(GrpcClientServiceInterceptorBuilder left, GrpcClientServiceInterceptorBuilder right)
+    {
+        return !(left == right);
+    }
 }
 
 public readonly struct GrpcClientProcedureInterceptorBuilder
@@ -218,6 +238,26 @@ public readonly struct GrpcClientProcedureInterceptorBuilder
         _interceptors.Add(interceptor);
         return this;
     }
+
+    public override bool Equals(object obj)
+    {
+        throw new NotImplementedException();
+    }
+
+    public override int GetHashCode()
+    {
+        throw new NotImplementedException();
+    }
+
+    public static bool operator ==(GrpcClientProcedureInterceptorBuilder left, GrpcClientProcedureInterceptorBuilder right)
+    {
+        return left.Equals(right);
+    }
+
+    public static bool operator !=(GrpcClientProcedureInterceptorBuilder left, GrpcClientProcedureInterceptorBuilder right)
+    {
+        return !(left == right);
+    }
 }
 
 public readonly struct GrpcServerProcedureInterceptorBuilder
@@ -235,5 +275,25 @@ public readonly struct GrpcServerProcedureInterceptorBuilder
 
         _interceptors.Add(interceptor);
         return this;
+    }
+
+    public override bool Equals(object obj)
+    {
+        throw new NotImplementedException();
+    }
+
+    public override int GetHashCode()
+    {
+        throw new NotImplementedException();
+    }
+
+    public static bool operator ==(GrpcServerProcedureInterceptorBuilder left, GrpcServerProcedureInterceptorBuilder right)
+    {
+        return left.Equals(right);
+    }
+
+    public static bool operator !=(GrpcServerProcedureInterceptorBuilder left, GrpcServerProcedureInterceptorBuilder right)
+    {
+        return !(left == right);
     }
 }

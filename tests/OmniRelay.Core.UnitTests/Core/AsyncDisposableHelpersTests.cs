@@ -8,11 +8,7 @@ public class AsyncDisposableHelpersTests
 {
     private sealed class DummyAsyncDisposable : IAsyncDisposable
     {
-        public static bool Disposed
-        {
-            get => field;
-            private set => field = value;
-        }
+        public static bool Disposed { get; private set; }
 
         public ValueTask DisposeAsync()
         {

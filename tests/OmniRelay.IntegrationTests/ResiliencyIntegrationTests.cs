@@ -24,8 +24,8 @@ using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
 using OmniRelay.Errors;
 using OmniRelay.IntegrationTests.Support;
-using OmniRelay.TestSupport;
 using OmniRelay.Tests;
+using OmniRelay.TestSupport;
 using OmniRelay.Transport.Grpc;
 using OmniRelay.Transport.Http;
 using Xunit;
@@ -371,8 +371,8 @@ public class ResiliencyIntegrationTests
 
                 var json = await response.Content.ReadAsStringAsync(ct);
                 using var document = JsonDocument.Parse(json);
-            var metadata = document.RootElement.GetProperty("metadata");
-            Assert.True(metadata.GetProperty(RetryableMetadataKey).GetBoolean());
+                var metadata = document.RootElement.GetProperty("metadata");
+                Assert.True(metadata.GetProperty(RetryableMetadataKey).GetBoolean());
             }
 
             using var channel = GrpcChannel.ForAddress(cancelAddress);

@@ -463,17 +463,9 @@ public class DispatcherTests
 
     private sealed class StubLifecycle : ILifecycle
     {
-        public static int StartCalls
-        {
-            get => field;
-            private set => field = value;
-        }
+        public static int StartCalls { get; private set; }
 
-        public static int StopCalls
-        {
-            get => field;
-            private set => field = value;
-        }
+        public static int StopCalls { get; private set; }
 
         public ValueTask StartAsync(CancellationToken cancellationToken = default)
         {
@@ -490,17 +482,9 @@ public class DispatcherTests
 
     private sealed class StubUnaryOutbound : IUnaryOutbound
     {
-        public static int StartCalls
-        {
-            get => field;
-            private set => field = value;
-        }
+        public static int StartCalls { get; private set; }
 
-        public static int StopCalls
-        {
-            get => field;
-            private set => field = value;
-        }
+        public static int StopCalls { get; private set; }
 
         public ValueTask<Result<Response<ReadOnlyMemory<byte>>>> CallAsync(
             IRequest<ReadOnlyMemory<byte>> request,

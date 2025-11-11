@@ -7,7 +7,7 @@ using OmniRelayDispatcher = OmniRelay.Dispatcher.Dispatcher;
 
 namespace OmniRelay.Samples.ResourceLease.MeshDemo;
 
-public sealed class MeshDispatcherHostedService : IHostedService, IAsyncDisposable
+internal sealed class MeshDispatcherHostedService : IHostedService, IAsyncDisposable
 {
     private readonly MeshDemoOptions _options;
     private readonly PeerLeaseHealthTracker _leaseHealthTracker;
@@ -103,7 +103,7 @@ public sealed class MeshDispatcherHostedService : IHostedService, IAsyncDisposab
         {
             await asyncReplicator.DisposeAsync().ConfigureAwait(false);
         }
-}
+    }
 
     private static IResourceLeaseBackpressureListener? ComposeBackpressureListener(IEnumerable<IResourceLeaseBackpressureListener> listeners)
     {

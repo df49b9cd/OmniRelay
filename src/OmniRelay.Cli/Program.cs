@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.CommandLine;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Reflection;
 using System.Text;
@@ -23,7 +24,7 @@ using OmniRelay.Transport.Http;
 
 namespace OmniRelay.Cli;
 
-public static class Program
+internal static class Program
 {
     private const string DefaultConfigSection = "polymer";
     private const string DefaultIntrospectionUrl = "http://127.0.0.1:8080/omnirelay/introspect";
@@ -1123,6 +1124,8 @@ public static class Program
         }
     }
 
+    [RequiresDynamicCode("Calls System.Text.Json.Serialization.JsonStringEnumConverter.JsonStringEnumConverter(JsonNamingPolicy, Boolean)")]
+    [RequiresUnreferencedCode("Calls System.Text.Json.JsonSerializer.DeserializeAsync<TValue>(Stream, JsonSerializerOptions, CancellationToken)")]
     private static async Task<int> RunIntrospectAsync(string url, string format, string? timeoutOption)
     {
         var normalizedFormat = string.IsNullOrWhiteSpace(format) ? "text" : format.ToLowerInvariant();
@@ -1759,6 +1762,7 @@ public static class Program
         }
     }
 
+    [RequiresUnreferencedCode("Calls System.Text.Json.JsonSerializer.DeserializeAsync<TValue>(Stream, JsonSerializerOptions, CancellationToken)")]
     private static async Task<int> RunAutomationAsync(string scriptPath, bool dryRun, bool continueOnError)
     {
         if (string.IsNullOrWhiteSpace(scriptPath))
@@ -1959,20 +1963,12 @@ public static class Program
 
     private sealed record AutomationScript
     {
-        public AutomationStep[] Steps
-        {
-            get => field;
-            init => field = value;
-        } = [];
+        public AutomationStep[] Steps { get; init; } = [];
     }
 
     private sealed record AutomationStep
     {
-        public string Type
-        {
-            get => field;
-            init => field = value;
-        } = string.Empty;
+        public string Type { get; init; } = string.Empty;
 
         public static string? Description
         {
@@ -2472,6 +2468,7 @@ public static class Program
         EnsureHeader(headers, "Accept", "application/json");
     }
 
+    [RequiresUnreferencedCode("Calls System.Text.Json.JsonSerializer.Serialize<TValue>(TValue, JsonSerializerOptions)")]
     private static void FormatJsonPayload(
         string? inlineBody,
         string? bodyFile,
@@ -3460,32 +3457,16 @@ public static class Program
 
     private sealed class ProfileProcessingState
     {
-        public static bool PrettyPrintJson
-        {
-            get => field;
-            set => field = value;
-        }
+        public static bool PrettyPrintJson { get; set; }
 
-        public static ProtoProcessingState? Proto
-        {
-            get => field;
-            set => field = value;
-        }
+        public static ProtoProcessingState? Proto { get; set; }
     }
 
     private sealed record ProtoProcessingState(string[] DescriptorPaths, string MessageName)
     {
-        public string[] DescriptorPaths
-        {
-            get => field;
-            init => field = value;
-        } = DescriptorPaths;
+        public string[] DescriptorPaths { get; init; } = DescriptorPaths;
 
-        public string MessageName
-        {
-            get => field;
-            init => field = value;
-        } = MessageName;
+        public string MessageName { get; init; } = MessageName;
     }
 
     private enum PayloadSource
@@ -3500,17 +3481,9 @@ public static class Program
         Dictionary<string, FileDescriptor> Files,
         Dictionary<string, MessageDescriptor> Messages)
     {
-        public Dictionary<string, FileDescriptor> Files
-        {
-            get => field;
-            init => field = value;
-        } = Files;
+        public Dictionary<string, FileDescriptor> Files { get; init; } = Files;
 
-        public Dictionary<string, MessageDescriptor> Messages
-        {
-            get => field;
-            init => field = value;
-        } = Messages;
+        public Dictionary<string, MessageDescriptor> Messages { get; init; } = Messages;
     }
 
     private static bool TryDecodeUtf8(ReadOnlySpan<byte> data, out string text)

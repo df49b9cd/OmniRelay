@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -23,6 +24,8 @@ public static class OmniRelayServiceCollectionExtensions
     /// Adds and configures an <see cref="Dispatcher.Dispatcher"/> using the provided configuration section.
     /// Binds options, wires diagnostics, builds the dispatcher, and registers a hosted service to manage its lifecycle.
     /// </summary>
+    [RequiresDynamicCode()]
+    [RequiresUnreferencedCode()]
     public static IServiceCollection AddOmniRelayDispatcher(this IServiceCollection services, IConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(services);

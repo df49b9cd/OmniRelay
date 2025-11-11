@@ -12,8 +12,8 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
-using Hugo;
 using Google.Protobuf;
+using Hugo;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
@@ -23,8 +23,8 @@ using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
 using OmniRelay.Errors;
 using OmniRelay.IntegrationTests.Support;
-using OmniRelay.TestSupport;
 using OmniRelay.Tests;
+using OmniRelay.TestSupport;
 using OmniRelay.Transport.Grpc;
 using OmniRelay.Transport.Http;
 using OmniRelay.YabInterop.Protos;
@@ -746,15 +746,14 @@ public sealed class CompatibilityInteropIntegrationTests
 internal sealed class CapturingUnaryOutbound : IUnaryOutbound
 {
     private readonly string _clusterLabel;
-    private readonly TaskCompletionSource<RequestMeta> _capture;
 
     public CapturingUnaryOutbound(string clusterLabel, TaskCompletionSource<RequestMeta> capture)
     {
         _clusterLabel = clusterLabel;
-        _capture = capture;
+        Capture = capture;
     }
 
-    public TaskCompletionSource<RequestMeta> Capture => _capture;
+    public TaskCompletionSource<RequestMeta> Capture { get; }
 
     public ValueTask StartAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
 
@@ -764,7 +763,7 @@ internal sealed class CapturingUnaryOutbound : IUnaryOutbound
         IRequest<ReadOnlyMemory<byte>> request,
         CancellationToken cancellationToken = default)
     {
-        _capture.TrySetResult(request.Meta);
+        Capture.TrySetResult(request.Meta);
         var shadowHeader = request.Meta.Headers.TryGetValue("x-shadow-route", out var header)
             ? header
             : "absent";

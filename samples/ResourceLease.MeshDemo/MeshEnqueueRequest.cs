@@ -5,7 +5,7 @@ using OmniRelay.Dispatcher;
 
 namespace OmniRelay.Samples.ResourceLease.MeshDemo;
 
-public sealed record MeshEnqueueRequest(
+internal sealed record MeshEnqueueRequest(
     string Catalog = "fabric-lakehouse",
     string Database = "sales",
     string Table = "ad_hoc",

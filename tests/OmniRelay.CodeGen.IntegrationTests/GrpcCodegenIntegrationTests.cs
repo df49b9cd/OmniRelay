@@ -8,8 +8,8 @@ using OmniRelay.Core;
 using OmniRelay.Dispatcher;
 using OmniRelay.IntegrationTests.Support;
 using OmniRelay.Tests;
-using OmniRelay.Transport.Grpc;
 using OmniRelay.Tests.Protos;
+using OmniRelay.Transport.Grpc;
 using Xunit;
 
 namespace OmniRelay.CodeGen.IntegrationTests;

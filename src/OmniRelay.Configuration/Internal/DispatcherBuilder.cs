@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Net.Security;
 using System.Reflection;
@@ -168,6 +169,7 @@ internal sealed class DispatcherBuilder
         }
     }
 
+    [RequiresUnreferencedCode("Calls Microsoft.Extensions.Configuration.ConfigurationBinder.GetValue<T>(String)")]
     private void ConfigureCustomInbounds(DispatcherOptions dispatcherOptions)
     {
         if (_customInboundSpecs.Count == 0)
@@ -312,6 +314,7 @@ internal sealed class DispatcherBuilder
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
     };
 
+    [RequiresUnreferencedCode("Calls Microsoft.Extensions.Configuration.ConfigurationBinder.GetValue<T>(String)")]
     private void ConfigureCustomOutbounds(
         DispatcherOptions dispatcherOptions,
         string service,
@@ -1060,6 +1063,8 @@ internal sealed class DispatcherBuilder
         return enableLogging || enableSampling || hasPeerHealthProviders;
     }
 
+    [RequiresDynamicCode("Calls Microsoft.AspNetCore.Builder.EndpointRouteBuilderExtensions.MapGet(String, Delegate)")]
+    [RequiresUnreferencedCode("Calls Microsoft.AspNetCore.Builder.EndpointRouteBuilderExtensions.MapGet(String, Delegate)")]
     private static void ConfigureDiagnosticsControlPlane(WebApplication app, DiagnosticsControlPlaneOptions options)
     {
         if (options.EnableLoggingToggle)
@@ -1147,41 +1152,21 @@ internal sealed class DispatcherBuilder
 
     private readonly record struct DiagnosticsControlPlaneOptions(bool EnableLoggingToggle, bool EnableSamplingToggle, bool EnableLeaseHealthDiagnostics)
     {
-        public bool EnableLoggingToggle
-        {
-            get => field;
-            init => field = value;
-        } = EnableLoggingToggle;
+        public bool EnableLoggingToggle { get; init; } = EnableLoggingToggle;
 
-        public bool EnableSamplingToggle
-        {
-            get => field;
-            init => field = value;
-        } = EnableSamplingToggle;
+        public bool EnableSamplingToggle { get; init; } = EnableSamplingToggle;
 
-        public bool EnableLeaseHealthDiagnostics
-        {
-            get => field;
-            init => field = value;
-        } = EnableLeaseHealthDiagnostics;
+        public bool EnableLeaseHealthDiagnostics { get; init; } = EnableLeaseHealthDiagnostics;
     }
 
     private sealed record DiagnosticsLogLevelRequest(string? Level)
     {
-        public string? Level
-        {
-            get => field;
-            init => field = value;
-        } = Level;
+        public string? Level { get; init; } = Level;
     }
 
     private sealed record DiagnosticsSamplingRequest(double? Probability)
     {
-        public double? Probability
-        {
-            get => field;
-            init => field = value;
-        } = Probability;
+        public double? Probability { get; init; } = Probability;
     }
 
     private static GrpcServerRuntimeOptions? BuildGrpcServerRuntimeOptions(GrpcServerRuntimeConfiguration configuration)
@@ -1872,23 +1857,11 @@ internal sealed class DispatcherBuilder
         IList<string> Converters,
         string? ContextTypeName)
     {
-        public JsonSerializerOptionsConfiguration Options
-        {
-            get => field;
-            init => field = value;
-        } = Options;
+        public JsonSerializerOptionsConfiguration Options { get; init; } = Options;
 
-        public IList<string> Converters
-        {
-            get => field;
-            init => field = value;
-        } = Converters;
+        public IList<string> Converters { get; init; } = Converters;
 
-        public string? ContextTypeName
-        {
-            get => field;
-            init => field = value;
-        } = ContextTypeName;
+        public string? ContextTypeName { get; init; } = ContextTypeName;
     }
 
     private void ApplyMiddleware(DispatcherOptions dispatcherOptions)
@@ -1977,6 +1950,7 @@ internal sealed class DispatcherBuilder
         return Uri.TryCreate($"http://{value}", UriKind.Absolute, out var fallback) ? fallback.ToString() : throw new OmniRelayConfigurationException($"The value '{value}' for {context} is not a valid URI.");
     }
 
+    [RequiresUnreferencedCode("Calls System.Reflection.Assembly.GetType(String, Boolean, Boolean)")]
     private static Type ResolveType(string typeName)
     {
         var resolved = Type.GetType(typeName, throwOnError: false, ignoreCase: false);
