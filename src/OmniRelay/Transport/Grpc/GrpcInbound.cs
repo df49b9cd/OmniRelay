@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Server.Kestrel.Transport.Quic;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
+using OmniRelay.Core.Leadership;
 using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
 using OmniRelay.Transport.Grpc.Interceptors;
@@ -398,6 +399,10 @@ public sealed class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcServerInter
 
         app.MapGrpcService<GrpcDispatcherService>();
         app.MapGrpcService<GrpcTransportHealthService>();
+        if (app.Services.GetService<LeadershipControlGrpcService>() is not null)
+        {
+            app.MapGrpcService<LeadershipControlGrpcService>();
+        }
 
         await app.StartAsync(cancellationToken).ConfigureAwait(false);
         _app = app;

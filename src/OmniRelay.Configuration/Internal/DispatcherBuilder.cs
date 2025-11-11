@@ -15,10 +15,12 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using OmniRelay.Configuration.Models;
 using OmniRelay.Core;
 using OmniRelay.Core.Diagnostics;
 using OmniRelay.Core.Gossip;
+using OmniRelay.Core.Leadership;
 using OmniRelay.Core.Peers;
 using OmniRelay.Dispatcher;
 using OmniRelay.Transport.Grpc;
@@ -41,6 +43,10 @@ internal sealed class DispatcherBuilder
     private readonly IReadOnlyDictionary<string, ICustomInboundSpec> _customInboundSpecs;
     private readonly IReadOnlyDictionary<string, ICustomOutboundSpec> _customOutboundSpecs;
     private readonly IReadOnlyDictionary<string, ICustomPeerChooserSpec> _customPeerSpecs;
+    private static readonly JsonSerializerOptions LeadershipEventJsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
+    };
 
     public DispatcherBuilder(OmniRelayConfigurationOptions options, IServiceProvider serviceProvider, IConfiguration configuration)
     {
@@ -140,6 +146,7 @@ internal sealed class DispatcherBuilder
     private void ConfigureGrpcInbounds(DispatcherOptions dispatcherOptions)
     {
         var index = 0;
+        var configureServices = CreateGrpcInboundServiceConfigurator();
         foreach (var inbound in _options.Inbounds.Grpc)
         {
             if (inbound.Urls.Count == 0)
@@ -163,6 +170,7 @@ internal sealed class DispatcherBuilder
                 name,
                 new GrpcInbound(
                     urls,
+                    configureServices: configureServices,
                     serverRuntimeOptions: runtimeOptions,
                     serverTlsOptions: tlsOptions,
                     telemetryOptions: telemetryOptions));
@@ -839,7 +847,7 @@ internal sealed class DispatcherBuilder
                 otel.ConfigureResource(resource => resource.AddService(serviceName: serviceName));
                 otel.WithMetrics(builder =>
                 {
-                    builder.AddMeter("OmniRelay.Core.Peers", "OmniRelay.Transport.Grpc", "OmniRelay.Transport.Http", "OmniRelay.Rpc", "Hugo.Go");
+                    builder.AddMeter("OmniRelay.Core.Peers", "OmniRelay.Core.Gossip", "OmniRelay.Core.Leadership", "OmniRelay.Transport.Grpc", "OmniRelay.Transport.Http", "OmniRelay.Rpc", "Hugo.Go");
                     builder.AddPrometheusExporter(options =>
                     {
                         options.ScrapeEndpointPath = scrapePath;
@@ -875,7 +883,30 @@ internal sealed class DispatcherBuilder
                 {
                     services.AddSingleton(gossipAgent);
                 }
+
+                if (controlPlaneOptions.EnableLeadershipDiagnostics && controlPlaneOptions.LeadershipObserver is not null)
+                {
+                    services.AddSingleton(controlPlaneOptions.LeadershipObserver);
+                }
             }
+        };
+    }
+
+    private Action<IServiceCollection>? CreateGrpcInboundServiceConfigurator()
+    {
+        var leadershipOptions = _serviceProvider.GetService<IOptions<LeadershipOptions>>()?.Value;
+        var leadershipObserver = leadershipOptions?.Enabled == true
+            ? _serviceProvider.GetService<ILeadershipObserver>()
+            : null;
+        if (leadershipObserver is null)
+        {
+            return null;
+        }
+
+        return services =>
+        {
+            services.AddSingleton(leadershipObserver);
+            services.AddSingleton<LeadershipControlGrpcService>();
         };
     }
 
@@ -1060,7 +1091,9 @@ internal sealed class DispatcherBuilder
         var hasPeerHealthProviders = _serviceProvider.GetServices<IPeerHealthSnapshotProvider>().Any();
         var gossipAgent = _serviceProvider.GetService<IMeshGossipAgent>();
         var enablePeerDiagnostics = gossipAgent is not null && gossipAgent.IsEnabled;
-        var enableControlPlane = runtime.EnableControlPlane ?? (enableLogging || enableSampling || hasPeerHealthProviders || enablePeerDiagnostics);
+        var leadershipObserver = _serviceProvider.GetService<ILeadershipObserver>();
+        var enableLeadershipDiagnostics = leadershipObserver is not null;
+        var enableControlPlane = runtime.EnableControlPlane ?? (enableLogging || enableSampling || hasPeerHealthProviders || enablePeerDiagnostics || enableLeadershipDiagnostics);
 
         if (!enableControlPlane)
         {
@@ -1068,8 +1101,15 @@ internal sealed class DispatcherBuilder
             return false;
         }
 
-        options = new DiagnosticsControlPlaneOptions(enableLogging, enableSampling, hasPeerHealthProviders, enablePeerDiagnostics, gossipAgent);
-        return enableLogging || enableSampling || hasPeerHealthProviders || enablePeerDiagnostics;
+        options = new DiagnosticsControlPlaneOptions(
+            enableLogging,
+            enableSampling,
+            hasPeerHealthProviders,
+            enablePeerDiagnostics,
+            enableLeadershipDiagnostics,
+            gossipAgent,
+            leadershipObserver);
+        return enableLogging || enableSampling || hasPeerHealthProviders || enablePeerDiagnostics || enableLeadershipDiagnostics;
     }
 
     [RequiresDynamicCode("Calls Microsoft.AspNetCore.Builder.EndpointRouteBuilderExtensions.MapGet(String, Delegate)")]
@@ -1194,6 +1234,57 @@ internal sealed class DispatcherBuilder
             app.MapGet("/control/peers", HandlePeers);
             app.MapGet("/omnirelay/control/peers", HandlePeers);
         }
+
+        if (options.EnableLeadershipDiagnostics && options.LeadershipObserver is not null)
+        {
+            app.MapGet("/control/leaders", (HttpRequest request, ILeadershipObserver observer) =>
+            {
+                var snapshot = observer.Snapshot();
+                if (request.Query.TryGetValue("scope", out var scopeValues) && !string.IsNullOrWhiteSpace(scopeValues))
+                {
+                    var scopeFilter = scopeValues.ToString();
+                    var filtered = snapshot.Tokens
+                        .Where(token => string.Equals(token.Scope, scopeFilter, StringComparison.OrdinalIgnoreCase))
+                        .ToImmutableArray();
+                    snapshot = new LeadershipSnapshot(snapshot.GeneratedAt, filtered);
+                }
+
+                return Results.Json(snapshot);
+            });
+            app.MapGet("/control/events/leadership", async (HttpContext context, ILeadershipObserver observer, ILogger<LeadershipEventStreamMarker> logger) =>
+            {
+                await StreamLeadershipEventsAsync(context, observer, logger).ConfigureAwait(false);
+            });
+        }
+    }
+
+    private static async Task StreamLeadershipEventsAsync(HttpContext context, ILeadershipObserver observer, ILogger<LeadershipEventStreamMarker> logger)
+    {
+        context.Response.Headers.CacheControl = "no-cache";
+        context.Response.Headers["Content-Type"] = "text/event-stream";
+        var scopeFilter = context.Request.Query.TryGetValue("scope", out var scopeValues)
+            ? scopeValues.ToString()
+            : null;
+        var scopeLabel = string.IsNullOrWhiteSpace(scopeFilter) ? "*" : scopeFilter!;
+        var transport = context.Request.Protocol;
+        logger.LogInformation("Leadership SSE stream opened (scope={Scope}, transport={Transport}).", scopeLabel, transport);
+
+        try
+        {
+            await foreach (var leadershipEvent in observer.SubscribeAsync(scopeFilter, context.RequestAborted).ConfigureAwait(false))
+            {
+                var payload = JsonSerializer.Serialize(leadershipEvent, LeadershipEventJsonOptions);
+                await context.Response.WriteAsync($"data: {payload}\\n\\n", context.RequestAborted).ConfigureAwait(false);
+                await context.Response.Body.FlushAsync(context.RequestAborted).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        finally
+        {
+            logger.LogInformation("Leadership SSE stream closed (scope={Scope}).", scopeLabel);
+        }
     }
 
     private readonly record struct DiagnosticsControlPlaneOptions(
@@ -1201,7 +1292,9 @@ internal sealed class DispatcherBuilder
         bool EnableSamplingToggle,
         bool EnableLeaseHealthDiagnostics,
         bool EnablePeerDiagnostics,
-        IMeshGossipAgent? GossipAgent)
+        bool EnableLeadershipDiagnostics,
+        IMeshGossipAgent? GossipAgent,
+        ILeadershipObserver? LeadershipObserver)
     {
         public bool EnableLoggingToggle { get; init; } = EnableLoggingToggle;
 
@@ -1215,11 +1308,23 @@ internal sealed class DispatcherBuilder
             init => field = value;
         } = EnablePeerDiagnostics;
 
+        public bool EnableLeadershipDiagnostics
+        {
+            get => field;
+            init => field = value;
+        } = EnableLeadershipDiagnostics;
+
         public IMeshGossipAgent? GossipAgent
         {
             get => field;
             init => field = value;
         } = GossipAgent;
+
+        public ILeadershipObserver? LeadershipObserver
+        {
+            get => field;
+            init => field = value;
+        } = LeadershipObserver;
     }
 
     private sealed record DiagnosticsLogLevelRequest(string? Level)
@@ -1230,6 +1335,10 @@ internal sealed class DispatcherBuilder
     private sealed record DiagnosticsSamplingRequest(double? Probability)
     {
         public double? Probability { get; init; } = Probability;
+    }
+
+    private sealed class LeadershipEventStreamMarker
+    {
     }
 
     private static GrpcServerRuntimeOptions? BuildGrpcServerRuntimeOptions(GrpcServerRuntimeConfiguration configuration)
@@ -1351,6 +1460,13 @@ internal sealed class DispatcherBuilder
         if (gossipAgent is not null && gossipAgent.IsEnabled)
         {
             dispatcherOptions.AddLifecycle("mesh-gossip", gossipAgent);
+        }
+
+        var leadershipCoordinator = _serviceProvider.GetService<LeadershipCoordinator>();
+        var leadershipOptions = _serviceProvider.GetService<IOptions<LeadershipOptions>>()?.Value;
+        if (leadershipCoordinator is not null && leadershipOptions?.Enabled == true)
+        {
+            dispatcherOptions.AddLifecycle("mesh-leadership", leadershipCoordinator);
         }
     }
 

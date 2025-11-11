@@ -205,6 +205,13 @@ Env overrides follow standard ASP.NET Core conventions (for example `MESH_GOSSIP
 
 Grafana/Prometheus rules from DISC-001 now have concrete signals to target, and the sample dashboards already include the new meters.
 
+### Leadership service (v1)
+
+- `LeadershipCoordinator` + `LeadershipEventHub` (under `src/OmniRelay/Core/Leadership/`) run alongside every dispatcher once `mesh:leadership` is configured. Coordinators pull gossip metadata, acquire fenced leases through the shared `ILeadershipStore`, and publish transitions into the hub so HTTP + gRPC endpoints can stay in sync.
+- `/control/leaders` returns JSON snapshots (optionally filtered by `?scope=`) while `/control/events/leadership` pushes SSE updates that log the negotiated HTTP protocol and include `leaderId`, `term`, `fenceToken`, and expiry timestamps. The gRPC inbound now exposes `LeadershipControlService.Subscribe` (HTTP/3 default, HTTP/2 downgrade) defined in `Core/Leadership/Protos/leadership_control.proto` for the same event stream over Protobuf.
+- Metrics `mesh_leadership_transitions_total`, `mesh_leadership_election_duration_ms`, and `mesh_leadership_split_brain_total` measure churn, convergence time, and split-brain detections. Coordinators also emit structured warnings when incumbents disappear from gossip so runbooks can link straight to the offending scope.
+- Operators can query `omnirelay mesh leaders status` (new CLI subcommand) to print the current tokens or `--watch` the SSE feed locally. ResourceLease demo configs were updated with sample `scopes` + `shards` so the leadership service starts automatically in dev/prod templates, satisfying the quick-start requirement in this section.
+
 ## 2. Shard ownership + routing metadata
 
 - **Feature**: Maintain consistent-hash or rendezvous maps that describe which mesh node owns each shard/task queue, version them, and expose via RPC/HTTP (`/control/shards`) plus watch streams.

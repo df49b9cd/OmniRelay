@@ -9,6 +9,7 @@ using OmniRelay.Configuration.Internal;
 using OmniRelay.Configuration.Models;
 using OmniRelay.Core.Diagnostics;
 using OmniRelay.Core.Gossip;
+using OmniRelay.Core.Leadership;
 using OpenTelemetry.Exporter;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
@@ -51,6 +52,12 @@ public static class OmniRelayServiceCollectionExtensions
         else
         {
             services.TryAddSingleton<IMeshGossipAgent>(NullMeshGossipAgent.Instance);
+        }
+
+        var leadershipSection = configuration.GetSection("mesh:leadership");
+        if (leadershipSection.Exists())
+        {
+            services.AddLeadershipCoordinator(leadershipSection);
         }
 
         // Ensure HttpClientFactory is available so named HTTP outbounds can be used if configured.
@@ -126,7 +133,7 @@ public static class OmniRelayServiceCollectionExtensions
         {
             openTelemetryBuilder.WithMetrics(builder =>
             {
-                builder.AddMeter("OmniRelay.Core.Peers", "OmniRelay.Core.Gossip", "OmniRelay.Transport.Grpc", "OmniRelay.Transport.Http", "OmniRelay.Rpc", "Hugo.Go");
+                builder.AddMeter("OmniRelay.Core.Peers", "OmniRelay.Core.Gossip", "OmniRelay.Core.Leadership", "OmniRelay.Transport.Grpc", "OmniRelay.Transport.Http", "OmniRelay.Rpc", "Hugo.Go");
 
                 if (prometheusEnabled)
                 {

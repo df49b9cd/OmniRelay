@@ -17,6 +17,7 @@ using Microsoft.Extensions.Logging;
 using OmniRelay.Configuration;
 using OmniRelay.Core;
 using OmniRelay.Core.Transport;
+using OmniRelay.Core.Leadership;
 using OmniRelay.Dispatcher;
 using OmniRelay.Errors;
 using OmniRelay.Transport.Grpc;
@@ -28,10 +29,12 @@ internal static class Program
 {
     private const string DefaultConfigSection = "polymer";
     private const string DefaultIntrospectionUrl = "http://127.0.0.1:8080/omnirelay/introspect";
+    private const string DefaultControlPlaneUrl = "http://127.0.0.1:8080";
     private static readonly JsonSerializerOptions PrettyJsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true
     };
+    private static readonly JsonSerializerOptions LeadershipJsonOptions = CreateLeadershipJsonOptions();
     private static readonly IReadOnlyDictionary<string, FileDescriptor> WellKnownFileDescriptors = new Dictionary<string, FileDescriptor>(StringComparer.Ordinal)
     {
         ["google/protobuf/any.proto"] = AnyReflection.Descriptor,
@@ -47,6 +50,16 @@ internal static class Program
     };
     private static MethodInfo? _fileDescriptorBuildFrom;
     private static readonly ConcurrentDictionary<string, DescriptorCacheEntry> DescriptorCache = new(StringComparer.Ordinal);
+
+    private static JsonSerializerOptions CreateLeadershipJsonOptions()
+    {
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
+        {
+            PropertyNameCaseInsensitive = true
+        };
+        options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+        return options;
+    }
 
     public static async Task<int> Main(string[] args)
     {
@@ -72,7 +85,8 @@ internal static class Program
             CreateIntrospectCommand(),
             CreateRequestCommand(),
             CreateBenchmarkCommand(),
-            CreateScriptCommand()
+            CreateScriptCommand(),
+            CreateMeshCommand()
         };
         return root;
     }
@@ -409,6 +423,67 @@ internal static class Program
         });
 
         command.Add(runCommand);
+        return command;
+    }
+
+    private static Command CreateMeshCommand()
+    {
+        var command = new Command("mesh", "Mesh control-plane tooling.")
+        {
+            CreateMeshLeadersCommand()
+        };
+        return command;
+    }
+
+    private static Command CreateMeshLeadersCommand()
+    {
+        var command = new Command("leaders", "Leadership status and diagnostics.")
+        {
+            CreateMeshLeadersStatusCommand()
+        };
+        return command;
+    }
+
+    private static Command CreateMeshLeadersStatusCommand()
+    {
+        var command = new Command("status", "Show current leadership tokens or stream leadership events.");
+
+        var urlOption = new Option<string>("--url")
+        {
+            Description = "Base control-plane URL (e.g. http://127.0.0.1:8080).",
+            DefaultValueFactory = _ => DefaultControlPlaneUrl
+        };
+        urlOption.AddAlias("-u");
+
+        var scopeOption = new Option<string?>("--scope")
+        {
+            Description = "Scope filter (global-control, shard/namespace/id, etc.)."
+        };
+
+        var watchOption = new Option<bool>("--watch")
+        {
+            Description = "Stream leadership changes via SSE."
+        };
+
+        var timeoutOption = new Option<string?>("--timeout")
+        {
+            Description = "Request timeout (e.g. 10s, 1m)."
+        };
+
+        command.Add(urlOption);
+        command.Add(scopeOption);
+        command.Add(watchOption);
+        command.Add(timeoutOption);
+
+        command.SetAction(parseResult =>
+        {
+            var url = parseResult.GetValue(urlOption) ?? DefaultControlPlaneUrl;
+            var scope = parseResult.GetValue(scopeOption);
+            var watch = parseResult.GetValue(watchOption);
+            var timeout = parseResult.GetValue(timeoutOption);
+            return RunMeshLeadersStatusAsync(url, scope, watch, timeout).GetAwaiter().GetResult();
+        });
+
         return command;
     }
 
@@ -2184,6 +2259,209 @@ internal static class Program
         PrintMiddlewareLine("Duplex", snapshot.Middleware.InboundDuplex, snapshot.Middleware.OutboundDuplex);
     }
 
+    private static async Task<int> RunMeshLeadersStatusAsync(string baseUrl, string? scope, bool watch, string? timeoutOption)
+    {
+        var timeout = TimeSpan.FromSeconds(10);
+        if (!string.IsNullOrWhiteSpace(timeoutOption) && !TryParseDuration(timeoutOption!, out timeout))
+        {
+            await Console.Error.WriteLineAsync($"Could not parse timeout '{timeoutOption}'.").ConfigureAwait(false);
+            return 1;
+        }
+
+        if (watch)
+        {
+            return await RunMeshLeadersWatchAsync(baseUrl, scope, timeout).ConfigureAwait(false);
+        }
+
+        return await RunMeshLeadersSnapshotAsync(baseUrl, scope, timeout).ConfigureAwait(false);
+    }
+
+    private static async Task<int> RunMeshLeadersSnapshotAsync(string baseUrl, string? scope, TimeSpan timeout)
+    {
+        Uri target;
+        try
+        {
+            target = BuildControlPlaneUri(baseUrl, "/control/leaders", scope);
+        }
+        catch (ArgumentException ex)
+        {
+            await Console.Error.WriteLineAsync(ex.Message).ConfigureAwait(false);
+            return 1;
+        }
+
+        using var client = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+        using var cts = new CancellationTokenSource(timeout);
+
+        try
+        {
+            using var response = await client.GetAsync(target, cts.Token).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                await Console.Error.WriteLineAsync($"Leadership request failed: {(int)response.StatusCode} {response.ReasonPhrase}.").ConfigureAwait(false);
+                return 1;
+            }
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false);
+            var snapshot = await JsonSerializer.DeserializeAsync<LeadershipSnapshotResponse>(stream, LeadershipJsonOptions, cts.Token).ConfigureAwait(false);
+            PrintLeadershipSnapshot(snapshot, scope);
+            return 0;
+        }
+        catch (TaskCanceledException)
+        {
+            await Console.Error.WriteLineAsync("Leadership request timed out.").ConfigureAwait(false);
+            return 2;
+        }
+    }
+
+    private static async Task<int> RunMeshLeadersWatchAsync(string baseUrl, string? scope, TimeSpan timeout)
+    {
+        Uri target;
+        try
+        {
+            target = BuildControlPlaneUri(baseUrl, "/control/events/leadership", scope);
+        }
+        catch (ArgumentException ex)
+        {
+            await Console.Error.WriteLineAsync(ex.Message).ConfigureAwait(false);
+            return 1;
+        }
+
+        using var client = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+        using var request = new HttpRequestMessage(HttpMethod.Get, target);
+        request.Headers.Accept.ParseAdd("text/event-stream");
+
+        using var connectCts = new CancellationTokenSource(timeout);
+        try
+        {
+            using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, connectCts.Token).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                await Console.Error.WriteLineAsync($"Leadership stream failed: {(int)response.StatusCode} {response.ReasonPhrase}.").ConfigureAwait(false);
+                return 1;
+            }
+
+            Console.WriteLine($"Streaming leadership events from {target} (scope={scope ?? "*"}). Press Ctrl+C to exit.");
+
+            await using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
+            using var reader = new StreamReader(stream);
+            var buffer = new StringBuilder();
+
+            while (true)
+            {
+                var line = await reader.ReadLineAsync().ConfigureAwait(false);
+                if (line is null)
+                {
+                    break;
+                }
+
+                if (line.Length == 0)
+                {
+                    if (buffer.Length == 0)
+                    {
+                        continue;
+                    }
+
+                    var payload = buffer.ToString();
+                    buffer.Clear();
+                    try
+                    {
+                        var leadershipEvent = JsonSerializer.Deserialize<LeadershipEventDto>(payload, LeadershipJsonOptions);
+                        if (leadershipEvent is not null)
+                        {
+                            PrintLeadershipEvent(leadershipEvent);
+                        }
+                    }
+                    catch (JsonException ex)
+                    {
+                        await Console.Error.WriteLineAsync($"Failed to parse leadership event: {ex.Message}").ConfigureAwait(false);
+                    }
+
+                    continue;
+                }
+
+                if (line.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+                {
+                    var segment = line.Length > 5 ? line[5..].TrimStart() : string.Empty;
+                    buffer.Append(segment);
+                }
+            }
+
+            return 0;
+        }
+        catch (TaskCanceledException)
+        {
+            await Console.Error.WriteLineAsync("Leadership stream connection timed out.").ConfigureAwait(false);
+            return 2;
+        }
+    }
+
+    private static Uri BuildControlPlaneUri(string baseUrl, string relativePath, string? scope)
+    {
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var baseUri))
+        {
+            throw new ArgumentException($"Invalid control-plane URL '{baseUrl}'.", nameof(baseUrl));
+        }
+
+        var target = new Uri(baseUri, relativePath);
+        if (string.IsNullOrWhiteSpace(scope))
+        {
+            return target;
+        }
+
+        var builder = new UriBuilder(target)
+        {
+            Query = $"scope={Uri.EscapeDataString(scope)}"
+        };
+        return builder.Uri;
+    }
+
+    private static void PrintLeadershipSnapshot(LeadershipSnapshotResponse? snapshot, string? scopeFilter)
+    {
+        if (snapshot is null)
+        {
+            Console.WriteLine("No leadership data available.");
+            return;
+        }
+
+        var tokens = snapshot.Tokens ?? Array.Empty<LeadershipTokenResponse>();
+        if (!string.IsNullOrWhiteSpace(scopeFilter))
+        {
+            tokens = tokens
+                .Where(token => string.Equals(token.Scope, scopeFilter, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+        }
+
+        Console.WriteLine($"Generated at: {snapshot.GeneratedAt:O}");
+
+        if (tokens.Length == 0)
+        {
+            Console.WriteLine("No active leaders.");
+            return;
+        }
+
+        Console.WriteLine();
+        Console.WriteLine($"{"Scope",-32} {"Leader",-20} {"Term",6} {"Fence",6} {"Expires (UTC)",-24} {"Kind",-12}");
+
+        foreach (var token in tokens.OrderBy(static t => t.Scope, StringComparer.OrdinalIgnoreCase))
+        {
+            var expires = token.ExpiresAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss\Z", CultureInfo.InvariantCulture);
+            Console.WriteLine($"{token.Scope,-32} {token.LeaderId,-20} {token.Term,6} {token.FenceToken,6} {expires,-24} {token.ScopeKind,-12}");
+        }
+    }
+
+    private static void PrintLeadershipEvent(LeadershipEventDto leadershipEvent)
+    {
+        var leader = leadershipEvent.Token?.LeaderId ?? leadershipEvent.LeaderId ?? "n/a";
+        var term = leadershipEvent.Token?.Term ?? 0;
+        var fence = leadershipEvent.Token?.FenceToken ?? 0;
+        var expires = leadershipEvent.Token is null
+            ? "n/a"
+            : leadershipEvent.Token.ExpiresAt.ToUniversalTime().ToString("HH:mm:ss\Z", CultureInfo.InvariantCulture);
+        var reason = string.IsNullOrWhiteSpace(leadershipEvent.Reason) ? "(none)" : leadershipEvent.Reason!;
+        var scope = leadershipEvent.Scope ?? leadershipEvent.Token?.Scope ?? "*";
+        Console.WriteLine($"[{leadershipEvent.OccurredAt:HH:mm:ss}] {leadershipEvent.EventKind.ToString().ToUpperInvariant(),-10} scope={scope} leader={leader} term={term} fence={fence} expires={expires} reason={reason}");
+    }
+
     private static void PrintProcedureGroup(string label, IEnumerable<string> names)
     {
         var nameList = names.ToList();
@@ -3297,6 +3575,49 @@ internal static class Program
         Inline,
         File,
         Base64
+    }
+
+    private sealed class LeadershipSnapshotResponse
+    {
+        public DateTimeOffset GeneratedAt { get; set; }
+
+        public LeadershipTokenResponse[] Tokens { get; set; } = Array.Empty<LeadershipTokenResponse>();
+    }
+
+    private sealed class LeadershipTokenResponse
+    {
+        public string Scope { get; set; } = string.Empty;
+
+        public string ScopeKind { get; set; } = string.Empty;
+
+        public string LeaderId { get; set; } = string.Empty;
+
+        public long Term { get; set; }
+
+        public long FenceToken { get; set; }
+
+        public DateTimeOffset IssuedAt { get; set; }
+
+        public DateTimeOffset ExpiresAt { get; set; }
+
+        public Dictionary<string, string> Labels { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private sealed class LeadershipEventDto
+    {
+        public LeadershipEventKind EventKind { get; set; } = LeadershipEventKind.Snapshot;
+
+        public string? Scope { get; set; }
+
+        public string? LeaderId { get; set; }
+
+        public LeadershipTokenResponse? Token { get; set; }
+
+        public string? Reason { get; set; }
+
+        public Guid CorrelationId { get; set; }
+
+        public DateTimeOffset OccurredAt { get; set; }
     }
 
     private sealed record DescriptorCacheEntry(
