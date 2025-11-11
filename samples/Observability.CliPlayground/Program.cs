@@ -58,7 +58,7 @@ public static class Program
         var app = builder.Build();
 
         app.MapGet("/", (PlaygroundState state) => TypedResults.Json(
-            new PlaygroundSummary(state.ServiceName, state.LastScriptStatus),
+            new PlaygroundSummary(state.ServiceName, PlaygroundState.LastScriptStatus),
             ObservabilityCliJsonContext.Default.PlaygroundSummary));
 
         app.MapHealthChecks("/healthz", new HealthCheckOptions
@@ -73,9 +73,9 @@ public static class Program
 
         app.MapGet("/readyz", (PlaygroundState state) =>
         {
-            return state.Ready
+            return PlaygroundState.Ready
                 ? TypedResults.Json(
-                    new ReadyStatus(state.ReadySince),
+                    new ReadyStatus(PlaygroundState.ReadySince),
                     ObservabilityCliJsonContext.Default.ReadyStatus)
                 : Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
         });
@@ -131,12 +131,12 @@ internal sealed class SampleInvocationService(
                 var response = await client.GetAsync(options.Value.IntrospectUrl, stoppingToken).ConfigureAwait(false);
                 response.EnsureSuccessStatusCode();
                 var payload = await response.Content.ReadAsByteArrayAsync(stoppingToken).ConfigureAwait(false);
-                state.LastScriptStatus = $"introspect-ok bytes={payload.Length}";
+                PlaygroundState.LastScriptStatus = $"introspect-ok bytes={payload.Length}";
                 logger.LogInformation("Introspection script succeeded ({Bytes} bytes).", payload.Length);
             }
             catch (Exception ex)
             {
-                state.LastScriptStatus = $"introspect-failed: {ex.Message}";
+                PlaygroundState.LastScriptStatus = $"introspect-failed: {ex.Message}";
                 logger.LogWarning(ex, "Introspection script failed");
             }
 
@@ -159,7 +159,7 @@ internal sealed class ProbeHealth(PlaygroundState state) : IHealthCheck
 {
     public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
     {
-        return state.Ready
+        return PlaygroundState.Ready
             ? Task.FromResult(HealthCheckResult.Healthy("ready"))
             : Task.FromResult(HealthCheckResult.Degraded("waiting for scripts"));
     }
@@ -194,19 +194,19 @@ internal sealed class PlaygroundState
         set => field = value;
     } = "observability-cli-playground";
 
-    public string? LastScriptStatus
+    public static string? LastScriptStatus
     {
         get => field;
         set => field = value;
     }
 
-    public bool Ready
+    public static bool Ready
     {
         get => field;
         private set => field = value;
     }
 
-    public DateTimeOffset? ReadySince
+    public static DateTimeOffset? ReadySince
     {
         get => field;
         private set => field = value;

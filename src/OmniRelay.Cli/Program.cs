@@ -1805,14 +1805,14 @@ public static class Program
         {
             var step = script.Steps[index];
             var typeLabel = string.IsNullOrWhiteSpace(step.Type) ? "(unspecified)" : step.Type;
-            var description = string.IsNullOrWhiteSpace(step.Description) ? string.Empty : $" - {step.Description}";
+            var description = string.IsNullOrWhiteSpace(AutomationStep.Description) ? string.Empty : $" - {AutomationStep.Description}";
             Console.WriteLine($"[{index + 1}/{script.Steps.Length}] {typeLabel}{description}");
 
             var normalizedType = step.Type?.Trim().ToLowerInvariant() ?? string.Empty;
             switch (normalizedType)
             {
                 case "request":
-                    if (string.IsNullOrWhiteSpace(step.Service) || string.IsNullOrWhiteSpace(step.Procedure))
+                    if (string.IsNullOrWhiteSpace(AutomationStep.Service) || string.IsNullOrWhiteSpace(AutomationStep.Procedure))
                     {
                         await Console.Error.WriteLineAsync("  Request step is missing 'service' or 'procedure'.").ConfigureAwait(false);
                         exitCode = exitCode == 0 ? 1 : exitCode;
@@ -1823,18 +1823,18 @@ public static class Program
                         continue;
                     }
 
-                    var headerPairs = step.Headers?.Select(static kvp => $"{kvp.Key}={kvp.Value}").ToArray() ?? [];
-                    var profiles = step.Profiles ?? [];
-                    var addresses = step.Addresses ?? [];
-                    if (addresses.Length == 0 && !string.IsNullOrWhiteSpace(step.Address))
+                    var headerPairs = AutomationStep.Headers?.Select(static kvp => $"{kvp.Key}={kvp.Value}").ToArray() ?? [];
+                    var profiles = AutomationStep.Profiles ?? [];
+                    var addresses = AutomationStep.Addresses ?? [];
+                    if (addresses.Length == 0 && !string.IsNullOrWhiteSpace(AutomationStep.Address))
                     {
-                        addresses = [step.Address!];
+                        addresses = [AutomationStep.Address!];
                     }
 
-                    var targetSummary = !string.IsNullOrWhiteSpace(step.Url)
-                        ? step.Url
+                    var targetSummary = !string.IsNullOrWhiteSpace(AutomationStep.Url)
+                        ? AutomationStep.Url
                         : (addresses.Length > 0 ? string.Join(", ", addresses) : "(default transport settings)");
-                    Console.WriteLine($"  -> {step.Transport ?? "http"} {step.Service}/{step.Procedure} @ {targetSummary}");
+                    Console.WriteLine($"  -> {AutomationStep.Transport ?? "http"} {AutomationStep.Service}/{AutomationStep.Procedure} @ {targetSummary}");
 
                     if (dryRun)
                     {
@@ -1843,25 +1843,25 @@ public static class Program
                     }
 
                     var requestResult = await RunRequestAsync(
-                        step.Transport ?? "http",
-                        step.Service,
-                        step.Procedure,
-                        step.Caller,
-                        step.Encoding,
+                        AutomationStep.Transport ?? "http",
+                        AutomationStep.Service,
+                        AutomationStep.Procedure,
+                        AutomationStep.Caller,
+                        AutomationStep.Encoding,
                         headerPairs,
                         profiles,
-                        step.ShardKey,
-                        step.RoutingKey,
-                        step.RoutingDelegate,
-                        step.ProtoFiles ?? [],
-                        step.ProtoMessage,
-                        step.Ttl,
-                        step.Deadline,
-                        step.Timeout,
-                        step.Body,
-                        step.BodyFile,
-                        step.BodyBase64,
-                        step.Url,
+                        AutomationStep.ShardKey,
+                        AutomationStep.RoutingKey,
+                        AutomationStep.RoutingDelegate,
+                        AutomationStep.ProtoFiles ?? [],
+                        AutomationStep.ProtoMessage,
+                        AutomationStep.Ttl,
+                        AutomationStep.Deadline,
+                        AutomationStep.Timeout,
+                        AutomationStep.Body,
+                        AutomationStep.BodyFile,
+                        AutomationStep.BodyBase64,
+                        AutomationStep.Url,
                         addresses,
                         enableHttp3: false,
                         enableGrpcHttp3: false).ConfigureAwait(false);
@@ -1877,8 +1877,8 @@ public static class Program
                     break;
 
                 case "introspect":
-                    var targetUrl = string.IsNullOrWhiteSpace(step.Url) ? DefaultIntrospectionUrl : step.Url!;
-                    Console.WriteLine($"  -> GET {targetUrl} (format={step.Format ?? "text"})");
+                    var targetUrl = string.IsNullOrWhiteSpace(AutomationStep.Url) ? DefaultIntrospectionUrl : AutomationStep.Url!;
+                    Console.WriteLine($"  -> GET {targetUrl} (format={AutomationStep.Format ?? "text"})");
 
                     if (dryRun)
                     {
@@ -1886,7 +1886,7 @@ public static class Program
                         continue;
                     }
 
-                    var introspectResult = await RunIntrospectAsync(targetUrl, step.Format ?? "text", step.Timeout).ConfigureAwait(false);
+                    var introspectResult = await RunIntrospectAsync(targetUrl, AutomationStep.Format ?? "text", AutomationStep.Timeout).ConfigureAwait(false);
                     if (introspectResult != 0)
                     {
                         exitCode = exitCode == 0 ? introspectResult : exitCode;
@@ -1900,7 +1900,7 @@ public static class Program
                 case "delay":
                 case "sleep":
                 case "wait":
-                    var delayValue = step.Duration ?? step.Delay;
+                    var delayValue = AutomationStep.Duration ?? AutomationStep.Delay;
                     if (string.IsNullOrWhiteSpace(delayValue))
                     {
                         await Console.Error.WriteLineAsync("  Delay step requires a 'duration' or 'delay' value.").ConfigureAwait(false);
@@ -1974,151 +1974,151 @@ public static class Program
             init => field = value;
         } = string.Empty;
 
-        public string? Description
+        public static string? Description
         {
             get => field;
             init => field = value;
         }
 
-        public string? Transport
+        public static string? Transport
         {
             get => field;
             init => field = value;
         }
 
-        public string? Service
+        public static string? Service
         {
             get => field;
             init => field = value;
         }
 
-        public string? Procedure
+        public static string? Procedure
         {
             get => field;
             init => field = value;
         }
 
-        public string? Caller
+        public static string? Caller
         {
             get => field;
             init => field = value;
         }
 
-        public string? Encoding
+        public static string? Encoding
         {
             get => field;
             init => field = value;
         }
 
-        public Dictionary<string, string>? Headers
+        public static Dictionary<string, string>? Headers
         {
             get => field;
             init => field = value;
         }
 
-        public string[]? Profiles
+        public static string[]? Profiles
         {
             get => field;
             init => field = value;
         }
 
-        public string? ShardKey
+        public static string? ShardKey
         {
             get => field;
             init => field = value;
         }
 
-        public string? RoutingKey
+        public static string? RoutingKey
         {
             get => field;
             init => field = value;
         }
 
-        public string? RoutingDelegate
+        public static string? RoutingDelegate
         {
             get => field;
             init => field = value;
         }
 
-        public string[]? ProtoFiles
+        public static string[]? ProtoFiles
         {
             get => field;
             init => field = value;
         }
 
-        public string? ProtoMessage
+        public static string? ProtoMessage
         {
             get => field;
             init => field = value;
         }
 
-        public string? Ttl
+        public static string? Ttl
         {
             get => field;
             init => field = value;
         }
 
-        public string? Deadline
+        public static string? Deadline
         {
             get => field;
             init => field = value;
         }
 
-        public string? Timeout
+        public static string? Timeout
         {
             get => field;
             init => field = value;
         }
 
-        public string? Body
+        public static string? Body
         {
             get => field;
             init => field = value;
         }
 
-        public string? BodyFile
+        public static string? BodyFile
         {
             get => field;
             init => field = value;
         }
 
-        public string? BodyBase64
+        public static string? BodyBase64
         {
             get => field;
             init => field = value;
         }
 
-        public string? Url
+        public static string? Url
         {
             get => field;
             init => field = value;
         }
 
-        public string? Address
+        public static string? Address
         {
             get => field;
             init => field = value;
         }
 
-        public string[]? Addresses
+        public static string[]? Addresses
         {
             get => field;
             init => field = value;
         }
 
-        public string? Format
+        public static string? Format
         {
             get => field;
             init => field = value;
         }
 
-        public string? Duration
+        public static string? Duration
         {
             get => field;
             init => field = value;
         }
 
-        public string? Delay
+        public static string? Delay
         {
             get => field;
             init => field = value;
@@ -2378,7 +2378,7 @@ public static class Program
 
                 case "protobuf":
                 case "proto":
-                    if (state.Proto is not null)
+                    if (ProfileProcessingState.Proto is not null)
                     {
                         error = "Multiple protobuf profiles specified. Provide a single protobuf profile per request.";
                         return false;
@@ -2397,7 +2397,7 @@ public static class Program
                         return false;
                     }
 
-                    state.Proto = new ProtoProcessingState(protoFiles, messageName.Trim());
+                    ProfileProcessingState.Proto = new ProtoProcessingState(protoFiles, messageName.Trim());
                     encoding ??= transport == "grpc" ? "application/grpc" : "application/x-protobuf";
 
                     if (transport == "http")
@@ -2431,15 +2431,15 @@ public static class Program
     {
         error = null;
 
-        if (state.Proto is not null)
+        if (ProfileProcessingState.Proto is not null)
         {
-            if (!TryEncodeProtobufPayload(state.Proto, inlineBody, bodyFile, payloadSource, ref payload, out error))
+            if (!TryEncodeProtobufPayload(ProfileProcessingState.Proto, inlineBody, bodyFile, payloadSource, ref payload, out error))
             {
                 return false;
             }
         }
 
-        if (state.PrettyPrintJson)
+        if (ProfileProcessingState.PrettyPrintJson)
         {
             FormatJsonPayload(inlineBody, bodyFile, payloadSource, ref payload);
         }
@@ -2460,7 +2460,7 @@ public static class Program
             case "default":
                 break;
             case "pretty":
-                state.PrettyPrintJson = true;
+                ProfileProcessingState.PrettyPrintJson = true;
                 break;
             default:
                 Console.Error.WriteLine($"Warning: unknown json profile '{qualifier}'. Falling back to default settings.");
@@ -3460,13 +3460,13 @@ public static class Program
 
     private sealed class ProfileProcessingState
     {
-        public bool PrettyPrintJson
+        public static bool PrettyPrintJson
         {
             get => field;
             set => field = value;
         }
 
-        public ProtoProcessingState? Proto
+        public static ProtoProcessingState? Proto
         {
             get => field;
             set => field = value;

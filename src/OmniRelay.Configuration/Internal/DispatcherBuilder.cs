@@ -1184,7 +1184,7 @@ internal sealed class DispatcherBuilder
         } = Probability;
     }
 
-    private GrpcServerRuntimeOptions? BuildGrpcServerRuntimeOptions(GrpcServerRuntimeConfiguration configuration)
+    private static GrpcServerRuntimeOptions? BuildGrpcServerRuntimeOptions(GrpcServerRuntimeConfiguration configuration)
     {
         var interceptors = ResolveServerInterceptorTypes(configuration.Interceptors);
         var enableHttp3 = configuration.EnableHttp3 ?? false;

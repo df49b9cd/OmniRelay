@@ -172,7 +172,7 @@ public class OmniRelayConfigurationTests
 
         var components = dispatcher.Introspect().Components;
         Assert.Contains(components, component => component.Name == "ws-inbound");
-        Assert.Equal("/ws", inboundSpec.LastEndpoint);
+        Assert.Equal("/ws", TestInboundSpec.LastEndpoint);
 
         var clientConfig = dispatcher.ClientConfigOrThrow("search");
         Assert.True(clientConfig.TryGetUnary("primary", out var outbound));
@@ -239,7 +239,7 @@ public class OmniRelayConfigurationTests
         var clientConfig = dispatcher.ClientConfigOrThrow("reports");
         Assert.True(clientConfig.TryGetUnary(OutboundCollection.DefaultKey, out var outbound));
         Assert.IsType<OmniRelay.Transport.Grpc.GrpcOutbound>(outbound);
-        Assert.Equal("sticky", peerSpec.LastMode);
+        Assert.Equal("sticky", TestPeerChooserSpec.LastMode);
     }
 
     [Fact]
@@ -313,7 +313,7 @@ public class OmniRelayConfigurationTests
     {
         public const string SpecName = "test-inbound";
 
-        public string? LastEndpoint
+        public static string? LastEndpoint
         {
             get => field;
             private set => field = value;
@@ -339,7 +339,7 @@ public class OmniRelayConfigurationTests
     {
         public const string SpecName = "test-outbound";
 
-        public string? LastAddress
+        public static string? LastAddress
         {
             get => field;
             private set => field = value;
@@ -394,7 +394,7 @@ public class OmniRelayConfigurationTests
     {
         public const string SpecName = "test-peer";
 
-        public string? LastMode
+        public static string? LastMode
         {
             get => field;
             private set => field = value;

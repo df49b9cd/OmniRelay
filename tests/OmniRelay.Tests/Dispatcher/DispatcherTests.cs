@@ -27,13 +27,13 @@ public class DispatcherTests
         await dispatcher.StartOrThrowAsync(ct);
 
         Assert.Equal(DispatcherStatus.Running, dispatcher.Status);
-        Assert.Equal(1, lifecycle.StartCalls);
-        Assert.Equal(0, lifecycle.StopCalls);
+        Assert.Equal(1, StubLifecycle.StartCalls);
+        Assert.Equal(0, StubLifecycle.StopCalls);
 
         await dispatcher.StopOrThrowAsync(ct);
 
         Assert.Equal(DispatcherStatus.Stopped, dispatcher.Status);
-        Assert.Equal(1, lifecycle.StopCalls);
+        Assert.Equal(1, StubLifecycle.StopCalls);
     }
 
     [Fact]
@@ -463,13 +463,13 @@ public class DispatcherTests
 
     private sealed class StubLifecycle : ILifecycle
     {
-        public int StartCalls
+        public static int StartCalls
         {
             get => field;
             private set => field = value;
         }
 
-        public int StopCalls
+        public static int StopCalls
         {
             get => field;
             private set => field = value;
@@ -490,13 +490,13 @@ public class DispatcherTests
 
     private sealed class StubUnaryOutbound : IUnaryOutbound
     {
-        public int StartCalls
+        public static int StartCalls
         {
             get => field;
             private set => field = value;
         }
 
-        public int StopCalls
+        public static int StopCalls
         {
             get => field;
             private set => field = value;

@@ -32,9 +32,9 @@ public class HttpDuplexTransportTests
         var result = await ((IUnaryOutbound)outbound).CallAsync(request, TestContext.Current.CancellationToken);
 
         Assert.True(result.IsSuccess, result.Error?.Message);
-        Assert.NotNull(handler.LastRequest);
-        Assert.Equal(MediaTypeNames.Application.Octet, handler.LastRequest!.Content?.Headers.ContentType?.MediaType);
-        Assert.True(handler.LastRequest.Headers.TryGetValues(HttpTransportHeaders.Encoding, out var values));
+        Assert.NotNull(RecordingHandler.LastRequest);
+        Assert.Equal(MediaTypeNames.Application.Octet, RecordingHandler.LastRequest!.Content?.Headers.ContentType?.MediaType);
+        Assert.True(RecordingHandler.LastRequest.Headers.TryGetValues(HttpTransportHeaders.Encoding, out var values));
         Assert.Contains(RawCodec.DefaultEncoding, values);
 
         await outbound.StopAsync(TestContext.Current.CancellationToken);
@@ -91,7 +91,7 @@ public class HttpDuplexTransportTests
 
     private sealed class RecordingHandler : HttpMessageHandler
     {
-        public HttpRequestMessage? LastRequest
+        public static HttpRequestMessage? LastRequest
         {
             get => field;
             private set => field = value;

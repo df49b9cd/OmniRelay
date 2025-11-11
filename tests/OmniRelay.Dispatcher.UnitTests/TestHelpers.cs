@@ -18,7 +18,7 @@ internal static class TestHelpers
 
         public IReadOnlyCollection<string> Events => [.. _events];
 
-        public Dispatcher? BoundDispatcher
+        public static Dispatcher? BoundDispatcher
         {
             get => field;
             private set => field = value;

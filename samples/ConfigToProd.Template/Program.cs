@@ -75,8 +75,8 @@ public sealed class Program
                 ? TypedResults.Json(
                     new ReadyStatusPayload(
                         Status: "ready",
-                        Since: probeState.ReadySinceUtc,
-                        Diagnostics: probeState.DiagnosticsSatisfied),
+                        Since: ProbeState.ReadySinceUtc,
+                        Diagnostics: ProbeState.DiagnosticsSatisfied),
                     ConfigToProdJsonContext.Default.ReadyStatusPayload)
                 : Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
         });
@@ -233,8 +233,8 @@ internal sealed class DiagnosticsToggleWatcher(
 
     private void Apply(DiagnosticsControlOptions options)
     {
-        probeState.SetDiagnostics(options.RuntimeMetricsEnabled);
-        logger.LogInformation("Diagnostics toggles updated. Runtime metrics enabled: {Enabled}", options.RuntimeMetricsEnabled);
+        probeState.SetDiagnostics(DiagnosticsControlOptions.RuntimeMetricsEnabled);
+        logger.LogInformation("Diagnostics toggles updated. Runtime metrics enabled: {Enabled}", DiagnosticsControlOptions.RuntimeMetricsEnabled);
     }
 }
 
@@ -242,25 +242,25 @@ internal sealed class ProbeState(IOptions<ProbeOptions> options, ILogger<ProbeSt
 {
     private readonly ProbeOptions _options = options.Value;
 
-    public bool DiagnosticsSatisfied
+    public static bool DiagnosticsSatisfied
     {
         get => field;
         private set => field = value;
     }
 
-    public bool WarmupComplete
+    public static bool WarmupComplete
     {
         get => field;
         private set => field = value;
     }
 
-    public DateTimeOffset? ReadySinceUtc
+    public static DateTimeOffset? ReadySinceUtc
     {
         get => field;
         private set => field = value;
     }
 
-    public bool IsReady => WarmupComplete && (!_options.RequireDiagnosticsToggle || DiagnosticsSatisfied);
+    public bool IsReady => WarmupComplete && (!ProbeOptions.RequireDiagnosticsToggle || DiagnosticsSatisfied);
 
     public void MarkWarm()
     {
@@ -278,14 +278,14 @@ internal sealed class ProbeState(IOptions<ProbeOptions> options, ILogger<ProbeSt
 
     public void SetDiagnostics(bool enabled)
     {
-        DiagnosticsSatisfied = ! _options.RequireDiagnosticsToggle || enabled;
-        logger.LogInformation("Diagnostics requirement {Requirement} with toggle={Toggle}.", _options.RequireDiagnosticsToggle ? "enabled" : "disabled", enabled);
+        DiagnosticsSatisfied = !ProbeOptions.RequireDiagnosticsToggle || enabled;
+        logger.LogInformation("Diagnostics requirement {Requirement} with toggle={Toggle}.", ProbeOptions.RequireDiagnosticsToggle ? "enabled" : "disabled", enabled);
     }
 }
 
 internal sealed record DiagnosticsControlOptions
 {
-    public bool RuntimeMetricsEnabled
+    public static bool RuntimeMetricsEnabled
     {
         get => field;
         init => field = value;
@@ -300,7 +300,7 @@ internal sealed record ProbeOptions
         init => field = value;
     } = TimeSpan.FromSeconds(2);
 
-    public bool RequireDiagnosticsToggle
+    public static bool RequireDiagnosticsToggle
     {
         get => field;
         init => field = value;

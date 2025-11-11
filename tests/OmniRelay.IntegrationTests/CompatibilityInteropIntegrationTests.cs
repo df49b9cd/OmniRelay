@@ -397,7 +397,7 @@ public sealed class CompatibilityInteropIntegrationTests
             [
                 "run",
                 "--rm",
-                "-v", $"{configDir.Path}:/etc/envoy",
+                "-v", $"{TempDirectory.Path}:/etc/envoy",
                 "-p", $"{proxyPort}:10000",
                 envoyImage,
                 "-c", "/etc/envoy/envoy.yaml"

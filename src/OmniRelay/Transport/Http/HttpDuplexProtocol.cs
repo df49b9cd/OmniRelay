@@ -122,9 +122,9 @@ internal static partial class HttpDuplexProtocol
     {
         var envelope = new ErrorEnvelope
         {
-            Status = OmniRelayErrorAdapter.ToStatus(error).ToString(),
-            Message = error.Message,
-            Code = error.Code
+            ErrorEnvelope.Status = OmniRelayErrorAdapter.ToStatus(error).ToString(),
+            ErrorEnvelope.Message = error.Message,
+            ErrorEnvelope.Code = error.Code
         };
 
         return JsonSerializer.SerializeToUtf8Bytes(envelope, JsonContext.ErrorEnvelope);
@@ -141,10 +141,10 @@ internal static partial class HttpDuplexProtocol
 
         var envelope = new ResponseMetaEnvelope
         {
-            Encoding = meta.Encoding,
-            Transport = meta.Transport,
-            TtlMs = meta.Ttl?.TotalMilliseconds,
-            Headers = meta.Headers?.Count > 0
+            ResponseMetaEnvelope.Encoding = meta.Encoding,
+            ResponseMetaEnvelope.Transport = meta.Transport,
+            ResponseMetaEnvelope.TtlMs = meta.Ttl?.TotalMilliseconds,
+            ResponseMetaEnvelope.Headers = meta.Headers?.Count > 0
                 ? meta.Headers!.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase)
                 : null
         };
@@ -174,20 +174,20 @@ internal static partial class HttpDuplexProtocol
             }
 
             TimeSpan? ttl = null;
-            if (envelope.TtlMs.HasValue)
+            if (ResponseMetaEnvelope.TtlMs.HasValue)
             {
-                ttl = TimeSpan.FromMilliseconds(envelope.TtlMs.Value);
+                ttl = TimeSpan.FromMilliseconds(ResponseMetaEnvelope.TtlMs.Value);
             }
 
             IEnumerable<KeyValuePair<string, string>>? headers = null;
-            if (envelope.Headers is { Count: > 0 })
+            if (ResponseMetaEnvelope.Headers is { Count: > 0 })
             {
-                headers = envelope.Headers.Select(pair => new KeyValuePair<string, string>(pair.Key, pair.Value));
+                headers = ResponseMetaEnvelope.Headers.Select(pair => new KeyValuePair<string, string>(pair.Key, pair.Value));
             }
 
             return new ResponseMeta(
-                encoding: envelope.Encoding,
-                transport: envelope.Transport ?? transport,
+                encoding: ResponseMetaEnvelope.Encoding,
+                transport: ResponseMetaEnvelope.Transport ?? transport,
                 ttl: ttl,
                 headers: headers);
         }
@@ -214,18 +214,18 @@ internal static partial class HttpDuplexProtocol
             }
 
             var status = OmniRelayStatusCode.Internal;
-            if (!string.IsNullOrWhiteSpace(envelope.Status) &&
-                Enum.TryParse(envelope.Status, true, out OmniRelayStatusCode parsed))
+            if (!string.IsNullOrWhiteSpace(ErrorEnvelope.Status) &&
+                Enum.TryParse(ErrorEnvelope.Status, true, out OmniRelayStatusCode parsed))
             {
                 status = parsed;
             }
 
-            var message = string.IsNullOrWhiteSpace(envelope.Message) ? status.ToString() : envelope.Message!;
+            var message = string.IsNullOrWhiteSpace(ErrorEnvelope.Message) ? status.ToString() : ErrorEnvelope.Message!;
             var error = OmniRelayErrorAdapter.FromStatus(status, message, transport: transport);
 
-            if (!string.IsNullOrWhiteSpace(envelope.Code))
+            if (!string.IsNullOrWhiteSpace(ErrorEnvelope.Code))
             {
-                error = error.WithCode(envelope.Code);
+                error = error.WithCode(ErrorEnvelope.Code);
             }
 
             return error;
@@ -267,19 +267,19 @@ internal static partial class HttpDuplexProtocol
 
     private sealed class ErrorEnvelope
     {
-        public string? Status
+        public static string? Status
         {
             get => field;
             set => field = value;
         }
 
-        public string? Message
+        public static string? Message
         {
             get => field;
             set => field = value;
         }
 
-        public string? Code
+        public static string? Code
         {
             get => field;
             set => field = value;
@@ -288,25 +288,25 @@ internal static partial class HttpDuplexProtocol
 
     private sealed class ResponseMetaEnvelope
     {
-        public string? Encoding
+        public static string? Encoding
         {
             get => field;
             set => field = value;
         }
 
-        public string? Transport
+        public static string? Transport
         {
             get => field;
             set => field = value;
         }
 
-        public double? TtlMs
+        public static double? TtlMs
         {
             get => field;
             set => field = value;
         }
 
-        public Dictionary<string, string>? Headers
+        public static Dictionary<string, string>? Headers
         {
             get => field;
             set => field = value;
