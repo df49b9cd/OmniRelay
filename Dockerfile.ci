@@ -50,7 +50,7 @@ ENV NUGET_PACKAGES=/home/${CI_USER}/.nuget/packages
 
 FROM base AS restore
 
-COPY --chown=${CI_USER}:${CI_USER} global.json Directory.Build.props Directory.Packages.props OmniRelay.slnx ./
+COPY --chown=${CI_USER}:${CI_USER} global.json Directory.Build.props Directory.Packages.props .editorconfig OmniRelay.slnx ./
 COPY --chown=${CI_USER}:${CI_USER} src ./src
 COPY --chown=${CI_USER}:${CI_USER} tests ./tests
 COPY --chown=${CI_USER}:${CI_USER} samples ./samples
