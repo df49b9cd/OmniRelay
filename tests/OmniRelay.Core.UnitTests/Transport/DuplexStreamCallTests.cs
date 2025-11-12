@@ -19,12 +19,12 @@ public class DuplexStreamCallTests
 
         var reqErr = OmniRelayErrorAdapter.FromStatus(OmniRelayStatusCode.Cancelled, "cancel");
         await call.CompleteRequestsAsync(reqErr, TestContext.Current.CancellationToken);
-        Assert.Equal(StreamCompletionStatus.Cancelled, call.Context.RequestCompletionStatus);
-        Assert.NotNull(call.Context.RequestCompletedAtUtc);
+        call.Context.RequestCompletionStatus.ShouldBe(StreamCompletionStatus.Cancelled);
+        call.Context.RequestCompletedAtUtc.ShouldNotBeNull();
 
         await call.CompleteResponsesAsync(null, TestContext.Current.CancellationToken);
-        Assert.Equal(StreamCompletionStatus.Succeeded, call.Context.ResponseCompletionStatus);
-        Assert.NotNull(call.Context.ResponseCompletedAtUtc);
+        call.Context.ResponseCompletionStatus.ShouldBe(StreamCompletionStatus.Succeeded);
+        call.Context.ResponseCompletedAtUtc.ShouldNotBeNull();
 
         await call.DisposeAsync();
     }
@@ -39,12 +39,12 @@ public class DuplexStreamCallTests
 
         await call.CompleteResponsesAsync(cancellationToken: cts.Token);
 
-        Assert.Equal(StreamCompletionStatus.Cancelled, call.Context.ResponseCompletionStatus);
+        call.Context.ResponseCompletionStatus.ShouldBe(StreamCompletionStatus.Cancelled);
 
-        var closed = await Assert.ThrowsAsync<ChannelClosedException>(async () =>
+        var closed = await Should.ThrowAsync<ChannelClosedException>(async () =>
             await call.ResponseReader.ReadAsync(TestContext.Current.CancellationToken));
-        var relayException = Assert.IsType<OmniRelayException>(closed.InnerException);
-        Assert.Equal("The response stream was cancelled.", relayException.Message);
+        var relayException = closed.InnerException.ShouldBeOfType<OmniRelayException>();
+        relayException.Message.ShouldBe("The response stream was cancelled.");
 
         await call.DisposeAsync();
     }
@@ -59,12 +59,12 @@ public class DuplexStreamCallTests
 
         await call.CompleteRequestsAsync(cancellationToken: cts.Token);
 
-        Assert.Equal(StreamCompletionStatus.Cancelled, call.Context.RequestCompletionStatus);
+        call.Context.RequestCompletionStatus.ShouldBe(StreamCompletionStatus.Cancelled);
 
-        var closed = await Assert.ThrowsAsync<ChannelClosedException>(async () =>
+        var closed = await Should.ThrowAsync<ChannelClosedException>(async () =>
             await call.RequestReader.ReadAsync(TestContext.Current.CancellationToken));
-        var relayException = Assert.IsType<OmniRelayException>(closed.InnerException);
-        Assert.Equal("The request stream was cancelled.", relayException.Message);
+        var relayException = closed.InnerException.ShouldBeOfType<OmniRelayException>();
+        relayException.Message.ShouldBe("The request stream was cancelled.");
 
         await call.DisposeAsync();
     }
