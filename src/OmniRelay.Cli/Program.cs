@@ -2546,12 +2546,9 @@ public static class Program
     {
         error = null;
 
-        if (state.Proto is not null)
+        if (state.Proto is not null && !TryEncodeProtobufPayload(state.Proto, inlineBody, bodyFile, payloadSource, ref payload, out error))
         {
-            if (!TryEncodeProtobufPayload(state.Proto, inlineBody, bodyFile, payloadSource, ref payload, out error))
-            {
-                return false;
-            }
+            return false;
         }
 
         if (state.PrettyPrintJson)
