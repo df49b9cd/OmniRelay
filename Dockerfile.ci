@@ -5,7 +5,7 @@ WORKDIR /source
 # copy csproj and restore as distinct layers
 COPY global.json .
 COPY Directory.Build.props .
-COPY Directory.Package.props .
+COPY Directory.Packages.props .
 COPY src/OmniRelay.Cli/OmniRelay.Cli.csproj OmniRelay.Cli/
 COPY src/OmniRelay.Codegen.Protobuf.Core/OmniRelay.Codegen.Protobuf.Core.csproj OmniRelay.Codegen.Protobuf.Core/
 COPY src/OmniRelay.Codegen.Protobuf.Generator/OmniRelay.Codegen.Protobuf.Generator.csproj OmniRelay.Codegen.Protobuf.Generator/
@@ -27,7 +27,7 @@ COPY src/OmniRelay.Configuration/ OmniRelay.Configuration/
 COPY src/OmniRelay.ResourceLeaseReplicator.Grpc/ OmniRelay.ResourceLeaseReplicator.Grpc/
 COPY src/OmniRelay.ResourceLeaseReplicator.ObjectStorage/ OmniRelay.ResourceLeaseReplicator.ObjectStorage/
 COPY src/OmniRelay.ResourceLeaseReplicator.Sqlite/ OmniRelay.ResourceLeaseReplicator.Sqlite/
-COPY src/OmniRelay/OmniRelay.csproj OmniRelay/
+COPY src/OmniRelay/ OmniRelay/
 WORKDIR /source/omnirelay
 RUN dotnet build -c Release --no-restore
 
