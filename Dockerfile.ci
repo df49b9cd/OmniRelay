@@ -1,12 +1,48 @@
-FROM mcr.microsoft.com/dotnet/sdk:latest AS build
-WORKDIR /App
+# https://hub.docker.com/_/microsoft-dotnet
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /source
 
-# Copy everything
-COPY . ./
-# Restore as distinct layers
-RUN dotnet restore
+# copy csproj and restore as distinct layers
+COPY global.json .
+COPY Directory.Build.props .
+COPY Directory.Package.props .
+COPY OmniRelay.Cli/OmniRelay.Cli.csproj OmniRelay.Cli/
+COPY OmniRelay.Codegen.Protobuf.Core/OmniRelay.Codegen.Protobuf.Core.csproj OmniRelay.Codegen.Protobuf.Core/
+COPY OmniRelay.Codegen.Protobuf.Generator/OmniRelay.Codegen.Protobuf.Generator.csproj OmniRelay.Codegen.Protobuf.Generator/
+COPY OmniRelay.Codegen.Protobuf/OmniRelay.Codegen.Protobuf.csproj OmniRelay.Codegen.Protobuf/
+COPY OmniRelay.Configuration/OmniRelay.Configuration.csproj OmniRelay.Configuration/
+COPY OmniRelay.ResourceLeaseReplicator.Grpc/OmniRelay.ResourceLeaseReplicator.Grpc.csproj OmniRelay.ResourceLeaseReplicator.Grpc/
+COPY OmniRelay.ResourceLeaseReplicator.ObjectStorage/OmniRelay.ResourceLeaseReplicator.ObjectStorage.csproj OmniRelay.ResourceLeaseReplicator.ObjectStorage/
+COPY OmniRelay.ResourceLeaseReplicator.Sqlite/OmniRelay.ResourceLeaseReplicator.Sqlite.csproj OmniRelay.ResourceLeaseReplicator.Sqlite/
+COPY OmniRelay/OmniRelay.csproj OmniRelay/
 
-RUN dotnet test -c Release
+RUN dotnet restore **/*.csproj
 
-# Build and publish a release
-RUN dotnet publish -o out -c Release
+# copy and build app and libraries
+COPY complexapp/ complexapp/
+COPY libfoo/ libfoo/
+COPY libbar/ libbar/
+WORKDIR /source/complexapp
+RUN dotnet build -c Release --no-restore
+
+# test stage -- exposes optional entrypoint
+# target entrypoint with: docker build --target test
+FROM build AS test
+WORKDIR /source/tests
+
+COPY tests/*.csproj .
+RUN dotnet restore tests.csproj
+
+COPY tests/ .
+RUN dotnet build --no-restore
+
+ENTRYPOINT ["dotnet", "test", "--logger:trx", "--no-restore", "--no-build"]
+
+FROM build AS publish
+RUN dotnet publish -c Release --no-build -o /app
+
+# final stage/image
+FROM mcr.microsoft.com/dotnet/runtime:7.0
+WORKDIR /app
+COPY --from=publish /app .
+ENTRYPOINT ["dotnet", "complexapp.dll"]
