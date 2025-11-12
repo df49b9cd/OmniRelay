@@ -6,7 +6,6 @@ namespace OmniRelay.IntegrationTests.Support;
 
 internal static class TestCertificateFactory
 {
-    private const string DefaultPassword = "omnirelay-test-cert";
 
     public static X509Certificate2 CreateLoopbackCertificate(string subjectName)
     {
@@ -34,12 +33,6 @@ internal static class TestCertificateFactory
         sanBuilder.AddIpAddress(IPAddress.IPv6Loopback);
         request.CertificateExtensions.Add(sanBuilder.Build());
 
-        using var certificate =
-            request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(1));
-        var export = certificate.Export(X509ContentType.Pfx, DefaultPassword);
-        return X509CertificateLoader.LoadPkcs12(
-            export,
-            DefaultPassword,
-            X509KeyStorageFlags.Exportable | X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.PersistKeySet);
+        return request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(1));
     }
 }
