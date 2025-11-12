@@ -2060,7 +2060,7 @@ public partial class GrpcTransportTests : TransportIntegrationTest
                 Assert.Equal("stream-99", streamId);
             }
         }
-        
+
     }
 
     [Fact(Timeout = 30_000)]
@@ -2208,7 +2208,7 @@ public partial class GrpcTransportTests : TransportIntegrationTest
             Assert.Contains(trailers, entry => string.Equals(entry.Key, StatusTrailerKey, StringComparison.OrdinalIgnoreCase)
                 && string.Equals(entry.Value, nameof(OmniRelayStatusCode.PermissionDenied), StringComparison.OrdinalIgnoreCase));
         }
-        
+
     }
 
     public static IEnumerable<object[]> FromStatusMappings()
@@ -2550,7 +2550,6 @@ public partial class GrpcTransportTests : TransportIntegrationTest
         }
     }
 
-
     private sealed class ServerTaskTracker : IAsyncDisposable
     {
         private readonly List<Task> _tasks = [];
@@ -2682,6 +2681,4 @@ public partial class GrpcTransportTests : TransportIntegrationTest
         public Stream CreateDecompressionStream(Stream stream) => stream;
     }
 }
-
-
 

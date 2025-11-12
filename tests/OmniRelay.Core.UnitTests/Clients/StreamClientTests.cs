@@ -81,8 +81,8 @@ public class StreamClientTests
         await foreach (var result in client.CallAsync(Request<Req>.Create(new Req()), options, TestContext.Current.CancellationToken))
         {
             enumerated = true;
-                result.IsFailure.ShouldBeTrue();
-                result.Error!.Code.ShouldBe("invalid-argument");
+            result.IsFailure.ShouldBeTrue();
+            result.Error!.Code.ShouldBe("invalid-argument");
             break;
         }
 
@@ -107,8 +107,8 @@ public class StreamClientTests
         await foreach (var result in client.CallAsync(Request<Req>.Create(new Req()), options, TestContext.Current.CancellationToken))
         {
             enumerated = true;
-                result.IsFailure.ShouldBeTrue();
-                OmniRelayErrorAdapter.ToStatus(result.Error!).ShouldBe(OmniRelayStatusCode.Unavailable);
+            result.IsFailure.ShouldBeTrue();
+            OmniRelayErrorAdapter.ToStatus(result.Error!).ShouldBe(OmniRelayStatusCode.Unavailable);
             break;
         }
 

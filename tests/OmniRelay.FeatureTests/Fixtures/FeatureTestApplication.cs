@@ -112,4 +112,3 @@ public sealed record FeatureTestApplicationOptions
     }
 }
 
-

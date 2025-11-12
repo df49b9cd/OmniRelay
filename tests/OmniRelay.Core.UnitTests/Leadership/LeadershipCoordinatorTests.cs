@@ -1,5 +1,5 @@
-using Microsoft.Extensions.Logging.Abstractions;
 using System.Linq;
+using Microsoft.Extensions.Logging.Abstractions;
 using OmniRelay.Core.Gossip;
 using OmniRelay.Core.Leadership;
 using Xunit;
@@ -154,9 +154,20 @@ public sealed class LeadershipCoordinatorTests
         var snapshotC = coordinatorC.Snapshot();
 
         var leadersCount = 0;
-        if (snapshotA.Tokens.Any(t => t.LeaderId == "node-a")) leadersCount++;
-        if (snapshotB.Tokens.Any(t => t.LeaderId == "node-b")) leadersCount++;
-        if (snapshotC.Tokens.Any(t => t.LeaderId == "node-c")) leadersCount++;
+        if (snapshotA.Tokens.Any(t => t.LeaderId == "node-a"))
+        {
+            leadersCount++;
+        }
+
+        if (snapshotB.Tokens.Any(t => t.LeaderId == "node-b"))
+        {
+            leadersCount++;
+        }
+
+        if (snapshotC.Tokens.Any(t => t.LeaderId == "node-c"))
+        {
+            leadersCount++;
+        }
 
         leadersCount.ShouldBe(1);
 
