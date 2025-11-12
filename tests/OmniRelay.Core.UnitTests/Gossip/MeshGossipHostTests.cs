@@ -30,7 +30,7 @@ public sealed class MeshGossipHostTests
         var options = CreateOptions();
         options.Fanout = 0;
 
-        Assert.Throws<ArgumentOutOfRangeException>(() =>
+        Should.Throw<ArgumentOutOfRangeException>(() =>
             new MeshGossipHost(options, metadata: null, NullLogger<MeshGossipHost>.Instance, NullLoggerFactory.Instance));
     }
 
@@ -45,9 +45,9 @@ public sealed class MeshGossipHostTests
 
             var response = await InvokeProcessEnvelopeAsync(host, envelope, TestContext.Current.CancellationToken);
 
-            Assert.Equal(MeshGossipOptions.CurrentSchemaVersion, response.SchemaVersion);
-            Assert.Equal(host.LocalMetadata.NodeId, response.Sender.NodeId);
-            Assert.Contains(response.Members, m => m.NodeId == host.LocalMetadata.NodeId);
+            response.SchemaVersion.ShouldBe(MeshGossipOptions.CurrentSchemaVersion);
+            response.Sender.NodeId.ShouldBe(host.LocalMetadata.NodeId);
+            response.Members.ShouldContain(m => m.NodeId == host.LocalMetadata.NodeId);
         }
         finally
         {
@@ -105,8 +105,8 @@ public sealed class MeshGossipHostTests
             await InvokeProcessEnvelopeAsync(host, envelope, TestContext.Current.CancellationToken);
 
             var snapshot = host.Snapshot();
-            Assert.Contains(snapshot.Members, m => m.NodeId == senderMetadata.NodeId && m.Metadata.Role == "dispatcher");
-            Assert.Contains(snapshot.Members, m => m.NodeId == otherMetadata.NodeId && m.Status == MeshGossipMemberStatus.Suspect);
+            snapshot.Members.ShouldContain(m => m.NodeId == senderMetadata.NodeId && m.Metadata.Role == "dispatcher");
+            snapshot.Members.ShouldContain(m => m.NodeId == otherMetadata.NodeId && m.Status == MeshGossipMemberStatus.Suspect);
         }
         finally
         {
@@ -149,9 +149,9 @@ public sealed class MeshGossipHostTests
             var envelope = InvokeBuildEnvelope(host);
             var nextEnvelope = InvokeBuildEnvelope(host);
 
-            Assert.Equal(32, envelope.Members.Count);
-            Assert.Equal(host.LocalMetadata.NodeId, envelope.Sender.NodeId);
-            Assert.True(nextEnvelope.Sequence > envelope.Sequence);
+            envelope.Members.Count.ShouldBe(32);
+            envelope.Sender.NodeId.ShouldBe(host.LocalMetadata.NodeId);
+            (nextEnvelope.Sequence > envelope.Sequence).ShouldBeTrue();
         }
         finally
         {
@@ -195,14 +195,14 @@ public sealed class MeshGossipHostTests
                 sharedTime.Advance(TimeSpan.FromSeconds(1));
             }
 
-            Assert.Contains(logger.Entries, entry => entry.Message.Contains("joined cluster") && entry.Message.Contains("peer-observed"));
-            Assert.Contains(logger.Entries, entry => entry.Message.Contains("marked suspect"));
-            Assert.Contains(logger.Entries, entry => entry.Message.Contains("recovered from"));
-            Assert.Contains(logger.Entries, entry => entry.Message.Contains("left gossip cluster"));
+            logger.Entries.ShouldContain(entry => entry.Message.Contains("joined cluster") && entry.Message.Contains("peer-observed"));
+            logger.Entries.ShouldContain(entry => entry.Message.Contains("marked suspect"));
+            logger.Entries.ShouldContain(entry => entry.Message.Contains("recovered from"));
+            logger.Entries.ShouldContain(entry => entry.Message.Contains("left gossip cluster"));
 
             var peerSnapshot = tracker.Snapshot().First(s => s.PeerId == remoteMetadata.NodeId);
-            Assert.True(peerSnapshot.Metadata.TryGetValue("disconnect.reason", out var reason));
-            Assert.Equal("gossip-left", reason);
+            peerSnapshot.Metadata.TryGetValue("disconnect.reason", out var reason).ShouldBeTrue();
+            reason.ShouldBe("gossip-left");
         }
         finally
         {
