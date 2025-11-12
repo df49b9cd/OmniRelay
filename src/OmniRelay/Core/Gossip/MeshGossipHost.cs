@@ -287,10 +287,14 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
             {
                 break;
             }
+#pragma warning disable CA1031 // Do not catch general exception types
+            // Generic catch is intentional to prevent gossip loop from crashing.
+            // This is a background service that should be resilient to unexpected failures.
             catch (Exception ex)
             {
                 MeshGossipHostLog.GossipRoundFailed(_logger, ex);
             }
+#pragma warning restore CA1031
         }
     }
 
@@ -377,10 +381,14 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
             {
                 break;
             }
+#pragma warning disable CA1031 // Do not catch general exception types
+            // Generic catch is intentional to prevent sweep loop from crashing.
+            // This is a background service that should be resilient to unexpected failures.
             catch (Exception ex)
             {
                 MeshGossipHostLog.GossipSweepFailed(_logger, ex);
             }
+#pragma warning restore CA1031
         }
     }
 
