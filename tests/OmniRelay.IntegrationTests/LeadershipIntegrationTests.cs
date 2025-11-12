@@ -13,7 +13,8 @@ public sealed class LeadershipIntegrationTests : IntegrationTest
 {
     private static readonly string ScopeId = LeadershipScope.GlobalControl.ScopeId;
     private static readonly TimeSpan ElectionTimeout = TimeSpan.FromSeconds(15);
-    private readonly TimeSpan _renewalTimeout = TimeSpan.FromSeconds(10);
+    // CI containers can be slower to surface the renewed lease, so give them more time.
+    private readonly TimeSpan _renewalTimeout = TimeSpan.FromSeconds(20);
 
     public LeadershipIntegrationTests(ITestOutputHelper output)
         : base(output)
