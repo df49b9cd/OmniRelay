@@ -452,47 +452,13 @@ public sealed class Dispatcher
             }
 
             var startedComponents = new int[_lifecycleStartOrder.Length];
-            var errors = new ConcurrentQueue<Error>();
 
-            using var group = new ErrGroup(cancellationToken);
-
-            foreach (var (component, index) in _lifecycleStartOrder.Select((component, index) => (component, index)))
-            {
-                var lifecycle = component.Lifecycle;
-
-                group.Go(async token =>
-                {
-                    var startResult = await ExecuteLifecycleWithPolicyAsync(
-                        component.Name,
-                        lifecycle.StartAsync,
-                        _startRetryPolicy,
-                        token).ConfigureAwait(false);
-
-                    if (startResult.IsSuccess)
-                    {
-                        Volatile.Write(ref startedComponents[index], 1);
-                        return startResult;
-                    }
-
-                    if (startResult.Error is not null)
-                    {
-                        errors.Enqueue(startResult.Error);
-                    }
-
-                    return startResult;
-                });
-            }
-
-            var waitResult = await group.WaitAsync(cancellationToken).ConfigureAwait(false);
-
-            if (!errors.IsEmpty || waitResult.IsFailure)
+            async ValueTask<Result<Unit>> FailStartAsync(Error? startError)
             {
                 lock (_stateLock)
                 {
                     _status = DispatcherStatus.Stopped;
                 }
-
-                var startError = CreateStartFailureError(errors, group.Error ?? waitResult.Error);
 
                 var rollbackResult = await RollbackStartedComponentsAsync(startedComponents).ConfigureAwait(false);
                 if (rollbackResult.IsFailure)
@@ -514,6 +480,26 @@ public sealed class Dispatcher
                 }
 
                 return Err<Unit>(CreateDispatcherError("One or more dispatcher components failed to start.", OmniRelayStatusCode.Internal));
+            }
+
+            for (var index = 0; index < _lifecycleStartOrder.Length; index++)
+            {
+                var component = _lifecycleStartOrder[index];
+                var lifecycle = component.Lifecycle;
+
+                var startResult = await ExecuteLifecycleWithPolicyAsync(
+                    component.Name,
+                    lifecycle.StartAsync,
+                    _startRetryPolicy,
+                    cancellationToken).ConfigureAwait(false);
+
+                if (startResult.IsSuccess)
+                {
+                    Volatile.Write(ref startedComponents[index], 1);
+                    continue;
+                }
+
+                return await FailStartAsync(startResult.Error).ConfigureAwait(false);
             }
 
             CompleteStart();
@@ -841,19 +827,6 @@ public sealed class Dispatcher
     {
         var aggregate = new AggregateException(message, errors.Select(static error => new ResultException(error)));
         return OmniRelayErrors.ToResult<Unit>(aggregate, "dispatcher").Error!;
-    }
-
-    private static Error? CreateStartFailureError(ConcurrentQueue<Error> errors, Error? groupError)
-    {
-        if (!errors.IsEmpty)
-        {
-            var snapshots = errors.ToArray();
-            return snapshots.Length == 1
-                ? snapshots[0]
-                : AggregateErrors("One or more dispatcher components failed to start.", snapshots);
-        }
-
-        return groupError;
     }
 
     private async Task<Result<Unit>> RollbackStartedComponentsAsync(int[] startedComponents)
