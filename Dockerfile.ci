@@ -28,10 +28,23 @@ FROM restore AS build
 RUN dotnet build OmniRelay.slnx -c Release --no-restore
 
 FROM build AS ci
+SHELL ["/bin/bash","-c"]
 ARG TEST_PROJECTS
-RUN for proj in ${TEST_PROJECTS}; do \
+RUN set -euo pipefail && \
+    mkdir -p /repo/artifacts/test-results /repo/artifacts/coverage && \
+    for proj in ${TEST_PROJECTS}; do \
         name=$(basename "${proj%.csproj}"); \
-        dotnet test "${proj}" -c Release --no-build --logger "trx;LogFileName=${name}.trx"; \
+        result_dir="/repo/artifacts/test-results/${name}"; \
+        coverage_dir="/repo/artifacts/coverage/${name}"; \
+        mkdir -p "${result_dir}" "${coverage_dir}"; \
+        dotnet test "${proj}" \
+            -c Release \
+            --no-build \
+            --logger "trx;LogFileName=${name}.trx" \
+            --results-directory "${result_dir}" \
+            --collect:"XPlat Code Coverage"; \
+        coverage_file=$(find "${result_dir}" -maxdepth 2 -name 'coverage.cobertura.xml' -print -quit); \
+        if [[ -n "${coverage_file}" ]]; then cp "${coverage_file}" "${coverage_dir}/"; fi; \
     done
 
 CMD ["bash"]
