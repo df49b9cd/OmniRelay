@@ -180,7 +180,7 @@ public sealed class GossipIntegrationTests : IntegrationTest
         host.Snapshot().Members.Any(member =>
             string.Equals(member.NodeId, nodeId, StringComparison.Ordinal) && member.Status == status);
 
-    private async Task WaitForConditionAsync(
+    private static async Task WaitForConditionAsync(
         string description,
         Func<bool> predicate,
         Func<string> diagnostics,

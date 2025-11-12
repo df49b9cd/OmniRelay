@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using System.Text;
 using Microsoft.Extensions.Logging;
+using Shouldly;
 using OmniRelay.Core.Gossip;
 using OmniRelay.Core.Leadership;
 using OmniRelay.IntegrationTests.Support;
@@ -42,8 +43,8 @@ public sealed class LeadershipIntegrationTests : IntegrationTest
 
             var tokenA = coordinatorA.GetToken(ScopeId)!;
             var tokenB = coordinatorB.GetToken(ScopeId)!;
-            Assert.Equal(tokenA.LeaderId, tokenB.LeaderId);
-            Assert.Contains(tokenA.LeaderId, new[] { coordinatorA.NodeId, coordinatorB.NodeId });
+            tokenA.LeaderId.ShouldBe(tokenB.LeaderId);
+            tokenA.LeaderId.ShouldBeOneOf(coordinatorA.NodeId, coordinatorB.NodeId);
 
             var initialExpiry = tokenA.ExpiresAt;
             await WaitForConditionAsync(
@@ -118,7 +119,7 @@ public sealed class LeadershipIntegrationTests : IntegrationTest
         try
         {
             await Task.Delay(TimeSpan.FromMilliseconds(800), ct);
-            Assert.Null(coordinator.GetToken(ScopeId));
+            coordinator.GetToken(ScopeId).ShouldBeNull();
 
             gossip.UpdateMembers(new MeshGossipMemberSnapshot
             {
@@ -232,7 +233,7 @@ public sealed class LeadershipIntegrationTests : IntegrationTest
         }
     }
 
-    private async Task WaitForConditionAsync(
+    private static async Task WaitForConditionAsync(
         string description,
         Func<bool> predicate,
         Func<string> diagnostics,
