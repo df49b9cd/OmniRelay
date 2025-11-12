@@ -55,6 +55,7 @@ COPY --chown=${CI_USER}:${CI_USER} src ./src
 COPY --chown=${CI_USER}:${CI_USER} tests ./tests
 COPY --chown=${CI_USER}:${CI_USER} samples ./samples
 COPY --chown=${CI_USER}:${CI_USER} docs ./docs
+COPY --chown=${CI_USER}:${CI_USER} branding ./branding
 
 RUN --mount=type=cache,id=nuget,target=${NUGET_PACKAGES},uid=${CI_UID},gid=${CI_GID} \
     set -eux; \
