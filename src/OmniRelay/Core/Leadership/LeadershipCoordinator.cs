@@ -113,9 +113,10 @@ public sealed partial class LeadershipCoordinator : ILifecycle, ILeadershipObser
             }
         }
 
-        foreach (var state in _scopes.Values)
+        foreach (var state in _scopes.Values.Where(s => s.Lease is not null && string.Equals(s.Lease.LeaderId, NodeId, StringComparison.Ordinal)))
         {
-            if (state.Lease is { } lease && string.Equals(lease.LeaderId, NodeId, StringComparison.Ordinal))
+            var lease = state.Lease!;
+            try
             {
                 try
                 {
@@ -135,6 +136,17 @@ public sealed partial class LeadershipCoordinator : ILifecycle, ILeadershipObser
                 state.Lease = null;
                 state.LastFailure = null;
             }
+            // If there is a custom exception type for leadership store errors, catch it here.
+            // Otherwise, let unexpected exceptions propagate.
+            // Example:
+            // catch (LeadershipStoreException ex)
+            // {
+            //     LeadershipCoordinatorLog.FailedToReleaseScope(_logger, state.Scope.ScopeId, ex);
+            // }
+
+            PublishLoss(state, lease, LeadershipEventKind.SteppedDown, "shutdown");
+            state.Lease = null;
+            state.LastFailure = null;
         }
     }
 
