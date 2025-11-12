@@ -20,8 +20,23 @@ ENV CI_USER=${CI_USER} \
     CI_UID=${CI_UID} \
     CI_GID=${CI_GID}
 
-RUN groupadd --gid "${CI_GID}" "${CI_USER}" \
-    && useradd --uid "${CI_UID}" --gid "${CI_GID}" --create-home --shell /bin/bash "${CI_USER}"
+RUN set -eux; \
+    if ! getent group "${CI_USER}" >/dev/null; then \
+        if getent group "${CI_GID}" >/dev/null; then \
+            groupadd "${CI_USER}"; \
+        else \
+            groupadd --gid "${CI_GID}" "${CI_USER}"; \
+        fi; \
+    fi; \
+    if ! id -u "${CI_USER}" >/dev/null 2>&1; then \
+        if getent passwd | cut -d: -f3 | grep -qx "${CI_UID}"; then \
+            useradd --gid "${CI_USER}" --create-home --shell /bin/bash "${CI_USER}"; \
+        else \
+            useradd --uid "${CI_UID}" --gid "${CI_USER}" --create-home --shell /bin/bash "${CI_USER}"; \
+        fi; \
+    fi; \
+    mkdir -p /home/${CI_USER}; \
+    chown "${CI_USER}:${CI_USER}" /home/${CI_USER}
 
 WORKDIR /work
 RUN chown "${CI_USER}:${CI_USER}" /work
