@@ -26,15 +26,22 @@ using OmniRelay.Core.Peers;
 using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
 using OmniRelay.Errors;
+using OmniRelay.IntegrationTests.Support;
 using OmniRelay.Tests.Support;
 using OmniRelay.Transport.Grpc;
 using Xunit;
 using static Hugo.Go;
+using static OmniRelay.IntegrationTests.Support.TransportTestHelper;
 
 namespace OmniRelay.IntegrationTests.Transport;
 
-public partial class GrpcTransportTests
+public partial class GrpcTransportTests : TransportIntegrationTest
 {
+    public GrpcTransportTests(ITestOutputHelper output)
+        : base(output)
+    {
+    }
+
     static GrpcTransportTests()
     {
         AppContext.SetSwitch("System.Net.Http.SocketsHttpHandler.Http2UnencryptedSupport", true);
@@ -179,31 +186,24 @@ public partial class GrpcTransportTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await using var dispatcherHost = await StartDispatcherAsync(nameof(ServerStreaming_OverGrpcTransport), dispatcher, ct);
         await WaitForGrpcReadyAsync(address, ct);
 
-        try
-        {
-            var client = dispatcher.CreateStreamClient("stream", codec);
-            var requestMeta = new RequestMeta(
-                service: "stream",
-                procedure: "stream::events",
-                encoding: "application/json",
-                transport: "grpc");
-            var request = new Request<EchoRequest>(requestMeta, new EchoRequest("seed"));
+        var client = dispatcher.CreateStreamClient("stream", codec);
+        var requestMeta = new RequestMeta(
+            service: "stream",
+            procedure: "stream::events",
+            encoding: "application/json",
+            transport: "grpc");
+        var request = new Request<EchoRequest>(requestMeta, new EchoRequest("seed"));
 
-            var responses = new List<string>();
-            await foreach (var response in client.CallAsync(request, new StreamCallOptions(StreamDirection.Server), ct))
-            {
-                responses.Add(response.ValueOrThrow().Body.Message);
-            }
-
-            Assert.Equal(new[] { "event-0", "event-1", "event-2" }, responses);
-        }
-        finally
+        var responses = new List<string>();
+        await foreach (var response in client.CallAsync(request, new StreamCallOptions(StreamDirection.Server), ct))
         {
-            await dispatcher.StopOrThrowAsync(ct);
+            responses.Add(response.ValueOrThrow().Body.Message);
         }
+
+        Assert.Equal(new[] { "event-0", "event-1", "event-2" }, responses);
     }
 
     [Fact(Timeout = 30_000)]
@@ -225,7 +225,7 @@ public partial class GrpcTransportTests
                 ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty, new ResponseMeta())))));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await using var dispatcherHost = await StartDispatcherAsync(nameof(GrpcInbound_BindsConfiguredHttp2EndpointsOnly), dispatcher, ct);
         await WaitForGrpcReadyAsync(address, ct);
 
         var outbound = new GrpcOutbound(address, "binding");
@@ -257,7 +257,6 @@ public partial class GrpcTransportTests
         finally
         {
             await outbound.StopAsync(ct);
-            await dispatcher.StopOrThrowAsync(ct);
         }
     }
 
@@ -287,7 +286,7 @@ public partial class GrpcTransportTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await using var dispatcherHost = await StartDispatcherAsync(nameof(StopAsync_WaitsForActiveGrpcCallsAndRejectsNewOnes), dispatcher, ct, ownsLifetime: false);
         await WaitForGrpcReadyAsync(address, ct);
 
         using var channel = GrpcChannel.ForAddress(address);
@@ -340,7 +339,7 @@ public partial class GrpcTransportTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await using var dispatcherHost = await StartDispatcherAsync(nameof(StopAsyncCancellation_CompletesWithoutDrainingGrpcCalls), dispatcher, ct, ownsLifetime: false);
         await WaitForGrpcReadyAsync(address, ct);
 
         using var channel = GrpcChannel.ForAddress(address);
@@ -391,7 +390,7 @@ public partial class GrpcTransportTests
                 ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty, new ResponseMeta())))));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await using var dispatcherHost = await StartDispatcherAsync(nameof(GrpcInbound_WithTlsCertificate_BindsAndServes), dispatcher, ct);
         await WaitForGrpcReadyAsync(address, ct);
 
         var clientTls = new GrpcClientTlsOptions
@@ -414,7 +413,6 @@ public partial class GrpcTransportTests
         finally
         {
             await outbound.StopAsync(ct);
-            await dispatcher.StopOrThrowAsync(ct);
         }
     }
 
@@ -444,7 +442,7 @@ public partial class GrpcTransportTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await using var dispatcherHost = await StartDispatcherAsync(nameof(GrpcHealthService_ReflectsReadiness), dispatcher, ct, ownsLifetime: false);
         await WaitForGrpcReadyAsync(address, ct);
 
         using var channel = GrpcChannel.ForAddress(address);
@@ -536,40 +534,33 @@ public partial class GrpcTransportTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await using var dispatcherHost = await StartDispatcherAsync(nameof(ServerStreaming_ErrorMidStream_PropagatesToClient), dispatcher, ct);
         await WaitForGrpcReadyAsync(address, ct);
 
-        try
+        var client = dispatcher.CreateStreamClient("stream", codec);
+        var requestMeta = new RequestMeta(
+            service: "stream",
+            procedure: "stream::fails",
+            encoding: "application/json",
+            transport: "grpc");
+        var payload = new string('x', 4096);
+        var request = new Request<EchoRequest>(requestMeta, new EchoRequest(payload));
+
+        var enumerator = client.CallAsync(request, new StreamCallOptions(StreamDirection.Server), ct)
+            .GetAsyncEnumerator(ct);
+
+        Assert.True(await enumerator.MoveNextAsync());
+        Assert.Equal("first", enumerator.Current.ValueOrThrow().Body.Message);
+
+        var exception = await Assert.ThrowsAsync<OmniRelayException>(async () =>
         {
-            var client = dispatcher.CreateStreamClient("stream", codec);
-            var requestMeta = new RequestMeta(
-                service: "stream",
-                procedure: "stream::fails",
-                encoding: "application/json",
-                transport: "grpc");
-            var payload = new string('x', 4096);
-            var request = new Request<EchoRequest>(requestMeta, new EchoRequest(payload));
+            await enumerator.MoveNextAsync();
+        });
 
-            var enumerator = client.CallAsync(request, new StreamCallOptions(StreamDirection.Server), ct)
-                .GetAsyncEnumerator(ct);
+        await enumerator.DisposeAsync();
 
-            Assert.True(await enumerator.MoveNextAsync());
-            Assert.Equal("first", enumerator.Current.ValueOrThrow().Body.Message);
-
-            var exception = await Assert.ThrowsAsync<OmniRelayException>(async () =>
-            {
-                await enumerator.MoveNextAsync();
-            });
-
-            await enumerator.DisposeAsync();
-
-            Assert.Equal(OmniRelayStatusCode.Internal, exception.StatusCode);
-            Assert.Contains("stream failure", exception.Message, StringComparison.OrdinalIgnoreCase);
-        }
-        finally
-        {
-            await dispatcher.StopOrThrowAsync(ct);
-        }
+        Assert.Equal(OmniRelayStatusCode.Internal, exception.StatusCode);
+        Assert.Contains("stream failure", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact(Timeout = 30_000)]
@@ -607,7 +598,7 @@ public partial class GrpcTransportTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await using var dispatcherHost = await StartDispatcherAsync(nameof(GrpcOutbound_RoundRobinPeers_RecordSuccessAcrossEndpoints), dispatcher, ct);
         await WaitForGrpcReadyAsync(address1, ct);
         await WaitForGrpcReadyAsync(address2, ct);
 
@@ -648,7 +639,6 @@ public partial class GrpcTransportTests
         finally
         {
             await outbound.StopAsync(ct);
-            await dispatcher.StopOrThrowAsync(ct);
         }
     }
 
@@ -687,7 +677,7 @@ public partial class GrpcTransportTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await using var dispatcherHost = await StartDispatcherAsync(nameof(GrpcOutbound_FailingPeerTriggersCircuitBreaker), dispatcher, ct);
         await WaitForGrpcReadyAsync(healthyAddress, ct);
 
         var breakerOptions = new PeerCircuitBreakerOptions
@@ -760,7 +750,6 @@ public partial class GrpcTransportTests
         finally
         {
             await outbound.StopAsync(ct);
-            await dispatcher.StopOrThrowAsync(ct);
         }
     }
 
@@ -804,7 +793,7 @@ public partial class GrpcTransportTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await using var dispatcherHost = await StartDispatcherAsync(nameof(ServerStreaming_PayloadAboveLimit_FaultsStream), dispatcher, ct);
         await WaitForGrpcReadyAsync(address, ct);
 
         var rawCodec = new RawCodec();
@@ -823,8 +812,6 @@ public partial class GrpcTransportTests
         });
 
         Assert.Equal(OmniRelayStatusCode.ResourceExhausted, exception.StatusCode);
-
-        await dispatcher.StopOrThrowAsync(ct);
     }
 
     [Fact(Timeout = 30_000)]
@@ -878,38 +865,31 @@ public partial class GrpcTransportTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await using var dispatcherHost = await StartDispatcherAsync(nameof(ClientStreaming_OverGrpcTransport), dispatcher, ct);
         await WaitForGrpcReadyAsync(address, ct);
 
-        try
-        {
-            var client = dispatcher.CreateClientStreamClient("stream", codec);
+        var client = dispatcher.CreateClientStreamClient("stream", codec);
 
-            var requestMeta = new RequestMeta(
-                service: "stream",
-                procedure: "stream::aggregate",
-                encoding: codec.Encoding,
-                transport: "grpc");
+        var requestMeta = new RequestMeta(
+            service: "stream",
+            procedure: "stream::aggregate",
+            encoding: codec.Encoding,
+            transport: "grpc");
 
-            var streamResult = await client.StartAsync(requestMeta, ct);
-            await using var stream = streamResult.ValueOrThrow();
+        var streamResult = await client.StartAsync(requestMeta, ct);
+        await using var stream = streamResult.ValueOrThrow();
 
-            var firstWrite = await stream.WriteAsync(new AggregateChunk(Amount: 2), ct);
-            firstWrite.ThrowIfFailure();
-            var secondWrite = await stream.WriteAsync(new AggregateChunk(Amount: 5), ct);
-            secondWrite.ThrowIfFailure();
-            await stream.CompleteAsync(ct);
+        var firstWrite = await stream.WriteAsync(new AggregateChunk(Amount: 2), ct);
+        firstWrite.ThrowIfFailure();
+        var secondWrite = await stream.WriteAsync(new AggregateChunk(Amount: 5), ct);
+        secondWrite.ThrowIfFailure();
+        await stream.CompleteAsync(ct);
 
-            var responseResult = await stream.Response;
-            var response = responseResult.ValueOrThrow();
+        var responseResult = await stream.Response;
+        var response = responseResult.ValueOrThrow();
 
-            Assert.Equal(7, response.Body.TotalAmount);
-            Assert.Equal(codec.Encoding, stream.ResponseMeta.Encoding);
-        }
-        finally
-        {
-            await dispatcher.StopOrThrowAsync(ct);
-        }
+        Assert.Equal(7, response.Body.TotalAmount);
+        Assert.Equal(codec.Encoding, stream.ResponseMeta.Encoding);
     }
 
     [Fact(Timeout = 30_000)]
@@ -944,28 +924,21 @@ public partial class GrpcTransportTests
 
         var cts = new CancellationTokenSource();
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await using var dispatcherHost = await StartDispatcherAsync(nameof(ClientStreaming_CancellationFromClient), dispatcher, ct);
         await WaitForGrpcReadyAsync(address, ct);
 
-        try
+        var client = dispatcher.CreateClientStreamClient("stream", codec);
+        var requestMeta = new RequestMeta(service: "stream", procedure: "stream::aggregate", encoding: codec.Encoding, transport: "grpc");
+
+        var streamResult = await client.StartAsync(requestMeta, ct);
+        await using var stream = streamResult.ValueOrThrow();
+
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(async () =>
         {
-            var client = dispatcher.CreateClientStreamClient("stream", codec);
-            var requestMeta = new RequestMeta(service: "stream", procedure: "stream::aggregate", encoding: codec.Encoding, transport: "grpc");
-
-            var streamResult = await client.StartAsync(requestMeta, ct);
-            await using var stream = streamResult.ValueOrThrow();
-
-            await cts.CancelAsync();
-
-            await Assert.ThrowsAsync<OperationCanceledException>(async () =>
-            {
-                await stream.WriteAsync(new AggregateChunk(Amount: 1), cts.Token);
-            });
-        }
-        finally
-        {
-            await dispatcher.StopOrThrowAsync(ct);
-        }
+            await stream.WriteAsync(new AggregateChunk(Amount: 1), cts.Token);
+        });
     }
 
     [Fact(Timeout = 30_000)]
@@ -1000,31 +973,24 @@ public partial class GrpcTransportTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await using var dispatcherHost = await StartDispatcherAsync(nameof(ClientStreaming_DeadlineExceededMapsStatus), dispatcher, ct);
         await WaitForGrpcReadyAsync(address, ct);
 
-        try
-        {
-            var client = dispatcher.CreateClientStreamClient("stream", codec);
-            var requestMeta = new RequestMeta(
-                service: "stream",
-                procedure: "stream::deadline",
-                encoding: codec.Encoding,
-                transport: "grpc",
-                deadline: DateTimeOffset.UtcNow.AddMilliseconds(200));
+        var client = dispatcher.CreateClientStreamClient("stream", codec);
+        var requestMeta = new RequestMeta(
+            service: "stream",
+            procedure: "stream::deadline",
+            encoding: codec.Encoding,
+            transport: "grpc",
+            deadline: DateTimeOffset.UtcNow.AddMilliseconds(200));
 
-            var streamResult = await client.StartAsync(requestMeta, ct);
-            await using var stream = streamResult.ValueOrThrow();
-            await stream.CompleteAsync(ct);
+        var streamResult = await client.StartAsync(requestMeta, ct);
+        await using var stream = streamResult.ValueOrThrow();
+        await stream.CompleteAsync(ct);
 
-            var responseResult = await stream.Response;
-            Assert.True(responseResult.IsFailure);
-            Assert.Equal(OmniRelayStatusCode.DeadlineExceeded, OmniRelayErrorAdapter.ToStatus(responseResult.Error!));
-        }
-        finally
-        {
-            await dispatcher.StopOrThrowAsync(ct);
-        }
+        var responseResult = await stream.Response;
+        Assert.True(responseResult.IsFailure);
+        Assert.Equal(OmniRelayStatusCode.DeadlineExceeded, OmniRelayErrorAdapter.ToStatus(responseResult.Error!));
     }
 
     [Fact(Timeout = 30_000)]
@@ -1072,34 +1038,27 @@ public partial class GrpcTransportTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await using var dispatcherHost = await StartDispatcherAsync(nameof(ClientStreaming_LargePayloadChunks), dispatcher, ct);
         await WaitForGrpcReadyAsync(address, ct);
 
-        try
+        var client = dispatcher.CreateClientStreamClient("stream", codec);
+        var requestMeta = new RequestMeta(service: "stream", procedure: "stream::huge", encoding: codec.Encoding, transport: "grpc");
+
+        var streamResult = await client.StartAsync(requestMeta, ct);
+        await using var stream = streamResult.ValueOrThrow();
+
+        const int chunkCount = 1_000;
+        for (var i = 0; i < chunkCount; i++)
         {
-            var client = dispatcher.CreateClientStreamClient("stream", codec);
-            var requestMeta = new RequestMeta(service: "stream", procedure: "stream::huge", encoding: codec.Encoding, transport: "grpc");
-
-            var streamResult = await client.StartAsync(requestMeta, ct);
-            await using var stream = streamResult.ValueOrThrow();
-
-            const int chunkCount = 1_000;
-            for (var i = 0; i < chunkCount; i++)
-            {
-                var writeResult = await stream.WriteAsync(new AggregateChunk(1), ct);
-                writeResult.ThrowIfFailure();
-            }
-
-            await stream.CompleteAsync(ct);
-
-            var responseResult = await stream.Response;
-            var response = responseResult.ValueOrThrow();
-            Assert.Equal(chunkCount, response.Body.TotalAmount);
+            var writeResult = await stream.WriteAsync(new AggregateChunk(1), ct);
+            writeResult.ThrowIfFailure();
         }
-        finally
-        {
-            await dispatcher.StopOrThrowAsync(ct);
-        }
+
+        await stream.CompleteAsync(ct);
+
+        var responseResult = await stream.Response;
+        var response = responseResult.ValueOrThrow();
+        Assert.Equal(chunkCount, response.Body.TotalAmount);
     }
 
     [Fact(Timeout = 30_000)]
@@ -1149,34 +1108,27 @@ public partial class GrpcTransportTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await using var dispatcherHost = await StartDispatcherAsync(nameof(ClientStreaming_ServerErrorPropagatesToClient), dispatcher, ct);
         await WaitForGrpcReadyAsync(address, ct);
 
-        try
-        {
-            var client = dispatcher.CreateClientStreamClient("stream", codec);
-            var requestMeta = new RequestMeta(
-                service: "stream",
-                procedure: "stream::server-error",
-                encoding: codec.Encoding,
-                transport: "grpc");
+        var client = dispatcher.CreateClientStreamClient("stream", codec);
+        var requestMeta = new RequestMeta(
+            service: "stream",
+            procedure: "stream::server-error",
+            encoding: codec.Encoding,
+            transport: "grpc");
 
-            var streamResult = await client.StartAsync(requestMeta, ct);
-            await using var stream = streamResult.ValueOrThrow();
+        var streamResult = await client.StartAsync(requestMeta, ct);
+        await using var stream = streamResult.ValueOrThrow();
 
-            var writeResult = await stream.WriteAsync(new AggregateChunk(Amount: 1), ct);
-            writeResult.ThrowIfFailure();
-            await stream.CompleteAsync(ct);
+        var writeResult = await stream.WriteAsync(new AggregateChunk(Amount: 1), ct);
+        writeResult.ThrowIfFailure();
+        await stream.CompleteAsync(ct);
 
-            var responseResult = await stream.Response;
-            Assert.True(responseResult.IsFailure);
-            Assert.Equal(OmniRelayStatusCode.Unavailable, OmniRelayErrorAdapter.ToStatus(responseResult.Error!));
-            Assert.Contains("service unavailable", responseResult.Error!.Message, StringComparison.OrdinalIgnoreCase);
-        }
-        finally
-        {
-            await dispatcher.StopOrThrowAsync(ct);
-        }
+        var responseResult = await stream.Response;
+        Assert.True(responseResult.IsFailure);
+        Assert.Equal(OmniRelayStatusCode.Unavailable, OmniRelayErrorAdapter.ToStatus(responseResult.Error!));
+        Assert.Contains("service unavailable", responseResult.Error!.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact(Timeout = 30_000)]
@@ -1230,29 +1182,22 @@ public partial class GrpcTransportTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await using var dispatcherHost = await StartDispatcherAsync(nameof(Unary_ClientInterceptorExecutes), dispatcher, ct);
         await WaitForGrpcReadyAsync(address, ct);
 
-        try
-        {
-            var client = dispatcher.CreateUnaryClient("intercept", codec);
-            var requestMeta = new RequestMeta(
-                service: "intercept",
-                procedure: "intercept::echo",
-                encoding: "application/json",
-                transport: "grpc");
+        var client = dispatcher.CreateUnaryClient("intercept", codec);
+        var requestMeta = new RequestMeta(
+            service: "intercept",
+            procedure: "intercept::echo",
+            encoding: "application/json",
+            transport: "grpc");
 
-            var request = new Request<EchoRequest>(requestMeta, new EchoRequest("payload"));
-            var response = await client.CallAsync(request, ct);
+        var request = new Request<EchoRequest>(requestMeta, new EchoRequest("payload"));
+        var response = await client.CallAsync(request, ct);
 
-            Assert.True(response.IsSuccess, response.Error?.Message);
-            Assert.Equal("true", (await observedClientHeader.Task).ToLowerInvariant());
-            Assert.Equal(1, clientInterceptor.UnaryCallCount);
-        }
-        finally
-        {
-            await dispatcher.StopOrThrowAsync(ct);
-        }
+        Assert.True(response.IsSuccess, response.Error?.Message);
+        Assert.Equal("true", (await observedClientHeader.Task).ToLowerInvariant());
+        Assert.Equal(1, clientInterceptor.UnaryCallCount);
     }
 
     [Fact(Timeout = 30_000)]
@@ -1298,28 +1243,21 @@ public partial class GrpcTransportTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await using var dispatcherHost = await StartDispatcherAsync(nameof(Unary_ServerInterceptorExecutes), dispatcher, ct);
         await WaitForGrpcReadyAsync(address, ct);
 
-        try
-        {
-            var client = dispatcher.CreateUnaryClient("server-intercept", codec);
-            var requestMeta = new RequestMeta(
-                service: "server-intercept",
-                procedure: "server-intercept::echo",
-                encoding: "application/json",
-                transport: "grpc");
-            var request = new Request<EchoRequest>(requestMeta, new EchoRequest("payload"));
+        var client = dispatcher.CreateUnaryClient("server-intercept", codec);
+        var requestMeta = new RequestMeta(
+            service: "server-intercept",
+            procedure: "server-intercept::echo",
+            encoding: "application/json",
+            transport: "grpc");
+        var request = new Request<EchoRequest>(requestMeta, new EchoRequest("payload"));
 
-            var response = await client.CallAsync(request, ct);
+        var response = await client.CallAsync(request, ct);
 
-            Assert.True(response.IsSuccess, response.Error?.Message);
-            Assert.Equal(1, serverInterceptor.UnaryCallCount);
-        }
-        finally
-        {
-            await dispatcher.StopOrThrowAsync(ct);
-        }
+        Assert.True(response.IsSuccess, response.Error?.Message);
+        Assert.Equal(1, serverInterceptor.UnaryCallCount);
     }
 
     [Fact(Timeout = 30_000)]
@@ -1361,29 +1299,22 @@ public partial class GrpcTransportTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await using var dispatcherHost = await StartDispatcherAsync(nameof(UnaryRoundtrip_OverGrpcTransport), dispatcher, ct);
 
         await WaitForGrpcReadyAsync(address, ct);
 
-        try
-        {
-            var client = dispatcher.CreateUnaryClient("echo", codec);
-            var requestMeta = new RequestMeta(
-                service: "echo",
-                procedure: "ping",
-                encoding: "application/json",
-                transport: "grpc");
-            var request = new Request<EchoRequest>(requestMeta, new EchoRequest("hello"));
+        var client = dispatcher.CreateUnaryClient("echo", codec);
+        var requestMeta = new RequestMeta(
+            service: "echo",
+            procedure: "ping",
+            encoding: "application/json",
+            transport: "grpc");
+        var request = new Request<EchoRequest>(requestMeta, new EchoRequest("hello"));
 
-            var result = await client.CallAsync(request, ct);
+        var result = await client.CallAsync(request, ct);
 
-            Assert.True(result.IsSuccess, result.Error?.Message);
-            Assert.Equal("hello-grpc", result.Value.Body.Message);
-        }
-        finally
-        {
-            await dispatcher.StopOrThrowAsync(ct);
-        }
+        Assert.True(result.IsSuccess, result.Error?.Message);
+        Assert.Equal("hello-grpc", result.Value.Body.Message);
     }
 
     [Fact(Timeout = 30_000)]
@@ -1419,28 +1350,21 @@ public partial class GrpcTransportTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await using var dispatcherHost = await StartDispatcherAsync(nameof(OnewayRoundtrip_OverGrpcTransport), dispatcher, ct);
         await WaitForGrpcReadyAsync(address, ct);
 
-        try
-        {
-            var client = dispatcher.CreateOnewayClient("audit", codec);
-            var requestMeta = new RequestMeta(
-                service: "audit",
-                procedure: "audit::record",
-                encoding: "application/json",
-                transport: "grpc");
-            var request = new Request<EchoRequest>(requestMeta, new EchoRequest("ping"));
+        var client = dispatcher.CreateOnewayClient("audit", codec);
+        var requestMeta = new RequestMeta(
+            service: "audit",
+            procedure: "audit::record",
+            encoding: "application/json",
+            transport: "grpc");
+        var request = new Request<EchoRequest>(requestMeta, new EchoRequest("ping"));
 
-            var ackResult = await client.CallAsync(request, ct);
+        var ackResult = await client.CallAsync(request, ct);
 
-            Assert.True(ackResult.IsSuccess, ackResult.Error?.Message);
-            Assert.Equal("ping", await received.Task.WaitAsync(TimeSpan.FromSeconds(2), ct));
-        }
-        finally
-        {
-            await dispatcher.StopOrThrowAsync(ct);
-        }
+        Assert.True(ackResult.IsSuccess, ackResult.Error?.Message);
+        Assert.Equal("ping", await received.Task.WaitAsync(TimeSpan.FromSeconds(2), ct));
     }
 
     [Fact(Timeout = 30_000)]
@@ -1518,40 +1442,33 @@ public partial class GrpcTransportTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await using var dispatcherHost = await StartDispatcherAsync(nameof(DuplexStreaming_OverGrpcTransport), dispatcher, ct);
         await WaitForGrpcReadyAsync(address, ct);
 
-        try
+        var client = dispatcher.CreateDuplexStreamClient("chat", codec);
+        var requestMeta = new RequestMeta(
+            service: "chat",
+            procedure: "chat::talk",
+            encoding: "application/json",
+            transport: "grpc");
+
+        var sessionResult = await client.StartAsync(requestMeta, ct);
+        await using var session = sessionResult.ValueOrThrow();
+
+        var firstWrite = await session.WriteAsync(new ChatMessage("hello"), ct);
+        firstWrite.ThrowIfFailure();
+        var secondWrite = await session.WriteAsync(new ChatMessage("world"), ct);
+        secondWrite.ThrowIfFailure();
+        await session.CompleteRequestsAsync(cancellationToken: ct);
+
+        var responses = new List<string>();
+        await foreach (var response in session.ReadResponsesAsync(ct))
         {
-            var client = dispatcher.CreateDuplexStreamClient("chat", codec);
-            var requestMeta = new RequestMeta(
-                service: "chat",
-                procedure: "chat::talk",
-                encoding: "application/json",
-                transport: "grpc");
-
-            var sessionResult = await client.StartAsync(requestMeta, ct);
-            await using var session = sessionResult.ValueOrThrow();
-
-            var firstWrite = await session.WriteAsync(new ChatMessage("hello"), ct);
-            firstWrite.ThrowIfFailure();
-            var secondWrite = await session.WriteAsync(new ChatMessage("world"), ct);
-            secondWrite.ThrowIfFailure();
-            await session.CompleteRequestsAsync(cancellationToken: ct);
-
-            var responses = new List<string>();
-            await foreach (var response in session.ReadResponsesAsync(ct))
-            {
-                responses.Add(response.ValueOrThrow().Body.Message);
-            }
-
-            Assert.Equal(new[] { "ready", "echo:hello", "echo:world" }, responses);
-            Assert.Equal("application/json", session.ResponseMeta.Encoding);
+            responses.Add(response.ValueOrThrow().Body.Message);
         }
-        finally
-        {
-            await dispatcher.StopOrThrowAsync(ct);
-        }
+
+        Assert.Equal(new[] { "ready", "echo:hello", "echo:world" }, responses);
+        Assert.Equal("application/json", session.ResponseMeta.Encoding);
     }
 
     [Fact(Timeout = 30_000)]
@@ -1594,7 +1511,7 @@ public partial class GrpcTransportTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await using var dispatcherHost = await StartDispatcherAsync(nameof(DuplexStreaming_ResponseAboveLimit_FaultsStream), dispatcher, ct);
         await WaitForGrpcReadyAsync(address, ct);
 
         var rawCodec = new RawCodec();
@@ -1613,7 +1530,6 @@ public partial class GrpcTransportTests
         Assert.True(enumerator.Current.IsFailure);
         Assert.Equal(OmniRelayStatusCode.ResourceExhausted, OmniRelayErrorAdapter.ToStatus(enumerator.Current.Error!));
 
-        await dispatcher.StopOrThrowAsync(ct);
     }
 
     [Fact(Timeout = 30_000)]
@@ -1685,43 +1601,36 @@ public partial class GrpcTransportTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await using var dispatcherHost = await StartDispatcherAsync(nameof(DuplexStreaming_ServerCancellationPropagatesToClient), dispatcher, ct);
         await WaitForGrpcReadyAsync(address, ct);
 
-        try
-        {
-            var client = dispatcher.CreateDuplexStreamClient("chat", codec);
-            var requestMeta = new RequestMeta(
-                service: "chat",
-                procedure: "chat::cancel",
-                encoding: "application/json",
-                transport: "grpc");
+        var client = dispatcher.CreateDuplexStreamClient("chat", codec);
+        var requestMeta = new RequestMeta(
+            service: "chat",
+            procedure: "chat::cancel",
+            encoding: "application/json",
+            transport: "grpc");
 
-            var sessionResult = await client.StartAsync(requestMeta, ct);
-            await using var session = sessionResult.ValueOrThrow();
-            var writeResult = await session.WriteAsync(new ChatMessage("first"), ct);
-            writeResult.ThrowIfFailure();
-            await session.CompleteRequestsAsync(cancellationToken: ct);
+        var sessionResult = await client.StartAsync(requestMeta, ct);
+        await using var session = sessionResult.ValueOrThrow();
+        var writeResult = await session.WriteAsync(new ChatMessage("first"), ct);
+        writeResult.ThrowIfFailure();
+        await session.CompleteRequestsAsync(cancellationToken: ct);
 
-            var enumerator = session.ReadResponsesAsync(ct).GetAsyncEnumerator(ct);
-            Assert.True(await enumerator.MoveNextAsync());
-            Assert.Equal("ready", enumerator.Current.ValueOrThrow().Body.Message);
+        var enumerator = session.ReadResponsesAsync(ct).GetAsyncEnumerator(ct);
+        Assert.True(await enumerator.MoveNextAsync());
+        Assert.Equal("ready", enumerator.Current.ValueOrThrow().Body.Message);
 
-            Assert.True(await enumerator.MoveNextAsync());
-            Assert.Equal("ack:first", enumerator.Current.ValueOrThrow().Body.Message);
+        Assert.True(await enumerator.MoveNextAsync());
+        Assert.Equal("ack:first", enumerator.Current.ValueOrThrow().Body.Message);
 
-            Assert.True(await enumerator.MoveNextAsync());
-            Assert.True(enumerator.Current.IsFailure);
-            Assert.Equal(OmniRelayStatusCode.Cancelled, OmniRelayErrorAdapter.ToStatus(enumerator.Current.Error!));
-            Assert.Contains("server cancelled", enumerator.Current.Error!.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.True(await enumerator.MoveNextAsync());
+        Assert.True(enumerator.Current.IsFailure);
+        Assert.Equal(OmniRelayStatusCode.Cancelled, OmniRelayErrorAdapter.ToStatus(enumerator.Current.Error!));
+        Assert.Contains("server cancelled", enumerator.Current.Error!.Message, StringComparison.OrdinalIgnoreCase);
 
-            Assert.False(await enumerator.MoveNextAsync());
-            await enumerator.DisposeAsync();
-        }
-        finally
-        {
-            await dispatcher.StopOrThrowAsync(ct);
-        }
+        Assert.False(await enumerator.MoveNextAsync());
+        await enumerator.DisposeAsync();
     }
 
     [Fact(Timeout = 30_000)]
@@ -1807,37 +1716,30 @@ public partial class GrpcTransportTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await using var dispatcherHost = await StartDispatcherAsync(nameof(DuplexStreaming_ClientCancellationPropagatesToServer), dispatcher, ct);
         await WaitForGrpcReadyAsync(address, ct);
 
-        try
-        {
-            var client = dispatcher.CreateDuplexStreamClient("chat", codec);
-            var requestMeta = new RequestMeta(
-                service: "chat",
-                procedure: "chat::client-cancel",
-                encoding: "application/json",
-                transport: "grpc");
+        var client = dispatcher.CreateDuplexStreamClient("chat", codec);
+        var requestMeta = new RequestMeta(
+            service: "chat",
+            procedure: "chat::client-cancel",
+            encoding: "application/json",
+            transport: "grpc");
 
-            using var callCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        using var callCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
 
-            var sessionResult = await client.StartAsync(requestMeta, callCts.Token);
-            await using var session = sessionResult.ValueOrThrow();
-            var writeResult = await session.WriteAsync(new ChatMessage("hello"), ct);
-            writeResult.ThrowIfFailure();
+        var sessionResult = await client.StartAsync(requestMeta, callCts.Token);
+        await using var session = sessionResult.ValueOrThrow();
+        var writeResult = await session.WriteAsync(new ChatMessage("hello"), ct);
+        writeResult.ThrowIfFailure();
 
-            await callCts.CancelAsync();
+        await callCts.CancelAsync();
 
-            await using var enumerator = session.ReadResponsesAsync(ct).GetAsyncEnumerator(ct);
-            var hasItem = await enumerator.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10), ct);
-            Assert.True(hasItem);
-            Assert.True(enumerator.Current.IsFailure);
-            Assert.Equal(OmniRelayStatusCode.Cancelled, OmniRelayErrorAdapter.ToStatus(enumerator.Current.Error!));
-        }
-        finally
-        {
-            await dispatcher.StopOrThrowAsync(ct);
-        }
+        await using var enumerator = session.ReadResponsesAsync(ct).GetAsyncEnumerator(ct);
+        var hasItem = await enumerator.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10), ct);
+        Assert.True(hasItem);
+        Assert.True(enumerator.Current.IsFailure);
+        Assert.Equal(OmniRelayStatusCode.Cancelled, OmniRelayErrorAdapter.ToStatus(enumerator.Current.Error!));
     }
 
     [Fact(Timeout = 30_000)]
@@ -1919,10 +1821,9 @@ public partial class GrpcTransportTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await using var dispatcherHost = await StartDispatcherAsync(nameof(DuplexStreaming_FlowControl_ServerSlow), dispatcher, ct);
         await WaitForGrpcReadyAsync(address, ct);
 
-        try
         {
             var client = dispatcher.CreateDuplexStreamClient("chat", codec);
             var requestMeta = new RequestMeta(
@@ -1955,10 +1856,6 @@ public partial class GrpcTransportTests
             {
                 Assert.Equal($"ack-{i + 1}:msg-{i}", responses[i + 1]);
             }
-        }
-        finally
-        {
-            await dispatcher.StopOrThrowAsync(ct);
         }
     }
 
@@ -2005,59 +1902,52 @@ public partial class GrpcTransportTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await using var dispatcherHost = await StartDispatcherAsync(nameof(Unary_PropagatesMetadataBetweenClientAndServer), dispatcher, ct);
         await WaitForGrpcReadyAsync(address, ct);
 
-        try
-        {
-            var client = dispatcher.CreateUnaryClient("echo", codec);
-            var deadline = DateTimeOffset.UtcNow.AddSeconds(2);
-            var ttl = TimeSpan.FromSeconds(5);
+        var client = dispatcher.CreateUnaryClient("echo", codec);
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(2);
+        var ttl = TimeSpan.FromSeconds(5);
 
-            var requestMeta = new RequestMeta(
-                service: "echo",
-                procedure: "metadata",
-                caller: "caller-123",
-                encoding: "application/json",
-                transport: "grpc",
-                shardKey: "shard-1",
-                routingKey: "route-1",
-                routingDelegate: "delegate-1",
-                timeToLive: ttl,
-                deadline: deadline,
-                headers:
-                [
-                    new KeyValuePair<string, string>("x-trace-id", "trace-abc"),
-                    new KeyValuePair<string, string>("x-feature", "beta")
-                ]);
+        var requestMeta = new RequestMeta(
+            service: "echo",
+            procedure: "metadata",
+            caller: "caller-123",
+            encoding: "application/json",
+            transport: "grpc",
+            shardKey: "shard-1",
+            routingKey: "route-1",
+            routingDelegate: "delegate-1",
+            timeToLive: ttl,
+            deadline: deadline,
+            headers:
+            [
+                new KeyValuePair<string, string>("x-trace-id", "trace-abc"),
+                new KeyValuePair<string, string>("x-feature", "beta")
+            ]);
 
-            var request = new Request<EchoRequest>(requestMeta, new EchoRequest("payload"));
+        var request = new Request<EchoRequest>(requestMeta, new EchoRequest("payload"));
 
-            var result = await client.CallAsync(request, ct);
-            Assert.True(result.IsSuccess, result.Error?.Message);
+        var result = await client.CallAsync(request, ct);
+        Assert.True(result.IsSuccess, result.Error?.Message);
 
-            var serverMeta = await observedMeta.Task.WaitAsync(TimeSpan.FromSeconds(5), ct);
-            Assert.Equal(requestMeta.Caller, serverMeta.Caller);
-            Assert.Equal(requestMeta.ShardKey, serverMeta.ShardKey);
-            Assert.Equal(requestMeta.RoutingKey, serverMeta.RoutingKey);
-            Assert.Equal(requestMeta.RoutingDelegate, serverMeta.RoutingDelegate);
-            Assert.Equal(requestMeta.TimeToLive, serverMeta.TimeToLive);
+        var serverMeta = await observedMeta.Task.WaitAsync(TimeSpan.FromSeconds(5), ct);
+        Assert.Equal(requestMeta.Caller, serverMeta.Caller);
+        Assert.Equal(requestMeta.ShardKey, serverMeta.ShardKey);
+        Assert.Equal(requestMeta.RoutingKey, serverMeta.RoutingKey);
+        Assert.Equal(requestMeta.RoutingDelegate, serverMeta.RoutingDelegate);
+        Assert.Equal(requestMeta.TimeToLive, serverMeta.TimeToLive);
 
-            Assert.True(serverMeta.Deadline.HasValue);
-            Assert.InRange((serverMeta.Deadline.Value - deadline).Duration(), TimeSpan.Zero, TimeSpan.FromMilliseconds(5));
+        Assert.True(serverMeta.Deadline.HasValue);
+        Assert.InRange((serverMeta.Deadline.Value - deadline).Duration(), TimeSpan.Zero, TimeSpan.FromMilliseconds(5));
 
-            Assert.Equal("trace-abc", serverMeta.Headers["x-trace-id"]);
-            Assert.Equal("beta", serverMeta.Headers["x-feature"]);
+        Assert.Equal("trace-abc", serverMeta.Headers["x-trace-id"]);
+        Assert.Equal("beta", serverMeta.Headers["x-feature"]);
 
-            var responseMeta = result.Value.Meta;
-            Assert.Equal("application/json", responseMeta.Encoding);
-            Assert.True(responseMeta.TryGetHeader("x-response-id", out var responseId));
-            Assert.Equal("42", responseId);
-        }
-        finally
-        {
-            await dispatcher.StopOrThrowAsync(ct);
-        }
+        var responseMeta = result.Value.Meta;
+        Assert.Equal("application/json", responseMeta.Encoding);
+        Assert.True(responseMeta.TryGetHeader("x-response-id", out var responseId));
+        Assert.Equal("42", responseId);
     }
 
     [Fact(Timeout = 30_000)]
@@ -2124,10 +2014,9 @@ public partial class GrpcTransportTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await using var dispatcherHost = await StartDispatcherAsync(nameof(ServerStreaming_PropagatesMetadataAndHeaders), dispatcher, ct);
         await WaitForGrpcReadyAsync(address, ct);
 
-        try
         {
             var client = dispatcher.CreateStreamClient("stream", codec);
             var deadline = DateTimeOffset.UtcNow.AddSeconds(3);
@@ -2171,10 +2060,7 @@ public partial class GrpcTransportTests
                 Assert.Equal("stream-99", streamId);
             }
         }
-        finally
-        {
-            await dispatcher.StopOrThrowAsync(ct);
-        }
+        
     }
 
     [Fact(Timeout = 30_000)]
@@ -2212,10 +2098,9 @@ public partial class GrpcTransportTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await using var dispatcherHost = await StartDispatcherAsync(nameof(GrpcTransport_ResponseTrailers_SurfaceErrorMetadata), dispatcher, ct);
         await WaitForGrpcReadyAsync(address, ct);
 
-        try
         {
             using var channel = GrpcChannel.ForAddress(address, new GrpcChannelOptions
             {
@@ -2261,10 +2146,6 @@ public partial class GrpcTransportTests
             Assert.True(customHeaderFound, "Expected custom response header to be present in headers or trailers.");
 
         }
-        finally
-        {
-            await dispatcher.StopOrThrowAsync(ct);
-        }
     }
 
     [Fact(Timeout = 30_000)]
@@ -2292,10 +2173,9 @@ public partial class GrpcTransportTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await using var dispatcherHost = await StartDispatcherAsync(nameof(GrpcTransport_ResponseTrailers_SurfaceErrorMetadata), dispatcher, ct);
         await WaitForGrpcReadyAsync(address, ct);
 
-        try
         {
             using var channel = GrpcChannel.ForAddress(address, new GrpcChannelOptions
             {
@@ -2328,10 +2208,7 @@ public partial class GrpcTransportTests
             Assert.Contains(trailers, entry => string.Equals(entry.Key, StatusTrailerKey, StringComparison.OrdinalIgnoreCase)
                 && string.Equals(entry.Value, nameof(OmniRelayStatusCode.PermissionDenied), StringComparison.OrdinalIgnoreCase));
         }
-        finally
-        {
-            await dispatcher.StopOrThrowAsync(ct);
-        }
+        
     }
 
     public static IEnumerable<object[]> FromStatusMappings()
@@ -2422,11 +2299,11 @@ public partial class GrpcTransportTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await using var dispatcherHost = await StartDispatcherAsync(nameof(GrpcOutbound_TelemetryOptions_EnableClientLoggingInterceptor), dispatcher, ct);
         await WaitForGrpcReadyAsync(address, ct);
 
         var loggerProvider = new CaptureLoggerProvider();
-        using var loggerFactory = LoggerFactory.Create(builder =>
+        using var loggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder =>
         {
             builder.SetMinimumLevel(LogLevel.Information);
             builder.AddProvider(loggerProvider);
@@ -2464,7 +2341,6 @@ public partial class GrpcTransportTests
         finally
         {
             await outbound.StopAsync(ct);
-            await dispatcher.StopOrThrowAsync(ct);
         }
     }
 
@@ -2513,7 +2389,7 @@ public partial class GrpcTransportTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await using var dispatcherHost = await StartDispatcherAsync(nameof(GrpcInbound_ServerLoggingInterceptor_WritesLogs), dispatcher, ct);
         await WaitForGrpcReadyAsync(address, ct);
 
         var outbound = new GrpcOutbound(address, "logging");
@@ -2536,7 +2412,6 @@ public partial class GrpcTransportTests
         finally
         {
             await outbound.StopAsync(ct);
-            await dispatcher.StopOrThrowAsync(ct);
         }
 
         Assert.Contains(loggerProvider.Entries, entry =>
@@ -2598,7 +2473,7 @@ public partial class GrpcTransportTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await using var dispatcherHost = await StartDispatcherAsync(nameof(GrpcInbound_TelemetryOptions_RegistersServerLoggingInterceptor), dispatcher, ct);
         await WaitForGrpcReadyAsync(address, ct);
 
         var outbound = new GrpcOutbound(address, "echo");
@@ -2621,7 +2496,6 @@ public partial class GrpcTransportTests
         finally
         {
             await outbound.StopAsync(ct);
-            await dispatcher.StopOrThrowAsync(ct);
         }
 
         Assert.True(serverDuration.HasValue && serverDuration.Value > 0, "Expected server unary duration metric to be recorded.");
@@ -2676,42 +2550,6 @@ public partial class GrpcTransportTests
         }
     }
 
-    private static async Task WaitForGrpcReadyAsync(Uri address, CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(address);
-
-        const int maxAttempts = 100;
-        const int connectTimeoutMilliseconds = 200;
-        const int settleDelayMilliseconds = 50;
-        const int retryDelayMilliseconds = 20;
-
-        for (var attempt = 0; attempt < maxAttempts; attempt++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            try
-            {
-                using var client = new TcpClient();
-                await client.ConnectAsync(address.Host, address.Port)
-                            .WaitAsync(TimeSpan.FromMilliseconds(connectTimeoutMilliseconds), cancellationToken);
-
-                await Task.Delay(TimeSpan.FromMilliseconds(settleDelayMilliseconds), cancellationToken);
-                return;
-            }
-            catch (SocketException)
-            {
-                // Listener not ready yet; retry.
-            }
-            catch (TimeoutException)
-            {
-                // Connection attempt timed out; retry.
-            }
-
-            await Task.Delay(TimeSpan.FromMilliseconds(retryDelayMilliseconds), cancellationToken);
-        }
-
-        throw new TimeoutException("The gRPC inbound failed to bind within the allotted time.");
-    }
 
     private sealed class ServerTaskTracker : IAsyncDisposable
     {
@@ -2844,3 +2682,6 @@ public partial class GrpcTransportTests
         public Stream CreateDecompressionStream(Stream stream) => stream;
     }
 }
+
+
+

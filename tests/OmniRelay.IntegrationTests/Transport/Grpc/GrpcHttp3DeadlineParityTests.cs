@@ -9,16 +9,23 @@ using Grpc.Core;
 using Grpc.Net.Client;
 using OmniRelay.Core;
 using OmniRelay.Dispatcher;
+using OmniRelay.IntegrationTests.Support;
 using OmniRelay.Tests.Support;
 using OmniRelay.TestSupport;
 using OmniRelay.Transport.Grpc;
 using Xunit;
 using static Hugo.Go;
+using static OmniRelay.IntegrationTests.Support.TransportTestHelper;
 
 namespace OmniRelay.IntegrationTests.Transport.Grpc;
 
-public class GrpcHttp3DeadlineParityTests
+public class GrpcHttp3DeadlineParityTests : TransportIntegrationTest
 {
+    public GrpcHttp3DeadlineParityTests(ITestOutputHelper output)
+        : base(output)
+    {
+    }
+
     [Http3Fact(Timeout = 30_000)]
     public async Task Grpc_Http3_DeadlineExceeded_Matches_Http2()
     {
@@ -51,7 +58,7 @@ public class GrpcHttp3DeadlineParityTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await using var dispatcherHost = await StartDispatcherAsync(nameof(Grpc_Http3_DeadlineExceeded_Matches_Http2), dispatcher, ct);
         await WaitForGrpcReadyAsync(address, ct);
 
         // HTTP/3 client with tight deadline
@@ -100,26 +107,6 @@ public class GrpcHttp3DeadlineParityTests
 
         // Unblock server and stop
         block.TrySetCanceled(ct);
-        await dispatcher.StopOrThrowAsync(ct);
-    }
-
-    private static async Task WaitForGrpcReadyAsync(Uri address, CancellationToken cancellationToken)
-    {
-        using var client = new System.Net.Sockets.TcpClient();
-        for (var i = 0; i < 100; i++)
-        {
-            try
-            {
-                await client.ConnectAsync(address.Host, address.Port).WaitAsync(TimeSpan.FromMilliseconds(200), cancellationToken);
-                await Task.Delay(50, cancellationToken);
-                return;
-            }
-            catch
-            {
-                await Task.Delay(25, cancellationToken);
-            }
-        }
-        throw new TimeoutException("gRPC inbound did not bind in time");
     }
 
     private static SocketsHttpHandler CreateHttp3SocketsHandler() => new()
