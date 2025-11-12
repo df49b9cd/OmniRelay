@@ -107,7 +107,7 @@ public sealed partial class LeadershipCoordinator : ILifecycle, ILeadershipObser
                 {
                     await loop.ConfigureAwait(false);
                 }
-                catch (OperationCanceledException)
+                catch (OperationCanceledException) when (cts.IsCancellationRequested)
                 {
                 }
             }
@@ -118,11 +118,23 @@ public sealed partial class LeadershipCoordinator : ILifecycle, ILeadershipObser
             var lease = state.Lease!;
             try
             {
-                await _store.TryReleaseAsync(state.Scope.ScopeId, lease, cancellationToken).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                // Ignore cancellation during shutdown.
+                try
+                {
+                    await _store.TryReleaseAsync(state.Scope.ScopeId, lease, cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+                {
+                    // Shutdown was cancelled; skip store release but still publish local loss event
+                }
+                catch (Exception ex) when (!IsFatal(ex))
+                {
+                    // Best-effort cleanup during shutdown; log and continue if store release fails
+                    LeadershipCoordinatorLog.FailedToReleaseScope(_logger, state.Scope.ScopeId, ex);
+                }
+
+                PublishLoss(state, lease, LeadershipEventKind.SteppedDown, "shutdown");
+                state.Lease = null;
+                state.LastFailure = null;
             }
             // If there is a custom exception type for leadership store errors, catch it here.
             // Otherwise, let unexpected exceptions propagate.
@@ -185,7 +197,7 @@ public sealed partial class LeadershipCoordinator : ILifecycle, ILeadershipObser
                 {
                     return;
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
                 {
                     LeadershipCoordinatorLog.EvaluationFailed(_logger, state.Scope.ScopeId, ex);
                 }
@@ -551,7 +563,7 @@ public sealed partial class LeadershipCoordinator : ILifecycle, ILeadershipObser
             {
                 scope = descriptor.ToScope();
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
             {
                 LeadershipCoordinatorLog.InvalidScopeConfiguration(_logger, ex);
                 continue;
@@ -575,6 +587,9 @@ public sealed partial class LeadershipCoordinator : ILifecycle, ILeadershipObser
 
         _leaseHealthTracker.RecordGossip(NodeId, metadata);
     }
+
+    private static bool IsFatal(Exception ex) =>
+        ex is OutOfMemoryException or StackOverflowException;
 
     private sealed class ScopeState
     {

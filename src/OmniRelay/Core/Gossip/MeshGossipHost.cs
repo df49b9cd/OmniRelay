@@ -6,6 +6,7 @@ using System.Net.Http.Json;
 using System.Net.Security;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
+using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -124,7 +125,7 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
                 await _gossipLoop.ConfigureAwait(false);
             }
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (_cts.IsCancellationRequested)
         {
         }
 
@@ -135,7 +136,7 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
                 await _sweepLoop.ConfigureAwait(false);
             }
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (_cts.IsCancellationRequested)
         {
         }
 
@@ -283,14 +284,18 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
                 await Task.Delay(_options.Interval, cancellationToken).ConfigureAwait(false);
                 await ExecuteRoundAsync(cancellationToken).ConfigureAwait(false);
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 break;
             }
+#pragma warning disable CA1031 // Do not catch general exception types
+            // Generic catch is intentional to prevent gossip loop from crashing.
+            // This is a background service that should be resilient to unexpected failures.
             catch (Exception ex)
             {
                 MeshGossipHostLog.GossipRoundFailed(_logger, ex);
             }
+#pragma warning restore CA1031
         }
     }
 
@@ -303,15 +308,10 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
 
         var snapshot = _membership.Snapshot();
         var members = _membership.PickFanout(_options.Fanout);
-        var targets = new List<MeshGossipPeerEndpoint>();
-
-        foreach (var member in members)
-        {
-            if (MeshGossipPeerEndpoint.TryParse(member.Metadata.Endpoint ?? string.Empty, out var endpoint))
-            {
-                targets.Add(endpoint);
-            }
-        }
+        var targets = members
+            .Select(member => ParseEndpoint(member.Metadata.Endpoint))
+            .OfType<MeshGossipPeerEndpoint>()
+            .ToList();
 
         if (targets.Count == 0 && _seedPeers.Count > 0)
         {
@@ -354,7 +354,17 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
             {
                 throw;
             }
-            catch (Exception ex)
+            catch (HttpRequestException ex)
+            {
+                MeshGossipMetrics.RecordMessage("outbound", "failure");
+                MeshGossipHostLog.GossipRequestFailed(_logger, target.ToString(), ex);
+            }
+            catch (TaskCanceledException ex)
+            {
+                MeshGossipMetrics.RecordMessage("outbound", "failure");
+                MeshGossipHostLog.GossipRequestFailed(_logger, target.ToString(), ex);
+            }
+            catch (JsonException ex)
             {
                 MeshGossipMetrics.RecordMessage("outbound", "failure");
                 MeshGossipHostLog.GossipRequestFailed(_logger, target.ToString(), ex);
@@ -378,14 +388,18 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
                 _membership.Sweep(suspicion, leave);
                 RecordMetrics(_membership.Snapshot());
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 break;
             }
+#pragma warning disable CA1031 // Do not catch general exception types
+            // Generic catch is intentional to prevent sweep loop from crashing.
+            // This is a background service that should be resilient to unexpected failures.
             catch (Exception ex)
             {
                 MeshGossipHostLog.GossipSweepFailed(_logger, ex);
             }
+#pragma warning restore CA1031
         }
     }
 
@@ -580,6 +594,13 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
         }
     }
 
+    private static MeshGossipPeerEndpoint? ParseEndpoint(string? endpoint)
+    {
+        return MeshGossipPeerEndpoint.TryParse(endpoint ?? string.Empty, out var parsed)
+            ? parsed
+            : null;
+    }
+
     private static ILogger<MeshGossipCertificateProvider> CreateCertificateLogger(ILoggerFactory factory) =>
         factory.CreateLogger<MeshGossipCertificateProvider>();
 
@@ -595,7 +616,7 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
         {
             StopAsync(CancellationToken.None).AsTask().GetAwaiter().GetResult();
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException and not AccessViolationException)
         {
             MeshGossipHostLog.DisposalFailed(_logger, ex);
         }
