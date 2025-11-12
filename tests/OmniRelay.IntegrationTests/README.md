@@ -31,6 +31,13 @@ Guidance for running the integration suite locally and in CI, with an emphasis o
 - Keep fixtures self-contained and fast to minimize flakiness; prefer per-test dispatcher instances over shared global state.
 - Document natural follow-up actions (rerunning suites, inspecting metrics) alongside each scenario so failures are easy to triage.
 
+### Best Practices
+- **Test public seams.** Continue to drive behavior through DI, transports, and clients exactly as production does so failures describe actual regressions.
+- **One scenario per test.** Follow a `Feature_Scenario_Outcome` pattern and keep assertions scoped to that scenario to simplify triage.
+- **Lean on async fixtures.** Reuse `IAsyncLifetime`/collection fixtures for expensive hosts or Testcontainers so they spin up once and always dispose cleanly.
+- **Capture diagnostics.** Pipe dispatcher logs and container output into `ITestOutputHelper`/`ILoggerFactory` so CI failures include actionable traces.
+- **Gate optional dependencies.** Just like HTTP/3 gating, wrap Docker/tooling prerequisites in feature flags or capability checks and fail fast when unavailable.
+
 ## MsQuic / HTTP/3 prerequisites
 
 - **Use modern runner images.** HTTP/3 tests require MsQuic support (libmsquic ≥ 2.2). Choose:
