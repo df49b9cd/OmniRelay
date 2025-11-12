@@ -595,7 +595,7 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
         {
             StopAsync(CancellationToken.None).AsTask().GetAwaiter().GetResult();
         }
-        catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+        catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException and not AccessViolationException)
         {
             MeshGossipHostLog.DisposalFailed(_logger, ex);
         }
