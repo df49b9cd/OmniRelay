@@ -9,6 +9,7 @@ using OmniRelay.Core;
 using OmniRelay.Dispatcher;
 using OmniRelay.IntegrationTests.Support;
 using OmniRelay.Tests;
+using OmniRelay.Tests.Support;
 using OmniRelay.TestSupport;
 using OmniRelay.Transport.Http;
 using Shouldly;

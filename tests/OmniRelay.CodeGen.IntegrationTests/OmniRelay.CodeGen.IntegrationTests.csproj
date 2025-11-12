@@ -31,7 +31,7 @@
     <Compile Include="../TestSupport/Http3FactAttribute.cs" Link="Support/Http3FactAttribute.cs" />
     <Compile Include="../TestSupport/Http3TestHelper.cs" Link="Support/Http3TestHelper.cs" />
     <Compile Include="../TestSupport/Support/TestRuntimeConfigurator.cs" Link="Support/TestRuntimeConfigurator.cs" />
-    <Compile Include="../OmniRelay.IntegrationTests/Support/TestCertificateFactory.cs" Link="Support/TestCertificateFactory.cs" />
+    <Compile Include="../TestSupport/TestCertificateFactory.cs" Link="Support/TestCertificateFactory.cs" />
     <Compile Include="../OmniRelay.IntegrationTests/Support/HostedProtocolCaptureInterceptor.cs" Link="Support/HostedProtocolCaptureInterceptor.cs" />
     <Compile Include="../OmniRelay.IntegrationTests/Support/GeneratedTestService.cs" Link="Support/GeneratedTestService.cs" />
   </ItemGroup>

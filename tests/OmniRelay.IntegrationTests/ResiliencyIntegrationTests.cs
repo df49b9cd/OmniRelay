@@ -25,6 +25,7 @@ using OmniRelay.Dispatcher;
 using OmniRelay.Errors;
 using OmniRelay.IntegrationTests.Support;
 using OmniRelay.Tests;
+using OmniRelay.Tests.Support;
 using OmniRelay.TestSupport;
 using OmniRelay.Transport.Grpc;
 using OmniRelay.Transport.Http;

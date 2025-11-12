@@ -23,6 +23,7 @@ using OmniRelay.Dispatcher;
 using OmniRelay.IntegrationTests.Support;
 using OmniRelay.Tests;
 using OmniRelay.Tests.Protos;
+using OmniRelay.Tests.Support;
 using OmniRelay.TestSupport;
 using OmniRelay.Transport.Grpc;
 using OmniRelay.Transport.Grpc.Interceptors;
