@@ -50,6 +50,7 @@ WORKDIR /repo
 COPY --chown=${CI_USER}:${CI_USER} global.json Directory.Build.props Directory.Packages.props OmniRelay.slnx ./
 COPY --chown=${CI_USER}:${CI_USER} src ./src
 COPY --chown=${CI_USER}:${CI_USER} tests ./tests
+COPY --chown=${CI_USER}:${CI_USER} samples ./samples
 
 RUN --mount=type=cache,id=nuget,target=${NUGET_PACKAGES} \
     dotnet restore OmniRelay.slnx
