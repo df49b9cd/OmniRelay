@@ -45,17 +45,11 @@ public sealed class LeadershipEventHub
 
         // Emit snapshot first so clients have immediate state.
         var snapshot = Snapshot();
-        foreach (var token in snapshot.Tokens)
+        foreach (var snapshotEvent in snapshot.Tokens
+            .Where(t => subscription.Matches(t.Scope))
+            .Select(t => LeadershipEvent.ForSnapshot(t) with { OccurredAt = _timeProvider.GetUtcNow() }))
         {
-            if (subscription.Matches(token.Scope))
-            {
-                var snapshotEvent = LeadershipEvent.ForSnapshot(token) with
-                {
-                    OccurredAt = _timeProvider.GetUtcNow()
-                };
-
-                subscription.TryWrite(snapshotEvent);
-            }
+            subscription.TryWrite(snapshotEvent);
         }
 
         return ReadAsync(subscription, cancellationToken);
@@ -87,13 +81,8 @@ public sealed class LeadershipEventHub
     /// <summary>Broadcasts an event to all subscribers.</summary>
     public void Publish(LeadershipEvent leadershipEvent)
     {
-        foreach (var subscription in _subscriptions.Values)
+        foreach (var subscription in _subscriptions.Values.Where(s => s.Matches(leadershipEvent.Scope)))
         {
-            if (!subscription.Matches(leadershipEvent.Scope))
-            {
-                continue;
-            }
-
             if (!subscription.TryWrite(leadershipEvent))
             {
                 LeadershipEventHubLog.DroppedEvent(_logger, leadershipEvent.Scope);
