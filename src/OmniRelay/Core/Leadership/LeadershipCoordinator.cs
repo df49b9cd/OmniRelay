@@ -107,7 +107,7 @@ public sealed partial class LeadershipCoordinator : ILifecycle, ILeadershipObser
                 {
                     await loop.ConfigureAwait(false);
                 }
-                catch (OperationCanceledException)
+                catch (OperationCanceledException) when (cts.IsCancellationRequested)
                 {
                 }
             }
@@ -121,7 +121,7 @@ public sealed partial class LeadershipCoordinator : ILifecycle, ILeadershipObser
                 {
                     await _store.TryReleaseAsync(state.Scope.ScopeId, lease, cancellationToken).ConfigureAwait(false);
                 }
-                catch (OperationCanceledException)
+                catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
                 {
                     // Shutdown was cancelled; skip store release but still publish local loss event
                 }
@@ -185,7 +185,7 @@ public sealed partial class LeadershipCoordinator : ILifecycle, ILeadershipObser
                 {
                     return;
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
                 {
                     LeadershipCoordinatorLog.EvaluationFailed(_logger, state.Scope.ScopeId, ex);
                 }
@@ -551,7 +551,7 @@ public sealed partial class LeadershipCoordinator : ILifecycle, ILeadershipObser
             {
                 scope = descriptor.ToScope();
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
             {
                 LeadershipCoordinatorLog.InvalidScopeConfiguration(_logger, ex);
                 continue;
