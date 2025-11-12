@@ -6,23 +6,29 @@ WORKDIR /source
 COPY global.json .
 COPY Directory.Build.props .
 COPY Directory.Package.props .
-COPY OmniRelay.Cli/OmniRelay.Cli.csproj OmniRelay.Cli/
-COPY OmniRelay.Codegen.Protobuf.Core/OmniRelay.Codegen.Protobuf.Core.csproj OmniRelay.Codegen.Protobuf.Core/
-COPY OmniRelay.Codegen.Protobuf.Generator/OmniRelay.Codegen.Protobuf.Generator.csproj OmniRelay.Codegen.Protobuf.Generator/
-COPY OmniRelay.Codegen.Protobuf/OmniRelay.Codegen.Protobuf.csproj OmniRelay.Codegen.Protobuf/
-COPY OmniRelay.Configuration/OmniRelay.Configuration.csproj OmniRelay.Configuration/
-COPY OmniRelay.ResourceLeaseReplicator.Grpc/OmniRelay.ResourceLeaseReplicator.Grpc.csproj OmniRelay.ResourceLeaseReplicator.Grpc/
-COPY OmniRelay.ResourceLeaseReplicator.ObjectStorage/OmniRelay.ResourceLeaseReplicator.ObjectStorage.csproj OmniRelay.ResourceLeaseReplicator.ObjectStorage/
-COPY OmniRelay.ResourceLeaseReplicator.Sqlite/OmniRelay.ResourceLeaseReplicator.Sqlite.csproj OmniRelay.ResourceLeaseReplicator.Sqlite/
-COPY OmniRelay/OmniRelay.csproj OmniRelay/
+COPY src/OmniRelay.Cli/OmniRelay.Cli.csproj OmniRelay.Cli/
+COPY src/OmniRelay.Codegen.Protobuf.Core/OmniRelay.Codegen.Protobuf.Core.csproj OmniRelay.Codegen.Protobuf.Core/
+COPY src/OmniRelay.Codegen.Protobuf.Generator/OmniRelay.Codegen.Protobuf.Generator.csproj OmniRelay.Codegen.Protobuf.Generator/
+COPY src/OmniRelay.Codegen.Protobuf/OmniRelay.Codegen.Protobuf.csproj OmniRelay.Codegen.Protobuf/
+COPY src/OmniRelay.Configuration/OmniRelay.Configuration.csproj OmniRelay.Configuration/
+COPY src/OmniRelay.ResourceLeaseReplicator.Grpc/OmniRelay.ResourceLeaseReplicator.Grpc.csproj OmniRelay.ResourceLeaseReplicator.Grpc/
+COPY src/OmniRelay.ResourceLeaseReplicator.ObjectStorage/OmniRelay.ResourceLeaseReplicator.ObjectStorage.csproj OmniRelay.ResourceLeaseReplicator.ObjectStorage/
+COPY src/OmniRelay.ResourceLeaseReplicator.Sqlite/OmniRelay.ResourceLeaseReplicator.Sqlite.csproj OmniRelay.ResourceLeaseReplicator.Sqlite/
+COPY src/OmniRelay/OmniRelay.csproj OmniRelay/
 
 RUN dotnet restore **/*.csproj
 
 # copy and build app and libraries
-COPY complexapp/ complexapp/
-COPY libfoo/ libfoo/
-COPY libbar/ libbar/
-WORKDIR /source/complexapp
+COPY src/OmniRelay.Cli/ OmniRelay.Cli/
+COPY src/OmniRelay.Codegen.Protobuf.Core/ OmniRelay.Codegen.Protobuf.Core/
+COPY src/OmniRelay.Codegen.Protobuf.Generator/ OmniRelay.Codegen.Protobuf.Generator/
+COPY src/OmniRelay.Codegen.Protobuf/ OmniRelay.Codegen.Protobuf/
+COPY src/OmniRelay.Configuration/ OmniRelay.Configuration/
+COPY src/OmniRelay.ResourceLeaseReplicator.Grpc/ OmniRelay.ResourceLeaseReplicator.Grpc/
+COPY src/OmniRelay.ResourceLeaseReplicator.ObjectStorage/ OmniRelay.ResourceLeaseReplicator.ObjectStorage/
+COPY src/OmniRelay.ResourceLeaseReplicator.Sqlite/ OmniRelay.ResourceLeaseReplicator.Sqlite/
+COPY src/OmniRelay/OmniRelay.csproj OmniRelay/
+WORKDIR /source/omnirelay
 RUN dotnet build -c Release --no-restore
 
 # test stage -- exposes optional entrypoint
