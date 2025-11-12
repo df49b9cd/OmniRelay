@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OmniRelay.Configuration.Internal;
+using Shouldly;
 using Xunit;
 
 namespace OmniRelay.Configuration.UnitTests.Configuration;
@@ -14,12 +15,12 @@ public sealed class DiagnosticsRuntimeStateTests
         var runtime = new DiagnosticsRuntimeState(monitor, cache);
 
         runtime.SetMinimumLogLevel(LogLevel.Debug);
-        Assert.Equal(LogLevel.Debug, runtime.MinimumLogLevel);
-        Assert.Equal(LogLevel.Debug, monitor.CurrentValue.MinLevel);
+        runtime.MinimumLogLevel.ShouldBe(LogLevel.Debug);
+        monitor.CurrentValue.MinLevel.ShouldBe(LogLevel.Debug);
 
         runtime.SetMinimumLogLevel(null);
-        Assert.Null(runtime.MinimumLogLevel);
-        Assert.Equal(LogLevel.Information, monitor.CurrentValue.MinLevel);
+        runtime.MinimumLogLevel.ShouldBeNull();
+        monitor.CurrentValue.MinLevel.ShouldBe(LogLevel.Information);
     }
 
     [Fact]
@@ -29,13 +30,13 @@ public sealed class DiagnosticsRuntimeStateTests
         var runtime = new DiagnosticsRuntimeState(monitor, cache);
 
         runtime.SetTraceSamplingProbability(0.25);
-        Assert.Equal(0.25, runtime.TraceSamplingProbability);
+        runtime.TraceSamplingProbability.ShouldBe(0.25);
 
         runtime.SetTraceSamplingProbability(null);
-        Assert.Null(runtime.TraceSamplingProbability);
+        runtime.TraceSamplingProbability.ShouldBeNull();
 
-        Assert.Throws<ArgumentOutOfRangeException>(() => runtime.SetTraceSamplingProbability(1.5));
-        Assert.Throws<ArgumentOutOfRangeException>(() => runtime.SetTraceSamplingProbability(-0.1));
+        Should.Throw<ArgumentOutOfRangeException>(() => runtime.SetTraceSamplingProbability(1.5));
+        Should.Throw<ArgumentOutOfRangeException>(() => runtime.SetTraceSamplingProbability(-0.1));
     }
 
     private static (IOptionsMonitor<LoggerFilterOptions> Monitor, IOptionsMonitorCache<LoggerFilterOptions> Cache) CreateOptions()
