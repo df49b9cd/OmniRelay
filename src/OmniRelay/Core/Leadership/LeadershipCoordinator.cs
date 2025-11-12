@@ -404,6 +404,7 @@ public sealed partial class LeadershipCoordinator : ILifecycle, ILeadershipObser
 
         state.LastPublishedFence = lease.FenceToken;
         state.LastPublishedLeader = lease.LeaderId;
+        state.LastPublishedExpiry = lease.ExpiresAt;
 
         if (string.Equals(lease.LeaderId, NodeId, StringComparison.Ordinal))
         {
@@ -433,6 +434,7 @@ public sealed partial class LeadershipCoordinator : ILifecycle, ILeadershipObser
 
         state.LastPublishedFence = 0;
         state.LastPublishedLeader = null;
+        state.LastPublishedExpiry = null;
 
         if (string.Equals(lease.LeaderId, NodeId, StringComparison.Ordinal))
         {
@@ -442,13 +444,16 @@ public sealed partial class LeadershipCoordinator : ILifecycle, ILeadershipObser
 
     private void PublishObservation(ScopeState state, LeadershipLeaseRecord lease, string reason)
     {
-        if (state.LastPublishedFence == lease.FenceToken && string.Equals(state.LastPublishedLeader, lease.LeaderId, StringComparison.Ordinal))
+        if (state.LastPublishedFence == lease.FenceToken &&
+            string.Equals(state.LastPublishedLeader, lease.LeaderId, StringComparison.Ordinal) &&
+            state.LastPublishedExpiry == lease.ExpiresAt)
         {
             return;
         }
 
         state.LastPublishedFence = lease.FenceToken;
         state.LastPublishedLeader = lease.LeaderId;
+        state.LastPublishedExpiry = lease.ExpiresAt;
 
         var token = LeadershipToken.FromLease(state.Scope, lease);
         _eventHub.UpsertToken(token);
@@ -469,6 +474,7 @@ public sealed partial class LeadershipCoordinator : ILifecycle, ILeadershipObser
     {
         state.LastPublishedFence = 0;
         state.LastPublishedLeader = null;
+        state.LastPublishedExpiry = null;
         _eventHub.RemoveScope(state.Scope.ScopeId);
 
         var token = LeadershipToken.FromLease(state.Scope, lease);
@@ -603,6 +609,8 @@ public sealed partial class LeadershipCoordinator : ILifecycle, ILeadershipObser
         public long LastPublishedFence;
 
         public string? LastPublishedLeader;
+
+        public DateTimeOffset? LastPublishedExpiry;
     }
 
     private static partial class LeadershipCoordinatorLog
