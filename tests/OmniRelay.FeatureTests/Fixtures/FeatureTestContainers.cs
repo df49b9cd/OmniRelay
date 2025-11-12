@@ -51,7 +51,7 @@ public sealed class FeatureTestContainers : IAsyncDisposable
                 .WithEnvironment("POSTGRES_USER", _options.DatabaseUser)
                 .WithEnvironment("POSTGRES_PASSWORD", _options.Secrets.PostgresPassword)
                 .WithPortBinding(5432, assignRandomHostPort: true)
-                .WithWaitStrategy(Wait.ForUnixContainer().UntilPortIsAvailable(5432)),
+                .WithWaitStrategy(Wait.ForUnixContainer().UntilExternalTcpPortIsAvailable(5432)),
             cancellationToken);
 
     public Task<IContainer> EnsureEventStoreAsync(CancellationToken cancellationToken = default)
@@ -63,7 +63,7 @@ public sealed class FeatureTestContainers : IAsyncDisposable
                 .WithEnvironment("EVENTSTORE_INSECURE", "true")
                 .WithEnvironment("EVENTSTORE_RUN_PROJECTIONS", "All")
                 .WithPortBinding(2113, assignRandomHostPort: true)
-                .WithWaitStrategy(Wait.ForUnixContainer().UntilPortIsAvailable(2113)),
+                .WithWaitStrategy(Wait.ForUnixContainer().UntilExternalTcpPortIsAvailable(2113)),
             cancellationToken);
 
     public Task<IContainer> EnsureObjectStorageAsync(CancellationToken cancellationToken = default)
@@ -76,7 +76,7 @@ public sealed class FeatureTestContainers : IAsyncDisposable
                 .WithEnvironment("MINIO_ROOT_PASSWORD", _options.Secrets.ObjectStorageSecretKey)
                 .WithCommand("server", "/data", "--console-address", ":9001")
                 .WithPortBinding(9000, assignRandomHostPort: true)
-                .WithWaitStrategy(Wait.ForUnixContainer().UntilPortIsAvailable(9000)),
+                .WithWaitStrategy(Wait.ForUnixContainer().UntilExternalTcpPortIsAvailable(9000)),
             cancellationToken);
 
     public Task<IContainer> EnsureMessageBusAsync(CancellationToken cancellationToken = default)
@@ -86,7 +86,7 @@ public sealed class FeatureTestContainers : IAsyncDisposable
                 .WithImage(_options.MessageBusImage)
                 .WithName(BuildContainerName("nats"))
                 .WithPortBinding(4222, assignRandomHostPort: true)
-                .WithWaitStrategy(Wait.ForUnixContainer().UntilPortIsAvailable(4222)),
+                .WithWaitStrategy(Wait.ForUnixContainer().UntilExternalTcpPortIsAvailable(4222)),
             cancellationToken);
 
     public async ValueTask DisposeAsync()

@@ -20,7 +20,7 @@ public sealed class DispatcherBootstrapFeatureTests
     [Fact(DisplayName = "Dispatcher host boots with feature configuration")]
     public void DispatcherStartsWithFeatureConfiguration()
     {
-        var dispatcher = _application.Services.GetRequiredService<Dispatcher>();
+        var dispatcher = _application.Services.GetRequiredService<Dispatcher.Dispatcher>();
 
         Assert.Equal("feature-tests-relay", dispatcher.ServiceName);
         Assert.Equal(DispatcherStatus.Running, dispatcher.Status);
