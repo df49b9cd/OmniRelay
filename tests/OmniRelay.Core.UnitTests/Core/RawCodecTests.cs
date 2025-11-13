@@ -1,4 +1,3 @@
-using OmniRelay.Core;
 using OmniRelay.Errors;
 using Xunit;
 

@@ -1,15 +1,10 @@
-using System.Collections.Generic;
-using System.Linq;
-using System.Net.Http;
 using System.Text.Json.Serialization;
-using Hugo;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NSubstitute;
-using OmniRelay.Configuration;
 using OmniRelay.Core;
 using OmniRelay.Core.Peers;
 using OmniRelay.Core.Transport;
@@ -18,7 +13,6 @@ using OmniRelay.Errors;
 using OmniRelay.Transport.Http;
 using Shouldly;
 using Xunit;
-using static Hugo.Go;
 using OmniRelayDispatcher = OmniRelay.Dispatcher.Dispatcher;
 
 namespace OmniRelay.Configuration.UnitTests.Configuration;

@@ -1,12 +1,7 @@
-using System;
-using System.Net.Http;
-using System.Text;
 using System.Text.Json;
-using System.Threading.Tasks;
 using OmniRelay.Core;
 using OmniRelay.Dispatcher;
 using OmniRelay.IntegrationTests.Support;
-using OmniRelay.Tests;
 using OmniRelay.Transport.Http;
 using Xunit;
 using static OmniRelay.IntegrationTests.Support.TransportTestHelper;

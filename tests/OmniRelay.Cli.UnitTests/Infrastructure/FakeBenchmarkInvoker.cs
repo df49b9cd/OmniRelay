@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using OmniRelay.Cli;
 using OmniRelay.Core;
 
 namespace OmniRelay.Cli.UnitTests.Infrastructure;

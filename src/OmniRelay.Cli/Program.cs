@@ -13,7 +13,6 @@ using Google.Protobuf.WellKnownTypes;
 using Hugo;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using OmniRelay.Configuration;
 using OmniRelay.Core;

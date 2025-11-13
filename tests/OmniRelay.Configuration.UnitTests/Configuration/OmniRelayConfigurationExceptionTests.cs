@@ -1,4 +1,3 @@
-using OmniRelay.Configuration;
 using Shouldly;
 using Xunit;
 

@@ -1,11 +1,7 @@
 using System.Net;
-using System.Net.Http;
 using System.Net.Quic;
 using System.Net.Security;
 using System.Security.Authentication;
-using System.Security.Cryptography;
-using System.Security.Cryptography.X509Certificates;
-using Microsoft.Extensions.DependencyInjection;
 using OmniRelay.Core;
 using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;

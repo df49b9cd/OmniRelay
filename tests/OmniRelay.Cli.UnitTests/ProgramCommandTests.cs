@@ -1,10 +1,7 @@
 using System.Collections.Immutable;
-using System.Linq;
 using System.Net;
-using System.Net.Http;
 using System.Text;
 using System.Text.Json;
-using OmniRelay.Cli;
 using OmniRelay.Cli.UnitTests.Infrastructure;
 using OmniRelay.Dispatcher;
 

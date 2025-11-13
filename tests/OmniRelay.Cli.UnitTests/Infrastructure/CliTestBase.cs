@@ -1,5 +1,3 @@
-using OmniRelay.Cli;
-
 namespace OmniRelay.Cli.UnitTests.Infrastructure;
 
 public abstract class CliTestBase : IDisposable

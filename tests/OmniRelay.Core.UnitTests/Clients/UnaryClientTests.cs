@@ -1,11 +1,6 @@
-using System;
-using System.Threading;
-using System.Threading.Tasks;
 using Hugo;
 using NSubstitute;
-using OmniRelay.Core;
 using OmniRelay.Core.Clients;
-using OmniRelay.Core.Middleware;
 using OmniRelay.Core.Transport;
 using Xunit;
 using static Hugo.Go;

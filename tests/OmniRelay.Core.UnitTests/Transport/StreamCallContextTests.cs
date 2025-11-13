@@ -1,4 +1,3 @@
-using System;
 using Hugo;
 using OmniRelay.Core.Transport;
 using Xunit;

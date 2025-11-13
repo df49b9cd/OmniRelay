@@ -1,9 +1,5 @@
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Diagnostics.Tracing;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using OmniRelay.Core.Diagnostics;
 using OmniRelay.TestSupport;

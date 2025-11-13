@@ -2,7 +2,6 @@ using System.Text;
 using Google.Protobuf;
 using Google.Protobuf.Reflection;
 using Google.Protobuf.WellKnownTypes;
-using OmniRelay.Core;
 using OmniRelay.Errors;
 using Xunit;
 

@@ -1,5 +1,4 @@
 using System.Net;
-using System.Text;
 using OmniRelay.Core;
 using OmniRelay.Core.Transport;
 using OmniRelay.Transport.Http;

@@ -1,13 +1,7 @@
 using System.Net;
-using System.Net.Http;
 using System.Net.Quic;
-using System.Net.Security;
-using System.Security.Authentication;
-using System.Security.Cryptography;
-using System.Security.Cryptography.X509Certificates;
 using Grpc.Core;
 using Grpc.Core.Interceptors;
-using Grpc.Net.Client;
 using Microsoft.Extensions.DependencyInjection;
 using OmniRelay.Core;
 using OmniRelay.Core.Clients;

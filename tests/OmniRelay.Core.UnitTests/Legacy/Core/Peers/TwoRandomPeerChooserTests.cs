@@ -1,4 +1,3 @@
-using System.Collections.Immutable;
 using OmniRelay.Core;
 using OmniRelay.Core.Peers;
 using Xunit;

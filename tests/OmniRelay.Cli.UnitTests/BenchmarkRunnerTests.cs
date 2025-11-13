@@ -1,8 +1,3 @@
-using System;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using OmniRelay.Cli;
 using OmniRelay.Cli.UnitTests.Infrastructure;
 using OmniRelay.Core;
 

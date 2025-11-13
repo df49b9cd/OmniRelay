@@ -1,5 +1,3 @@
-using Hugo;
-
 namespace OmniRelay.Cli.UnitTests.Infrastructure;
 
 internal sealed class CommandTestHarness

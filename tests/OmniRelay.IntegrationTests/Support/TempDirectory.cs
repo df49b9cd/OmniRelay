@@ -1,6 +1,3 @@
-using System;
-using System.IO;
-
 namespace OmniRelay.IntegrationTests.Support;
 
 internal sealed class TempDirectory : IDisposable

@@ -1,4 +1,3 @@
-using System;
 using OmniRelay.Core.Peers;
 using Xunit;
 

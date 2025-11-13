@@ -1,12 +1,6 @@
-using System;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using Hugo;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
-using OmniRelay.Core;
 using OmniRelay.Core.Transport;
 using Xunit;
 using static Hugo.Go;

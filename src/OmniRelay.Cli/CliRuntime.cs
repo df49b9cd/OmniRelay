@@ -1,4 +1,3 @@
-using System.Net.Http;
 using Hugo;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -6,7 +5,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using OmniRelay.Configuration;
 using OmniRelay.Core;
-using OmniRelay.Dispatcher;
 using OmniRelay.Transport.Grpc;
 
 namespace OmniRelay.Cli;

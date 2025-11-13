@@ -1,7 +1,4 @@
 using Microsoft.Extensions.Configuration;
-using OmniRelay.Dispatcher;
-using OmniRelay.Transport.Grpc;
-using OmniRelay.Transport.Http;
 
 namespace OmniRelay.Cli.UnitTests.Infrastructure;
 

@@ -1,4 +1,3 @@
-using System.Linq;
 using Microsoft.Extensions.Logging.Abstractions;
 using OmniRelay.Core.Gossip;
 using OmniRelay.Core.Leadership;

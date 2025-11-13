@@ -1,5 +1,4 @@
 using System.Threading.Channels;
-using OmniRelay.Core;
 using OmniRelay.Core.Transport;
 using Xunit;
 

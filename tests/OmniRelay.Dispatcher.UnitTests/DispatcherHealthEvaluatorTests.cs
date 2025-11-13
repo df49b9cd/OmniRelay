@@ -1,7 +1,6 @@
 using System.Collections.Immutable;
 using NSubstitute;
 using OmniRelay.Core.Transport;
-using OmniRelay.Dispatcher;
 using OmniRelay.Transport.Grpc;
 using Xunit;
 

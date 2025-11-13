@@ -1,9 +1,3 @@
-using System;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using Hugo;
-using OmniRelay.Core;
 using OmniRelay.Core.Transport;
 using OmniRelay.Errors;
 using Xunit;

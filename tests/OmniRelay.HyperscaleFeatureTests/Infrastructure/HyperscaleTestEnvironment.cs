@@ -1,4 +1,3 @@
-using System;
 using Microsoft.Extensions.Configuration;
 using OmniRelay.Tests.Support;
 

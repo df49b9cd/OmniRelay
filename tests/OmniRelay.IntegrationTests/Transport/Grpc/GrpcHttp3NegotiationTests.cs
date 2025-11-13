@@ -1,16 +1,12 @@
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO.Compression;
-using System.Linq;
 using System.Net;
-using System.Net.Http;
 using System.Net.Quic;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Authentication;
 using System.Security.Cryptography;
-using System.Security.Cryptography.X509Certificates;
 using Grpc.Core;
 using Grpc.Core.Interceptors;
 using Grpc.Net.Client;
@@ -26,7 +22,6 @@ using OmniRelay.Transport.Grpc;
 using OmniRelay.Transport.Grpc.Interceptors;
 using Xunit;
 using static Hugo.Go;
-using static OmniRelay.IntegrationTests.Support.TransportTestHelper;
 
 namespace OmniRelay.IntegrationTests.Transport.Grpc;
 

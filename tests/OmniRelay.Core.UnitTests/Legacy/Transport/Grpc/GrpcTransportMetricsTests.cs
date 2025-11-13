@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using OmniRelay.Core;
 using OmniRelay.Transport.Grpc;
 using Xunit;

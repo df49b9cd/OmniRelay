@@ -5,7 +5,6 @@ using Shouldly;
 using OmniRelay.Core.Gossip;
 using OmniRelay.Core.Leadership;
 using OmniRelay.IntegrationTests.Support;
-using OmniRelay.Tests;
 using Xunit;
 
 namespace OmniRelay.IntegrationTests;

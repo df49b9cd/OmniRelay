@@ -1,6 +1,5 @@
 using Hugo;
 using OmniRelay.Core;
-using OmniRelay.Core.Clients;
 using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
 using Xunit;

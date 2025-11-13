@@ -1,7 +1,5 @@
-using System.Collections.Generic;
 using Hugo;
 using Microsoft.Extensions.Logging;
-using OmniRelay.Configuration;
 using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
 using Shouldly;

@@ -1,6 +1,4 @@
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Reflection;
 using Grpc.Core;
 using OmniRelay.Transport.Grpc;

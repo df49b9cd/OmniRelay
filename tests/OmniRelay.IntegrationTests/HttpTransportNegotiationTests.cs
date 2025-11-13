@@ -1,14 +1,11 @@
 using System.Net;
-using System.Net.Http;
 using System.Net.Mime;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Authentication;
-using System.Text;
 using OmniRelay.Core;
 using OmniRelay.Dispatcher;
 using OmniRelay.IntegrationTests.Support;
-using OmniRelay.Tests;
 using OmniRelay.Tests.Support;
 using OmniRelay.TestSupport;
 using OmniRelay.Transport.Http;
