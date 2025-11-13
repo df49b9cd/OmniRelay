@@ -1096,7 +1096,7 @@ public static class Program
         try
         {
             var provider = services.BuildServiceProvider();
-            await using var providerScope = provider.ConfigureAwait(false);
+            await using var providerScope = provider;
             var dispatcher = provider.GetRequiredService<Dispatcher.Dispatcher>();
             var summary = dispatcher.Introspect();
 
@@ -1172,7 +1172,7 @@ public static class Program
             return 1;
         }
 
-        await using var host = serveHost.ConfigureAwait(false);
+        await using var host = serveHost;
         var shutdownSignal = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         ConsoleCancelEventHandler? cancelHandler = null;
 
@@ -1844,7 +1844,7 @@ public static class Program
             uris.Add(uri);
         }
 
-        await using var invoker = CliRuntime.GrpcInvokerFactory.Create(uris, remoteService, runtimeOptions).ConfigureAwait(false);
+        await using var invoker = CliRuntime.GrpcInvokerFactory.Create(uris, remoteService, runtimeOptions);
 
         try
         {
@@ -2287,7 +2287,7 @@ public static class Program
                 return 1;
             }
 
-            await using var stream = (await response.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false)).ConfigureAwait(false);
+            await using var stream = await response.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false);
             var result = await JsonSerializer.DeserializeAsync(stream, OmniRelayCliJsonContext.Default.MeshPeersResponse, cts.Token).ConfigureAwait(false);
             if (result is null)
             {

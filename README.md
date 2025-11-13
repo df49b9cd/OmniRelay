@@ -61,6 +61,27 @@ Docker logging levels map to `docker build --progress=<level>`:
 - `plain` – line-oriented logs, useful for CI and truncation-free output.
 - `tty` – interactive TTY view with live-updating build steps.
 
+### Native AOT Builds
+
+OmniRelay is AOT-first for cloud-native deployments. Run the shared helper to produce native binaries (defaults to `linux-x64`):
+
+```bash
+./eng/run-aot-publish.sh
+./eng/run-aot-publish.sh linux-arm64 Release
+```
+
+See `docs/architecture/aot-guidelines.md` for trimming guidance, contributor expectations, and troubleshooting tips.
+
+### Hyperscale Smoke Testing
+
+Use the hyperscale CI Dockerfile to run feature/integration/hyperscale suites in a controlled container:
+
+```bash
+docker build -f docker/Dockerfile.hyperscale.ci .
+```
+
+Internally it calls `eng/run-hyperscale-smoke.sh`, which executes the representative chaos/diagnostics suites to validate control-plane readiness.
+
 ## Samples
 
 The `samples/` directory contains runnable projects that focus on different runtime features (manual bootstrap, configuration-driven hosting, tee/shadow outbounds, multi-service Docker demos). See `docs/reference/samples.md` for a tour and usage guide.
