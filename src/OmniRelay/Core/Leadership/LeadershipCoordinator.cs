@@ -74,7 +74,8 @@ public sealed partial class LeadershipCoordinator : ILifecycle, ILeadershipObser
             }
 
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            _loop = Task.Run(() => RunAsync(_cts.Token), CancellationToken.None);
+            var coordinatorCts = _cts;
+            _loop = Task.Run(() => RunAsync(coordinatorCts!.Token), CancellationToken.None);
         }
 
         await Task.CompletedTask.ConfigureAwait(false);
