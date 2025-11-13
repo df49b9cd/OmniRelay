@@ -220,6 +220,10 @@ Grafana/Prometheus rules from DISC-001 now have concrete signals to target, and 
   - Deterministic hashing strategies (ring, rendezvous, locality aware) selectable per namespace.
   - Versioned shard tables persisted in the registry with diff history for auditing.
   - Watch semantics that notify SDKs/agents when shards move or are paused.
+- **Implementation notes (2024-10)**:
+  - `RelationalShardRepository` persists the shard contract described above, issuing optimistic concurrency checks on every mutation and mirroring history into `shard_history`. The schema lives in `eng/migrations/20241014-disc-003-shards.sql`.
+  - The hashing library (`ShardHashStrategyRegistry`) now ships ring, rendezvous, and locality-aware plans that are bound from configuration via `ShardingConfiguration`. Namespaces may specify preferred nodes + locality hints and materialize plans directly from config.
+  - Hyperscale validations (`ShardSchemaHyperscaleFeatureTests`) ingest thousands of shards, roll node membership, and hammer the repository with concurrent governance edits to ensure determinism and auditing survive production-grade load.
 - **Interfaces & data contracts**:
   - `/control/shards` (REST + gRPC) returns shard ownership, leadership token, capacity hints, and version checksum.
   - Client SDK caching module persists the current map and automatically retries on version mismatch.

@@ -20,6 +20,8 @@ public sealed class OmniRelayConfigurationOptions
     public EncodingsConfiguration Encodings { get; init; } = new();
 
     public DiagnosticsConfiguration Diagnostics { get; init; } = new();
+
+    public ShardingConfiguration Sharding { get; init; } = new();
 }
 
 /// <summary>Inbound transport configuration for HTTP and gRPC servers.</summary>
