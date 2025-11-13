@@ -1,5 +1,7 @@
+using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
 using OmniRelay.Cli.UnitTests.Infrastructure;
 
 namespace OmniRelay.Cli.UnitTests;
@@ -73,7 +75,86 @@ public sealed class ProgramHelperTests : CliTestBase
     }
 
     [Fact]
-    public void TryBuildRequestInvocation_LoadsProtoDescriptor()
+    public void TryBuildRequestInvocation_ParsesTimeBudgetOptions()
+    {
+        var deadlineText = "2030-11-01T05:30:00Z";
+        var success = Program.TryBuildRequestInvocation(
+            transport: "http",
+            service: "demo",
+            procedure: "Echo/Call",
+            caller: "caller",
+            encoding: null,
+            headerValues: Array.Empty<string>(),
+            profileValues: Array.Empty<string>(),
+            shardKey: null,
+            routingKey: null,
+            routingDelegate: null,
+            protoFiles: Array.Empty<string>(),
+            protoMessage: null,
+            ttlOption: "5s",
+            deadlineOption: deadlineText,
+            timeoutOption: "00:00:10",
+            body: "{}",
+            bodyFile: null,
+            bodyBase64: null,
+            httpUrl: "http://localhost:8080",
+            addresses: Array.Empty<string>(),
+            enableHttp3: false,
+            enableGrpcHttp3: false,
+            out var invocation,
+            out var error);
+
+        success.ShouldBeTrue();
+        error.ShouldBeNull();
+        invocation.Request.Meta.TimeToLive.ShouldBe(TimeSpan.FromSeconds(5));
+
+        var expectedDeadline = DateTimeOffset.Parse(deadlineText, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal);
+        invocation.Request.Meta.Deadline.ShouldBe(expectedDeadline);
+        invocation.Timeout.ShouldBe(TimeSpan.FromSeconds(10));
+    }
+
+    [Fact]
+    public void TryBuildRequestInvocation_AppliesJsonPrettyProfile()
+    {
+        var success = Program.TryBuildRequestInvocation(
+            transport: "http",
+            service: "demo",
+            procedure: "Echo/Call",
+            caller: null,
+            encoding: null,
+            headerValues: Array.Empty<string>(),
+            profileValues: new[] { "json:pretty" },
+            shardKey: null,
+            routingKey: null,
+            routingDelegate: null,
+            protoFiles: Array.Empty<string>(),
+            protoMessage: null,
+            ttlOption: null,
+            deadlineOption: null,
+            timeoutOption: null,
+            body: "{\"message\":\"hello\"}",
+            bodyFile: null,
+            bodyBase64: null,
+            httpUrl: "http://localhost:8080",
+            addresses: Array.Empty<string>(),
+            enableHttp3: false,
+            enableGrpcHttp3: false,
+            out var invocation,
+            out var error);
+
+        success.ShouldBeTrue();
+        error.ShouldBeNull();
+
+        var payloadText = Encoding.UTF8.GetString(invocation.Request.Body.Span);
+        payloadText.ShouldBe("{\n  \"message\": \"hello\"\n}");
+
+        invocation.Request.Meta.Encoding.ShouldBe("application/json");
+        invocation.Request.Meta.Headers["Content-Type"].ShouldBe("application/json");
+        invocation.Request.Meta.Headers["Accept"].ShouldBe("application/json");
+    }
+
+    [Fact]
+    public void TryBuildRequestInvocation_ProtobufProfileEncodesPayload()
     {
         var descriptorPath = GetSupportPath("Descriptors", "echo.pb");
         var success = Program.TryBuildRequestInvocation(
@@ -105,6 +186,149 @@ public sealed class ProgramHelperTests : CliTestBase
         success.ShouldBeTrue();
         error.ShouldBeNull();
         invocation.Request.Body.Length.ShouldBeGreaterThan(0);
+        invocation.Request.Meta.Encoding.ShouldBe("application/x-protobuf");
+        invocation.Request.Meta.Headers["Content-Type"].ShouldBe("application/x-protobuf");
+        invocation.Request.Meta.Headers["Rpc-Encoding"].ShouldBe("application/x-protobuf");
+    }
+
+    [Fact]
+    public void TryBuildRequestInvocation_Http3RequiresHttpsUrl()
+    {
+        var success = Program.TryBuildRequestInvocation(
+            transport: "http",
+            service: "demo",
+            procedure: "Echo/Call",
+            caller: null,
+            encoding: null,
+            headerValues: Array.Empty<string>(),
+            profileValues: Array.Empty<string>(),
+            shardKey: null,
+            routingKey: null,
+            routingDelegate: null,
+            protoFiles: Array.Empty<string>(),
+            protoMessage: null,
+            ttlOption: null,
+            deadlineOption: null,
+            timeoutOption: null,
+            body: "{}",
+            bodyFile: null,
+            bodyBase64: null,
+            httpUrl: "http://localhost:8080",
+            addresses: Array.Empty<string>(),
+            enableHttp3: true,
+            enableGrpcHttp3: false,
+            out var invocation,
+            out var error);
+
+        success.ShouldBeFalse();
+        invocation.ShouldBeNull();
+        error.ShouldNotBeNull();
+        error.ShouldContain("HTTP/3 requires an HTTPS --url.");
+    }
+
+    [Fact]
+    public void TryBuildRequestInvocation_Http3ConfiguresRuntimeWhenHttpsProvided()
+    {
+        var success = Program.TryBuildRequestInvocation(
+            transport: "http",
+            service: "demo",
+            procedure: "Echo/Call",
+            caller: null,
+            encoding: null,
+            headerValues: Array.Empty<string>(),
+            profileValues: Array.Empty<string>(),
+            shardKey: null,
+            routingKey: null,
+            routingDelegate: null,
+            protoFiles: Array.Empty<string>(),
+            protoMessage: null,
+            ttlOption: null,
+            deadlineOption: null,
+            timeoutOption: null,
+            body: "{}",
+            bodyFile: null,
+            bodyBase64: null,
+            httpUrl: "https://localhost:8443",
+            addresses: Array.Empty<string>(),
+            enableHttp3: true,
+            enableGrpcHttp3: false,
+            out var invocation,
+            out var error);
+
+        success.ShouldBeTrue();
+        error.ShouldBeNull();
+        invocation.HttpClientRuntime.ShouldNotBeNull();
+        invocation.HttpClientRuntime!.EnableHttp3.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void TryBuildRequestInvocation_GrpcHttp3RequiresHttpsAddresses()
+    {
+        var success = Program.TryBuildRequestInvocation(
+            transport: "grpc",
+            service: "demo",
+            procedure: "Echo/Call",
+            caller: null,
+            encoding: null,
+            headerValues: Array.Empty<string>(),
+            profileValues: Array.Empty<string>(),
+            shardKey: null,
+            routingKey: null,
+            routingDelegate: null,
+            protoFiles: Array.Empty<string>(),
+            protoMessage: null,
+            ttlOption: null,
+            deadlineOption: null,
+            timeoutOption: null,
+            body: "{}",
+            bodyFile: null,
+            bodyBase64: null,
+            httpUrl: null,
+            addresses: new[] { "http://localhost:9090" },
+            enableHttp3: false,
+            enableGrpcHttp3: true,
+            out var invocation,
+            out var error);
+
+        success.ShouldBeFalse();
+        invocation.ShouldBeNull();
+        error.ShouldNotBeNull();
+        error.ShouldContain("HTTP/3 requires HTTPS gRPC addresses");
+    }
+
+    [Fact]
+    public void TryBuildRequestInvocation_GrpcHttp3ConfiguresRuntimeWhenHttpsProvided()
+    {
+        var success = Program.TryBuildRequestInvocation(
+            transport: "grpc",
+            service: "demo",
+            procedure: "Echo/Call",
+            caller: null,
+            encoding: null,
+            headerValues: Array.Empty<string>(),
+            profileValues: Array.Empty<string>(),
+            shardKey: null,
+            routingKey: null,
+            routingDelegate: null,
+            protoFiles: Array.Empty<string>(),
+            protoMessage: null,
+            ttlOption: null,
+            deadlineOption: null,
+            timeoutOption: null,
+            body: "{}",
+            bodyFile: null,
+            bodyBase64: null,
+            httpUrl: null,
+            addresses: new[] { "https://localhost:9091" },
+            enableHttp3: false,
+            enableGrpcHttp3: true,
+            out var invocation,
+            out var error);
+
+        success.ShouldBeTrue();
+        error.ShouldBeNull();
+        invocation.GrpcClientRuntime.ShouldNotBeNull();
+        invocation.GrpcClientRuntime!.EnableHttp3.ShouldBeTrue();
     }
 
     [Fact]
