@@ -27,6 +27,28 @@ Provide deterministic leader elections (global + per shard) with fenced tokens s
 - Killing the current leader elects a successor within the SLA and emits metrics/logs.
 - CLI command `omnirelay mesh leaders status` reports consistent data derived from the new APIs.
 
+## Testing Strategy
+
+### Unit tests
+- Exercise `LeadershipCoordinator` state transitions by simulating concurrent contenders, fence token rollover, and store failures to ensure only one leader publishes assignments per scope.
+- Verify `LeadershipEventHub` fan-out logic, SSE framing, and gRPC stream backpressure handling so reconnects resume without dropping events.
+- Add serialization and transport downgrade tests that confirm HTTP/3 preference is recorded and HTTP/2 fallback paths continue to emit telemetry with the correct negotiated protocol metadata.
+
+### Integration tests
+- Stand up multiple coordinator instances backed by the shared registry store to validate exclusive leadership, fast failover (<5 s), and propagation of structured logs/metrics during kill-and-restart scenarios.
+- Hit `/control/leaders` and `/control/events/leadership` over HTTP/3/SSE and gRPC to ensure RBAC enforcement, pagination/filtering, and transport negotiation behave consistently across runtimes.
+- Drive long-running elections under injected latency or partial store outages to confirm retry limits, metric spikes, and audit logging align with acceptance criteria.
+
+### Feature tests
+
+#### OmniRelay.FeatureTests
+- Script a smoke test that boots three dispatcher processes, assigns `global-control` plus shard scopes, and verifies `omnirelay mesh leaders status --watch` mirrors the leadership metrics and `/control/events/leadership` stream during forced failovers.
+- Drive a transport downgrade scenario that forces HTTP/2 connections, asserting CLI output, SSE envelopes, and audit logs all capture the negotiated protocol plus fence token changes.
+
+#### OmniRelay.HyperscaleFeatureTests
+- Run long-lived tests with dozens of scopes and coordinators across multiple regions, repeatedly killing leaders to ensure elections complete within SLA while watchers keep up with the high-volume feed.
+- Stress sustained client churn (hundreds of SSE/gRPC subscribers) while injecting registry lag to confirm split-brain checks, telemetry, and CLI consumers remain consistent.
+
 ## References
 - `docs/architecture/service-discovery.md` – “Membership gossip layer + leader elections”, “Routing metadata service”, “Recommended topology”.
 
