@@ -38,11 +38,11 @@ internal interface ICliConsole
 
 internal sealed class SystemCliConsole : ICliConsole
 {
-    public Task WriteErrorAsync(string message) => System.Console.Error.WriteLineAsync(message);
+    public Task WriteErrorAsync(string message) => Console.Error.WriteLineAsync(message);
 
-    public void WriteError(string message) => System.Console.Error.WriteLine(message);
+    public void WriteError(string message) => Console.Error.WriteLine(message);
 
-    public void WriteLine(string message) => System.Console.WriteLine(message);
+    public void WriteLine(string message) => Console.WriteLine(message);
 }
 
 internal interface ICliFileSystem

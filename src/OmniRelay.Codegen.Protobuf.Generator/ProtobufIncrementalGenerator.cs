@@ -73,7 +73,7 @@ public sealed class ProtobufIncrementalGenerator : IIncrementalGenerator
 
     private static void EnsureDependencyResolver()
     {
-        if (System.Threading.Interlocked.CompareExchange(ref _resolverInitialized, 1, 0) != 0)
+        if (Interlocked.CompareExchange(ref _resolverInitialized, 1, 0) != 0)
         {
             return;
         }

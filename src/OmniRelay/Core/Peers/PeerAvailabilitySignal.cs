@@ -15,7 +15,7 @@ internal sealed class PeerAvailabilitySignal : IDisposable
     public PeerAvailabilitySignal(TimeProvider timeProvider)
     {
         _timeProvider = timeProvider ?? TimeProvider.System;
-        _channel = Go.MakeChannel<bool>(new BoundedChannelOptions(1)
+        _channel = MakeChannel<bool>(new BoundedChannelOptions(1)
         {
             SingleReader = false,
             SingleWriter = false,
@@ -35,7 +35,7 @@ internal sealed class PeerAvailabilitySignal : IDisposable
             return;
         }
 
-        var waitResult = await Go.WithTimeoutAsync(
+        var waitResult = await WithTimeoutAsync(
             async token =>
             {
                 try

@@ -917,7 +917,7 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
     {
         private readonly GrpcOutbound _owner = owner ?? throw new ArgumentNullException(nameof(owner));
         private readonly PeerCircuitBreaker _breaker = new(breakerOptions);
-        private readonly Hugo.RwMutex _subscriberMutex = new();
+        private readonly RwMutex _subscriberMutex = new();
         private HashSet<IPeerSubscriber>? _subscribers;
         private GrpcChannel? _channel;
         private CallInvoker? _callInvoker;

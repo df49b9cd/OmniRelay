@@ -175,7 +175,7 @@ internal sealed class PeerListCoordinator : IPeerSubscriber, IDisposable
             }
 
             var delay = PeerChooserHelpers.GetWaitDelay(waitDeadline);
-            var waitResult = await Go.WithTimeoutAsync(
+            var waitResult = await WithTimeoutAsync(
                 async token =>
                 {
                     await _availabilitySignal.WaitAsync(delay, token).ConfigureAwait(false);

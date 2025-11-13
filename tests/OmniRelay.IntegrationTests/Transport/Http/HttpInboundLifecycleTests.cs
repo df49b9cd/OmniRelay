@@ -528,5 +528,5 @@ public sealed class HttpInboundLifecycleTests : TransportIntegrationTest
     };
 
     private static Task WaitForHttpReadyAsync(Uri address, CancellationToken cancellationToken) =>
-        TransportTestHelper.WaitForHttpEndpointReadyAsync(address, cancellationToken);
+        WaitForHttpEndpointReadyAsync(address, cancellationToken);
 }
