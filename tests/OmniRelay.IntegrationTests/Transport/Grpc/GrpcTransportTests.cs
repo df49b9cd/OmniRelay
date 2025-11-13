@@ -1663,6 +1663,15 @@ public partial class GrpcTransportTests : TransportIntegrationTest
                 var pump = Task.Run(async () =>
                 {
                     Error? completionError = null;
+                    using var cancellationRegistration = cancellationToken.Register(() =>
+                    {
+                        serverCancelled.TrySetResult(true);
+                        completionError ??= OmniRelayErrorAdapter.FromStatus(
+                            OmniRelayStatusCode.Cancelled,
+                            "Client cancelled duplex session.",
+                            transport: GrpcTransportConstants.TransportName);
+                    });
+
                     try
                     {
                         var handshake = codec.EncodeResponse(new ChatMessage("ready"), call.ResponseMeta);
@@ -1697,16 +1706,14 @@ public partial class GrpcTransportTests : TransportIntegrationTest
                     catch (OperationCanceledException)
                     {
                         serverCancelled.TrySetResult(true);
-                        completionError = OmniRelayErrorAdapter.FromStatus(
+                        completionError ??= OmniRelayErrorAdapter.FromStatus(
                             OmniRelayStatusCode.Cancelled,
                             "Client cancelled duplex session.",
                             transport: GrpcTransportConstants.TransportName);
                     }
                     finally
                     {
-                        await call.CompleteResponsesAsync(
-                            completionError,
-                            completionError is not null ? CancellationToken.None : cancellationToken);
+                        await call.CompleteResponsesAsync(completionError, CancellationToken.None);
                     }
                 }, cancellationToken);
 
@@ -2681,4 +2688,3 @@ public partial class GrpcTransportTests : TransportIntegrationTest
         public Stream CreateDecompressionStream(Stream stream) => stream;
     }
 }
-
