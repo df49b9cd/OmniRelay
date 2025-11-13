@@ -233,6 +233,38 @@ public sealed class ProgramCommandTests : CliTestBase
     }
 
     [Fact]
+    public async Task BenchmarkCommand_WithRequestsAndWarmup_PrintsSummary()
+    {
+        var fakeInvoker = new FakeBenchmarkInvoker(TimeSpan.FromMilliseconds(1));
+        BenchmarkRunner.InvokerFactoryOverride = (_, _) => Task.FromResult<BenchmarkRunner.IRequestInvoker>(fakeInvoker);
+
+        var harness = new CommandTestHarness(Program.BuildRootCommand());
+        var result = await harness.InvokeAsync(
+            "benchmark",
+            "--transport",
+            "http",
+            "--service",
+            "demo",
+            "--procedure",
+            "Echo/Call",
+            "--url",
+            "https://localhost:8443",
+            "--body",
+            "{}",
+            "--requests",
+            "5",
+            "--concurrency",
+            "2",
+            "--warmup",
+            "00:00:00.02");
+
+        result.ExitCode.ShouldBe(0);
+        result.StdOut.ShouldContain("Measured requests: 5");
+        result.StdOut.ShouldContain("Success: 5");
+        fakeInvoker.CallCount.ShouldBeGreaterThan(5);
+    }
+
+    [Fact]
     public async Task ScriptCommand_MissingFile_ReturnsError()
     {
         var harness = new CommandTestHarness(Program.BuildRootCommand());

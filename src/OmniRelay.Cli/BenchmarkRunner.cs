@@ -20,6 +20,10 @@ internal sealed record RequestInvocation(
 
 internal static class BenchmarkRunner
 {
+    internal static Func<RequestInvocation, CancellationToken, Task<IRequestInvoker>>? InvokerFactoryOverride { get; set; }
+
+    internal static void ResetForTests() => InvokerFactoryOverride = null;
+
     internal sealed record BenchmarkExecutionOptions(
         int Concurrency,
         long? MaxRequests,
@@ -105,12 +109,21 @@ internal static class BenchmarkRunner
 
     private static async Task<IRequestInvoker> CreateInvokerAsync(RequestInvocation invocation, CancellationToken cancellationToken)
     {
-        IRequestInvoker invoker = invocation.Transport switch
+        IRequestInvoker invoker;
+        if (InvokerFactoryOverride is { } overrideFactory)
         {
-            "http" => CreateHttpInvoker(invocation),
-            "grpc" => CreateGrpcInvoker(invocation),
-            _ => throw new InvalidOperationException($"Transport '{invocation.Transport}' is not supported for benchmarking.")
-        };
+            invoker = await overrideFactory(invocation, cancellationToken).ConfigureAwait(false)
+                     ?? throw new InvalidOperationException("Benchmark invoker override returned null.");
+        }
+        else
+        {
+            invoker = invocation.Transport switch
+            {
+                "http" => CreateHttpInvoker(invocation),
+                "grpc" => CreateGrpcInvoker(invocation),
+                _ => throw new InvalidOperationException($"Transport '{invocation.Transport}' is not supported for benchmarking.")
+            };
+        }
 
         await invoker.StartAsync(cancellationToken).ConfigureAwait(false);
         return invoker;
@@ -378,7 +391,7 @@ internal static class BenchmarkRunner
         return $"{omnirelayException.StatusCode}: {omnirelayException.Message}";
     }
 
-    private interface IRequestInvoker : IAsyncDisposable
+    internal interface IRequestInvoker : IAsyncDisposable
     {
         Task StartAsync(CancellationToken cancellationToken);
         Task<RequestCallResult> InvokeAsync(Request<ReadOnlyMemory<byte>> request, CancellationToken cancellationToken);
@@ -446,7 +459,7 @@ internal static class BenchmarkRunner
         }
     }
 
-    private readonly record struct RequestCallResult(bool Success, string? Error)
+    internal readonly record struct RequestCallResult(bool Success, string? Error)
     {
         public static RequestCallResult FromSuccess() => new(true, null);
         public static RequestCallResult FromFailure(string? error) => new(false, error);
