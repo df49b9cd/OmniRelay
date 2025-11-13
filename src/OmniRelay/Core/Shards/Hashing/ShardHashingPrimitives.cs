@@ -1,5 +1,5 @@
-using System.Text;
 using System.IO.Hashing;
+using System.Text;
 
 namespace OmniRelay.Core.Shards.Hashing;
 

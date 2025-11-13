@@ -15,7 +15,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using OmniRelay.Configuration;
-using OmniRelay.Core.Gossip;
 using OmniRelay.Core;
 using OmniRelay.Core.Leadership;
 using OmniRelay.Core.Transport;
@@ -1173,7 +1172,7 @@ public static class Program
             return 1;
         }
 
-        await using var host = serveHost;
+        await using var host = serveHost.ConfigureAwait(false);
         var shutdownSignal = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         ConsoleCancelEventHandler? cancelHandler = null;
 
@@ -1845,7 +1844,7 @@ public static class Program
             uris.Add(uri);
         }
 
-        await using var invoker = CliRuntime.GrpcInvokerFactory.Create(uris, remoteService, runtimeOptions);
+        await using var invoker = CliRuntime.GrpcInvokerFactory.Create(uris, remoteService, runtimeOptions).ConfigureAwait(false);
 
         try
         {
@@ -2288,7 +2287,7 @@ public static class Program
                 return 1;
             }
 
-            await using var stream = await response.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false);
+            await using var stream = (await response.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false)).ConfigureAwait(false);
             var result = await JsonSerializer.DeserializeAsync(stream, OmniRelayCliJsonContext.Default.MeshPeersResponse, cts.Token).ConfigureAwait(false);
             if (result is null)
             {
@@ -3688,7 +3687,6 @@ public static class Program
         Table,
         Json
     }
-
 
     private static bool TryDecodeUtf8(ReadOnlySpan<byte> data, out string text)
     {

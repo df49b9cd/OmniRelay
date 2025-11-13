@@ -1,6 +1,6 @@
 using System.Collections.Immutable;
-using System.Net;
 using System.IO;
+using System.Net;
 using System.Text;
 using System.Text.Json;
 using OmniRelay.Cli.UnitTests.Infrastructure;

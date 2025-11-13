@@ -1,10 +1,10 @@
 using System.Collections.Immutable;
 using System.Text;
 using Microsoft.Extensions.Logging;
-using Shouldly;
 using OmniRelay.Core.Gossip;
 using OmniRelay.Core.Leadership;
 using OmniRelay.IntegrationTests.Support;
+using Shouldly;
 using Xunit;
 
 namespace OmniRelay.IntegrationTests;

@@ -1,9 +1,9 @@
+using System.Diagnostics.CodeAnalysis;
 using Hugo;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using System.Diagnostics.CodeAnalysis;
 using OmniRelay.Configuration;
 using OmniRelay.Core;
 using OmniRelay.Transport.Grpc;
