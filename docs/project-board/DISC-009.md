@@ -1,4 +1,4 @@
-# DISC-009 – Security Bootstrap Integration
+# DISC-009 - Security Bootstrap Integration
 
 ## Goal
 Integrate OmniRelay with a workload identity provider (SPIFFE/SPIRE or cloud-native solutions) so every mesh node obtains mTLS credentials and policy-enforced roles during bootstrap.
@@ -10,11 +10,11 @@ Integrate OmniRelay with a workload identity provider (SPIFFE/SPIRE or cloud-nat
 - Provide revocation + rotation flows with zero/low downtime.
 
 ## Requirements
-1. **PKI integration** – Support SPIFFE/SPIRE to start, but design for pluggable providers (Azure Managed Identity, AWS IAM).
-2. **Certificate lifecycle** – Auto-renew before expiry, maintain overlapping validity windows, and emit alerts if renewal fails.
-3. **Policy enforcement** – Validate join requests against policy (role allowlists, environment tags) before issuing certs.
-4. **Auditing** – Log enrollment, renewal, and revocation events with caller identity + metadata.
-5. **Documentation** – Provide threat model + hardening guide covering bootstrap security posture.
+1. **PKI integration** - Support SPIFFE/SPIRE to start, but design for pluggable providers (Azure Managed Identity, AWS IAM).
+2. **Certificate lifecycle** - Auto-renew before expiry, maintain overlapping validity windows, and emit alerts if renewal fails.
+3. **Policy enforcement** - Validate join requests against policy (role allowlists, environment tags) before issuing certs.
+4. **Auditing** - Log enrollment, renewal, and revocation events with caller identity + metadata.
+5. **Documentation** - Provide threat model + hardening guide covering bootstrap security posture.
 
 ## Deliverables
 - Bootstrap service/library handling attestation and certificate issuance.
@@ -28,9 +28,13 @@ Integrate OmniRelay with a workload identity provider (SPIFFE/SPIRE or cloud-nat
 - Operators can revoke a node and see it removed from the mesh immediately.
 
 ## References
-- `docs/architecture/service-discovery.md` – “Secure peer bootstrap”, “Risks & mitigations”.
+- `docs/architecture/service-discovery.md` - “Secure peer bootstrap”, “Risks & mitigations”.
+
+- Native AOT gate: Publish with /p:PublishAot=true and treat trimming warnings as errors per REFDISC-034..037.
 
 ## Testing Strategy
+All test tiers must run against native AOT artifacts per REFDISC-034..037.
+
 
 ### Unit tests
 - Validate policy/CRD parsing to ensure role/cluster allowlists, environment tags, and expiry windows are enforced before issuance.
@@ -51,3 +55,4 @@ Integrate OmniRelay with a workload identity provider (SPIFFE/SPIRE or cloud-nat
 #### OmniRelay.HyperscaleFeatureTests
 - Provision and rotate credentials for large batches of nodes simultaneously to validate rate limits, overlapping validity windows, and alert noise when many renewals occur.
 - Revoke subsets of nodes across regions to ensure policy propagation, gossip eviction, and audit logging scale without delaying healthy traffic.
+- REFDISC-034..037 - AOT readiness baseline and CI gating.

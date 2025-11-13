@@ -1,4 +1,4 @@
-# DISC-018 – Chaos Test Environments
+# DISC-018 - Chaos Test Environments
 
 ## Goal
 Provision reproducible multi-node environments (docker-compose and Kubernetes) for executing scripted chaos experiments targeting the discovery plane.
@@ -10,10 +10,10 @@ Provision reproducible multi-node environments (docker-compose and Kubernetes) f
 - Package data collection (logs, metrics, checkpoints) for post-analysis.
 
 ## Requirements
-1. **Determinism** – Environments must be reproducible via single command; document prerequisites.
-2. **Fault library** – Parameterize faults (duration, intensity) and chain multiple faults in a scenario.
-3. **Telemetry** – Ensure observability stack collects all necessary metrics/logs by default.
-4. **Cleanup** – Provide teardown scripts to clean resources and avoid leftover state.
+1. **Determinism** - Environments must be reproducible via single command; document prerequisites.
+2. **Fault library** - Parameterize faults (duration, intensity) and chain multiple faults in a scenario.
+3. **Telemetry** - Ensure observability stack collects all necessary metrics/logs by default.
+4. **Cleanup** - Provide teardown scripts to clean resources and avoid leftover state.
 
 ## Deliverables
 - `docker-compose.chaos.yml`, Kubernetes manifests, helper scripts.
@@ -26,9 +26,13 @@ Provision reproducible multi-node environments (docker-compose and Kubernetes) f
 - Fault scripts support at least: leader kill, network partition, latency injection, membership surge.
 
 ## References
-- `docs/architecture/service-discovery.md` – “Testing & chaos validation”, “Implementation backlog item 9”.
+- `docs/architecture/service-discovery.md` - “Testing & chaos validation”, “Implementation backlog item 9”.
+
+- Native AOT gate: Publish with /p:PublishAot=true and treat trimming warnings as errors per REFDISC-034..037.
 
 ## Testing Strategy
+All test tiers must run against native AOT artifacts per REFDISC-034..037.
+
 
 ### Unit tests
 - Validate scenario definitions and fault-injection helpers (tc/netem wrappers, chaos container drivers) via schema tests and dry-run previews to ensure parameters are parsed correctly.
@@ -49,3 +53,4 @@ Provision reproducible multi-node environments (docker-compose and Kubernetes) f
 #### OmniRelay.HyperscaleFeatureTests
 - Execute chained fault experiments (network partitions, leader kills, cert expirations) across large node counts to validate orchestration reliability and observability at scale.
 - Stress artifact collection by capturing high-volume logs/metrics/checkpoints from extended runs, confirming archival pipelines and storage quotas keep pace.
+- REFDISC-034..037 - AOT readiness baseline and CI gating.

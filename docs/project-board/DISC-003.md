@@ -1,4 +1,4 @@
-# DISC-003 – Shard Schema & Persistence
+# DISC-003 - Shard Schema & Persistence
 
 ## Goal
 Design and implement the durable shard ownership store that tracks which mesh node owns each shard/task queue, including history for auditing and deterministic hashing strategies.
@@ -10,11 +10,11 @@ Design and implement the durable shard ownership store that tracks which mesh no
 - Provide deterministic hash implementations (ring, rendezvous, locality-aware) selectable per namespace with configuration.
 
 ## Requirements
-1. **Versioning** – Every mutation increments a version + checksum to support client caching and conflict detection.
-2. **Auditing** – Persist history rows with actor, reason, and optional change ticket reference.
-3. **Strategy plug-ins** – Hash strategies must be pluggable; include unit tests with deterministic fixtures.
-4. **Performance** – Target shard lookups <50 ms P99 and support ≥1k shards per cluster.
-5. **Data access** – Provide repository APIs for listing shards, fetching by id, and streaming diffs.
+1. **Versioning** - Every mutation increments a version + checksum to support client caching and conflict detection.
+2. **Auditing** - Persist history rows with actor, reason, and optional change ticket reference.
+3. **Strategy plug-ins** - Hash strategies must be pluggable; include unit tests with deterministic fixtures.
+4. **Performance** - Target shard lookups <50 ms P99 and support ≥1k shards per cluster.
+5. **Data access** - Provide repository APIs for listing shards, fetching by id, and streaming diffs.
 
 ## Deliverables
 - Schema migration scripts + ORM models.
@@ -33,7 +33,11 @@ Design and implement the durable shard ownership store that tracks which mesh no
 - Configuration binding helpers (`ShardingConfigurationExtensions`) let namespaces materialize deterministic plans directly from `appsettings`, and reference docs were updated to describe the schema contracts and strategy behavior.
 - Unit coverage: deterministic hashing fixtures (`ShardHashStrategyTests`), optimistic concurrency and history verification (`RelationalShardStoreTests`), and configuration binding tests ensure governance metadata is enforced.
 - Feature coverage: `ShardSchemaHyperscaleFeatureTests` exercises thousands of shards with rolling node updates plus concurrent governance writers to prove hashing determinism, audit history, and conflict detection hold under hyperscale churn.
+- Native AOT gate: Publish with /p:PublishAot=true and treat trimming warnings as errors per REFDISC-034..037.
+
 ## Testing Strategy
+All test tiers must run against native AOT artifacts per REFDISC-034..037.
+
 
 ### Unit tests
 - Cover schema models and repositories with optimistic concurrency fixtures so version/checksum bumps are enforced and rejected updates emit descriptive errors.
@@ -56,4 +60,5 @@ Design and implement the durable shard ownership store that tracks which mesh no
 - Re-run governance scenarios under concurrent writers to make sure audit history, versioning, and conflict resolution hold up when multiple operators edit shards simultaneously.
 
 ## References
-- `docs/architecture/service-discovery.md` – “Shard ownership + routing metadata”.
+- `docs/architecture/service-discovery.md` - “Shard ownership + routing metadata”.
+- REFDISC-034..037 - AOT readiness baseline and CI gating.

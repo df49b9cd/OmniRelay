@@ -1,4 +1,4 @@
-# DISC-017 – Synthetic Health Checks
+# DISC-017 - Synthetic Health Checks
 
 ## Goal
 Deploy automated probes that continuously verify discovery-plane functionality: control APIs availability, leadership rotation, shard watcher responsiveness, and HTTP/3 negotiation.
@@ -11,10 +11,10 @@ Deploy automated probes that continuously verify discovery-plane functionality: 
 - Push results to Prometheus/Grafana and alerting pipelines.
 
 ## Requirements
-1. **Configurable targets** – Checks can run per cluster/namespace with custom intervals and thresholds.
-2. **Isolation** – Probes should run with least privilege (read-only creds) and not depend on production traffic paths.
-3. **Alerting** – Integration with alert system when checks fail consecutively or exceed latency budgets.
-4. **Reporting** – Generate summarised health reports (daily/weekly) for leadership review.
+1. **Configurable targets** - Checks can run per cluster/namespace with custom intervals and thresholds.
+2. **Isolation** - Probes should run with least privilege (read-only creds) and not depend on production traffic paths.
+3. **Alerting** - Integration with alert system when checks fail consecutively or exceed latency budgets.
+4. **Reporting** - Generate summarised health reports (daily/weekly) for leadership review.
 
 ## Deliverables
 - Synthetic checker service/container, helm chart/deployment manifests.
@@ -27,9 +27,13 @@ Deploy automated probes that continuously verify discovery-plane functionality: 
 - Checks can be paused/adjusted via config without redeploying code.
 
 ## References
-- `docs/architecture/service-discovery.md` – “Observability + operator tooling”, “Recommended topology”, “Risks & mitigations”.
+- `docs/architecture/service-discovery.md` - “Observability + operator tooling”, “Recommended topology”, “Risks & mitigations”.
+
+- Native AOT gate: Publish with /p:PublishAot=true and treat trimming warnings as errors per REFDISC-034..037.
 
 ## Testing Strategy
+All test tiers must run against native AOT artifacts per REFDISC-034..037.
+
 
 ### Unit tests
 - Validate probe configuration parsing (targets, intervals, thresholds) and ensure per-cluster overrides are merged deterministically.
@@ -50,3 +54,4 @@ Deploy automated probes that continuously verify discovery-plane functionality: 
 #### OmniRelay.HyperscaleFeatureTests
 - Deploy checker fleets per cluster/namespace to validate coordination, failure isolation, and alert fan-out when hundreds of probes run concurrently.
 - Stress reporting pipelines by aggregating large volumes of probe data and verifying dashboards plus ticket automation keep up with the scale.
+- REFDISC-034..037 - AOT readiness baseline and CI gating.

@@ -1,4 +1,4 @@
-# DISC-010 – Join & Certificate Tooling
+# DISC-010 - Join & Certificate Tooling
 
 ## Goal
 Provide operators and CI systems with CLI utilities to issue, join, rotate, and revoke mesh credentials safely.
@@ -10,11 +10,11 @@ Provide operators and CI systems with CLI utilities to issue, join, rotate, and 
 - Generate documentation and examples for onboarding new clusters/nodes.
 
 ## Requirements
-1. **UX** – Commands must emit clear instructions, show progress, and support `--dry-run`.
-2. **Security** – Sensitive materials (private keys, tokens) stored securely with correct permissions; CLI must warn if filesystem permissions are weak.
-3. **Validation** – After join, tool should run a health probe (gossip + control endpoint) to confirm membership.
-4. **Logging** – Operations log to stdout and audit stream including actor, target node, policy used.
-5. **Compatibility** – Tools must run on macOS, Linux, and Windows environments with .NET SDK prerequisites documented.
+1. **UX** - Commands must emit clear instructions, show progress, and support `--dry-run`.
+2. **Security** - Sensitive materials (private keys, tokens) stored securely with correct permissions; CLI must warn if filesystem permissions are weak.
+3. **Validation** - After join, tool should run a health probe (gossip + control endpoint) to confirm membership.
+4. **Logging** - Operations log to stdout and audit stream including actor, target node, policy used.
+5. **Compatibility** - Tools must run on macOS, Linux, and Windows environments with .NET SDK prerequisites documented.
 
 ## Deliverables
 - CLI command implementations + automated tests.
@@ -26,7 +26,11 @@ Provide operators and CI systems with CLI utilities to issue, join, rotate, and 
 - Revoking credentials immediately blocks the node and removes its access (verified via tests).
 - Documentation reviewed by SREs and includes screenshots/log snippets.
 
+- Native AOT gate: Publish with /p:PublishAot=true and treat trimming warnings as errors per REFDISC-034..037.
+
 ## Testing Strategy
+All test tiers must run against native AOT artifacts per REFDISC-034..037.
+
 
 ### Unit tests
 - Add coverage for CLI argument parsing, interactive prompts, and non-interactive flag combinations so misconfigurations produce clear errors.
@@ -49,4 +53,5 @@ Provide operators and CI systems with CLI utilities to issue, join, rotate, and 
 - Stress negative scenarios at scale (expired tokens, wrong policies) to ensure the CLI surfaces actionable errors and audit logs stay correlated with the large batch operations.
 
 ## References
-- `docs/architecture/service-discovery.md` – “Secure peer bootstrap”, “Transport & encoding strategy”.
+- `docs/architecture/service-discovery.md` - “Secure peer bootstrap”, “Transport & encoding strategy”.
+- REFDISC-034..037 - AOT readiness baseline and CI gating.

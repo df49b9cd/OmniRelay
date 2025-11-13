@@ -1,4 +1,4 @@
-# DISC-001 – Gossip Host Integration
+# DISC-001 - Gossip Host Integration
 
 ## Goal
 Embed a reusable gossip subsystem into every OmniRelay host (dispatcher, gateway, background worker) so membership, health, and metadata propagate automatically and underpin leader elections.
@@ -10,11 +10,11 @@ Embed a reusable gossip subsystem into every OmniRelay host (dispatcher, gateway
 - Provide configuration docs + samples for dev/prod (ports, TLS, firewall rules).
 
 ## Requirements
-1. **Transport/TLS** – Gossip traffic must run over mTLS using the same certificates issued by the mesh bootstrap tooling; certificate rotation cannot drop more than one gossip interval.
-2. **Metadata schema** – Define a versioned JSON/Protobuf schema for gossip payloads and validate on receive; unknown fields must be ignored for forward compatibility.
-3. **Configuration knobs** – Expose settings for fanout, suspicion interval, ping timeout, retransmit limit, and metadata refresh period via appsettings + environment variables.
-4. **Instrumentation** – Publish Prometheus metrics and OpenTelemetry logs/traces capturing membership counts, RTT, and failures. Add alert recommendations (e.g., high suspicion rate).
-5. **Diagnostics** – `/control/peers` must surface gossip-derived information (status, lastSeen) even before the registry service is wired up.
+1. **Transport/TLS** - Gossip traffic must run over mTLS using the same certificates issued by the mesh bootstrap tooling; certificate rotation cannot drop more than one gossip interval.
+2. **Metadata schema** - Define a versioned JSON/Protobuf schema for gossip payloads and validate on receive; unknown fields must be ignored for forward compatibility.
+3. **Configuration knobs** - Expose settings for fanout, suspicion interval, ping timeout, retransmit limit, and metadata refresh period via appsettings + environment variables.
+4. **Instrumentation** - Publish Prometheus metrics and OpenTelemetry logs/traces capturing membership counts, RTT, and failures. Add alert recommendations (e.g., high suspicion rate).
+5. **Diagnostics** - `/control/peers` must surface gossip-derived information (status, lastSeen) even before the registry service is wired up.
 
 ## Deliverables
 - Gossip host component (library) with integration hooks for existing host builders.
@@ -28,7 +28,11 @@ Embed a reusable gossip subsystem into every OmniRelay host (dispatcher, gateway
 - Configuration can be toggled without code changes (appsettings/environment).
 - Security audit confirms gossip traffic uses mTLS and honors certificate revocation.
 
+- Native AOT gate: Publish with /p:PublishAot=true and treat trimming warnings as errors per REFDISC-034..037.
+
 ## Testing Strategy
+All test tiers must run against native AOT artifacts per REFDISC-034..037.
+
 
 ### Unit tests
 - Cover the SWIM timer wheel, suspicion counters, and retransmit limiter logic with deterministic time providers so join/suspect/leave transitions always match the configured fanout and interval settings.
@@ -51,12 +55,13 @@ Embed a reusable gossip subsystem into every OmniRelay host (dispatcher, gateway
 - Run hyperscale certificate rotation and cross-region latency drills to ensure metadata propagation, suspicion timers, and metric/alert noise stay within defined thresholds even at elevated fanout.
 
 ## References
-- `docs/architecture/service-discovery.md` – Sections “Membership gossip layer + leader elections” and “Transport & encoding strategy”.
+- `docs/architecture/service-discovery.md` - Sections “Membership gossip layer + leader elections” and “Transport & encoding strategy”.
 
 ## Implementation status (mesh gossip v1)
 
-- **Code** – `MeshGossipHost` + option types live under `src/OmniRelay/Core/Gossip/` and are wired into every dispatcher via `AddMeshGossipAgent` (see `src/OmniRelay.Configuration`). The host emits structured join/leave/suspect logs, reloads mTLS certificates without downtime, and pushes metadata into `PeerLeaseHealthTracker`.
-- **Instrumentation** – Prometheus meters `mesh_gossip_members`, `mesh_gossip_rtt_ms`, and `mesh_gossip_messages_total` are produced by the `OmniRelay.Core.Gossip` meter and enabled automatically inside `AddOmniRelayDispatcher`. Sample dashboards pick them up through the Prometheus scrape on `/metrics`.
-- **Diagnostics** – `/control/peers` comes from the gossip snapshot and is exposed by every HTTP inbound regardless of whether the logging/toggle runtime is enabled. `/omnirelay/control/lease-health` now reflects gossip metadata, so operators can compare both views before the registry ships.
-- **Configuration** – `mesh:gossip:*` settings support env variables, `appsettings.*`, and the sample dev/prod configs under `samples/ResourceLease.MeshDemo/`. Production templates document TLS paths, seed lists, fanout tuning, and certificate pinning.
-- **Samples/tests** – The ResourceLease mesh demo enables gossip by default in `appsettings.Development.json` and demonstrates TLS/seed wiring in `appsettings.Production.json`. `MeshGossipMembershipTableTests` (in `tests/OmniRelay.Core.UnitTests/Gossip`) exercise join/metadata upgrades plus suspect/left transitions to guard the SWIM timers.
+- **Code** - `MeshGossipHost` + option types live under `src/OmniRelay/Core/Gossip/` and are wired into every dispatcher via `AddMeshGossipAgent` (see `src/OmniRelay.Configuration`). The host emits structured join/leave/suspect logs, reloads mTLS certificates without downtime, and pushes metadata into `PeerLeaseHealthTracker`.
+- **Instrumentation** - Prometheus meters `mesh_gossip_members`, `mesh_gossip_rtt_ms`, and `mesh_gossip_messages_total` are produced by the `OmniRelay.Core.Gossip` meter and enabled automatically inside `AddOmniRelayDispatcher`. Sample dashboards pick them up through the Prometheus scrape on `/metrics`.
+- **Diagnostics** - `/control/peers` comes from the gossip snapshot and is exposed by every HTTP inbound regardless of whether the logging/toggle runtime is enabled. `/omnirelay/control/lease-health` now reflects gossip metadata, so operators can compare both views before the registry ships.
+- **Configuration** - `mesh:gossip:*` settings support env variables, `appsettings.*`, and the sample dev/prod configs under `samples/ResourceLease.MeshDemo/`. Production templates document TLS paths, seed lists, fanout tuning, and certificate pinning.
+- **Samples/tests** - The ResourceLease mesh demo enables gossip by default in `appsettings.Development.json` and demonstrates TLS/seed wiring in `appsettings.Production.json`. `MeshGossipMembershipTableTests` (in `tests/OmniRelay.Core.UnitTests/Gossip`) exercise join/metadata upgrades plus suspect/left transitions to guard the SWIM timers.
+- REFDISC-034..037 - AOT readiness baseline and CI gating.

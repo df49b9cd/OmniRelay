@@ -1,4 +1,4 @@
-# DISC-019 – Chaos Automation & Reporting
+# DISC-019 - Chaos Automation & Reporting
 
 ## Goal
 Automate nightly chaos runs and integrate results into CI/CD gating, including scenario definitions, reporting, and ticketing.
@@ -10,11 +10,11 @@ Automate nightly chaos runs and integrate results into CI/CD gating, including s
 - Automatically raise tickets/alerts when SLO breaches occur, linking to logs + dashboards.
 
 ## Requirements
-1. **Scenario DSL** – Support specifying prerequisites, steps (faults), expected convergence time, and rollback steps.
-2. **CI Integration** – Chaos job must be triggerable on demand and nightly; gating rules prevent releases when critical scenarios fail.
-3. **Metrics ingestion** – Parse Prometheus/Grafana data to compute convergence times and compare against thresholds.
-4. **Notifications** – Publish summary to Slack/Teams/email; open GitHub issues/Jira when failures occur.
-5. **History** – Maintain historical dashboard of chaos outcomes for trend analysis.
+1. **Scenario DSL** - Support specifying prerequisites, steps (faults), expected convergence time, and rollback steps.
+2. **CI Integration** - Chaos job must be triggerable on demand and nightly; gating rules prevent releases when critical scenarios fail.
+3. **Metrics ingestion** - Parse Prometheus/Grafana data to compute convergence times and compare against thresholds.
+4. **Notifications** - Publish summary to Slack/Teams/email; open GitHub issues/Jira when failures occur.
+5. **History** - Maintain historical dashboard of chaos outcomes for trend analysis.
 
 ## Deliverables
 - Scenario definitions, orchestration scripts, CI pipeline configuration.
@@ -27,9 +27,13 @@ Automate nightly chaos runs and integrate results into CI/CD gating, including s
 - Engineers can add a new scenario by editing YAML + pushing, with validation ensuring correctness.
 
 ## References
-- `docs/architecture/service-discovery.md` – “Testing & chaos validation”, “Implementation backlog item 9”.
+- `docs/architecture/service-discovery.md` - “Testing & chaos validation”, “Implementation backlog item 9”.
+
+- Native AOT gate: Publish with /p:PublishAot=true and treat trimming warnings as errors per REFDISC-034..037.
 
 ## Testing Strategy
+All test tiers must run against native AOT artifacts per REFDISC-034..037.
+
 
 ### Unit tests
 - Cover the scenario DSL parser so prerequisites, fault steps, expected SLOs, and rollback instructions are validated with helpful error messages before pipelines run.
@@ -50,3 +54,4 @@ Automate nightly chaos runs and integrate results into CI/CD gating, including s
 #### OmniRelay.HyperscaleFeatureTests
 - Run parallel CI pipelines that fan out across multiple clusters/environments to ensure artifact uploads, gating logic, and notifications scale with dozens of simultaneous scenarios.
 - Stress historical reporting by ingesting large archives of chaos outcomes, generating trend dashboards, and verifying release gating logic references long-term data accurately.
+- REFDISC-034..037 - AOT readiness baseline and CI gating.

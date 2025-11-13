@@ -1,4 +1,4 @@
-# DISC-006 – Rebalance Observability Package
+# DISC-006 - Rebalance Observability Package
 
 ## Goal
 Deliver dashboards, alerts, and telemetry wiring that make rebalancing activity observable to operators in real time.
@@ -10,10 +10,10 @@ Deliver dashboards, alerts, and telemetry wiring that make rebalancing activity 
 - Document runbooks referencing dashboard panels and CLI commands for remediation.
 
 ## Requirements
-1. **Data sources** – Metrics must originate from the controller service and be scrape-ready; include labels for namespace, cluster, plan id.
-2. **Dashboards** – Provide both high-level (exec) and deep-dive (on-call) views; include templating for namespace/cluster filters.
-3. **Alerts** – Provide recommended thresholds and tuning guidance; integrate with existing alert routing (PagerDuty, Teams, etc.).
-4. **Docs** – Update `docs/observability` with dashboard descriptions, installation steps, and screenshot references.
+1. **Data sources** - Metrics must originate from the controller service and be scrape-ready; include labels for namespace, cluster, plan id.
+2. **Dashboards** - Provide both high-level (exec) and deep-dive (on-call) views; include templating for namespace/cluster filters.
+3. **Alerts** - Provide recommended thresholds and tuning guidance; integrate with existing alert routing (PagerDuty, Teams, etc.).
+4. **Docs** - Update `docs/observability` with dashboard descriptions, installation steps, and screenshot references.
 
 ## Deliverables
 - Prometheus metric instrumentation + unit tests for label cardinality.
@@ -27,9 +27,13 @@ Deliver dashboards, alerts, and telemetry wiring that make rebalancing activity 
 - Documentation vetted by SREs; includes at least one screenshot and workflow example.
 
 ## References
-- `docs/architecture/service-discovery.md` – “Health-aware rebalancing”, “Observability + operator tooling”.
+- `docs/architecture/service-discovery.md` - “Health-aware rebalancing”, “Observability + operator tooling”.
+
+- Native AOT gate: Publish with /p:PublishAot=true and treat trimming warnings as errors per REFDISC-034..037.
 
 ## Testing Strategy
+All test tiers must run against native AOT artifacts per REFDISC-034..037.
+
 
 ### Unit tests
 - Add metric/label contract tests to ensure every Prometheus counter/gauge uses the documented namespace/plan labels without exploding cardinality.
@@ -50,3 +54,4 @@ Deliver dashboards, alerts, and telemetry wiring that make rebalancing activity 
 #### OmniRelay.HyperscaleFeatureTests
 - Replay overlapping rebalances across many clusters/namespaces to confirm dashboard templating, panel performance, and alert volume remain manageable.
 - Inject telemetry gaps or noisy metrics at scale to verify alert rules avoid flapping and that dashboards degrade gracefully with large time series counts.
+- REFDISC-034..037 - AOT readiness baseline and CI gating.

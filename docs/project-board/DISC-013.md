@@ -1,4 +1,4 @@
-# DISC-013 – Transport & Encoding Policy Engine
+# DISC-013 - Transport & Encoding Policy Engine
 
 ## Goal
 Enforce governed transport/encoding profiles (default gRPC/HTTP3 + Protobuf with HTTP/2 downgrade) while allowing opt-in edge configurations with validation and telemetry.
@@ -10,11 +10,11 @@ Enforce governed transport/encoding profiles (default gRPC/HTTP3 + Protobuf with
 - Update documentation, samples, and docker assets to showcase configuration knobs.
 
 ## Requirements
-1. **Downgrade awareness** – Record when traffic downgrades to HTTP/2 and expose in metrics/logs.
-2. **Policy config** – Provide central policy document/CRD defining allowed combos per role/namespace; enforce at startup and hot reload when possible.
-3. **Error UX** – Validation failures must produce actionable error messages referencing offending endpoint/config key.
-4. **CLI support** – `omnirelay mesh config validate` should surface policy violations before deployment.
-5. **Observability** – Add dashboards for transport/encoding adoption trends.
+1. **Downgrade awareness** - Record when traffic downgrades to HTTP/2 and expose in metrics/logs.
+2. **Policy config** - Provide central policy document/CRD defining allowed combos per role/namespace; enforce at startup and hot reload when possible.
+3. **Error UX** - Validation failures must produce actionable error messages referencing offending endpoint/config key.
+4. **CLI support** - `omnirelay mesh config validate` should surface policy violations before deployment.
+5. **Observability** - Add dashboards for transport/encoding adoption trends.
 
 ## Deliverables
 - Config schema + validation library.
@@ -28,9 +28,13 @@ Enforce governed transport/encoding profiles (default gRPC/HTTP3 + Protobuf with
 - Samples demonstrate enabling an HTTP/1.1 JSON endpoint alongside the canonical gRPC profile.
 
 ## References
-- `docs/architecture/service-discovery.md` – “Transport & encoding strategy”, “Transport/encoding governance”.
+- `docs/architecture/service-discovery.md` - “Transport & encoding strategy”, “Transport/encoding governance”.
+
+- Native AOT gate: Publish with /p:PublishAot=true and treat trimming warnings as errors per REFDISC-034..037.
 
 ## Testing Strategy
+All test tiers must run against native AOT artifacts per REFDISC-034..037.
+
 
 ### Unit tests
 - Validate policy parsing/resolution so per-role/namespace defaults, overrides, and ACLs compile into the expected allow/deny sets.
@@ -51,3 +55,4 @@ Enforce governed transport/encoding profiles (default gRPC/HTTP3 + Protobuf with
 #### OmniRelay.HyperscaleFeatureTests
 - Roll out policy updates across many services simultaneously, ensuring downgrade telemetry, alerting, and dashboards highlight legacy endpoints without overwhelming operators.
 - Inject waves of invalid configs from multiple teams to prove governance workflows, CLI tooling, and audit tracking scale with large volumes of violations.
+- REFDISC-034..037 - AOT readiness baseline and CI gating.
