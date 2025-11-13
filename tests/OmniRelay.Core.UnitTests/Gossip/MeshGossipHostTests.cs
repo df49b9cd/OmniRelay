@@ -1,5 +1,11 @@
+using System;
 using System.Collections.Immutable;
+using System.Net;
+using System.Net.Http;
+using System.Net.Http.Json;
 using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.Extensions.Logging.Abstractions;
 using OmniRelay.Core.Gossip;
 using OmniRelay.Core.Peers;
@@ -16,8 +22,16 @@ public sealed class MeshGossipHostTests
         typeof(MeshGossipHost).GetMethod("RecordMetrics", BindingFlags.Instance | BindingFlags.NonPublic)!;
     private static readonly MethodInfo BuildEnvelopeMethod =
         typeof(MeshGossipHost).GetMethod("BuildEnvelope", BindingFlags.Instance | BindingFlags.NonPublic)!;
+    private static readonly MethodInfo ExecuteRoundAsyncMethod =
+        typeof(MeshGossipHost).GetMethod("ExecuteRoundAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
+    private static readonly MethodInfo RunSweepLoopAsyncMethod =
+        typeof(MeshGossipHost).GetMethod("RunSweepLoopAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
+    private static readonly MethodInfo UpdateLeaseDiagnosticsMethod =
+        typeof(MeshGossipHost).GetMethod("UpdateLeaseDiagnostics", BindingFlags.Instance | BindingFlags.NonPublic)!;
     private static readonly FieldInfo MembershipField =
         typeof(MeshGossipHost).GetField("_membership", BindingFlags.Instance | BindingFlags.NonPublic)!;
+    private static readonly FieldInfo HttpClientField =
+        typeof(MeshGossipHost).GetField("_httpClient", BindingFlags.Instance | BindingFlags.NonPublic)!;
 
     [Fact]
     public void Constructor_ThrowsWhenFanoutInvalid()
@@ -102,6 +116,211 @@ public sealed class MeshGossipHostTests
             var snapshot = host.Snapshot();
             snapshot.Members.ShouldContain(m => m.NodeId == senderMetadata.NodeId && m.Metadata.Role == "dispatcher");
             snapshot.Members.ShouldContain(m => m.NodeId == otherMetadata.NodeId && m.Status == MeshGossipMemberStatus.Suspect);
+        }
+        finally
+        {
+            host.Dispose();
+        }
+    }
+
+    [Fact]
+    public async Task ExecuteRoundAsync_GossipsWithKnownPeersAndUpdatesMembership()
+    {
+        var time = new TestTimeProvider(DateTimeOffset.UtcNow);
+        var (host, _) = CreateHost(timeProvider: time);
+        var membership = GetMembership(host);
+
+        var remoteMetadata = new MeshGossipMemberMetadata
+        {
+            NodeId = "peer-target",
+            Role = "worker",
+            ClusterId = "cluster-a",
+            Region = "region-a",
+            MeshVersion = "1.0.0",
+            MetadataVersion = 1,
+            Http3Support = true,
+            Endpoint = "gossip-peer:19001"
+        };
+
+        membership.MarkObserved(new MeshGossipMemberSnapshot
+        {
+            NodeId = remoteMetadata.NodeId,
+            Status = MeshGossipMemberStatus.Alive,
+            LastSeen = time.GetUtcNow(),
+            Metadata = remoteMetadata
+        });
+
+        MeshGossipEnvelope? observedRequest = null;
+        var handler = new TestHttpMessageHandler(async (request, cancellationToken) =>
+        {
+            observedRequest = await request.Content!
+                .ReadFromJsonAsync(MeshGossipJsonSerializerContext.Default.MeshGossipEnvelope, cancellationToken);
+
+            var updatedRemote = remoteMetadata with { MetadataVersion = 2, MeshVersion = "1.1.0" };
+            var response = new MeshGossipEnvelope
+            {
+                Sender = updatedRemote,
+                Members =
+                [
+                    new MeshGossipMemberSnapshot
+                    {
+                        NodeId = updatedRemote.NodeId,
+                        Status = MeshGossipMemberStatus.Alive,
+                        LastSeen = time.GetUtcNow(),
+                        Metadata = updatedRemote
+                    },
+                    new MeshGossipMemberSnapshot
+                    {
+                        NodeId = "peer-observed",
+                        Status = MeshGossipMemberStatus.Alive,
+                        LastSeen = time.GetUtcNow(),
+                        Metadata = new MeshGossipMemberMetadata
+                        {
+                            NodeId = "peer-observed",
+                            Role = "gateway",
+                            ClusterId = "cluster-a",
+                            Region = "region-b",
+                            MeshVersion = "2.0.0",
+                            MetadataVersion = 1,
+                            Labels = ImmutableDictionary<string, string>.Empty
+                        }
+                    }
+                ]
+            };
+
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(response, MeshGossipJsonSerializerContext.Default.MeshGossipEnvelope)
+            };
+        });
+
+        var client = new HttpClient(handler)
+        {
+            Timeout = TimeSpan.FromSeconds(1)
+        };
+        SetHttpClient(host, client);
+
+        try
+        {
+            await InvokeExecuteRoundAsync(host, CancellationToken.None);
+
+            observedRequest.ShouldNotBeNull();
+            observedRequest!.Members.ShouldContain(m => m.NodeId == host.LocalMetadata.NodeId);
+
+            var snapshot = host.Snapshot();
+            snapshot.Members.ShouldContain(m => m.NodeId == "peer-observed" && m.Metadata.Role == "gateway");
+            snapshot.Members.ShouldContain(m => m.NodeId == remoteMetadata.NodeId && m.Metadata.MeshVersion == "1.1.0");
+        }
+        finally
+        {
+            client.Dispose();
+            host.Dispose();
+        }
+    }
+
+    [Fact]
+    public async Task RunSweepLoopAsync_TransitionsPeersBasedOnTimers()
+    {
+        var start = DateTimeOffset.UtcNow;
+        var time = new TestTimeProvider(start);
+        var options = CreateOptions();
+        options.SuspicionInterval = TimeSpan.FromMilliseconds(1);
+        options.PingTimeout = TimeSpan.FromMilliseconds(1);
+        options.RetransmitLimit = 1;
+
+        var (host, _) = CreateHost(options, time);
+        var membership = GetMembership(host);
+
+        membership.MarkObserved(new MeshGossipMemberSnapshot
+        {
+            NodeId = "peer-suspect",
+            Status = MeshGossipMemberStatus.Alive,
+            LastSeen = start - TimeSpan.FromMilliseconds(1.5),
+            Metadata = new MeshGossipMemberMetadata
+            {
+                NodeId = "peer-suspect",
+                Role = "worker",
+                ClusterId = "cluster-a",
+                Region = "region-a",
+                MeshVersion = "1.0.0",
+                MetadataVersion = 1
+            }
+        });
+
+        membership.MarkObserved(new MeshGossipMemberSnapshot
+        {
+            NodeId = "peer-left",
+            Status = MeshGossipMemberStatus.Alive,
+            LastSeen = start - TimeSpan.FromMilliseconds(3),
+            Metadata = new MeshGossipMemberMetadata
+            {
+                NodeId = "peer-left",
+                Role = "worker",
+                ClusterId = "cluster-a",
+                Region = "region-a",
+                MeshVersion = "1.0.0",
+                MetadataVersion = 1
+            }
+        });
+
+        try
+        {
+            using var cts = new CancellationTokenSource();
+            var sweepTask = InvokeRunSweepLoopAsync(host, cts.Token);
+            await Task.Delay(TimeSpan.FromMilliseconds(5), TestContext.Current.CancellationToken);
+            cts.Cancel();
+            await sweepTask;
+
+            var snapshot = host.Snapshot();
+            snapshot.Members.ShouldContain(m => m.NodeId == "peer-suspect" && m.Status == MeshGossipMemberStatus.Suspect);
+            snapshot.Members.ShouldContain(m => m.NodeId == "peer-left" && m.Status == MeshGossipMemberStatus.Left);
+        }
+        finally
+        {
+            host.Dispose();
+        }
+    }
+
+    [Fact]
+    public void UpdateLeaseDiagnostics_PopulatesTrackerMetadata()
+    {
+        var time = new TestTimeProvider(DateTimeOffset.UtcNow);
+        var tracker = new PeerLeaseHealthTracker(timeProvider: time);
+        var (host, _) = CreateHost(timeProvider: time, tracker: tracker);
+
+        try
+        {
+            var membership = GetMembership(host);
+            var remoteMetadata = new MeshGossipMemberMetadata
+            {
+                NodeId = "peer-diagnostics",
+                Role = "gateway",
+                ClusterId = "cluster-a",
+                Region = "region-b",
+                MeshVersion = "1.2.3",
+                MetadataVersion = 1,
+                Http3Support = false,
+                Labels = ImmutableDictionary<string, string>.Empty.Add("mesh.zone", "az-1")
+            };
+
+            membership.MarkObserved(new MeshGossipMemberSnapshot
+            {
+                NodeId = remoteMetadata.NodeId,
+                Status = MeshGossipMemberStatus.Alive,
+                LastSeen = time.GetUtcNow(),
+                Metadata = remoteMetadata
+            });
+
+            InvokeUpdateLeaseDiagnostics(host);
+
+            var peer = tracker.Snapshot().FirstOrDefault(s => s.PeerId == "peer-diagnostics");
+            peer.ShouldNotBeNull();
+            peer!.Metadata["mesh.role"].ShouldBe("gateway");
+            peer.Metadata["mesh.cluster"].ShouldBe("cluster-a");
+            peer.Metadata["mesh.region"].ShouldBe("region-b");
+            peer.Metadata["mesh.version"].ShouldBe("1.2.3");
+            peer.Metadata["mesh.http3"].ShouldBe("false");
+            peer.Metadata["label.mesh.zone"].ShouldBe("az-1");
         }
         finally
         {
@@ -280,6 +499,18 @@ public sealed class MeshGossipHostTests
     private static void InvokeRecordMetrics(MeshGossipHost host, MeshGossipClusterView snapshot) =>
         RecordMetricsMethod.Invoke(host, new object[] { snapshot });
 
+    private static Task InvokeExecuteRoundAsync(MeshGossipHost host, CancellationToken cancellationToken) =>
+        (Task)ExecuteRoundAsyncMethod.Invoke(host, new object?[] { cancellationToken })!;
+
+    private static Task InvokeRunSweepLoopAsync(MeshGossipHost host, CancellationToken cancellationToken) =>
+        (Task)RunSweepLoopAsyncMethod.Invoke(host, new object?[] { cancellationToken })!;
+
+    private static void InvokeUpdateLeaseDiagnostics(MeshGossipHost host) =>
+        UpdateLeaseDiagnosticsMethod.Invoke(host, Array.Empty<object?>());
+
+    private static void SetHttpClient(MeshGossipHost host, HttpClient client) =>
+        HttpClientField.SetValue(host, client);
+
     private static Task<MeshGossipEnvelope> InvokeProcessEnvelopeAsync(
         MeshGossipHost host,
         MeshGossipEnvelope envelope,
@@ -287,6 +518,19 @@ public sealed class MeshGossipHostTests
     {
         var task = (Task<MeshGossipEnvelope>)ProcessEnvelopeAsyncMethod.Invoke(host, new object?[] { envelope, cancellationToken })!;
         return task;
+    }
+
+    private sealed class TestHttpMessageHandler : HttpMessageHandler
+    {
+        private readonly Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> _handler;
+
+        public TestHttpMessageHandler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> handler)
+        {
+            _handler = handler ?? throw new ArgumentNullException(nameof(handler));
+        }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            _handler(request, cancellationToken);
     }
 
     private sealed class TestTimeProvider(DateTimeOffset start) : TimeProvider

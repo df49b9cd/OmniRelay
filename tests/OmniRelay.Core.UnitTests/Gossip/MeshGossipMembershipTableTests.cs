@@ -232,4 +232,133 @@ public sealed class MeshGossipMembershipTableTests
         sender.ShouldNotBeNull();
         sender!.Status.ShouldBe(MeshGossipMemberStatus.Alive);
     }
+
+    [Fact]
+    public void RefreshLocalMetadata_IncrementsVersionAndKeepsLocalAlive()
+    {
+        var time = new TestTimeProvider(DateTimeOffset.Parse("2024-01-01T00:00:00Z", CultureInfo.InvariantCulture));
+        var localMetadata = new MeshGossipMemberMetadata
+        {
+            NodeId = "local",
+            Role = "dispatcher",
+            ClusterId = "cluster-a",
+            Region = "local",
+            MeshVersion = "dev",
+            MetadataVersion = 1
+        };
+
+        var table = new MeshGossipMembershipTable(localMetadata.NodeId, localMetadata, time);
+        time.Advance(TimeSpan.FromSeconds(10));
+
+        var refreshed = table.RefreshLocalMetadata(metadata => metadata with
+        {
+            Role = "gateway",
+            MeshVersion = "1.0.1"
+        });
+
+        refreshed.MetadataVersion.ShouldBe(2);
+
+        var snapshot = table.Snapshot();
+        var local = snapshot.Members.First(m => m.NodeId == "local");
+        local.Metadata.MetadataVersion.ShouldBe(2);
+        local.Metadata.Role.ShouldBe("gateway");
+        local.Metadata.MeshVersion.ShouldBe("1.0.1");
+        local.Status.ShouldBe(MeshGossipMemberStatus.Alive);
+        local.LastSeen.ShouldBe(time.GetUtcNow());
+    }
+
+    [Fact]
+    public void MarkSender_PreservesNewerMetadataAndUpdatesRoundTrip()
+    {
+        var time = new TestTimeProvider(DateTimeOffset.UtcNow);
+        var localMetadata = new MeshGossipMemberMetadata
+        {
+            NodeId = "local",
+            Role = "dispatcher",
+            ClusterId = "cluster-a",
+            Region = "local",
+            MeshVersion = "dev",
+            MetadataVersion = 1
+        };
+
+        var table = new MeshGossipMembershipTable(localMetadata.NodeId, localMetadata, time);
+
+        var preferred = new MeshGossipMemberMetadata
+        {
+            NodeId = "peer",
+            Role = "worker",
+            ClusterId = "cluster-a",
+            Region = "region-a",
+            MeshVersion = "2.0.0",
+            MetadataVersion = 5
+        };
+
+        table.MarkObserved(new MeshGossipMemberSnapshot
+        {
+            NodeId = preferred.NodeId,
+            Status = MeshGossipMemberStatus.Alive,
+            LastSeen = time.GetUtcNow(),
+            Metadata = preferred
+        });
+
+        var downgradedEnvelope = new MeshGossipEnvelope
+        {
+            SchemaVersion = MeshGossipOptions.CurrentSchemaVersion,
+            Sender = preferred with
+            {
+                MetadataVersion = 2,
+                MeshVersion = "legacy"
+            },
+            Members = Array.Empty<MeshGossipMemberSnapshot>(),
+            Sequence = 2
+        };
+
+        table.MarkSender(downgradedEnvelope, 12.5);
+
+        var snapshot = table.Snapshot();
+        var peer = snapshot.Members.First(m => m.NodeId == "peer");
+        peer.Metadata.MeshVersion.ShouldBe("2.0.0");
+        peer.Metadata.MetadataVersion.ShouldBe(5);
+        peer.RoundTripTimeMs.ShouldNotBeNull();
+        peer.RoundTripTimeMs!.Value.ShouldBe(12.5, 0.01);
+    }
+
+    [Fact]
+    public void Sweep_MarksPeerLeftAfterLeaveInterval()
+    {
+        var time = new TestTimeProvider(DateTimeOffset.UtcNow);
+        var localMetadata = new MeshGossipMemberMetadata
+        {
+            NodeId = "local",
+            Role = "dispatcher",
+            ClusterId = "cluster-a",
+            Region = "local",
+            MeshVersion = "dev",
+            MetadataVersion = 1
+        };
+
+        var table = new MeshGossipMembershipTable(localMetadata.NodeId, localMetadata, time);
+        var remote = new MeshGossipMemberMetadata
+        {
+            NodeId = "peer-left",
+            Role = "worker",
+            ClusterId = "cluster-a",
+            Region = "region-a",
+            MeshVersion = "1.0.0",
+            MetadataVersion = 1
+        };
+
+        table.MarkObserved(new MeshGossipMemberSnapshot
+        {
+            NodeId = remote.NodeId,
+            Status = MeshGossipMemberStatus.Alive,
+            LastSeen = time.GetUtcNow() - TimeSpan.FromSeconds(30),
+            Metadata = remote
+        });
+
+        table.Sweep(TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10));
+
+        var snapshot = table.Snapshot();
+        snapshot.Members.ShouldContain(m => m.NodeId == "peer-left" && m.Status == MeshGossipMemberStatus.Left);
+    }
 }

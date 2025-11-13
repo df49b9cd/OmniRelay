@@ -94,14 +94,15 @@ public sealed class MeshGossipCertificateProvider(
                 throw new InvalidOperationException("mesh:gossip:tls:certificateData is not valid Base64.", ex);
             }
 
-            try
-            {
-                cert = X509CertificateLoader.LoadPkcs12(rawBytes, _options.Tls.CertificatePassword, flags);
-            }
-            finally
-            {
-                CryptographicOperations.ZeroMemory(rawBytes);
-            }
+        try
+        {
+            cert = X509CertificateLoader.LoadPkcs12(rawBytes, _options.Tls.CertificatePassword, flags);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(rawBytes);
+            MeshGossipCertificateProviderTestHooks.NotifySecretsCleared(rawBytes);
+        }
 
             source = "inline certificate data";
         }
@@ -144,5 +145,15 @@ public sealed class MeshGossipCertificateProvider(
             _certificate?.Dispose();
             _certificate = null;
         }
+    }
+}
+
+internal static class MeshGossipCertificateProviderTestHooks
+{
+    public static Action<byte[]>? SecretsCleared { get; set; }
+
+    public static void NotifySecretsCleared(byte[] buffer)
+    {
+        SecretsCleared?.Invoke(buffer);
     }
 }
