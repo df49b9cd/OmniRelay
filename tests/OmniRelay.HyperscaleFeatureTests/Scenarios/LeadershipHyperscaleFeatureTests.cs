@@ -56,12 +56,13 @@ public sealed class LeadershipHyperscaleFeatureTests : IAsyncLifetime
         var ct = TestContext.Current.CancellationToken;
         await _cluster.WaitForStableLeadershipAsync(TimeSpan.FromSeconds(10), ct);
 
-        var shardScopes = _cluster.Scopes.Where(scope => scope.ScopeKind == LeadershipScopeKinds.Shard)
+        var targetScopes = new List<string> { LeadershipScope.GlobalControl.ScopeId };
+        targetScopes.AddRange(_cluster.Scopes
+            .Where(scope => scope.ScopeKind == LeadershipScopeKinds.Shard)
             .Select(scope => scope.ScopeId)
-            .Take(18)
-            .ToArray();
+            .Take(18));
 
-        foreach (var scopeId in shardScopes)
+        foreach (var scopeId in targetScopes)
         {
             var incumbent = _cluster.GetToken(scopeId);
             Assert.NotNull(incumbent);
@@ -91,6 +92,10 @@ public sealed class LeadershipHyperscaleFeatureTests : IAsyncLifetime
         await _cluster.WaitForStableLeadershipAsync(TimeSpan.FromSeconds(10), ct);
         var observers = _cluster.Observers;
         var scopes = _cluster.Scopes.Select(scope => scope.ScopeId).ToArray();
+        var shardScopes = _cluster.Scopes
+            .Where(scope => scope.ScopeKind == LeadershipScopeKinds.Shard)
+            .Select(scope => scope.ScopeId)
+            .ToArray();
 
         var watchers = new List<LeadershipWatcher>();
         try
@@ -103,7 +108,7 @@ public sealed class LeadershipHyperscaleFeatureTests : IAsyncLifetime
 
             for (var iteration = 0; iteration < 3; iteration++)
             {
-                var scopeId = scopes[(iteration * 7) % scopes.Length];
+                var scopeId = shardScopes[(iteration * 7) % shardScopes.Length];
                 await _cluster.ForceFailoverAsync(scopeId, ct);
 
                 await ChurnWatchersAsync(watchers, observers, scopes, replacements: watchers.Count / 3, ct);
