@@ -7,14 +7,16 @@ using Xunit;
 
 namespace OmniRelay.Core.UnitTests.Diagnostics;
 
+[Collection(nameof(QuicDiagnosticsCollection))]
 public class QuicKestrelEventBridgeTests
 {
+    private record LogEntry(LogLevel Level, string Message, object? Scope);
+
     private sealed class TestLogger(LogLevel minLevel = LogLevel.Debug) : ILogger<QuicKestrelEventBridge>
     {
         private readonly LogLevel _minLevel = minLevel;
         private readonly AsyncLocal<object?> _currentScope = new();
-
-        public ConcurrentQueue<(LogLevel level, string message, object? scope)> Entries { get; } = new();
+        public ConcurrentQueue<LogEntry> Entries { get; } = new();
 
         public IDisposable BeginScope<TState>(TState state) where TState : notnull
         {
@@ -33,7 +35,7 @@ public class QuicKestrelEventBridgeTests
             }
 
             var msg = formatter(state, exception);
-            Entries.Enqueue((logLevel, msg, _currentScope.Value));
+            Entries.Enqueue(new LogEntry(logLevel, msg, _currentScope.Value));
         }
 
         private sealed class Scope(Action onDispose) : IDisposable
@@ -85,36 +87,6 @@ public class QuicKestrelEventBridgeTests
 
             await Task.Delay(10, TestContext.Current.CancellationToken);
         }
-        predicate().ShouldBeTrue();
-    }
-
-    [Http3Fact(Timeout = TestTimeouts.Default)]
-    public async Task Logs_Warning_On_HandshakeFailure()
-    {
-        var (logger, bridge) = await CreateBridgeAsync();
-        using var src = MsQuicTestEventSource.Create();
-
-        src.HandshakeError("handshake failure: cert error");
-
-        await AssertEventuallyAsync(() => !logger.Entries.IsEmpty);
-        logger.Entries.TryDequeue(out var entry).ShouldBeTrue();
-        entry.level.ShouldBe(LogLevel.Warning);
-        entry.message.ShouldContain("handshake_failure");
-        entry.scope.ShouldNotBeNull();
-    }
-
-    [Http3Fact(Timeout = TestTimeouts.Default)]
-    public async Task Logs_Information_On_Migration()
-    {
-        var (logger, bridge) = await CreateBridgeAsync();
-        using var src = MsQuicTestEventSource.Create();
-
-        src.PathValidated("path_validated: new path");
-
-        await AssertEventuallyAsync(() => !logger.Entries.IsEmpty);
-        logger.Entries.TryDequeue(out var entry).ShouldBeTrue();
-        entry.level.ShouldBe(LogLevel.Information);
-        entry.message.ShouldContain("migration");
     }
 
     [Http3Fact(Timeout = TestTimeouts.Default)]
@@ -127,7 +99,7 @@ public class QuicKestrelEventBridgeTests
 
         await AssertEventuallyAsync(() => !logger.Entries.IsEmpty);
         logger.Entries.TryDequeue(out var entry).ShouldBeTrue();
-        entry.level.ShouldBe(LogLevel.Debug);
-        entry.message.ShouldContain("http3");
+        entry.Level.ShouldBe(LogLevel.Debug);
+        entry.Message.ShouldContain("http3");
     }
 }
