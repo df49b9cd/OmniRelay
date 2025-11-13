@@ -53,6 +53,14 @@ jobs:
           docker cp "${container_id}:/repo/artifacts/coverage/." artifacts/coverage || true
           docker rm "${container_id}" || true
 
+      - name: Report test results
+        if: ${{ always() && steps.extract-artifacts.outcome == 'success' }}
+        uses: dorny/test-reporter@v1
+        with:
+          name: .NET Tests
+          path: artifacts/test-results/**/*.trx
+          reporter: dotnet-trx
+
       - name: Upload coverage to Codecov
         if: ${{ steps.extract-artifacts.outcome == 'success' }}
         uses: codecov/codecov-action@v5
