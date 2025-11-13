@@ -108,11 +108,7 @@ internal sealed class HyperscaleLeadershipCluster : IAsyncDisposable
 
     public async Task<TimeSpan> ForceFailoverAsync(string scopeId, CancellationToken cancellationToken)
     {
-        var incumbent = GetToken(scopeId);
-        if (incumbent is null)
-        {
-            throw new InvalidOperationException($"No incumbent leader found for scope '{scopeId}'.");
-        }
+        var incumbent = await RequireActiveTokenAsync(scopeId, cancellationToken).ConfigureAwait(false);
 
         var node = _nodes.FirstOrDefault(n => string.Equals(n.NodeId, incumbent.LeaderId, StringComparison.Ordinal));
         if (node is null)
@@ -234,6 +230,23 @@ internal sealed class HyperscaleLeadershipCluster : IAsyncDisposable
 
     private static LeadershipLeaseRecord ToLeaseRecord(LeadershipToken token) =>
         new(token.Scope, token.LeaderId, token.Term, token.FenceToken, token.IssuedAt, token.ExpiresAt);
+
+    private async Task<LeadershipToken> RequireActiveTokenAsync(string scopeId, CancellationToken cancellationToken)
+    {
+        LeadershipToken? token = null;
+        var success = await WaitForConditionAsync(() =>
+        {
+            token = GetToken(scopeId);
+            return token is not null && !token.IsExpired(DateTimeOffset.UtcNow);
+        }, _options.MaxElectionWindow + TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
+
+        if (!success || token is null)
+        {
+            throw new InvalidOperationException($"No incumbent leader found for scope '{scopeId}'.");
+        }
+
+        return token;
+    }
 
     private static async Task<bool> WaitForConditionAsync(Func<bool> predicate, TimeSpan timeout, CancellationToken cancellationToken)
     {
