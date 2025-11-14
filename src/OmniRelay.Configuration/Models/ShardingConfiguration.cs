@@ -13,6 +13,8 @@ public sealed class ShardNamespaceConfiguration
 {
     public const string DefaultStrategy = ShardHashStrategyIds.Rendezvous;
 
+    public string? Namespace { get; set; }
+
     public string Strategy { get; set; } = DefaultStrategy;
 
     public IList<ShardNodeConfiguration> Nodes { get; } = [];
