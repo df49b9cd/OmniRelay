@@ -1,10 +1,12 @@
+using System.Threading;
 using Grpc.Net.Client;
+using Hugo;
 
 namespace OmniRelay.ControlPlane.Clients;
 
 public interface IGrpcControlPlaneClientFactory
 {
-    GrpcChannel CreateChannel(string profileName);
+    Result<GrpcChannel> CreateChannel(string profileName, CancellationToken cancellationToken = default);
 
-    GrpcChannel CreateChannel(GrpcControlPlaneClientProfile profile);
+    Result<GrpcChannel> CreateChannel(GrpcControlPlaneClientProfile profile, CancellationToken cancellationToken = default);
 }

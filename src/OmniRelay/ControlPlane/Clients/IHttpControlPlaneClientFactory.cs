@@ -1,8 +1,11 @@
+using System.Threading;
+using Hugo;
+
 namespace OmniRelay.ControlPlane.Clients;
 
 public interface IHttpControlPlaneClientFactory
 {
-    HttpClient CreateClient(string profileName);
+    Result<HttpClient> CreateClient(string profileName, CancellationToken cancellationToken = default);
 
-    HttpClient CreateClient(HttpControlPlaneClientProfile profile);
+    Result<HttpClient> CreateClient(HttpControlPlaneClientProfile profile, CancellationToken cancellationToken = default);
 }

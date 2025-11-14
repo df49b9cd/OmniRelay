@@ -27,11 +27,13 @@ using OmniRelay.Core.Diagnostics;
 using OmniRelay.Core.Gossip;
 using OmniRelay.Core.Leadership;
 using OmniRelay.Core.Peers;
+using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
 using OmniRelay.Security.Authorization;
 using OmniRelay.Security.Secrets;
 using OmniRelay.Transport.Grpc;
 using OmniRelay.Transport.Http;
+using OmniRelay.Transport.Security;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 
@@ -1498,7 +1500,7 @@ internal sealed partial class DispatcherBuilder
         return true;
     }
 
-    private static HttpControlPlaneHostOptions BuildHttpControlPlaneHostOptions(DiagnosticsControlPlaneConfiguration configuration)
+    private HttpControlPlaneHostOptions BuildHttpControlPlaneHostOptions(DiagnosticsControlPlaneConfiguration configuration)
     {
         var options = new HttpControlPlaneHostOptions();
         foreach (var url in configuration.HttpUrls)
@@ -2347,4 +2349,3 @@ internal sealed partial class DispatcherBuilder
         Duplex
     }
 }
-

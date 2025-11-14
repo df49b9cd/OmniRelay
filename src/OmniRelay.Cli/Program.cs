@@ -597,10 +597,10 @@ public static class Program
         var signingKeyOption = new Option<string>("--signing-key")
         {
             Description = "Signing key used for HMAC tokens.",
-            IsRequired = true
+            Arity = ArgumentArity.ExactlyOne
         };
-        var clusterOption = new Option<string>("--cluster", () => "default", "Cluster identifier for the token.");
-        var roleOption = new Option<string>("--role", () => "worker", "Role assigned to the joining node.");
+        var clusterOption = new Option<string>("--cluster") { Description = "Cluster identifier for the token." };
+        var roleOption = new Option<string>("--role") { Description = "Role assigned to the joining node." };
         var lifetimeOption = new Option<string?>("--lifetime") { Description = "Token lifetime (e.g. 1h, 30m). Defaults to 1h." };
         var maxUsesOption = new Option<int?>("--max-uses") { Description = "Maximum number of times the token can be consumed." };
         var issuerOption = new Option<string?>("--issuer") { Description = "Token issuer (defaults to omnirelay-cli)." };
@@ -637,7 +637,11 @@ public static class Program
         };
         urlOption.Aliases.Add("-u");
 
-        var tokenOption = new Option<string>("--token") { Description = "Join token issued by the bootstrap service.", IsRequired = true };
+        var tokenOption = new Option<string>("--token")
+        {
+            Description = "Join token issued by the bootstrap service.",
+            Arity = ArgumentArity.ExactlyOne
+        };
         var outputOption = new Option<string?>("--output") { Description = "Optional path to write the bootstrap bundle (JSON)." };
         var timeoutOption = new Option<string?>("--timeout") { Description = "Request timeout (e.g. 30s, 1m)." };
 
@@ -2954,7 +2958,14 @@ public static class Program
 
         try
         {
-            using var channel = CliRuntime.GrpcControlPlaneClientFactory.CreateChannel(profile);
+            var channelResult = CliRuntime.GrpcControlPlaneClientFactory.CreateChannel(profile);
+            if (channelResult.IsFailure)
+            {
+                await Console.Error.WriteLineAsync($"Failed to create gRPC control-plane channel: {channelResult.Error?.Message ?? "unknown"}").ConfigureAwait(false);
+                return 1;
+            }
+
+            using var channel = channelResult.ValueOrThrow();
             using var cts = new CancellationTokenSource(timeout);
             var invoker = channel.CreateCallInvoker();
             using var call = invoker.AsyncServerStreamingCall(
@@ -4202,8 +4213,6 @@ public static class Program
     }
 
     private sealed record ProtoProcessingState(string[] DescriptorPaths, string MessageName);
-
-    private sealed record NodeDrainCommandDto(string? Reason);
 
     private enum PayloadSource
     {

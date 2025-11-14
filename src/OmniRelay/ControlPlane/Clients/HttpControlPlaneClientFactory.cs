@@ -1,6 +1,13 @@
+using System.Net;
+using System.Net.Http;
+using System.Net.Security;
+using System.Threading;
+using System.Threading.Tasks;
+using Hugo;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OmniRelay.ControlPlane.Security;
+using static Hugo.Go;
 
 namespace OmniRelay.ControlPlane.Clients;
 
@@ -10,6 +17,16 @@ public sealed class HttpControlPlaneClientFactory : IHttpControlPlaneClientFacto
     private readonly IOptionsMonitor<HttpControlPlaneClientFactoryOptions> _optionsMonitor;
     private readonly TransportTlsManager? _sharedTls;
     private readonly ILogger<HttpControlPlaneClientFactory> _logger;
+    private static readonly Action<ILogger, string, string?, Exception?> HttpProfileFailureLog =
+        LoggerMessage.Define<string, string?>(
+            LogLevel.Error,
+            new EventId(1, "HttpControlPlaneProfileFailure"),
+            "Failed to create HTTP control-plane client for profile {Profile}: {Message}");
+    private static readonly Action<ILogger, Uri, string?, Exception?> HttpEndpointFailureLog =
+        LoggerMessage.Define<Uri, string?>(
+            LogLevel.Error,
+            new EventId(2, "HttpControlPlaneEndpointFailure"),
+            "Failed to create HTTP control-plane client for {BaseAddress}: {Message}");
 
     public HttpControlPlaneClientFactory(
         IOptionsMonitor<HttpControlPlaneClientFactoryOptions> optionsMonitor,
@@ -21,76 +38,165 @@ public sealed class HttpControlPlaneClientFactory : IHttpControlPlaneClientFacto
         _sharedTls = sharedTls;
     }
 
-    public HttpClient CreateClient(string profileName)
+    public Result<HttpClient> CreateClient(string profileName, CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(profileName);
-        var options = _optionsMonitor.CurrentValue;
-        if (!options.Profiles.TryGetValue(profileName, out var profile))
+        var result = ResolveProfile(profileName)
+            .Then(profile => CreateClient(profile, cancellationToken));
+
+        if (result.IsFailure)
         {
-            throw new InvalidOperationException($"Unknown HTTP control-plane profile '{profileName}'.");
+            HttpProfileFailureLog(_logger, profileName, result.Error?.Message ?? "unknown", null);
         }
 
-        return CreateClient(profile);
+        return result;
     }
 
-    public HttpClient CreateClient(HttpControlPlaneClientProfile profile)
+    public Result<HttpClient> CreateClient(HttpControlPlaneClientProfile profile, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(profile);
-        var handler = CreateHandler(profile);
-        var client = new HttpClient(handler, disposeHandler: true)
-        {
-            BaseAddress = profile.BaseAddress
-        };
 
-        if (profile.Runtime?.RequestVersion is { } defaultVersion)
+        var result = InitializeHandler(profile, cancellationToken)
+            .Then(tuple => BuildHttpClient(tuple.Profile, tuple.Handler, tuple.RuntimeSnapshot));
+
+        if (result.IsFailure)
         {
-            client.DefaultRequestVersion = defaultVersion;
+            HttpEndpointFailureLog(_logger, profile.BaseAddress, result.Error?.Message ?? "unknown", null);
         }
 
-        if (profile.Runtime?.VersionPolicy is { } defaultPolicy)
-        {
-            client.DefaultVersionPolicy = defaultPolicy;
-        }
-
-        return client;
+        return result;
     }
 
-    private SocketsHttpHandler CreateHandler(HttpControlPlaneClientProfile profile)
+    private Result<HttpControlPlaneClientProfile> ResolveProfile(string profileName)
     {
-        var handler = new SocketsHttpHandler
-        {
-            AutomaticDecompression = System.Net.DecompressionMethods.All
-        };
-
-        if (profile.Runtime is { EnableHttp3: true })
-        {
-            handler.SslOptions = new System.Net.Security.SslClientAuthenticationOptions
-            {
-                ApplicationProtocols = new List<System.Net.Security.SslApplicationProtocol>
-                {
-                    System.Net.Security.SslApplicationProtocol.Http3,
-                    System.Net.Security.SslApplicationProtocol.Http2,
-                    System.Net.Security.SslApplicationProtocol.Http11
-                }
-            };
-        }
-        else
-        {
-            handler.SslOptions = new System.Net.Security.SslClientAuthenticationOptions
-            {
-                ApplicationProtocols = new List<System.Net.Security.SslApplicationProtocol>
-                {
-                    System.Net.Security.SslApplicationProtocol.Http2,
-                    System.Net.Security.SslApplicationProtocol.Http11
-                }
-            };
-        }
-
-        ApplyClientTls(handler.SslOptions!, profile);
-        return handler;
+        return Go.Ok(profileName)
+            .Ensure(name => !string.IsNullOrWhiteSpace(name), _ => Error.From("A profile name must be provided.", ErrorCodes.Validation))
+            .Map(name => (Name: name, Options: _optionsMonitor.CurrentValue))
+            .Ensure(tuple => tuple.Options.Profiles.ContainsKey(tuple.Name), tuple => Error.From($"Unknown HTTP control-plane profile '{tuple.Name}'.", ErrorCodes.Validation).WithMetadata("profile", tuple.Name))
+            .Map(tuple => tuple.Options.Profiles[tuple.Name]);
     }
 
-    private void ApplyClientTls(System.Net.Security.SslClientAuthenticationOptions sslOptions, HttpControlPlaneClientProfile profile)
+    private Result<(HttpControlPlaneClientProfile Profile, SocketsHttpHandler Handler, HttpRuntimeSnapshot RuntimeSnapshot)> InitializeHandler(HttpControlPlaneClientProfile profile, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var handler = new SocketsHttpHandler
+            {
+                AutomaticDecompression = DecompressionMethods.All
+            };
+
+            var tlsTask = BuildSslOptionsAsync(profile, cancellationToken);
+            var runtimeTask = BuildRuntimeSnapshotAsync(profile, cancellationToken);
+
+            System.Net.Security.SslClientAuthenticationOptions? sslOptions = null;
+            HttpRuntimeSnapshot runtimeSnapshot = default;
+
+            using var group = new ErrGroup(cancellationToken);
+
+            group.Go(async (_, token) =>
+            {
+                var tlsResult = await tlsTask.ConfigureAwait(false);
+                if (tlsResult.IsFailure)
+                {
+                    return tlsResult.CastFailure<Unit>();
+                }
+
+                sslOptions = tlsResult.Value;
+                return Ok(Unit.Value);
+            });
+
+            group.Go(async (_, token) =>
+            {
+                var runtimeResult = await runtimeTask.ConfigureAwait(false);
+                if (runtimeResult.IsFailure)
+                {
+                    return runtimeResult.CastFailure<Unit>();
+                }
+
+                runtimeSnapshot = runtimeResult.Value;
+                return Ok(Unit.Value);
+            });
+
+            var completion = group.WaitAsync(cancellationToken).GetAwaiter().GetResult();
+            if (completion.IsFailure)
+            {
+                return completion.CastFailure<(HttpControlPlaneClientProfile, SocketsHttpHandler, HttpRuntimeSnapshot)>();
+            }
+
+            handler.SslOptions = sslOptions;
+            return Ok((profile, handler, runtimeSnapshot));
+        }
+        catch (Exception ex)
+        {
+            return Result.Fail<(HttpControlPlaneClientProfile, SocketsHttpHandler, HttpRuntimeSnapshot)>(Error.FromException(ex));
+        }
+    }
+
+    private static Result<HttpClient> BuildHttpClient(HttpControlPlaneClientProfile profile, SocketsHttpHandler handler, HttpRuntimeSnapshot runtimeSnapshot)
+    {
+        return Result.Try(() =>
+        {
+            var client = new HttpClient(handler, disposeHandler: true)
+            {
+                BaseAddress = profile.BaseAddress
+            };
+
+            if (runtimeSnapshot.RequestVersion is { } version)
+            {
+                client.DefaultRequestVersion = version;
+            }
+
+            if (runtimeSnapshot.VersionPolicy is { } policy)
+            {
+                client.DefaultVersionPolicy = policy;
+            }
+
+            return client;
+        });
+    }
+
+    private ValueTask<Result<System.Net.Security.SslClientAuthenticationOptions>> BuildSslOptionsAsync(HttpControlPlaneClientProfile profile, CancellationToken cancellationToken)
+    {
+        return new(Task.Run(() =>
+        {
+            return Result.Try(() =>
+            {
+                var enableHttp3 = profile.Runtime?.EnableHttp3 == true;
+                var options = new System.Net.Security.SslClientAuthenticationOptions
+                {
+                    ApplicationProtocols = BuildApplicationProtocols(enableHttp3)
+                };
+
+                ApplyClientTls(options, profile);
+                return options;
+            });
+        }, cancellationToken));
+    }
+
+    private static ValueTask<Result<HttpRuntimeSnapshot>> BuildRuntimeSnapshotAsync(HttpControlPlaneClientProfile profile, CancellationToken cancellationToken)
+    {
+        return new(Task.Run(() =>
+        {
+            var runtime = profile.Runtime;
+            var snapshot = new HttpRuntimeSnapshot(runtime?.RequestVersion, runtime?.VersionPolicy);
+            return Ok(snapshot);
+        }, cancellationToken));
+    }
+
+    private static List<SslApplicationProtocol> BuildApplicationProtocols(bool enableHttp3) =>
+        enableHttp3
+            ? new List<SslApplicationProtocol>
+            {
+                SslApplicationProtocol.Http3,
+                SslApplicationProtocol.Http2,
+                SslApplicationProtocol.Http11
+            }
+            : new List<SslApplicationProtocol>
+            {
+                SslApplicationProtocol.Http2,
+                SslApplicationProtocol.Http11
+            };
+
+    private void ApplyClientTls(SslClientAuthenticationOptions sslOptions, HttpControlPlaneClientProfile profile)
     {
         if (!profile.UseSharedTls || _sharedTls is null)
         {
@@ -101,4 +207,6 @@ public sealed class HttpControlPlaneClientFactory : IHttpControlPlaneClientFacto
         sslOptions.ClientCertificates ??= new();
         sslOptions.ClientCertificates.Add(certificate);
     }
+
+    private readonly record struct HttpRuntimeSnapshot(Version? RequestVersion, HttpVersionPolicy? VersionPolicy);
 }

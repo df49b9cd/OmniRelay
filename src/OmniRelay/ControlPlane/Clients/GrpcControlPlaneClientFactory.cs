@@ -1,8 +1,16 @@
+using System.Net;
+using System.Net.Http;
+using System.Net.Security;
+using System.Security.Cryptography.X509Certificates;
+using System.Threading;
+using System.Threading.Tasks;
 using Grpc.Net.Client;
+using Hugo;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OmniRelay.ControlPlane.Security;
 using OmniRelay.Transport.Grpc;
+using static Hugo.Go;
 
 namespace OmniRelay.ControlPlane.Clients;
 
@@ -12,6 +20,16 @@ public sealed class GrpcControlPlaneClientFactory : IGrpcControlPlaneClientFacto
     private readonly IOptionsMonitor<GrpcControlPlaneClientFactoryOptions> _optionsMonitor;
     private readonly TransportTlsManager? _sharedTls;
     private readonly ILogger<GrpcControlPlaneClientFactory> _logger;
+    private static readonly Action<ILogger, string, string?, Exception?> GrpcProfileFailureLog =
+        LoggerMessage.Define<string, string?>(
+            LogLevel.Error,
+            new EventId(1, "GrpcControlPlaneProfileFailure"),
+            "Failed to create gRPC control-plane channel for profile {Profile}: {Message}");
+    private static readonly Action<ILogger, Uri, string?, Exception?> GrpcEndpointFailureLog =
+        LoggerMessage.Define<Uri, string?>(
+            LogLevel.Error,
+            new EventId(2, "GrpcControlPlaneEndpointFailure"),
+            "Failed to create gRPC control-plane channel for {Address}: {Message}");
 
     public GrpcControlPlaneClientFactory(
         IOptionsMonitor<GrpcControlPlaneClientFactoryOptions> optionsMonitor,
@@ -23,82 +41,150 @@ public sealed class GrpcControlPlaneClientFactory : IGrpcControlPlaneClientFacto
         _sharedTls = sharedTls;
     }
 
-    public GrpcChannel CreateChannel(string profileName)
+    public Result<GrpcChannel> CreateChannel(string profileName, CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(profileName);
-        var options = _optionsMonitor.CurrentValue;
-        if (!options.Profiles.TryGetValue(profileName, out var profile))
+        var result = ResolveProfile(profileName)
+            .Then(profile => CreateChannel(profile, cancellationToken));
+
+        if (result.IsFailure)
         {
-            throw new InvalidOperationException($"Unknown gRPC control-plane profile '{profileName}'.");
+            GrpcProfileFailureLog(_logger, profileName, result.Error?.Message ?? "unknown", null);
         }
 
-        return CreateChannel(profile);
+        return result;
     }
 
-    public GrpcChannel CreateChannel(GrpcControlPlaneClientProfile profile)
+    public Result<GrpcChannel> CreateChannel(GrpcControlPlaneClientProfile profile, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(profile);
-        var handler = CreateHandler(profile);
-        var channelOptions = new GrpcChannelOptions
-        {
-            HttpHandler = handler
-        };
 
-        ApplyRuntimeOptions(channelOptions, profile.Runtime);
-        return GrpcChannel.ForAddress(profile.Address, channelOptions);
+        var result = InitializeHandler(profile, cancellationToken)
+            .Then(tuple => BuildChannel(profile, tuple.Handler, tuple.RuntimeSnapshot));
+
+        if (result.IsFailure)
+        {
+            GrpcEndpointFailureLog(_logger, profile.Address, result.Error?.Message ?? "unknown", null);
+        }
+
+        return result;
     }
 
-    private static void ApplyRuntimeOptions(GrpcChannelOptions options, GrpcClientRuntimeOptions? runtime)
+    private Result<GrpcControlPlaneClientProfile> ResolveProfile(string profileName)
     {
-        if (runtime is null)
-        {
-            return;
-        }
-
-        if (runtime.MaxReceiveMessageSize is { } maxReceive)
-        {
-            options.MaxReceiveMessageSize = maxReceive;
-        }
-
-        if (runtime.MaxSendMessageSize is { } maxSend)
-        {
-            options.MaxSendMessageSize = maxSend;
-        }
-
+        return Go.Ok(profileName)
+            .Ensure(name => !string.IsNullOrWhiteSpace(name), _ => Error.From("A profile name must be provided.", ErrorCodes.Validation))
+            .Map(name => (Name: name, Options: _optionsMonitor.CurrentValue))
+            .Ensure(tuple => tuple.Options.Profiles.ContainsKey(tuple.Name), tuple => Error.From($"Unknown gRPC control-plane profile '{tuple.Name}'.", ErrorCodes.Validation).WithMetadata("profile", tuple.Name))
+            .Map(tuple => tuple.Options.Profiles[tuple.Name]);
     }
 
-    private SocketsHttpHandler CreateHandler(GrpcControlPlaneClientProfile profile)
+    private Result<(SocketsHttpHandler Handler, GrpcRuntimeSnapshot RuntimeSnapshot)> InitializeHandler(GrpcControlPlaneClientProfile profile, CancellationToken cancellationToken)
     {
-        var handler = new SocketsHttpHandler
+        try
         {
-            AutomaticDecompression = System.Net.DecompressionMethods.All,
-            EnableMultipleHttp2Connections = true
-        };
+            var handler = new SocketsHttpHandler
+            {
+                AutomaticDecompression = DecompressionMethods.All,
+                EnableMultipleHttp2Connections = true
+            };
 
-        var preferHttp3 = profile.PreferHttp3;
-        handler.SslOptions = new System.Net.Security.SslClientAuthenticationOptions
-        {
-            ApplicationProtocols = preferHttp3
-                ? new List<System.Net.Security.SslApplicationProtocol> { System.Net.Security.SslApplicationProtocol.Http3, System.Net.Security.SslApplicationProtocol.Http2 }
-                : new List<System.Net.Security.SslApplicationProtocol> { System.Net.Security.SslApplicationProtocol.Http2, System.Net.Security.SslApplicationProtocol.Http3 }
-        };
+            var tlsTask = BuildSslOptionsAsync(profile, cancellationToken);
+            var runtimeTask = BuildRuntimeSnapshotAsync(profile, cancellationToken);
 
-        ApplyClientTls(handler.SslOptions, profile);
+            System.Net.Security.SslClientAuthenticationOptions? sslOptions = null;
+            GrpcRuntimeSnapshot runtimeSnapshot = default;
 
-        if (profile.Runtime is { KeepAlivePingDelay: { } delay })
-        {
-            handler.KeepAlivePingDelay = delay;
+            using var group = new ErrGroup(cancellationToken);
+
+            group.Go(async (_, token) =>
+            {
+                var tlsResult = await tlsTask.ConfigureAwait(false);
+                if (tlsResult.IsFailure)
+                {
+                    return tlsResult.CastFailure<Unit>();
+                }
+
+                sslOptions = tlsResult.Value;
+                return Ok(Unit.Value);
+            });
+
+            group.Go(async (_, token) =>
+            {
+                var runtimeResult = await runtimeTask.ConfigureAwait(false);
+                if (runtimeResult.IsFailure)
+                {
+                    return runtimeResult.CastFailure<Unit>();
+                }
+
+                runtimeSnapshot = runtimeResult.Value;
+                return Ok(Unit.Value);
+            });
+
+            var completion = group.WaitAsync(cancellationToken).GetAwaiter().GetResult();
+            if (completion.IsFailure)
+            {
+                return completion.CastFailure<(SocketsHttpHandler, GrpcRuntimeSnapshot)>();
+            }
+
+            handler.SslOptions = sslOptions;
+            ApplyHandlerRuntime(handler, runtimeSnapshot);
+            return Ok((handler, runtimeSnapshot));
         }
-
-        if (profile.Runtime is { KeepAlivePingTimeout: { } timeout })
+        catch (Exception ex)
         {
-            handler.KeepAlivePingTimeout = timeout;
+            return Result.Fail<(SocketsHttpHandler, GrpcRuntimeSnapshot)>(Error.FromException(ex));
         }
-
-        return handler;
     }
 
-    private void ApplyClientTls(System.Net.Security.SslClientAuthenticationOptions sslOptions, GrpcControlPlaneClientProfile profile)
+    private static Result<GrpcChannel> BuildChannel(GrpcControlPlaneClientProfile profile, SocketsHttpHandler handler, GrpcRuntimeSnapshot runtimeSnapshot)
+    {
+        return Result.Try(() =>
+        {
+            var channelOptions = new GrpcChannelOptions
+            {
+                HttpHandler = handler
+            };
+
+            ApplyChannelRuntime(channelOptions, runtimeSnapshot);
+            return GrpcChannel.ForAddress(profile.Address, channelOptions);
+        });
+    }
+
+    private ValueTask<Result<System.Net.Security.SslClientAuthenticationOptions>> BuildSslOptionsAsync(GrpcControlPlaneClientProfile profile, CancellationToken cancellationToken)
+    {
+        return new(Task.Run(() =>
+        {
+            return Result.Try(() =>
+            {
+                var preferHttp3 = profile.Runtime?.EnableHttp3 ?? profile.PreferHttp3;
+                var options = new System.Net.Security.SslClientAuthenticationOptions
+                {
+                    ApplicationProtocols = preferHttp3
+                        ? new List<SslApplicationProtocol> { SslApplicationProtocol.Http3, SslApplicationProtocol.Http2 }
+                        : new List<SslApplicationProtocol> { SslApplicationProtocol.Http2, SslApplicationProtocol.Http3 }
+                };
+
+                ApplyClientTls(options, profile);
+                return options;
+            });
+        }, cancellationToken));
+    }
+
+    private static ValueTask<Result<GrpcRuntimeSnapshot>> BuildRuntimeSnapshotAsync(GrpcControlPlaneClientProfile profile, CancellationToken cancellationToken)
+    {
+        return new(Task.Run(() =>
+        {
+            var runtime = profile.Runtime;
+            var snapshot = new GrpcRuntimeSnapshot(
+                runtime?.MaxReceiveMessageSize,
+                runtime?.MaxSendMessageSize,
+                runtime?.KeepAlivePingDelay,
+                runtime?.KeepAlivePingTimeout);
+            return Ok(snapshot);
+        }, cancellationToken));
+    }
+
+    private void ApplyClientTls(SslClientAuthenticationOptions sslOptions, GrpcControlPlaneClientProfile profile)
     {
         var tls = profile.Tls;
         if (tls?.ClientCertificates is not null && tls.ClientCertificates.Count > 0)
@@ -126,8 +212,40 @@ public sealed class GrpcControlPlaneClientFactory : IGrpcControlPlaneClientFacto
         if (tls?.CheckCertificateRevocation is { } checkRevocation)
         {
             sslOptions.CertificateRevocationCheckMode = checkRevocation
-                ? System.Security.Cryptography.X509Certificates.X509RevocationMode.Online
-                : System.Security.Cryptography.X509Certificates.X509RevocationMode.NoCheck;
+                ? X509RevocationMode.Online
+                : X509RevocationMode.NoCheck;
         }
     }
+
+    private static void ApplyHandlerRuntime(SocketsHttpHandler handler, GrpcRuntimeSnapshot runtimeSnapshot)
+    {
+        if (runtimeSnapshot.KeepAlivePingDelay is { } pingDelay)
+        {
+            handler.KeepAlivePingDelay = pingDelay;
+        }
+
+        if (runtimeSnapshot.KeepAlivePingTimeout is { } pingTimeout)
+        {
+            handler.KeepAlivePingTimeout = pingTimeout;
+        }
+    }
+
+    private static void ApplyChannelRuntime(GrpcChannelOptions options, GrpcRuntimeSnapshot runtimeSnapshot)
+    {
+        if (runtimeSnapshot.MaxReceiveMessageSize is { } maxReceive)
+        {
+            options.MaxReceiveMessageSize = maxReceive;
+        }
+
+        if (runtimeSnapshot.MaxSendMessageSize is { } maxSend)
+        {
+            options.MaxSendMessageSize = maxSend;
+        }
+    }
+
+    private readonly record struct GrpcRuntimeSnapshot(
+        int? MaxReceiveMessageSize,
+        int? MaxSendMessageSize,
+        TimeSpan? KeepAlivePingDelay,
+        TimeSpan? KeepAlivePingTimeout);
 }

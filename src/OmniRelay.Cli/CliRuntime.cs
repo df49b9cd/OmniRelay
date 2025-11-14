@@ -192,7 +192,7 @@ internal sealed class DefaultHttpClientFactory : IHttpClientFactory
         _factory = factory ?? throw new ArgumentNullException(nameof(factory));
     }
 
-    public HttpClient CreateClient() => _factory.CreateClient("default");
+    public HttpClient CreateClient() => _factory.CreateClient("default").ValueOrThrow();
 }
 
 internal interface IGrpcInvokerFactory
