@@ -1,7 +1,6 @@
 using System.Collections.Immutable;
 using System.Net;
 using System.Security.Authentication;
-using System.Security.Cryptography;
 
 #pragma warning disable SYSLIB0058
 namespace OmniRelay.Transport.Security;
@@ -130,7 +129,7 @@ public sealed class IpNetwork
 
     public bool Contains(IPAddress address)
     {
-        var addressBytes = address.GetAddressBytes();
+        _ = address.GetAddressBytes();
         var networkBytes = _address.MapToIPv6().GetAddressBytes();
         var candidateBytes = address.MapToIPv6().GetAddressBytes();
 

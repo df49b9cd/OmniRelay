@@ -1,5 +1,4 @@
 using System.Security.Cryptography.X509Certificates;
-using System.Threading;
 using Hugo;
 using Microsoft.Extensions.Logging;
 using OmniRelay.ControlPlane.Security;

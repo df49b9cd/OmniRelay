@@ -27,11 +27,11 @@ using OmniRelay.Core.Diagnostics;
 using OmniRelay.Core.Gossip;
 using OmniRelay.Core.Leadership;
 using OmniRelay.Core.Peers;
-using OmniRelay.Security.Authorization;
 using OmniRelay.Dispatcher;
+using OmniRelay.Security.Authorization;
+using OmniRelay.Security.Secrets;
 using OmniRelay.Transport.Grpc;
 using OmniRelay.Transport.Http;
-using OmniRelay.Security.Secrets;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 

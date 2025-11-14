@@ -89,6 +89,8 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
     /// <param name="configureApp">Optional application pipeline configuration.</param>
     /// <param name="serverRuntimeOptions">Kestrel and HTTP/3 runtime options.</param>
     /// <param name="serverTlsOptions">TLS options including certificate for HTTPS/HTTP/3.</param>
+    /// <param name="transportSecurity"></param>
+    /// <param name="authorizationEvaluator"></param>
     public HttpInbound(
         IEnumerable<string> urls,
         Action<IServiceCollection>? configureServices = null,

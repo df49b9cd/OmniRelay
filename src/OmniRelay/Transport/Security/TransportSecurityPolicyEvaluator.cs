@@ -1,6 +1,4 @@
 using System.Net;
-using System.Security.Authentication;
-using System.Security.Cryptography;
 using Microsoft.Extensions.Logging;
 
 namespace OmniRelay.Transport.Security;

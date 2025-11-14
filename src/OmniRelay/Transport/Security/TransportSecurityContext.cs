@@ -1,7 +1,6 @@
 using System.Net;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
-using Grpc.AspNetCore.Server;
 using Grpc.Core;
 using Microsoft.AspNetCore.Connections.Features;
 using Microsoft.AspNetCore.Http;

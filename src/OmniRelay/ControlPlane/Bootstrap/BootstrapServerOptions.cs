@@ -1,4 +1,3 @@
-using System;
 using OmniRelay.ControlPlane.Security;
 
 namespace OmniRelay.ControlPlane.Bootstrap;

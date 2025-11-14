@@ -3,13 +3,13 @@ using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using System.Text;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Primitives;
 using OmniRelay.ControlPlane.Security;
 using OmniRelay.Security.Secrets;
 using Shouldly;
 using Xunit;
-using System.Text;
-using Microsoft.Extensions.Primitives;
 
 namespace OmniRelay.Core.UnitTests.ControlPlane;
 

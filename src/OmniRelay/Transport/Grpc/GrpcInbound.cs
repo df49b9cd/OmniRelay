@@ -56,6 +56,8 @@ public sealed partial class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcSer
     /// <param name="serverRuntimeOptions">gRPC server runtime options and HTTP/3 settings.</param>
     /// <param name="compressionOptions">Optional compression providers and defaults.</param>
     /// <param name="telemetryOptions">Optional telemetry options such as logging toggles.</param>
+    /// <param name="transportSecurity"></param>
+    /// <param name="authorizationEvaluator"></param>
     public GrpcInbound(
         IEnumerable<string> urls,
         Action<IServiceCollection>? configureServices = null,
