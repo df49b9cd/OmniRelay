@@ -15,8 +15,10 @@ using Hugo;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using OmniRelay.Configuration;
 using OmniRelay.ControlPlane.Clients;
+using OmniRelay.ControlPlane.Bootstrap;
 using OmniRelay.ControlPlane.Upgrade;
 using OmniRelay.Core;
 using OmniRelay.Core.Transport;
@@ -440,7 +442,8 @@ public static class Program
         {
             CreateMeshLeadersCommand(),
             CreateMeshPeersCommand(),
-            CreateMeshUpgradeCommand()
+            CreateMeshUpgradeCommand(),
+            CreateMeshBootstrapCommand()
         };
         return command;
     }
@@ -473,6 +476,16 @@ public static class Program
             CreateMeshUpgradeResumeCommand()
         };
 
+        return command;
+    }
+
+    internal static Command CreateMeshBootstrapCommand()
+    {
+        var command = new Command("bootstrap", "Bootstrap token and join tooling.")
+        {
+            CreateMeshBootstrapIssueCommand(),
+            CreateMeshBootstrapJoinCommand()
+        };
         return command;
     }
 
@@ -572,6 +585,74 @@ public static class Program
             var url = parseResult.GetValue(urlOption) ?? DefaultControlPlaneUrl;
             var timeout = parseResult.GetValue(timeoutOption);
             return RunMeshUpgradeResumeAsync(url, timeout).GetAwaiter().GetResult();
+        });
+
+        return command;
+    }
+
+    internal static Command CreateMeshBootstrapIssueCommand()
+    {
+        var command = new Command("issue-token", "Generate a bootstrap join token.");
+
+        var signingKeyOption = new Option<string>("--signing-key")
+        {
+            Description = "Signing key used for HMAC tokens.",
+            IsRequired = true
+        };
+        var clusterOption = new Option<string>("--cluster", () => "default", "Cluster identifier for the token.");
+        var roleOption = new Option<string>("--role", () => "worker", "Role assigned to the joining node.");
+        var lifetimeOption = new Option<string?>("--lifetime") { Description = "Token lifetime (e.g. 1h, 30m). Defaults to 1h." };
+        var maxUsesOption = new Option<int?>("--max-uses") { Description = "Maximum number of times the token can be consumed." };
+        var issuerOption = new Option<string?>("--issuer") { Description = "Token issuer (defaults to omnirelay-cli)." };
+
+        command.Add(signingKeyOption);
+        command.Add(clusterOption);
+        command.Add(roleOption);
+        command.Add(lifetimeOption);
+        command.Add(maxUsesOption);
+        command.Add(issuerOption);
+
+        command.SetAction(parseResult =>
+        {
+            var signingKey = parseResult.GetValue(signingKeyOption) ?? string.Empty;
+            var cluster = parseResult.GetValue(clusterOption) ?? "default";
+            var role = parseResult.GetValue(roleOption) ?? "worker";
+            var lifetime = parseResult.GetValue(lifetimeOption);
+            var maxUses = parseResult.GetValue(maxUsesOption);
+            var issuer = parseResult.GetValue(issuerOption) ?? "omnirelay-cli";
+            return RunMeshBootstrapIssueToken(signingKey, cluster, role, lifetime, maxUses, issuer);
+        });
+
+        return command;
+    }
+
+    internal static Command CreateMeshBootstrapJoinCommand()
+    {
+        var command = new Command("join", "Request a bootstrap bundle using a join token.");
+
+        var urlOption = new Option<string>("--url")
+        {
+            Description = "Bootstrap server base URL (e.g. https://127.0.0.1:9443).",
+            DefaultValueFactory = _ => DefaultControlPlaneUrl
+        };
+        urlOption.Aliases.Add("-u");
+
+        var tokenOption = new Option<string>("--token") { Description = "Join token issued by the bootstrap service.", IsRequired = true };
+        var outputOption = new Option<string?>("--output") { Description = "Optional path to write the bootstrap bundle (JSON)." };
+        var timeoutOption = new Option<string?>("--timeout") { Description = "Request timeout (e.g. 30s, 1m)." };
+
+        command.Add(urlOption);
+        command.Add(tokenOption);
+        command.Add(outputOption);
+        command.Add(timeoutOption);
+
+        command.SetAction(parseResult =>
+        {
+            var url = parseResult.GetValue(urlOption) ?? DefaultControlPlaneUrl;
+            var token = parseResult.GetValue(tokenOption) ?? string.Empty;
+            var output = parseResult.GetValue(outputOption);
+            var timeout = parseResult.GetValue(timeoutOption);
+            return RunMeshBootstrapJoinAsync(url, token, output, timeout).GetAwaiter().GetResult();
         });
 
         return command;
@@ -2574,6 +2655,71 @@ public static class Program
             await Console.Error.WriteLineAsync("Resume request timed out.").ConfigureAwait(false);
             return 2;
         }
+    }
+
+    internal static int RunMeshBootstrapIssueToken(string signingKey, string cluster, string role, string? lifetimeOption, int? maxUses, string issuer)
+    {
+        if (string.IsNullOrWhiteSpace(signingKey))
+        {
+            throw new InvalidOperationException("Signing key must be provided.");
+        }
+
+        var lifetime = TimeSpan.FromHours(1);
+        if (!string.IsNullOrWhiteSpace(lifetimeOption) && !TryParseDuration(lifetimeOption!, out lifetime))
+        {
+            throw new InvalidOperationException($"Lifetime '{lifetimeOption}' is not a valid duration.");
+        }
+
+        var descriptor = new BootstrapTokenDescriptor
+        {
+            ClusterId = cluster,
+            Role = role,
+            Lifetime = lifetime,
+            MaxUses = maxUses
+        };
+
+        var signingOptions = new BootstrapTokenSigningOptions
+        {
+            SigningKey = Encoding.UTF8.GetBytes(signingKey),
+            Issuer = issuer,
+            DefaultLifetime = lifetime,
+            DefaultMaxUses = maxUses
+        };
+
+        var service = new BootstrapTokenService(signingOptions, new InMemoryBootstrapReplayProtector(), NullLogger<BootstrapTokenService>.Instance);
+        var token = service.CreateToken(descriptor);
+        Console.WriteLine(token);
+        return 0;
+    }
+
+    internal static async Task<int> RunMeshBootstrapJoinAsync(string baseUrl, string token, string? outputPath, string? timeoutOption)
+    {
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            throw new InvalidOperationException("A join token must be provided.");
+        }
+
+        var timeout = TimeSpan.FromSeconds(30);
+        if (!string.IsNullOrWhiteSpace(timeoutOption) && !TryParseDuration(timeoutOption!, out timeout))
+        {
+            throw new InvalidOperationException($"Timeout '{timeoutOption}' is not a valid duration.");
+        }
+
+        using var httpClient = new HttpClient { Timeout = timeout };
+        var client = new BootstrapClient(httpClient);
+        var response = await client.JoinAsync(new Uri(baseUrl), new BootstrapJoinRequest { Token = token }, CancellationToken.None).ConfigureAwait(false);
+        var json = JsonSerializer.Serialize(response, new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
+        if (!string.IsNullOrWhiteSpace(outputPath))
+        {
+            File.WriteAllText(outputPath!, json);
+            Console.WriteLine($"Bootstrap bundle written to {outputPath}");
+        }
+        else
+        {
+            Console.WriteLine(json);
+        }
+
+        return 0;
     }
 
     internal static async Task<int> RunMeshPeersListAsync(string baseUrl, MeshPeersOutputFormat format, string? timeoutOption)

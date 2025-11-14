@@ -56,3 +56,7 @@ All test tiers must run against native AOT artifacts per REFDISC-034..037.
 ## References
 - Current authorization logic in dispatcher HTTP/gRPC endpoints and diagnostics docs.
 - REFDISC-034..037 - AOT readiness baseline and CI gating.
+
+## Implementation status
+- Authorization policies are now bound via `security.authorization` and compiled into `MeshAuthorizationEvaluator` instances. HTTP inbounds run a shared middleware that enforces role/cluster/header requirements plus optional mutual TLS flags, while gRPC inbounds use a `MeshAuthorizationGrpcInterceptor` so both stacks reject unauthorized requests with consistent `403/PermissionDenied` payloads.
+- Policies support transport-specific path prefixes, principal allow-lists, and label checks without referencing dispatcher-specific code. Configuration lives entirely in DI, enabling control-plane services to reuse the evaluator and interceptors.

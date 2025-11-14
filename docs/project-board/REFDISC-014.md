@@ -56,3 +56,8 @@ All test tiers must run against native AOT artifacts per REFDISC-034..037.
 ## References
 - Current bootstrap/join implementation (check `docs/architecture/security-bootstrap.md` and CLI sources).
 - REFDISC-034..037 - AOT readiness baseline and CI gating.
+
+## Implementation status
+- `OmniRelay.ControlPlane.Bootstrap` now includes token services, replay protection, HTTP host helpers, and a client library. Dispatcher wiring lights up a `/omnirelay/bootstrap/join` host when `security.bootstrap.*` is configured, reusing the shared `TransportTlsManager` to export certificates plus configured seed peers.
+- The CLI exposes `omnirelay mesh bootstrap issue-token` and `join` commands so operators can mint HMAC-backed join tokens and request bundles against any bootstrap service. Both commands use the shared token service + HTTP client.
+- Configuration gains a `security.bootstrap` block (URLs, TLS, seed peers, signing keys) so control-plane services and automation scripts can host or consume onboarding without touching dispatcher internals.

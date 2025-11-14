@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using System.Text;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -8,12 +9,16 @@ using Microsoft.Extensions.Options;
 using OmniRelay.Configuration.Internal;
 using OmniRelay.Configuration.Internal.Security;
 using OmniRelay.Configuration.Models;
+using OmniRelay.ControlPlane.Bootstrap;
+using OmniRelay.ControlPlane.Security;
 using OmniRelay.ControlPlane.Upgrade;
 using OmniRelay.Core.Diagnostics;
 using OmniRelay.Core.Gossip;
 using OmniRelay.Core.Leadership;
 using OmniRelay.Core.Peers;
 using OmniRelay.Diagnostics.Alerting;
+using Microsoft.Extensions.Logging.Abstractions;
+using OmniRelay.Security.Authorization;
 using OmniRelay.Security.Secrets;
 using OmniRelay.Transport.Security;
 using OpenTelemetry.Exporter;
@@ -288,6 +293,12 @@ public static class OmniRelayServiceCollectionExtensions
             services.TryAddSingleton<TransportSecurityGrpcInterceptor>();
         }
 
+        var authorizationEvaluator = AuthorizationFactory.Create(security.Authorization, NullLogger<MeshAuthorizationEvaluator>.Instance);
+        if (authorizationEvaluator is not null)
+        {
+            services.TryAddSingleton(authorizationEvaluator);
+        }
+
         if (security.Alerting.Enabled == true)
         {
             services.TryAddSingleton<IAlertPublisher>(sp =>
@@ -303,6 +314,117 @@ public static class OmniRelayServiceCollectionExtensions
 
         services.TryAddSingleton<PeerLeaseHealthTracker>();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IPeerHealthSnapshotProvider>(sp => sp.GetRequiredService<PeerLeaseHealthTracker>()));
+
+        ConfigureBootstrapServices(services, security.Bootstrap, options.Service);
+    }
+
+    private static void ConfigureBootstrapServices(IServiceCollection services, BootstrapConfiguration? configuration, string? serviceName)
+    {
+        if (configuration?.Enabled != true)
+        {
+            return;
+        }
+
+        services.TryAddSingleton<IBootstrapReplayProtector, InMemoryBootstrapReplayProtector>();
+        services.TryAddSingleton(sp =>
+        {
+            var secretProvider = sp.GetService<ISecretProvider>();
+            var signingKey = ResolveBootstrapSigningKey(configuration.Signing, secretProvider);
+            var signingOptions = new BootstrapTokenSigningOptions
+            {
+                SigningKey = signingKey,
+                Issuer = configuration.Signing.Issuer ?? serviceName ?? "omnirelay",
+                DefaultLifetime = configuration.Signing.DefaultLifetime ?? TimeSpan.FromHours(1),
+                DefaultMaxUses = configuration.Signing.MaxUses
+            };
+
+            var replay = sp.GetRequiredService<IBootstrapReplayProtector>();
+            var logger = sp.GetRequiredService<ILogger<BootstrapTokenService>>();
+            var timeProvider = sp.GetService<TimeProvider>();
+            return new BootstrapTokenService(signingOptions, replay, logger, timeProvider);
+        });
+
+        services.TryAddSingleton(_ => CreateBootstrapServerOptions(configuration, serviceName));
+    }
+
+    private static byte[] ResolveBootstrapSigningKey(BootstrapSigningConfiguration signing, ISecretProvider? secretProvider)
+    {
+        if (!string.IsNullOrWhiteSpace(signing.SigningKey))
+        {
+            return Encoding.UTF8.GetBytes(signing.SigningKey);
+        }
+
+        if (!string.IsNullOrWhiteSpace(signing.SigningKeySecret) && secretProvider is not null)
+        {
+            using var secret = secretProvider.GetSecretAsync(signing.SigningKeySecret).GetAwaiter().GetResult()
+                ?? throw new OmniRelayConfigurationException($"Bootstrap signing secret '{signing.SigningKeySecret}' was not found.");
+            var value = secret.AsString();
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                throw new OmniRelayConfigurationException($"Bootstrap signing secret '{signing.SigningKeySecret}' was empty.");
+            }
+
+            return Encoding.UTF8.GetBytes(value);
+        }
+
+        throw new OmniRelayConfigurationException("Bootstrap signing key (security.bootstrap.signing.signingKey or signingKeySecret) must be configured when bootstrap hosting is enabled.");
+    }
+
+    private static BootstrapServerOptions CreateBootstrapServerOptions(BootstrapConfiguration configuration, string? serviceName)
+    {
+        var certificate = BuildTransportTlsOptions(configuration.Tls);
+        var options = new BootstrapServerOptions
+        {
+            ClusterId = configuration.ClusterId ?? serviceName ?? "omnirelay",
+            DefaultRole = configuration.DefaultRole ?? "worker",
+            BundlePassword = configuration.BundlePassword,
+            Certificate = certificate
+        };
+
+        foreach (var seed in configuration.SeedPeers)
+        {
+            if (string.IsNullOrWhiteSpace(seed))
+            {
+                continue;
+            }
+
+            options.SeedPeers.Add(seed);
+        }
+
+        return options;
+    }
+
+    private static TransportTlsOptions BuildTransportTlsOptions(TransportTlsConfiguration? configuration)
+    {
+        configuration ??= new TransportTlsConfiguration();
+        var options = new TransportTlsOptions
+        {
+            CertificatePath = configuration.CertificatePath,
+            CertificateData = configuration.CertificateData,
+            CertificateDataSecret = configuration.CertificateDataSecret,
+            CertificatePassword = configuration.CertificatePassword,
+            CertificatePasswordSecret = configuration.CertificatePasswordSecret,
+            AllowUntrustedCertificates = configuration.AllowUntrustedCertificates ?? false,
+            CheckCertificateRevocation = configuration.CheckCertificateRevocation ?? true
+        };
+
+        foreach (var thumbprint in configuration.AllowedThumbprints)
+        {
+            if (string.IsNullOrWhiteSpace(thumbprint))
+            {
+                continue;
+            }
+
+            options.AllowedThumbprints.Add(thumbprint.Trim());
+        }
+
+        if (!string.IsNullOrWhiteSpace(configuration.ReloadInterval) &&
+            TimeSpan.TryParse(configuration.ReloadInterval, out var interval))
+        {
+            options.ReloadInterval = interval;
+        }
+
+        return options;
     }
 
     private static (LogLevel? Level, List<(string Category, LogLevel Level)> Overrides) ParseLoggingConfiguration(LoggingConfiguration logging)

@@ -1,6 +1,7 @@
 using System;
 using System.Net.Http.Headers;
-using System.Net.Http.Json;
+using System.Text;
+using System.Text.Json;
 
 namespace OmniRelay.Diagnostics.Alerting;
 
@@ -35,7 +36,7 @@ internal sealed class WebhookAlertChannel : IAlertChannel
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _authenticationToken);
         }
 
-        var payload = new
+        var body = new
         {
             alert.Name,
             alert.Severity,
@@ -43,7 +44,8 @@ internal sealed class WebhookAlertChannel : IAlertChannel
             metadata = alert.Metadata
         };
 
-        request.Content = JsonContent.Create(payload);
+        var json = JsonSerializer.Serialize(body, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        request.Content = new StringContent(json, Encoding.UTF8, "application/json");
         using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
     }

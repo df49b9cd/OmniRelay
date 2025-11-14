@@ -14,6 +14,7 @@ using Microsoft.Extensions.Logging;
 using OmniRelay.ControlPlane.Upgrade;
 using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
+using OmniRelay.Security.Authorization;
 using OmniRelay.Transport.Grpc.Interceptors;
 using OmniRelay.Transport.Http;
 using OmniRelay.Transport.Security;
@@ -35,6 +36,7 @@ public sealed partial class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcSer
     private readonly GrpcCompressionOptions? _compressionOptions;
     private readonly GrpcTelemetryOptions? _telemetryOptions;
     private readonly TransportSecurityPolicyEvaluator? _transportSecurity;
+    private readonly MeshAuthorizationEvaluator? _authorizationEvaluator;
     private GrpcServerInterceptorRegistry? _serverInterceptorRegistry;
     private int _interceptorsConfigured;
     private volatile bool _isDraining;
@@ -62,7 +64,8 @@ public sealed partial class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcSer
         GrpcServerRuntimeOptions? serverRuntimeOptions = null,
         GrpcCompressionOptions? compressionOptions = null,
         GrpcTelemetryOptions? telemetryOptions = null,
-        TransportSecurityPolicyEvaluator? transportSecurity = null)
+        TransportSecurityPolicyEvaluator? transportSecurity = null,
+        MeshAuthorizationEvaluator? authorizationEvaluator = null)
     {
         _urls = urls?.ToArray() ?? throw new ArgumentNullException(nameof(urls));
         if (_urls.Length == 0)
@@ -77,6 +80,7 @@ public sealed partial class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcSer
         _compressionOptions = compressionOptions;
         _telemetryOptions = telemetryOptions;
         _transportSecurity = transportSecurity;
+        _authorizationEvaluator = authorizationEvaluator;
     }
 
     /// <summary>
@@ -289,6 +293,12 @@ public sealed partial class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcSer
 
         builder.Services.AddSingleton(new GrpcTransportHealthService(_dispatcher, this));
 
+        if (_authorizationEvaluator is not null)
+        {
+            builder.Services.AddSingleton(_authorizationEvaluator);
+            builder.Services.AddSingleton<MeshAuthorizationGrpcInterceptor>();
+        }
+
         if (_transportSecurity is not null)
         {
             builder.Services.AddSingleton(_transportSecurity);
@@ -345,6 +355,11 @@ public sealed partial class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcSer
             if (_transportSecurity is not null)
             {
                 options.Interceptors.Add<TransportSecurityGrpcInterceptor>();
+            }
+
+            if (_authorizationEvaluator is not null)
+            {
+                options.Interceptors.Add<MeshAuthorizationGrpcInterceptor>();
             }
 
             if (_compressionOptions != null)

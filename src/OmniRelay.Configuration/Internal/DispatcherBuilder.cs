@@ -18,6 +18,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using OmniRelay.Configuration.Models;
+using OmniRelay.ControlPlane.Bootstrap;
 using OmniRelay.ControlPlane.Hosting;
 using OmniRelay.ControlPlane.Security;
 using OmniRelay.ControlPlane.Upgrade;
@@ -26,6 +27,7 @@ using OmniRelay.Core.Diagnostics;
 using OmniRelay.Core.Gossip;
 using OmniRelay.Core.Leadership;
 using OmniRelay.Core.Peers;
+using OmniRelay.Security.Authorization;
 using OmniRelay.Dispatcher;
 using OmniRelay.Transport.Grpc;
 using OmniRelay.Transport.Http;
@@ -50,6 +52,7 @@ internal sealed partial class DispatcherBuilder
     private readonly Dictionary<string, ICustomPeerChooserSpec> _customPeerSpecs;
     private readonly ISecretProvider? _secretProvider;
     private readonly TransportSecurityPolicyEvaluator? _transportSecurityEvaluator;
+    private readonly MeshAuthorizationEvaluator? _authorizationEvaluator;
 
     public DispatcherBuilder(OmniRelayConfigurationOptions options, IServiceProvider serviceProvider, IConfiguration configuration)
     {
@@ -58,6 +61,7 @@ internal sealed partial class DispatcherBuilder
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         _secretProvider = _serviceProvider.GetService<ISecretProvider>();
         _transportSecurityEvaluator = _serviceProvider.GetService<TransportSecurityPolicyEvaluator>();
+        _authorizationEvaluator = _serviceProvider.GetService<MeshAuthorizationEvaluator>();
 
         _customInboundSpecs = _serviceProvider
             .GetServices<ICustomInboundSpec>()
@@ -155,7 +159,8 @@ internal sealed partial class DispatcherBuilder
                 configureApp: configureApp,
                 serverRuntimeOptions: httpRuntimeOptions,
                 serverTlsOptions: httpTlsOptions,
-                transportSecurity: _transportSecurityEvaluator);
+                transportSecurity: _transportSecurityEvaluator,
+                authorizationEvaluator: _authorizationEvaluator);
             dispatcherOptions.AddLifecycle(name, httpInbound);
             RegisterDrainParticipant(name, httpInbound);
             index++;
@@ -193,7 +198,8 @@ internal sealed partial class DispatcherBuilder
                 serverRuntimeOptions: runtimeOptions,
                 serverTlsOptions: tlsOptions,
                 telemetryOptions: telemetryOptions,
-                transportSecurity: _transportSecurityEvaluator);
+                transportSecurity: _transportSecurityEvaluator,
+                authorizationEvaluator: _authorizationEvaluator);
             dispatcherOptions.AddLifecycle(name, grpcInbound);
             RegisterDrainParticipant(name, grpcInbound);
 
@@ -1089,6 +1095,29 @@ internal sealed partial class DispatcherBuilder
         return null;
     }
 
+    private void ConfigureBootstrapHost(DispatcherOptions dispatcherOptions)
+    {
+        if (!TryCreateBootstrapControlPlaneSettings(out var settings))
+        {
+            return;
+        }
+
+        var serverOptions = _serviceProvider.GetService<BootstrapServerOptions>();
+        if (serverOptions is null)
+        {
+            throw new OmniRelayConfigurationException("Bootstrap hosting is enabled but security.bootstrap configuration was not bound.");
+        }
+
+        var loggerFactory = _serviceProvider.GetService<ILoggerFactory>() ?? NullLoggerFactory.Instance;
+        var host = new BootstrapControlPlaneHost(
+            _serviceProvider,
+            settings.HttpOptions,
+            serverOptions,
+            loggerFactory.CreateLogger<BootstrapControlPlaneHost>(),
+            settings.TlsManager);
+        dispatcherOptions.AddLifecycle("control-plane:bootstrap", host);
+    }
+
     private static byte[] DecodeCertificateData(string data, string context)
     {
         try
@@ -1350,6 +1379,8 @@ internal sealed partial class DispatcherBuilder
                 grpcHost,
                 leadershipAdded ? new[] { "mesh-leadership" } : null);
         }
+
+        ConfigureBootstrapHost(dispatcherOptions);
     }
 
     private void RegisterDrainParticipant(string name, ILifecycle lifecycle)
@@ -1422,6 +1453,48 @@ internal sealed partial class DispatcherBuilder
             enableLeaseHealth,
             enablePeerDiagnostics,
             enableLeadershipDiagnostics);
+        return true;
+    }
+
+    private bool TryCreateBootstrapControlPlaneSettings(out BootstrapControlPlaneSettings? settings)
+    {
+        var bootstrap = _options.Security?.Bootstrap;
+        if (bootstrap?.Enabled != true)
+        {
+            settings = default;
+            return false;
+        }
+
+        if (bootstrap.HttpUrls.Count == 0)
+        {
+            settings = default;
+            return false;
+        }
+
+        var httpOptions = new HttpControlPlaneHostOptions();
+        foreach (var url in bootstrap.HttpUrls)
+        {
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                continue;
+            }
+
+            httpOptions.Urls.Add(url);
+        }
+
+        if (httpOptions.Urls.Count == 0)
+        {
+            settings = default;
+            return false;
+        }
+
+        var tlsManager = CreateTransportTlsManager(bootstrap.Tls, "bootstrap HTTP");
+        if (tlsManager is not null)
+        {
+            httpOptions.SharedTls = tlsManager;
+        }
+
+        settings = new BootstrapControlPlaneSettings(httpOptions, tlsManager);
         return true;
     }
 
@@ -1532,6 +1605,10 @@ internal sealed partial class DispatcherBuilder
         bool EnableLeaseHealthDiagnostics,
         bool EnablePeerDiagnostics,
         bool EnableLeadershipDiagnostics);
+
+    private sealed record BootstrapControlPlaneSettings(
+        HttpControlPlaneHostOptions HttpOptions,
+        TransportTlsManager? TlsManager);
 
     [RequiresDynamicCode("JSON codec registration relies on reflection.")]
     [RequiresUnreferencedCode("JSON codec registration relies on reflection.")]

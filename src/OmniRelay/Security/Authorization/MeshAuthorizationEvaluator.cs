@@ -12,7 +12,7 @@ public sealed class MeshAuthorizationEvaluator
         _policies = policies;
     }
 
-    public MeshAuthorizationDecision Evaluate(HttpContext context)
+    public MeshAuthorizationDecision Evaluate(string transport, string endpoint, HttpContext context)
     {
         if (_policies.Count == 0)
         {
@@ -26,6 +26,11 @@ public sealed class MeshAuthorizationEvaluator
 
         foreach (var policy in _policies)
         {
+            if (!policy.Matches(transport, endpoint))
+            {
+                continue;
+            }
+
             if (policy.Principals.Count > 0 && (principal is null || !policy.Principals.Contains(principal)))
             {
                 continue;
@@ -45,6 +50,11 @@ public sealed class MeshAuthorizationEvaluator
                 !policy.RequiredLabels.All(kvp => headers.TryGetValue(kvp.Key, out var value) && string.Equals(value.ToString(), kvp.Value, StringComparison.OrdinalIgnoreCase)))
             {
                 continue;
+            }
+
+            if (policy.RequireMutualTls && context.Connection.ClientCertificate is null)
+            {
+                return new MeshAuthorizationDecision(false, $"Client certificate required by policy '{policy.Name}'.");
             }
 
             return MeshAuthorizationDecision.Allowed;

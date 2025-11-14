@@ -3,6 +3,7 @@ using System.Net;
 using System.Security.Authentication;
 using System.Security.Cryptography;
 
+#pragma warning disable SYSLIB0058
 namespace OmniRelay.Transport.Security;
 
 /// <summary>Immutable transport security policy computed from configuration.</summary>
@@ -170,3 +171,4 @@ public sealed class IpNetwork
         return mask;
     }
 }
+#pragma warning restore SYSLIB0058

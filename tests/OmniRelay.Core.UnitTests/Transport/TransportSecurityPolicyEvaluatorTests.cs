@@ -7,6 +7,7 @@ using OmniRelay.Transport.Security;
 using Shouldly;
 using Xunit;
 
+#pragma warning disable SYSLIB0058
 namespace OmniRelay.Core.UnitTests.Transport;
 
 public sealed class TransportSecurityPolicyEvaluatorTests
@@ -82,3 +83,4 @@ public sealed class TransportSecurityPolicyEvaluatorTests
         decision.IsAllowed.ShouldBeFalse();
     }
 }
+#pragma warning restore SYSLIB0058

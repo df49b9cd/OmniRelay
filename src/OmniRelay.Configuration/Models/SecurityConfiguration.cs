@@ -135,9 +135,37 @@ public sealed class BootstrapConfiguration
 {
     public bool? Enabled { get; set; }
 
+    public IList<string> HttpUrls { get; } = new List<string>();
+
+    public TransportTlsConfiguration Tls { get; init; } = new();
+
+    public IList<string> SeedPeers { get; } = new List<string>();
+
+    public string? ClusterId { get; set; }
+
+    public string? DefaultRole { get; set; }
+
+    public string? BundlePassword { get; set; }
+
+    public BootstrapSigningConfiguration Signing { get; init; } = new();
+
     public IList<BootstrapTokenConfiguration> Tokens { get; } = new List<BootstrapTokenConfiguration>();
 
     public string? SeedDirectory { get; set; }
+}
+
+/// <summary>Signing options for bootstrap tokens.</summary>
+public sealed class BootstrapSigningConfiguration
+{
+    public string? SigningKey { get; set; }
+
+    public string? SigningKeySecret { get; set; }
+
+    public TimeSpan? DefaultLifetime { get; set; }
+
+    public int? MaxUses { get; set; }
+
+    public string? Issuer { get; set; }
 }
 
 /// <summary>Join token definition.</summary>

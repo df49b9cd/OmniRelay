@@ -15,7 +15,8 @@ internal sealed class MeshAuthorizationGrpcInterceptor : Interceptor
 
     private void EnsureAuthorized(ServerCallContext context)
     {
-        var decision = _evaluator.Evaluate(context.GetHttpContext());
+        var httpContext = context.GetHttpContext();
+        var decision = _evaluator.Evaluate("grpc", context.Method ?? string.Empty, httpContext);
         if (!decision.IsAllowed)
         {
             throw new RpcException(new Status(StatusCode.PermissionDenied, decision.Reason ?? "Authorization failed."));

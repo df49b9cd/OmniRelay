@@ -25,6 +25,7 @@ using OmniRelay.Core;
 using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
 using OmniRelay.Errors;
+using OmniRelay.Security.Authorization;
 using OmniRelay.Transport.Security;
 using static Hugo.Go;
 
@@ -42,6 +43,7 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
     private readonly HttpServerTlsOptions? _serverTlsOptions;
     private readonly HttpServerRuntimeOptions? _serverRuntimeOptions;
     private readonly TransportSecurityPolicyEvaluator? _transportSecurity;
+    private readonly MeshAuthorizationEvaluator? _authorization;
     private WebApplication? _app;
     private Dispatcher.Dispatcher? _dispatcher;
     private volatile bool _isDraining;
@@ -93,7 +95,8 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
         Action<WebApplication>? configureApp = null,
         HttpServerRuntimeOptions? serverRuntimeOptions = null,
         HttpServerTlsOptions? serverTlsOptions = null,
-        TransportSecurityPolicyEvaluator? transportSecurity = null)
+        TransportSecurityPolicyEvaluator? transportSecurity = null,
+        MeshAuthorizationEvaluator? authorizationEvaluator = null)
     {
         ArgumentNullException.ThrowIfNull(urls);
 
@@ -108,6 +111,7 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
         _serverRuntimeOptions = serverRuntimeOptions;
         _serverTlsOptions = serverTlsOptions;
         _transportSecurity = transportSecurity;
+        _authorization = authorizationEvaluator;
     }
 
     /// <summary>
@@ -379,6 +383,22 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
                     context.Response.StatusCode = StatusCodes.Status403Forbidden;
                     var host = context.Request.Host.HasValue ? context.Request.Host.Value : context.Connection.RemoteIpAddress?.ToString() ?? "*";
                     await context.Response.WriteAsJsonAsync(decision.ToPayload(HttpTransportName, host), context.RequestAborted).ConfigureAwait(false);
+                    return;
+                }
+
+                await next().ConfigureAwait(false);
+            });
+        }
+
+        if (_authorization is not null)
+        {
+            app.Use(async (context, next) =>
+            {
+                var decision = _authorization.Evaluate(HttpTransportName, context.Request.Path, context);
+                if (!decision.IsAllowed)
+                {
+                    context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                    await context.Response.WriteAsJsonAsync(new { transport = HttpTransportName, message = decision.Reason ?? "authorization failure" }, context.RequestAborted).ConfigureAwait(false);
                     return;
                 }
 

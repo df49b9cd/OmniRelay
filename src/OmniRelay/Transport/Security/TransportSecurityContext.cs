@@ -6,6 +6,7 @@ using Grpc.Core;
 using Microsoft.AspNetCore.Connections.Features;
 using Microsoft.AspNetCore.Http;
 
+#pragma warning disable SYSLIB0058
 namespace OmniRelay.Transport.Security;
 
 /// <summary>Normalized view of an HTTP or gRPC connection for policy evaluation.</summary>
@@ -49,3 +50,4 @@ public sealed class TransportSecurityContext
         return FromHttpContext(transport, httpContext);
     }
 }
+#pragma warning restore SYSLIB0058
