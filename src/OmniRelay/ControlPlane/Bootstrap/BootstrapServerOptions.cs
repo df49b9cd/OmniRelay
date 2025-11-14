@@ -1,3 +1,4 @@
+using System;
 using OmniRelay.ControlPlane.Security;
 
 namespace OmniRelay.ControlPlane.Bootstrap;
@@ -14,4 +15,6 @@ public sealed class BootstrapServerOptions
     public string? BundlePassword { get; set; }
 
     public TransportTlsOptions Certificate { get; init; } = new();
+
+    public TimeSpan JoinTimeout { get; set; } = TimeSpan.FromSeconds(15);
 }

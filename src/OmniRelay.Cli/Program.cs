@@ -2707,7 +2707,19 @@ public static class Program
 
         using var httpClient = new HttpClient { Timeout = timeout };
         var client = new BootstrapClient(httpClient);
-        var response = await client.JoinAsync(new Uri(baseUrl), new BootstrapJoinRequest { Token = token }, CancellationToken.None).ConfigureAwait(false);
+        var result = await client.JoinAsync(
+            new Uri(baseUrl),
+            new BootstrapJoinRequest { Token = token },
+            timeout,
+            CancellationToken.None).ConfigureAwait(false);
+        if (result.IsFailure)
+        {
+            var error = result.Error!;
+            await Console.Error.WriteLineAsync($"Bootstrap join failed: {error.Message} ({error.Code ?? "error"})").ConfigureAwait(false);
+            return error.Code == ErrorCodes.Timeout ? 2 : 1;
+        }
+
+        var response = result.ValueOrThrow();
         var json = JsonSerializer.Serialize(response, new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
         if (!string.IsNullOrWhiteSpace(outputPath))
         {

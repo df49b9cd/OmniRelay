@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
+using Hugo;
 using Microsoft.Extensions.Logging.Abstractions;
 using OmniRelay.ControlPlane.Bootstrap;
 using OmniRelay.ControlPlane.Security;
@@ -12,7 +13,7 @@ namespace OmniRelay.Core.UnitTests.Bootstrap;
 public sealed class BootstrapServerTests
 {
     [Fact]
-    public void Join_ReturnsBundleWithCertificate()
+    public async Task JoinAsync_ReturnsBundleWithCertificate()
     {
         var signingOptions = new BootstrapTokenSigningOptions
         {
@@ -41,7 +42,9 @@ public sealed class BootstrapServerTests
         var server = new BootstrapServer(serverOptions, tokenService, tlsManager, NullLogger<BootstrapServer>.Instance);
 
         var token = tokenService.CreateToken(new BootstrapTokenDescriptor { ClusterId = "cluster-1", Role = "worker" });
-        var response = server.Join(new BootstrapJoinRequest { Token = token });
+        var result = await server.JoinAsync(new BootstrapJoinRequest { Token = token }, CancellationToken.None).ConfigureAwait(false);
+        result.IsSuccess.ShouldBeTrue(result.Error?.Message);
+        var response = result.ValueOrThrow();
 
         response.ClusterId.ShouldBe("cluster-1");
         response.Role.ShouldBe("worker");

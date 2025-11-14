@@ -1,3 +1,4 @@
+using Hugo;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -69,17 +70,16 @@ internal sealed class BootstrapControlPlaneHost : ILifecycle, IDisposable
 
         builder.ConfigureApp(app =>
         {
-            app.MapPost("/omnirelay/bootstrap/join", async (BootstrapJoinRequest request, BootstrapServer server) =>
+            app.MapPost("/omnirelay/bootstrap/join", async (BootstrapJoinRequest request, BootstrapServer server, CancellationToken token) =>
             {
-                try
+                var result = await server.JoinAsync(request, token).ConfigureAwait(false);
+                if (result.TryGetValue(out var payload))
                 {
-                    var response = server.Join(request);
-                    return Results.Ok(response);
+                    return Results.Ok(payload);
                 }
-                catch (BootstrapServerException ex)
-                {
-                    return Results.BadRequest(new { code = ex.ErrorCode, message = ex.Message });
-                }
+
+                _ = result.TryGetError(out var error);
+                return MapJoinError(error ?? Error.From("Unknown bootstrap failure."));
             });
         });
 
@@ -112,5 +112,18 @@ internal sealed class BootstrapControlPlaneHost : ILifecycle, IDisposable
     public void Dispose()
     {
         _tlsManager?.Dispose();
+    }
+
+    private static IResult MapJoinError(Error error)
+    {
+        var statusCode = error.Code switch
+        {
+            ErrorCodes.Validation => StatusCodes.Status400BadRequest,
+            ErrorCodes.Canceled => StatusCodes.Status499ClientClosedRequest,
+            ErrorCodes.Timeout => StatusCodes.Status504GatewayTimeout,
+            _ => StatusCodes.Status500InternalServerError
+        };
+
+        return Results.Json(error, statusCode: statusCode);
     }
 }
