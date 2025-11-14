@@ -11,9 +11,9 @@ public sealed class ShardingConfiguration
 /// <summary>Configuration for a namespace's shard strategy and node inventory.</summary>
 public sealed class ShardNamespaceConfiguration
 {
-    public string? Namespace { get; set; }
+    public const string DefaultStrategy = ShardHashStrategyIds.Rendezvous;
 
-    public string Strategy { get; set; } = ShardHashStrategyIds.Rendezvous;
+    public string Strategy { get; set; } = DefaultStrategy;
 
     public IList<ShardNodeConfiguration> Nodes { get; } = [];
 
