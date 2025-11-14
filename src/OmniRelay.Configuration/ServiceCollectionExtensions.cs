@@ -6,11 +6,16 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OmniRelay.Configuration.Internal;
+using OmniRelay.Configuration.Internal.Security;
 using OmniRelay.Configuration.Models;
 using OmniRelay.ControlPlane.Upgrade;
 using OmniRelay.Core.Diagnostics;
 using OmniRelay.Core.Gossip;
 using OmniRelay.Core.Leadership;
+using OmniRelay.Core.Peers;
+using OmniRelay.Diagnostics.Alerting;
+using OmniRelay.Security.Secrets;
+using OmniRelay.Transport.Security;
 using OpenTelemetry.Exporter;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
@@ -66,6 +71,7 @@ public static class OmniRelayServiceCollectionExtensions
         services.AddHttpClient();
 
         ConfigureDiagnostics(services, snapshot);
+        ConfigureSecurity(services, configuration, snapshot);
 
         if (minimumLevel.HasValue || overrides.Count > 0)
         {
@@ -263,6 +269,40 @@ public static class OmniRelayServiceCollectionExtensions
         {
             throw new OmniRelayConfigurationException("OmniRelay configuration must specify a service name.");
         }
+    }
+
+    private static void ConfigureSecurity(
+        IServiceCollection services,
+        IConfiguration configuration,
+        OmniRelayConfigurationOptions options)
+    {
+        var security = options.Security ?? new SecurityConfiguration();
+        services.TryAddSingleton<ISecretAccessAuditor, LoggingSecretAccessAuditor>();
+        services.TryAddSingleton<ISecretProvider>(sp => SecretProviderFactory.Create(security.Secrets, sp));
+
+        var transportPolicy = TransportSecurityFactory.Create(security.Transport);
+        if (transportPolicy is not null)
+        {
+            services.TryAddSingleton(transportPolicy);
+            services.TryAddSingleton<TransportSecurityPolicyEvaluator>();
+            services.TryAddSingleton<TransportSecurityGrpcInterceptor>();
+        }
+
+        if (security.Alerting.Enabled == true)
+        {
+            services.TryAddSingleton<IAlertPublisher>(sp =>
+            {
+                var publisher = AlertingFactory.Create(security.Alerting, sp);
+                return publisher ?? new NullAlertPublisher();
+            });
+        }
+        else
+        {
+            services.TryAddSingleton<IAlertPublisher, NullAlertPublisher>();
+        }
+
+        services.TryAddSingleton<PeerLeaseHealthTracker>();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IPeerHealthSnapshotProvider>(sp => sp.GetRequiredService<PeerLeaseHealthTracker>()));
     }
 
     private static (LogLevel? Level, List<(string Category, LogLevel Level)> Overrides) ParseLoggingConfiguration(LoggingConfiguration logging)

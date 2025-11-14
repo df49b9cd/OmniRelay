@@ -59,4 +59,7 @@ All test tiers must run against native AOT artifacts per REFDISC-034..037.
 - `docs/architecture/service-discovery.md` - Control-plane diagnostics and peer health requirements.
 - REFDISC-034..037 - AOT readiness baseline and CI gating.
 
+## Implementation status
+- Peer lease health tracking is now registered once per process via DI so diagnostics hosts, gossip, and alerting flows share the same state. Disconnects emit structured alert events through the new alerting publisher, and `security.alerting` binding ensures CLI/automation and dispatcher all rely on the same runtime services.
+
 

@@ -56,3 +56,6 @@ All test tiers must run against native AOT artifacts per REFDISC-034..037.
 ## References
 - Existing secret handling in bootstrap/gossip TLS configuration.
 - REFDISC-034..037 - AOT readiness baseline and CI gating.
+
+## Implementation status
+- Secrets now flow through the shared `ISecretProvider` abstraction in `src/OmniRelay/Security/Secrets`. Environment, inline, and file-based providers can be composed with precedence, audited, and watched for rotation. `TransportTlsManager`, gossip TLS, and gRPC/HTTP host builders accept secret-backed certificate data/passwords so operators can move sensitive material out of appsettings without losing reload semantics. Tests cover zeroization, provider precedence, and change token invalidation.

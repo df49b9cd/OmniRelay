@@ -15,9 +15,17 @@ public sealed class TransportTlsOptions
     public string? CertificateData { get; set; }
         = Environment.GetEnvironmentVariable("OMNIRELAY_TRANSPORT_CERT_DATA");
 
+    /// <summary>Name of the secret containing base64 encoded PKCS12 data.</summary>
+    public string? CertificateDataSecret { get; set; }
+        = Environment.GetEnvironmentVariable("OMNIRELAY_TRANSPORT_CERT_DATA_SECRET");
+
     /// <summary>Password protecting the certificate, if any.</summary>
     public string? CertificatePassword { get; set; }
         = Environment.GetEnvironmentVariable("OMNIRELAY_TRANSPORT_CERT_PASSWORD");
+
+    /// <summary>Name of the secret providing the certificate password.</summary>
+    public string? CertificatePasswordSecret { get; set; }
+        = Environment.GetEnvironmentVariable("OMNIRELAY_TRANSPORT_CERT_PASSWORD_SECRET");
 
     /// <summary>Optional reload interval used when monitoring certificate files for rotation.</summary>
     public TimeSpan? ReloadInterval { get; set; }

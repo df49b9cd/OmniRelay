@@ -25,6 +25,7 @@ using OmniRelay.Core;
 using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
 using OmniRelay.Errors;
+using OmniRelay.Transport.Security;
 using static Hugo.Go;
 
 namespace OmniRelay.Transport.Http;
@@ -40,6 +41,7 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
     private readonly Action<WebApplication>? _configureApp;
     private readonly HttpServerTlsOptions? _serverTlsOptions;
     private readonly HttpServerRuntimeOptions? _serverRuntimeOptions;
+    private readonly TransportSecurityPolicyEvaluator? _transportSecurity;
     private WebApplication? _app;
     private Dispatcher.Dispatcher? _dispatcher;
     private volatile bool _isDraining;
@@ -90,7 +92,8 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
         Action<IServiceCollection>? configureServices = null,
         Action<WebApplication>? configureApp = null,
         HttpServerRuntimeOptions? serverRuntimeOptions = null,
-        HttpServerTlsOptions? serverTlsOptions = null)
+        HttpServerTlsOptions? serverTlsOptions = null,
+        TransportSecurityPolicyEvaluator? transportSecurity = null)
     {
         ArgumentNullException.ThrowIfNull(urls);
 
@@ -104,6 +107,7 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
         _configureApp = configureApp;
         _serverRuntimeOptions = serverRuntimeOptions;
         _serverTlsOptions = serverTlsOptions;
+        _transportSecurity = transportSecurity;
     }
 
     /// <summary>
@@ -364,6 +368,23 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
         }
 
         app.UseWebSockets();
+
+        if (_transportSecurity is not null)
+        {
+            app.Use(async (context, next) =>
+            {
+                var decision = _transportSecurity.Evaluate(TransportSecurityContext.FromHttpContext(HttpTransportName, context));
+                if (!decision.IsAllowed)
+                {
+                    context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                    var host = context.Request.Host.HasValue ? context.Request.Host.Value : context.Connection.RemoteIpAddress?.ToString() ?? "*";
+                    await context.Response.WriteAsJsonAsync(decision.ToPayload(HttpTransportName, host), context.RequestAborted).ConfigureAwait(false);
+                    return;
+                }
+
+                await next().ConfigureAwait(false);
+            });
+        }
 
         _configureApp?.Invoke(app);
 

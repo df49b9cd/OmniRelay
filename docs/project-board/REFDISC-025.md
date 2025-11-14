@@ -56,3 +56,6 @@ All test tiers must run against native AOT artifacts per REFDISC-034..037.
 ## References
 - Existing alert integrations (docs + runtime hooks) under dispatcher diagnostics.
 - REFDISC-034..037 - AOT readiness baseline and CI gating.
+
+## Implementation status
+- `AlertPublisher`, throttling, and webhook channels were added in `src/OmniRelay/Diagnostics/Alerting`. Configuration under `security.alerting` now binds channel definitions, picks up secrets via the new secret provider, and wires a singleton `IAlertPublisher`. `PeerLeaseHealthTracker` fans out disconnect events through the publisher so control-plane health transitions immediately trigger webhook notifications with consistent metadata.

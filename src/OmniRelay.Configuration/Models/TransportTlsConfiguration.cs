@@ -7,7 +7,11 @@ public sealed class TransportTlsConfiguration
 
     public string? CertificateData { get; set; }
 
+    public string? CertificateDataSecret { get; set; }
+
     public string? CertificatePassword { get; set; }
+
+    public string? CertificatePasswordSecret { get; set; }
 
     public bool? AllowUntrustedCertificates { get; set; }
 

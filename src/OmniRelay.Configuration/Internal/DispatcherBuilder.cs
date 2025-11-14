@@ -29,6 +29,7 @@ using OmniRelay.Core.Peers;
 using OmniRelay.Dispatcher;
 using OmniRelay.Transport.Grpc;
 using OmniRelay.Transport.Http;
+using OmniRelay.Security.Secrets;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 
@@ -47,12 +48,16 @@ internal sealed partial class DispatcherBuilder
     private readonly Dictionary<string, ICustomInboundSpec> _customInboundSpecs;
     private readonly Dictionary<string, ICustomOutboundSpec> _customOutboundSpecs;
     private readonly Dictionary<string, ICustomPeerChooserSpec> _customPeerSpecs;
+    private readonly ISecretProvider? _secretProvider;
+    private readonly TransportSecurityPolicyEvaluator? _transportSecurityEvaluator;
 
     public DispatcherBuilder(OmniRelayConfigurationOptions options, IServiceProvider serviceProvider, IConfiguration configuration)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+        _secretProvider = _serviceProvider.GetService<ISecretProvider>();
+        _transportSecurityEvaluator = _serviceProvider.GetService<TransportSecurityPolicyEvaluator>();
 
         _customInboundSpecs = _serviceProvider
             .GetServices<ICustomInboundSpec>()
@@ -144,7 +149,13 @@ internal sealed partial class DispatcherBuilder
 
             var configureServices = CreateHttpInboundServiceConfigurator();
             var configureApp = CreateHttpInboundAppConfigurator();
-            var httpInbound = new HttpInbound(urls, configureServices: configureServices, configureApp: configureApp, serverRuntimeOptions: httpRuntimeOptions, serverTlsOptions: httpTlsOptions);
+            var httpInbound = new HttpInbound(
+                urls,
+                configureServices: configureServices,
+                configureApp: configureApp,
+                serverRuntimeOptions: httpRuntimeOptions,
+                serverTlsOptions: httpTlsOptions,
+                transportSecurity: _transportSecurityEvaluator);
             dispatcherOptions.AddLifecycle(name, httpInbound);
             RegisterDrainParticipant(name, httpInbound);
             index++;
@@ -181,7 +192,8 @@ internal sealed partial class DispatcherBuilder
                 configureServices: configureServices,
                 serverRuntimeOptions: runtimeOptions,
                 serverTlsOptions: tlsOptions,
-                telemetryOptions: telemetryOptions);
+                telemetryOptions: telemetryOptions,
+                transportSecurity: _transportSecurityEvaluator);
             dispatcherOptions.AddLifecycle(name, grpcInbound);
             RegisterDrainParticipant(name, grpcInbound);
 
@@ -683,7 +695,7 @@ internal sealed partial class DispatcherBuilder
         };
     }
 
-    private static GrpcClientTlsOptions? BuildGrpcClientTlsOptions(GrpcClientTlsConfiguration configuration)
+    private GrpcClientTlsOptions? BuildGrpcClientTlsOptions(GrpcClientTlsConfiguration configuration)
     {
         if (configuration is null)
         {
@@ -691,8 +703,9 @@ internal sealed partial class DispatcherBuilder
         }
 
         var hasValues =
-            HasCertificateMaterial(configuration.CertificatePath, configuration.CertificateData) ||
+            HasCertificateMaterial(configuration.CertificatePath, configuration.CertificateData, configuration.CertificateDataSecret) ||
             !string.IsNullOrWhiteSpace(configuration.CertificatePassword) ||
+            !string.IsNullOrWhiteSpace(configuration.CertificatePasswordSecret) ||
             configuration.AllowUntrustedCertificates.HasValue ||
             !string.IsNullOrWhiteSpace(configuration.TargetNameOverride);
 
@@ -705,7 +718,9 @@ internal sealed partial class DispatcherBuilder
         var clientCertificate = LoadCertificate(
             configuration.CertificatePath,
             configuration.CertificateData,
+            configuration.CertificateDataSecret,
             configuration.CertificatePassword,
+            configuration.CertificatePasswordSecret,
             "gRPC client TLS");
         if (clientCertificate is not null)
         {
@@ -975,7 +990,7 @@ internal sealed partial class DispatcherBuilder
         };
     }
 
-    private static HttpServerTlsOptions? BuildHttpServerTlsOptions(HttpServerTlsConfiguration configuration)
+    private HttpServerTlsOptions? BuildHttpServerTlsOptions(HttpServerTlsConfiguration configuration)
     {
         if (configuration is null)
         {
@@ -985,7 +1000,9 @@ internal sealed partial class DispatcherBuilder
         var certificate = LoadCertificate(
             configuration.CertificatePath,
             configuration.CertificateData,
+            configuration.CertificateDataSecret,
             configuration.CertificatePassword,
+            configuration.CertificatePasswordSecret,
             "HTTP server TLS");
 
         if (certificate is null)
@@ -1003,35 +1020,55 @@ internal sealed partial class DispatcherBuilder
         };
     }
 
-    private static bool HasCertificateMaterial(string? path, string? data)
-        => !string.IsNullOrWhiteSpace(path) || !string.IsNullOrWhiteSpace(data);
+    private static bool HasCertificateMaterial(string? path, string? data, string? dataSecret)
+        => !string.IsNullOrWhiteSpace(path) || !string.IsNullOrWhiteSpace(data) || !string.IsNullOrWhiteSpace(dataSecret);
 
-    private static X509Certificate2? LoadCertificate(string? path, string? base64Data, string? password, string context)
+    private X509Certificate2? LoadCertificate(
+        string? path,
+        string? base64Data,
+        string? base64DataSecret,
+        string? password,
+        string? passwordSecret,
+        string context)
     {
+        var resolvedPassword = password;
+        if (string.IsNullOrWhiteSpace(resolvedPassword) && !string.IsNullOrWhiteSpace(passwordSecret))
+        {
+            using var secret = AcquireSecret(passwordSecret, $"{context} password");
+            resolvedPassword = secret.AsString();
+            if (string.IsNullOrEmpty(resolvedPassword))
+            {
+                throw new OmniRelayConfigurationException($"Secret '{passwordSecret}' referenced by {context} did not contain a password.");
+            }
+        }
+
         if (!string.IsNullOrWhiteSpace(base64Data))
         {
+            var rawBytes = DecodeCertificateData(base64Data, context);
+            return ImportCertificate(rawBytes, resolvedPassword);
+        }
+
+        if (!string.IsNullOrWhiteSpace(base64DataSecret))
+        {
+            using var secret = AcquireSecret(base64DataSecret, $"{context} certificate data");
+            var text = secret.AsString();
             byte[] rawBytes;
-            try
+            if (!string.IsNullOrWhiteSpace(text))
             {
-                rawBytes = Convert.FromBase64String(base64Data);
+                rawBytes = DecodeCertificateData(text!, context);
             }
-            catch (FormatException ex)
+            else
             {
-                throw new OmniRelayConfigurationException($"{context} certificateData is not valid Base64.", ex);
+                var memory = secret.AsMemory();
+                if (memory.IsEmpty)
+                {
+                    throw new OmniRelayConfigurationException($"Secret '{base64DataSecret}' referenced by {context} was empty.");
+                }
+
+                rawBytes = memory.ToArray();
             }
 
-            try
-            {
-#pragma warning disable SYSLIB0057
-                return string.IsNullOrEmpty(password)
-                    ? new X509Certificate2(rawBytes)
-                    : new X509Certificate2(rawBytes, password, X509KeyStorageFlags.Exportable);
-#pragma warning restore SYSLIB0057
-            }
-            finally
-            {
-                CryptographicOperations.ZeroMemory(rawBytes);
-            }
+            return ImportCertificate(rawBytes, resolvedPassword);
         }
 
         if (!string.IsNullOrWhiteSpace(path))
@@ -1043,13 +1080,57 @@ internal sealed partial class DispatcherBuilder
             }
 
 #pragma warning disable SYSLIB0057
-            return string.IsNullOrEmpty(password)
+            return string.IsNullOrEmpty(resolvedPassword)
                 ? new X509Certificate2(resolved)
-                : new X509Certificate2(resolved, password);
+                : new X509Certificate2(resolved, resolvedPassword, X509KeyStorageFlags.Exportable);
 #pragma warning restore SYSLIB0057
         }
 
         return null;
+    }
+
+    private static byte[] DecodeCertificateData(string data, string context)
+    {
+        try
+        {
+            return Convert.FromBase64String(data);
+        }
+        catch (FormatException ex)
+        {
+            throw new OmniRelayConfigurationException($"{context} certificateData is not valid Base64.", ex);
+        }
+    }
+
+    private static X509Certificate2 ImportCertificate(byte[] rawBytes, string? password)
+    {
+        try
+        {
+#pragma warning disable SYSLIB0057
+            return string.IsNullOrEmpty(password)
+                ? new X509Certificate2(rawBytes)
+                : new X509Certificate2(rawBytes, password, X509KeyStorageFlags.Exportable);
+#pragma warning restore SYSLIB0057
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(rawBytes);
+        }
+    }
+
+    private SecretValue AcquireSecret(string name, string purpose)
+    {
+        if (_secretProvider is null)
+        {
+            throw new OmniRelayConfigurationException($"{purpose} references secret '{name}' but no secret provider was registered.");
+        }
+
+        var secret = _secretProvider.GetSecretAsync(name).GetAwaiter().GetResult();
+        if (secret is null)
+        {
+            throw new OmniRelayConfigurationException($"Secret '{name}' referenced by {purpose} was not found.");
+        }
+
+        return secret;
     }
 
     private bool ShouldExposePrometheusMetrics()
@@ -1135,7 +1216,7 @@ internal sealed partial class DispatcherBuilder
         return resolved;
     }
 
-    private static GrpcServerTlsOptions? BuildGrpcServerTlsOptions(GrpcServerTlsConfiguration configuration)
+    private GrpcServerTlsOptions? BuildGrpcServerTlsOptions(GrpcServerTlsConfiguration configuration)
     {
         if (configuration is null)
         {
@@ -1145,7 +1226,9 @@ internal sealed partial class DispatcherBuilder
         var certificate = LoadCertificate(
             configuration.CertificatePath,
             configuration.CertificateData,
+            configuration.CertificateDataSecret,
             configuration.CertificatePassword,
+            configuration.CertificatePasswordSecret,
             "gRPC server TLS");
 
         if (certificate is null)
@@ -1406,7 +1489,9 @@ internal sealed partial class DispatcherBuilder
         {
             CertificatePath = configuration.CertificatePath,
             CertificateData = configuration.CertificateData,
+            CertificateDataSecret = configuration.CertificateDataSecret,
             CertificatePassword = configuration.CertificatePassword,
+            CertificatePasswordSecret = configuration.CertificatePasswordSecret,
             AllowUntrustedCertificates = configuration.AllowUntrustedCertificates ?? false,
             CheckCertificateRevocation = configuration.CheckCertificateRevocation ?? true
         };
@@ -1434,7 +1519,7 @@ internal sealed partial class DispatcherBuilder
         }
 
         var loggerFactory = _serviceProvider.GetService<ILoggerFactory>() ?? NullLoggerFactory.Instance;
-        return new TransportTlsManager(options, loggerFactory.CreateLogger<TransportTlsManager>());
+        return new TransportTlsManager(options, loggerFactory.CreateLogger<TransportTlsManager>(), _secretProvider);
     }
 
     private sealed record DiagnosticsControlPlaneSettings(

@@ -18,6 +18,7 @@ using Microsoft.Extensions.Logging;
 using OmniRelay.ControlPlane.Events;
 using OmniRelay.ControlPlane.Security;
 using OmniRelay.Core.Peers;
+using OmniRelay.Security.Secrets;
 
 namespace OmniRelay.Core.Gossip;
 
@@ -62,7 +63,8 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
         TimeProvider? timeProvider = null,
         PeerLeaseHealthTracker? leaseHealthTracker = null,
         TransportTlsManager? tlsManager = null,
-        IControlPlaneEventBus? eventBus = null)
+        IControlPlaneEventBus? eventBus = null,
+        ISecretProvider? secretProvider = null)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -77,7 +79,10 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
         localMetadata = EnsureEndpoint(localMetadata, options);
         _membership = new MeshGossipMembershipTable(localMetadata.NodeId, localMetadata, _timeProvider);
         _eventBus = eventBus;
-        _tlsManager = tlsManager ?? new TransportTlsManager(options.Tls.ToTransportTlsOptions(options.CertificateReloadInterval), CreateCertificateLogger(loggerFactory));
+        _tlsManager = tlsManager ?? new TransportTlsManager(
+            options.Tls.ToTransportTlsOptions(options.CertificateReloadInterval),
+            CreateCertificateLogger(loggerFactory),
+            secretProvider);
         _seedPeers = [.. options.GetNormalizedSeedPeers()
             .Select(value => MeshGossipPeerEndpoint.TryParse(value, out var endpoint) ? endpoint : (MeshGossipPeerEndpoint?)null)
             .Where(static endpoint => endpoint is not null)

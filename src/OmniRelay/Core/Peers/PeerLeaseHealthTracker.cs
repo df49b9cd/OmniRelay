@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Globalization;
+using OmniRelay.Diagnostics.Alerting;
 
 namespace OmniRelay.Core.Peers;
 
@@ -12,11 +13,13 @@ public sealed class PeerLeaseHealthTracker : IPeerHealthSnapshotProvider
     private readonly ConcurrentDictionary<string, PeerLeaseHealthState> _states = new(StringComparer.Ordinal);
     private readonly TimeSpan _heartbeatGracePeriod;
     private readonly TimeProvider _timeProvider;
+    private readonly IAlertPublisher? _alertPublisher;
 
-    public PeerLeaseHealthTracker(TimeSpan? heartbeatGracePeriod = null, TimeProvider? timeProvider = null)
+    public PeerLeaseHealthTracker(TimeSpan? heartbeatGracePeriod = null, TimeProvider? timeProvider = null, IAlertPublisher? alertPublisher = null)
     {
         _heartbeatGracePeriod = heartbeatGracePeriod ?? TimeSpan.FromSeconds(30);
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _alertPublisher = alertPublisher;
         PeerLeaseHealthMetrics.RegisterTracker(this);
     }
 
@@ -53,6 +56,7 @@ public sealed class PeerLeaseHealthTracker : IPeerHealthSnapshotProvider
         var now = _timeProvider.GetUtcNow();
         state.RecordDisconnect(now, reason);
         PeerMetrics.RecordLeaseDisconnectSignal(peerId, reason);
+        PublishAlert(peerId, reason);
     }
 
     /// <summary>Stores metadata learned through gossip (for example region/zone, namespace ownership).</summary>
@@ -113,6 +117,28 @@ public sealed class PeerLeaseHealthTracker : IPeerHealthSnapshotProvider
 
     private PeerLeaseHealthState GetOrCreateState(string peerId) =>
         _states.GetOrAdd(peerId, static id => new PeerLeaseHealthState(id));
+
+    private void PublishAlert(string peerId, string? reason)
+    {
+        if (_alertPublisher is null)
+        {
+            return;
+        }
+
+        var metadata = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["peer.id"] = peerId,
+            ["reason"] = reason ?? "unknown"
+        };
+
+        var alert = new AlertEvent(
+            "peer_disconnect",
+            "warning",
+            $"Peer {peerId} disconnected.",
+            metadata);
+
+        _ = _alertPublisher.PublishAsync(alert);
+    }
 
     private sealed class PeerLeaseHealthState(string peerId)
     {

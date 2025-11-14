@@ -56,3 +56,6 @@ All test tiers must run against native AOT artifacts per REFDISC-034..037.
 ## References
 - DISC-013 requirements and existing transport policy checks.
 - REFDISC-034..037 - AOT readiness baseline and CI gating.
+
+## Implementation status
+- `TransportSecurityPolicy`, evaluator, and endpoint rule parsing now live under `src/OmniRelay/Transport/Security`. HTTP and gRPC inbounds rely on a shared evaluator so operators can define protocol/TLS/cipher/endpoint requirements in `security.transport` without duplicating logic. Violations return 403/`PermissionDenied` responses with structured payloads and are logged with a dedicated event id.

@@ -16,6 +16,7 @@ using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
 using OmniRelay.Transport.Grpc.Interceptors;
 using OmniRelay.Transport.Http;
+using OmniRelay.Transport.Security;
 
 namespace OmniRelay.Transport.Grpc;
 
@@ -33,6 +34,7 @@ public sealed partial class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcSer
     private readonly GrpcServerTlsOptions? _serverTlsOptions;
     private readonly GrpcCompressionOptions? _compressionOptions;
     private readonly GrpcTelemetryOptions? _telemetryOptions;
+    private readonly TransportSecurityPolicyEvaluator? _transportSecurity;
     private GrpcServerInterceptorRegistry? _serverInterceptorRegistry;
     private int _interceptorsConfigured;
     private volatile bool _isDraining;
@@ -59,7 +61,8 @@ public sealed partial class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcSer
         GrpcServerTlsOptions? serverTlsOptions = null,
         GrpcServerRuntimeOptions? serverRuntimeOptions = null,
         GrpcCompressionOptions? compressionOptions = null,
-        GrpcTelemetryOptions? telemetryOptions = null)
+        GrpcTelemetryOptions? telemetryOptions = null,
+        TransportSecurityPolicyEvaluator? transportSecurity = null)
     {
         _urls = urls?.ToArray() ?? throw new ArgumentNullException(nameof(urls));
         if (_urls.Length == 0)
@@ -73,6 +76,7 @@ public sealed partial class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcSer
         RuntimeOptions = serverRuntimeOptions;
         _compressionOptions = compressionOptions;
         _telemetryOptions = telemetryOptions;
+        _transportSecurity = transportSecurity;
     }
 
     /// <summary>
@@ -285,6 +289,12 @@ public sealed partial class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcSer
 
         builder.Services.AddSingleton(new GrpcTransportHealthService(_dispatcher, this));
 
+        if (_transportSecurity is not null)
+        {
+            builder.Services.AddSingleton(_transportSecurity);
+            builder.Services.AddSingleton<TransportSecurityGrpcInterceptor>();
+        }
+
         builder.Services.AddGrpc(options =>
         {
             var loggingInterceptorAdded = false;
@@ -330,6 +340,11 @@ public sealed partial class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcSer
             if (_telemetryOptions?.EnableServerLogging == true && !loggingInterceptorAdded)
             {
                 options.Interceptors.Add<GrpcServerLoggingInterceptor>();
+            }
+
+            if (_transportSecurity is not null)
+            {
+                options.Interceptors.Add<TransportSecurityGrpcInterceptor>();
             }
 
             if (_compressionOptions != null)

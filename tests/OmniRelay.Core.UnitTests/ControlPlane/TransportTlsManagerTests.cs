@@ -1,11 +1,15 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.Extensions.Logging.Abstractions;
 using OmniRelay.ControlPlane.Security;
+using OmniRelay.Security.Secrets;
 using Shouldly;
 using Xunit;
+using System.Text;
+using Microsoft.Extensions.Primitives;
 
 namespace OmniRelay.Core.UnitTests.ControlPlane;
 
@@ -90,6 +94,64 @@ public sealed class TransportTlsManagerTests
         observed!.ShouldAllBe(b => b == 0);
     }
 
+    [Fact]
+    public void GetCertificate_UsesSecretProviderForPassword()
+    {
+        const string password = "secret-pass";
+        var secretProvider = new TestSecretProvider();
+        secretProvider.ReplaceSecret("tls-password", password);
+
+        var options = CreateOptions();
+        var bytes = CreateCertificateBytes("CN=password-secret", password);
+        options.CertificateData = Convert.ToBase64String(bytes);
+        options.CertificatePasswordSecret = "tls-password";
+        options.CertificatePassword = null;
+
+        using var manager = new TransportTlsManager(options, NullLogger<TransportTlsManager>.Instance, secretProvider);
+        using var certificate = manager.GetCertificate();
+        certificate.Subject.ShouldContain("password-secret");
+    }
+
+    [Fact]
+    public void GetCertificate_UsesSecretProviderForInlineData()
+    {
+        const string password = "secret-pass";
+        var secretProvider = new TestSecretProvider();
+        var bytes = CreateCertificateBytes("CN=data-secret", password);
+        secretProvider.ReplaceSecret("tls-data", Convert.ToBase64String(bytes));
+
+        var options = CreateOptions();
+        options.CertificateDataSecret = "tls-data";
+        options.CertificatePassword = password;
+
+        using var manager = new TransportTlsManager(options, NullLogger<TransportTlsManager>.Instance, secretProvider);
+        using var certificate = manager.GetCertificate();
+        certificate.Subject.ShouldContain("data-secret");
+    }
+
+    [Fact]
+    public void GetCertificate_ReloadsWhenSecretChanges()
+    {
+        const string password = "secret-pass";
+        var secretProvider = new TestSecretProvider();
+        var firstBytes = CreateCertificateBytes("CN=first-secret", password);
+        secretProvider.ReplaceSecret("tls-data", Convert.ToBase64String(firstBytes));
+
+        var options = CreateOptions();
+        options.CertificateDataSecret = "tls-data";
+        options.CertificatePassword = password;
+
+        using var manager = new TransportTlsManager(options, NullLogger<TransportTlsManager>.Instance, secretProvider);
+        using var first = manager.GetCertificate();
+        first.Subject.ShouldContain("first-secret");
+
+        var secondBytes = CreateCertificateBytes("CN=second-secret", password);
+        secretProvider.ReplaceSecret("tls-data", Convert.ToBase64String(secondBytes));
+
+        using var second = manager.GetCertificate();
+        second.Subject.ShouldContain("second-secret");
+    }
+
     private static TransportTlsOptions CreateOptions() => new()
     {
         CertificatePath = Path.Combine(Path.GetTempPath(), $"omnirelay-transport-{Guid.NewGuid():N}.pfx"),
@@ -127,6 +189,39 @@ public sealed class TransportTlsManagerTests
             {
                 // Ignore cleanup failures in tests.
             }
+        }
+    }
+
+    private sealed record SecretEntry(string Value, CancellationTokenSource Source);
+
+    private sealed class TestSecretProvider : ISecretProvider
+    {
+        private readonly Dictionary<string, SecretEntry> _secrets = new(StringComparer.OrdinalIgnoreCase);
+
+        public ValueTask<SecretValue?> GetSecretAsync(string name, CancellationToken cancellationToken = default)
+        {
+            if (!_secrets.TryGetValue(name, out var entry))
+            {
+                return ValueTask.FromResult<SecretValue?>(null);
+            }
+
+            var metadata = new SecretMetadata(name, "test", DateTimeOffset.UtcNow, false, null);
+            var bytes = Encoding.UTF8.GetBytes(entry.Value);
+            var token = new CancellationChangeToken(entry.Source.Token);
+            return ValueTask.FromResult<SecretValue?>(new SecretValue(metadata, bytes, token));
+        }
+
+        public IChangeToken? Watch(string name) => null;
+
+        public void ReplaceSecret(string name, string value)
+        {
+            if (_secrets.TryGetValue(name, out var existing))
+            {
+                existing.Source.Cancel();
+                existing.Source.Dispose();
+            }
+
+            _secrets[name] = new SecretEntry(value, new CancellationTokenSource());
         }
     }
 }
