@@ -3,7 +3,6 @@ using System.CommandLine;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Reflection;
-using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -12,14 +11,12 @@ using Google.Protobuf;
 using Google.Protobuf.Reflection;
 using Google.Protobuf.WellKnownTypes;
 using Grpc.Core;
-using Grpc.Net.Client;
 using Hugo;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
-using OmniRelay.ControlPlane.Clients;
 using OmniRelay.Configuration;
+using OmniRelay.ControlPlane.Clients;
 using OmniRelay.Core;
 using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
@@ -1111,7 +1108,7 @@ public static class Program
         try
         {
             var provider = services.BuildServiceProvider();
-            await using var providerScope = provider;
+            await using var providerScope = provider.ConfigureAwait(false);
             var dispatcher = provider.GetRequiredService<Dispatcher.Dispatcher>();
             var summary = dispatcher.Introspect();
 
@@ -1187,7 +1184,7 @@ public static class Program
             return 1;
         }
 
-        await using var host = serveHost;
+        await using var host = serveHost.ConfigureAwait(false);
         var shutdownSignal = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         ConsoleCancelEventHandler? cancelHandler = null;
 
@@ -1859,7 +1856,7 @@ public static class Program
             uris.Add(uri);
         }
 
-        await using var invoker = CliRuntime.GrpcInvokerFactory.Create(uris, remoteService, runtimeOptions);
+        await using var invoker = CliRuntime.GrpcInvokerFactory.Create(uris, remoteService, runtimeOptions).ConfigureAwait(false);
 
         try
         {
@@ -2311,7 +2308,7 @@ public static class Program
                 return 1;
             }
 
-            await using var stream = await response.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false);
+            await using var stream = (await response.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false)).ConfigureAwait(false);
             var result = await JsonSerializer.DeserializeAsync(stream, OmniRelayCliJsonContext.Default.MeshPeersResponse, cts.Token).ConfigureAwait(false);
             if (result is null)
             {
@@ -3772,10 +3769,7 @@ public static class Program
 
         public static LeadershipEventDto FromProto(ProtoLeadershipEvent source)
         {
-            if (source is null)
-            {
-                throw new ArgumentNullException(nameof(source));
-            }
+            ArgumentNullException.ThrowIfNull(source);
 
             var dto = new LeadershipEventDto
             {

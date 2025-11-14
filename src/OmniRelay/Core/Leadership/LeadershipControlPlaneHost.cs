@@ -127,4 +127,3 @@ internal sealed class LeadershipControlPlaneHost : ILifecycle, IDisposable, IGrp
     }
 }
 
-

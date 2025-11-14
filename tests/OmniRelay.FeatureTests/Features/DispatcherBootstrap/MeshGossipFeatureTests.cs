@@ -49,7 +49,7 @@ public sealed class MeshGossipFeatureTests(FeatureTestApplication application) :
                 $"127.0.0.1:{gatewayPort}"
             },
             loggerFactory,
-            ct).ConfigureAwait(false);
+            ct);
 
         var gatewayHost = await StartPeerAsync(
             "feature-tests-gateway",
@@ -62,25 +62,25 @@ public sealed class MeshGossipFeatureTests(FeatureTestApplication application) :
                 $"127.0.0.1:{workerPort}"
             },
             loggerFactory,
-            ct).ConfigureAwait(false);
+            ct);
 
         var convergenceSucceeded = await WaitForConditionAsync(
             () => AllAlive(dispatcherAgent, workerHost.LocalMetadata.NodeId, gatewayHost.LocalMetadata.NodeId) &&
                   AllAlive(workerHost, dispatcherAgent.LocalMetadata.NodeId, gatewayHost.LocalMetadata.NodeId) &&
                   AllAlive(gatewayHost, dispatcherAgent.LocalMetadata.NodeId, workerHost.LocalMetadata.NodeId),
             TimeSpan.FromSeconds(15),
-            ct).ConfigureAwait(false);
+            ct);
 
         Assert.True(
             convergenceSucceeded,
             $"Mesh peers did not converge.{Environment.NewLine}{DescribeSnapshots(dispatcherAgent, workerHost, gatewayHost)}");
 
-        var diagnosticsSnapshot = await ReadPeerDiagnosticsAsync(ct).ConfigureAwait(false);
-        var cliSnapshot = await ReadCliPeersAsync(ct).ConfigureAwait(false);
+        var diagnosticsSnapshot = await ReadPeerDiagnosticsAsync(ct);
+        var cliSnapshot = await ReadCliPeersAsync(ct);
 
         AssertViewsMatch(diagnosticsSnapshot, cliSnapshot);
 
-        await AssertMetricsAsync(metrics, expectedAlive: 3, ct).ConfigureAwait(false);
+        await AssertMetricsAsync(metrics, expectedAlive: 3, ct);
     }
 
     public ValueTask InitializeAsync() => ValueTask.CompletedTask;

@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OmniRelay.ControlPlane.Security;
-using OmniRelay.Transport.Http;
 
 namespace OmniRelay.ControlPlane.Clients;
 

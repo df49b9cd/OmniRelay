@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-
 namespace OmniRelay.Configuration.Models;
 
 /// <summary>Configures the dedicated diagnostics/leadership control-plane hosts.</summary>

@@ -123,7 +123,7 @@ public sealed class RelationalShardStoreTests : IAsyncLifetime, IDisposable
         await Should.ThrowAsync<ShardConcurrencyException>(async () => await _repository.UpsertAsync(stale, ct));
     }
 
-    private ShardMutationRequest CreateMutation(
+    private static ShardMutationRequest CreateMutation(
         string @namespace,
         string shardId,
         string owner,

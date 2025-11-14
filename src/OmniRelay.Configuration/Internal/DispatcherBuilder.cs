@@ -10,12 +10,12 @@ using System.Text.Json.Serialization;
 using Grpc.Core.Interceptors;
 using Json.Schema;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using OmniRelay.Configuration.Models;
 using OmniRelay.ControlPlane.Hosting;
@@ -25,13 +25,11 @@ using OmniRelay.Core.Diagnostics;
 using OmniRelay.Core.Gossip;
 using OmniRelay.Core.Leadership;
 using OmniRelay.Core.Peers;
-using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
 using OmniRelay.Transport.Grpc;
 using OmniRelay.Transport.Http;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
-using Microsoft.Extensions.Logging.Abstractions;
 
 namespace OmniRelay.Configuration.Internal;
 
@@ -48,10 +46,6 @@ internal sealed partial class DispatcherBuilder
     private readonly Dictionary<string, ICustomInboundSpec> _customInboundSpecs;
     private readonly Dictionary<string, ICustomOutboundSpec> _customOutboundSpecs;
     private readonly Dictionary<string, ICustomPeerChooserSpec> _customPeerSpecs;
-    private static readonly JsonSerializerOptions LeadershipEventJsonOptions = new(JsonSerializerDefaults.Web)
-    {
-        Converters = { new JsonStringEnumConverter<LeadershipEventKind>(JsonNamingPolicy.CamelCase) }
-    };
 
     public DispatcherBuilder(OmniRelayConfigurationOptions options, IServiceProvider serviceProvider, IConfiguration configuration)
     {
@@ -852,7 +846,7 @@ internal sealed partial class DispatcherBuilder
         };
     }
 
-    private Action<IServiceCollection>? CreateGrpcInboundServiceConfigurator()
+    private static Action<IServiceCollection>? CreateGrpcInboundServiceConfigurator()
     {
         return null;
     }
@@ -1248,7 +1242,7 @@ internal sealed partial class DispatcherBuilder
         }
     }
 
-    private bool TryCreateDiagnosticsControlPlaneSettings(out DiagnosticsControlPlaneSettings settings)
+    private bool TryCreateDiagnosticsControlPlaneSettings(out DiagnosticsControlPlaneSettings? settings)
     {
         var diagnostics = _options.Diagnostics;
         if (diagnostics is null)
@@ -1310,7 +1304,7 @@ internal sealed partial class DispatcherBuilder
         return true;
     }
 
-    private HttpControlPlaneHostOptions BuildHttpControlPlaneHostOptions(DiagnosticsControlPlaneConfiguration configuration)
+    private static HttpControlPlaneHostOptions BuildHttpControlPlaneHostOptions(DiagnosticsControlPlaneConfiguration configuration)
     {
         var options = new HttpControlPlaneHostOptions();
         foreach (var url in configuration.HttpUrls)
@@ -2153,10 +2147,4 @@ internal sealed partial class DispatcherBuilder
         Duplex
     }
 }
-
-
-
-
-
-
 

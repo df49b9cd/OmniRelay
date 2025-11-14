@@ -6,9 +6,7 @@ using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using OmniRelay.ControlPlane.Security;
 using OmniRelay.Transport.Grpc;
-using OmniRelay.Transport.Grpc.Interceptors;
 
 namespace OmniRelay.ControlPlane.Hosting;
 
