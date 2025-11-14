@@ -23,11 +23,12 @@ Tracks asynchronous operations and delays shutdown until every task completes.
 ### Key members
 
 - `WaitGroup.Add(int delta)` / `Add(Task task)`
-- `WaitGroup.Go(Func<Task> work, CancellationToken cancellationToken = default)` (runs the delegate via `Task.Run`)
+- `WaitGroup.Go(Func<Task> work, CancellationToken cancellationToken = default, TaskScheduler? scheduler = null, TaskCreationOptions creationOptions = TaskCreationOptions.DenyChildAttach)`
+- `WaitGroup.Go(Task task)` / `WaitGroup.Go(ValueTask task)`
 - `WaitGroup.Done()`
 - `WaitGroup.WaitAsync(CancellationToken cancellationToken = default)`
 - `WaitGroup.WaitAsync(TimeSpan timeout, TimeProvider? provider = null, CancellationToken cancellationToken = default)` (returns `bool`)
-- `GoWaitGroupExtensions.Go(Func<CancellationToken, Task> work, CancellationToken cancellationToken)` when you prefer to pass an explicit token
+- `GoWaitGroupExtensions.Go(Func<CancellationToken, Task> work, CancellationToken cancellationToken, TaskScheduler? scheduler = null, TaskCreationOptions creationOptions = TaskCreationOptions.DenyChildAttach)` when you prefer to pass an explicit token along with scheduling hints
 
 ### WaitGroup usage
 
@@ -50,6 +51,7 @@ var completed = await wg.WaitAsync(
 - `WaitAsync(TimeSpan, ...)` returns `false` when a timeout elapses; the parameterless overload completes when the counter reaches zero.
 - Cancellation surfaces as `Error.Canceled` in result pipelines and `OperationCanceledException` otherwise.
 - Diagnostics: `waitgroup.additions`, `waitgroup.completions`, `waitgroup.outstanding`.
+- Prefer the scheduler-aware `Go` overloads when you need `TaskCreationOptions.LongRunning` or a custom `TaskScheduler`, and use `Go(Task)` / `Go(ValueTask)` (or `Go.Run(ValueTask)` + `WaitGroup.Add`) when you already have a running operation that should be tracked without an extra `Task.Run`.
 
 ## Mutex
 
@@ -130,11 +132,15 @@ services.AddBoundedChannel<Job>(capacity: 64, builder => builder
 
 services.AddPrioritizedChannel<Job>(priorityLevels: 3, builder => builder
     .WithCapacityPerLevel(32)
+    .WithPrefetchPerPriority(2)
     .WithDefaultPriority(1));
 ```
 
 - `AddBoundedChannel<T>` registers a `Channel<T>` alongside its reader and writer.
 - `AddPrioritizedChannel<T>` registers `PrioritizedChannel<T>`, the prioritized reader/writer helpers, and the base `ChannelReader<T>`/`ChannelWriter<T>` facades.
+- Prioritized channels prefetch at most `PrefetchPerPriority` items per lane (default 1). Tune it through `PrioritizedChannelOptions.PrefetchPerPriority` or `WithPrefetchPerPriority` to balance throughput against backpressure.
+- The prioritized reader’s slow path now reuses wait registrations instead of `Task.WhenAny` arrays, so `WaitToReadAsync` stays effectively allocation-free when lanes run hot.
+- Exceptions or cancellations from individual priority lanes are observed immediately and surfaced through the unified reader, preventing `UnobservedTaskException` warnings when a single lane faults.
 - Builders expose `.Build()` when you need an inline channel instance without DI.
 
 ## Task queue leasing
@@ -203,7 +209,7 @@ await queue.RestorePendingItemsAsync(await durableStore.LoadAsync(ct), ct);
 - Expired leases are detected by a background sweep and automatically requeued with an `error.taskqueue.lease_expired` payload.
 - Every lease exposes a monotonic `OwnershipToken` (`sequence`, `attempt`, `leaseId`) that you can log or persist as a fencing token.
 - `DrainPendingItemsAsync`/`RestorePendingItemsAsync` make rolling upgrades safe by snapshotting in-flight work without losing metadata.
-- Configure `TaskQueueBackpressureOptions` to receive callbacks when `PendingCount` crosses high/low watermarks and throttle producers proactively.
+- `ConfigureBackpressure` or `TaskQueueBackpressureMonitor<T>` keep backlog transitions observable without recreating queues; `QueueName` exposes the resolved name for diagnostics.
 
 ### Task queue health checks
 
@@ -222,6 +228,54 @@ builder.Services.AddTaskQueueHealthCheck<Job>(
 ```
 
 Expose `/health/ready` via `app.MapHealthChecks` so orchestrators wait for pending work to drain before terminating replicas.
+
+### TaskQueue backpressure monitor
+
+`TaskQueueBackpressureMonitor<T>` exports SafeTaskQueue-compatible backpressure signals, rate limiter switches, diagnostics channels, and `WaitForDrainingAsync` helpers so producers can await relief before enqueueing more work. Monitors reconfigure the queue’s backpressure thresholds at runtime and publish typed `TaskQueueBackpressureSignal` instances whenever depth crosses the configured watermarks.
+
+```csharp
+await using var queue = new TaskQueue<Job>(new TaskQueueOptions { Name = "telemetry", Capacity = 2048 });
+await using var monitor = new TaskQueueBackpressureMonitor<Job>(queue, new TaskQueueBackpressureMonitorOptions
+{
+    HighWatermark = 512,
+    LowWatermark = 128,
+    Cooldown = TimeSpan.FromSeconds(5)
+});
+
+await using var diagnostics = new TaskQueueBackpressureDiagnosticsListener(capacity: 256);
+using var diagnosticsSubscription = monitor.RegisterListener(diagnostics);
+
+var limiter = new BackpressureAwareRateLimiter(
+    unthrottledLimiter: new ConcurrencyLimiter(new ConcurrencyLimiterOptions(permitLimit: 256, queueLimit: 0, queueProcessingOrder: QueueProcessingOrder.OldestFirst)),
+    backpressureLimiter: new ConcurrencyLimiter(new ConcurrencyLimiterOptions(permitLimit: 16, queueLimit: 512, queueProcessingOrder: QueueProcessingOrder.OldestFirst)),
+    disposeUnthrottledLimiter: true,
+    disposeBackpressureLimiter: true);
+using var limiterSubscription = monitor.RegisterListener(limiter);
+
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(_ =>
+        RateLimitPartition.Get("taskqueue", _ => limiter.LimiterSelector()));
+});
+
+app.UseRateLimiter();
+app.MapGet("/control-plane/backpressure", async context =>
+{
+    await foreach (var signal in diagnostics.Reader.ReadAllAsync(context.RequestAborted))
+    {
+        await context.Response.WriteAsJsonAsync(signal, context.RequestAborted);
+    }
+});
+
+// Enqueueers can await relief instead of blindly retrying.
+if (monitor.IsActive)
+{
+    await monitor.WaitForDrainingAsync(ct);
+}
+```
+
+Metrics emitted via `GoDiagnostics` include `hugo.taskqueue.backpressure.active` (up/down gauge per queue), `hugo.taskqueue.backpressure.pending` (histogram of pending depth), `hugo.taskqueue.backpressure.transitions` (counter), and `hugo.taskqueue.backpressure.duration` (histogram of state durations). Attach a `TaskQueueBackpressureDiagnosticsListener` to expose current/streamed signals over HTTP or gRPC for control-plane automation.
 
 ### TaskQueueChannelAdapter usage
 
@@ -248,7 +302,7 @@ await foreach (var lease in adapter.Reader.ReadAllAsync(ct))
 ### TaskQueueChannelAdapter notes
 
 - Pumps run in the background and publish leases to the channel reader. If the channel is closed or cancellation triggers before delivery, the adapter requeues the lease with `Error.Canceled` metadata.
-- `concurrency` controls the number of concurrent pumps issuing leases.
+- `concurrency` controls both the number of pumps and the number of outstanding leases; the default channel is bounded to this limit so slow consumers cannot cause `_queue._leases` to grow unchecked. Provide a custom bounded `Channel<TaskQueueLease<T>>` if you need different buffering semantics.
 - Disposing the adapter waits for pumps to finish; when `ownsQueue` is `true`, the underlying queue is disposed as well.
 
 ### SafeTaskQueueWrapper usage

@@ -15,6 +15,7 @@ This document enumerates every public type shipped with the Hugo library and its
 - [Hugo.Policies namespace](#hugopolicies-namespace)
 - [Hugo.Sagas namespace](#hugosagas-namespace)
 - [Hugo.Diagnostics.OpenTelemetry namespace](#hugodiagnosticsopentelemetry-namespace)
+- [Hugo.TaskQueues.Replication namespace](#hugotaskqueuesreplication-namespace)
 - [Usage guidance and external references](#usage-guidance-and-external-references)
 
 ## Hugo namespace
@@ -41,6 +42,7 @@ Key members:
 - `ValueOr`, `ValueOr(Func<Error, T>)`, `ValueOrThrow()`, and `ToOptional()`.
 - Implicit conversions to/from `(T Value, Error? Error)` maintain backward compatibility.
 - `ResultException` is thrown by `ValueOrThrow()` and carries the originating `Error`.
+- `CastFailure<TOut>()` reuses the existing error when you need to re-type a failure without incrementing diagnostics or allocating a new `Result`.
 
 All factory methods ultimately increment success/failure counters through `GoDiagnostics`, so configure diagnostics before producing large volumes of results when you need metrics.
 
@@ -60,10 +62,10 @@ All factory methods ultimately increment success/failure counters through `GoDia
 
 `Functional` is a static class housing the “railway oriented” fluent API. Extensions exist in synchronous and asynchronous forms and return `Result<T>` (or tasks of results) so they compose naturally.
 
-- Execution flow: `Then`, `ThenAsync` overloads (sync→sync, sync→async, async→sync, async→async) plus `Recover`, `RecoverAsync` and `Finally`, `FinallyAsync`. All async helpers now ship ValueTask-friendly variants (`*ValueTaskAsync`) so both delegates and `ValueTask<Result<T>>` sources compose without allocating extra tasks.
-- Mapping: `Map`, `MapAsync` (sync source/async mapper), `Tap`, `TapAsync`, and aliases `Tee`, `TeeAsync`.
-- Validation: `Ensure`, `EnsureAsync`, LINQ integration (`Select`, `SelectMany`, `Where`).
-- Side-effects: `OnSuccess`/`OnSuccessAsync`, `OnFailure`/`OnFailureAsync`, `TapError`/`TapErrorAsync`.
+- Execution flow: `Then`, `ThenAsync` overloads (sync→sync, sync→async, async→sync, async→async) plus `ThenValueTaskAsync` for ValueTask-based sources, along with `Recover`, `RecoverAsync`, `RecoverValueTaskAsync` and `Finally`, `FinallyAsync`, `FinallyValueTaskAsync`. All async helpers accept `ValueTask<Result<T>>` delegates without forcing extra `Task` allocations.
+- Mapping: `Map`, `MapAsync` (sync source/async mapper), `MapValueTaskAsync`, `Tap`, `TapAsync`, `TapValueTaskAsync`, and aliases `Tee`, `TeeAsync`, `TeeValueTaskAsync`.
+- Validation: `Ensure`, `EnsureAsync`, `EnsureValueTaskAsync`, LINQ integration (`Select`, `SelectMany`, `Where`).
+- Side-effects: `OnSuccess`/`OnSuccessAsync`/`OnSuccessValueTaskAsync`, `OnFailure`/`OnFailureAsync`/`OnFailureValueTaskAsync`, `TapError`/`TapErrorAsync`/`TapErrorValueTaskAsync`.
 
 Cancellations are normalised using `Error.Canceled`, preserving the triggering token in metadata where possible.
 
@@ -89,7 +91,7 @@ The companion static class `Optional` offers convenience factories (`FromNullabl
 - Channel builders: `BoundedChannel<T>(capacity)`, `PrioritizedChannel<T>()`, `PrioritizedChannel<T>(levels)` return fluent builders (see [Channel composition](#channel-composition)).
 - Channel fan-in/out: `SelectFanInAsync` (task-first overloads), `SelectFanInValueTaskAsync` (ValueTask-friendly overloads), `FanInAsync`/`FanIn`, `FanOutAsync`/`FanOut`. Each method propagates `Error.Canceled`, ensures writers are completed appropriately while completing writers/readers deterministically, and interprets any supplied timeout as an overall session deadline measured once with the active `TimeProvider`.
 - Pipeline orchestration: `FanOutAsync` / `FanOutValueTaskAsync` materialise concurrent `Result<T>` operations via `Result.WhenAll`, `RaceAsync` / `RaceValueTaskAsync` surface the first success through `Result.WhenAny`, `WithTimeoutAsync` / `WithTimeoutValueTaskAsync` wrap work with deadline-aware cancellation (returning `Error.Timeout` on deadline expiry and `Error.Canceled` when the caller’s token is triggered), and `RetryAsync` / `RetryValueTaskAsync` execute delegates under an exponential backoff policy built from `ResultExecutionPolicy` (cancellations — even from linked tokens — short-circuit retries and surface `Error.Canceled`).
-- Task runners: `Run(Func<Task>)`, `Run(Func<CancellationToken, Task>)` wrap `Task.Run`, keeping syntax consistent with Go’s `go func()` idiom.
+- Task runners: `Run(Func<Task>)` / `Run(Func<CancellationToken, Task>)` expose optional `TaskScheduler` + `TaskCreationOptions` parameters so you can specify long-running or inline schedulers, while `Run(Task)`, `Run(Task<T>)`, and the `ValueTask` overloads allow callers to register already-started work without additional `Task.Run` allocations.
 - Channel factories: `MakeChannel` overloads accept optional capacity/`BoundedChannelOptions`/`UnboundedChannelOptions` or `PrioritizedChannelOptions`. `MakePrioritizedChannel` creates multi-level queues with default priority support.
 - Result helpers: `Ok<T>` and `Err<T>` wrap `Result.Ok`/`Result.Fail`. `CancellationError` exposes `Error.Canceled()` for convenience.
 
@@ -98,13 +100,13 @@ Additional types:
 - `Go.Unit`: value-type sentinel (`Unit.Value`).
 - `Go.GoTicker`: wrapper over `TimerChannel`; exposes `Reader`, `ReadAsync`, `TryRead`, `Stop`, `StopAsync`.
 - `Defer`: RAII helper mirroring Go’s `defer`, executing the supplied `Action` when disposed.
-- `GoWaitGroupExtensions.Go`: extension overloads for `WaitGroup` (async and cancellation-aware) that apply the `Go.Run` semantic.
+- `GoWaitGroupExtensions.Go`: extension overloads for `WaitGroup` (async and cancellation-aware) that forward optional `TaskScheduler`/`TaskCreationOptions` hints into the core `WaitGroup.Go` pipeline.
 
 #### Synchronisation primitives
 
 | Type | Highlights |
 | --- | --- |
-| `WaitGroup` | Tracks outstanding async operations. `Add(int)`, `Add(Task)`, `Go(Func<Task>, CancellationToken = default)`, `Done()`, `WaitAsync(CancellationToken)` plus `WaitAsync(TimeSpan timeout, TimeProvider? provider = null, CancellationToken cancellationToken = default)` (returns `bool`). Diagnostics emit `waitgroup.*` metrics. Avoid negative counters — the implementation guards against it. |
+| `WaitGroup` | Tracks outstanding async operations. `Add(int)`, `Add(Task)`, `Go(Func<Task>, CancellationToken = default, TaskScheduler? scheduler = null, TaskCreationOptions creationOptions = TaskCreationOptions.DenyChildAttach)`, `Go(Task)`, `Go(ValueTask)`, `Done()`, `WaitAsync(CancellationToken)` plus `WaitAsync(TimeSpan timeout, TimeProvider? provider = null, CancellationToken cancellationToken = default)` (returns `bool`). Diagnostics emit `waitgroup.*` metrics. Avoid negative counters — the implementation guards against it. |
 | `Mutex` | Hybrid mutex with synchronous `EnterScope()` (returns a disposable scope) and asynchronous `LockAsync`. Always dispose the returned scope/releaser. |
 | `RwMutex` | Reader/writer lock with sync (`EnterReadScope`, `EnterWriteScope`) and async (`RLockAsync`, `LockAsync`) APIs. Cancelled acquisitions propagate `OperationCanceledException`. |
 | `Once` | Executes an `Action` at most once. Subsequent calls no-op. |
@@ -127,9 +129,9 @@ These primitives follow the .NET parallel programming recommendations — always
 | Type | Description |
 | --- | --- |
 | `BoundedChannelBuilder<T>` | Fluent API over `BoundedChannelOptions`. Configure `WithCapacity`, `WithFullMode`, `SingleReader`, `SingleWriter`, `AllowSynchronousContinuations`, and arbitrary `Configure` callbacks. Call `Build()` to produce a `Channel<T>`. |
-| `PrioritizedChannelBuilder<T>` | Fluent API for `PrioritizedChannelOptions`; configure `WithPriorityLevels`, `WithDefaultPriority`, `WithCapacityPerLevel`, `WithFullMode`, `SingleReader`, `SingleWriter`, and `Configure`. `Build()` returns a `PrioritizedChannel<T>`. |
+| `PrioritizedChannelBuilder<T>` | Fluent API for `PrioritizedChannelOptions`; configure `WithPriorityLevels`, `WithDefaultPriority`, `WithCapacityPerLevel`, `WithPrefetchPerPriority`, `WithFullMode`, `SingleReader`, `SingleWriter`, and `Configure`. `Build()` returns a `PrioritizedChannel<T>`. |
 | `ChannelServiceCollectionExtensions` | Dependency injection helpers: `AddBoundedChannel<T>` and `AddPrioritizedChannel<T>` register the channel plus the associated reader/writer (and prioritized reader/writer) as services with a configurable `ServiceLifetime`. |
-| `PrioritizedChannel<T>` | Combines multiple channel lanes. Exposes `Reader`/`Writer`, plus `PrioritizedReader` (merges items according to priority) and `PrioritizedWriter` (explicit `WriteAsync`, `TryWrite`, `WaitToWriteAsync` per priority level). `PriorityLevels`, `DefaultPriority`, `CapacityPerLevel` expose configuration. |
+| `PrioritizedChannel<T>` | Combines multiple channel lanes. Exposes `Reader`/`Writer`, plus `PrioritizedReader` (merges items according to priority) and `PrioritizedWriter` (explicit `WriteAsync`, `TryWrite`, `WaitToWriteAsync` per priority level). `PriorityLevels`, `DefaultPriority`, `CapacityPerLevel`, and `PrefetchPerPriority` expose configuration. |
 
 Hugo follows the `.NET Channels` guidance published at [learn.microsoft.com/dotnet/core/extensions/channels](https://learn.microsoft.com/en-us/dotnet/core/extensions/channels): bounded channels apply `BoundedChannelFullMode`, unbounded channels allow synchronous continuations when requested, and `WaitToReadAsync` loops guard against race conditions.
 
@@ -137,18 +139,26 @@ Hugo follows the `.NET Channels` guidance published at [learn.microsoft.com/dotn
 
 | Type | Description |
 | --- | --- |
-| `TaskQueueOptions` | Immutable configuration: `Name`, `Capacity`, `LeaseDuration`, `HeartbeatInterval`, `LeaseSweepInterval`, `RequeueDelay`, `MaxDeliveryAttempts`, plus optional `Backpressure` callbacks. Validation enforces positive/ non-negative ranges. |
-| `TaskQueue<T>` | Channel-backed cooperative lease queue. Key members: `EnqueueAsync`, `LeaseAsync`, `PendingCount`, `ActiveLeaseCount`, `DrainPendingItemsAsync`, `RestorePendingItemsAsync`, and `DisposeAsync`. Internally tracks leases, heartbeats, backpressure, requeues, and dead-letter routing while emitting `taskqueue.*` metrics/activities. |
+| `TaskQueueOptions` | Immutable configuration: `Name`, `Capacity`, `LeaseDuration`, `HeartbeatInterval`, `LeaseSweepInterval`, `RequeueDelay`, `MaxDeliveryAttempts`, plus optional `Backpressure` callbacks (used directly or by `TaskQueueBackpressureMonitor`). Validation enforces positive/ non-negative ranges. |
+| `TaskQueue<T>` | Channel-backed cooperative lease queue. Key members: `EnqueueAsync`, `LeaseAsync`, `PendingCount`, `ActiveLeaseCount`, `DrainPendingItemsAsync`, `RestorePendingItemsAsync`, `ConfigureBackpressure`, `QueueName`, and `DisposeAsync`. Internally tracks leases, heartbeats, requeues, and dead-letter routing while emitting `taskqueue.*` metrics/activities. |
 | `TaskQueueLease<T>` | Represents an active lease. Use `Value`, `Attempt`, `EnqueuedAt`, `LastError`, `SequenceId`, and `OwnershipToken`. Methods: `CompleteAsync`, `HeartbeatAsync`, `FailAsync(Error error, bool requeue = true)`. Multiple invocations throw when the lease is no longer active. |
 | `SafeTaskQueueWrapper<T>` | Result-friendly adapter over `TaskQueue<T>`. Methods `EnqueueAsync`, `LeaseAsync`, `Wrap`, `DisposeAsync`. Converts cancellation, disposal, and invalid operations into structured `Error` codes (for example `error.taskqueue.disposed`). Optional `ownsQueue` flag disposes the underlying queue on teardown. |
 | `SafeTaskQueueLease<T>` | Lightweight wrapper around `TaskQueueLease<T>` that returns `Result<Unit>` from `CompleteAsync`, `HeartbeatAsync`, and `FailAsync`. Normalises inactive leases to `error.taskqueue.lease_inactive`, exposes `SequenceId` / `OwnershipToken`, and captures cancellation metadata. |
 | `TaskQueueDeadLetterContext<T>` | Payload delivered to dead-letter handlers when the queue cannot retry an item. Includes `Value`, `Error`, `Attempt`, `EnqueuedAt`, `SequenceId`, and the last `OwnershipToken`. |
 | `TaskQueueOwnershipToken` | Monotonic lease identifier composed of `SequenceId`, `Attempt`, and the active `LeaseId`. Useful as a fencing token for metadata stores. |
 | `TaskQueuePendingItem<T>` | Serializable snapshot captured by `DrainPendingItemsAsync`. Contains the payload, attempt, timestamps, last error, and ownership token so work can be restored losslessly. |
-| `TaskQueueBackpressureOptions` | Optional configuration attached to `TaskQueueOptions`. Configure `HighWatermark`, `LowWatermark`, `Cooldown`, and `StateChanged(TaskQueueBackpressureState state)` to drive throttling decisions. |
+| `TaskQueueLifecycleEvent<T>` | Immutable payload describing queue mutations observed by replication sources. Includes event and queue sequence numbers, timestamps, payload, errors, ownership tokens, and lifecycle flags. |
+| `ITaskQueueLifecycleListener<T>` | Observer interface invoked synchronously for every lifecycle event. Used by replication sources and diagnostics to subscribe to queue mutations without wrapping the queue. |
+| `TaskQueueBackpressureOptions` | Optional configuration attached to `TaskQueueOptions` or applied via `TaskQueue.ConfigureBackpressure`. Configure `HighWatermark`, `LowWatermark`, `Cooldown`, and `StateChanged(TaskQueueBackpressureState state)` to drive throttling decisions. |
 | `TaskQueueBackpressureState` | Immutable payload delivered to backpressure callbacks containing `IsActive`, `PendingCount`, and `ObservedAt`. |
+| `TaskQueueBackpressureMonitorOptions` | Configures `TaskQueueBackpressureMonitor<T>` instances (high/low watermarks and cooldown). |
+| `TaskQueueBackpressureMonitor<T>` | Wraps `TaskQueue<T>` or `SafeTaskQueueWrapper<T>`, configures queue backpressure thresholds, emits `TaskQueueBackpressureSignal` values, exposes `CurrentSignal`, `IsActive`, `RegisterListener`, and `WaitForDrainingAsync`, and records `hugo.taskqueue.backpressure.*` metrics. |
+| `TaskQueueBackpressureSignal` | Strongly typed event containing `IsActive`, `PendingCount`, `HighWatermark`, `LowWatermark`, and `ObservedAt`. |
+| `ITaskQueueBackpressureListener` | Interface for components that react to monitor signals via `ValueTask OnSignalAsync(TaskQueueBackpressureSignal signal, CancellationToken token)`. |
+| `BackpressureAwareRateLimiter` / `TaskQueueLimiterSelector` | Default listener that swaps between two `RateLimiter` instances whenever backpressure toggles. `LimiterSelector` plugs directly into `RateLimitingMiddleware`. |
+| `TaskQueueBackpressureDiagnosticsListener` | Listener that buffers recent signals and exposes a `ChannelReader<TaskQueueBackpressureSignal>` plus `Latest` snapshot for HTTP/gRPC streaming endpoints. |
 | `TaskQueueHealthCheck<T>` / `TaskQueueHealthCheckOptions` | Health check implementation for queues. Register via `services.AddTaskQueueHealthCheck<T>(...)` to expose `/health` probes keyed off pending/active thresholds. |
-| `TaskQueueChannelAdapter<T>` | Bridges `TaskQueue<T>` into a `Channel<TaskQueueLease<T>>`. Static `Create` accepts the queue, optional channel, concurrency (number of background lease pumps), and ownership flag. Properties `Reader`, `Queue`; `DisposeAsync` stops pumps and optionally disposes the queue. |
+| `TaskQueueChannelAdapter<T>` | Bridges `TaskQueue<T>` into a `Channel<TaskQueueLease<T>>`. Static `Create` accepts the queue, optional channel, concurrency (number of background lease pumps), and ownership flag; when no channel is supplied the adapter builds a bounded channel sized to `concurrency` so at most that many leases sit in-flight. Properties `Reader`, `Queue`; `DisposeAsync` stops pumps and optionally disposes the queue. |
 
 Task queue internals honour cancellation tokens, propagate `Error.Canceled`, and surface lease expirations via `error.taskqueue.lease_expired` with metadata for `attempt`, `enqueuedAt`, and `expiredAt`.
 
@@ -161,6 +171,10 @@ Task queue internals honour cancellation tokens, propagate `Error.Canceled`, and
 - Combined setup: `Configure(Meter meter, ActivitySource activitySource)`.
 - Rate limiting: `UseRateLimitedSampling(ActivitySource source, int maxActivitiesPerInterval, TimeSpan interval, ActivitySamplingResult unsampledResult = PropagationData)` returns an `IDisposable` that installs an `ActivityListener` throttling span creation. This aligns with the .NET 10 behavioral change described in [Activity sampling guidance](https://learn.microsoft.com/en-us/dotnet/core/compatibility/core-libraries/10.0/activity-sampling).
 - Reset for tests: `Reset()` disposes all registered meters/sources and clears instrument references.
+- TaskQueue instrumentation: `ConfigureTaskQueueMetrics(TaskQueueMetricGroups groups)` toggles the metric families emitted by `TaskQueue<T>`/`SafeTaskQueueWrapper<T>`, while `RegisterTaskQueueTagEnricher(TaskQueueTagEnricher enricher)` appends additional tags (`service.name`, shard identifiers, tenant metadata, etc.) to each measurement.
+- Tag enrichers receive a `TaskQueueTagContext` (exposes the queue name) and mutate a `TagList` via the `TaskQueueTagEnricher` delegate.
+- `TaskQueueMetricsOptions`, `TaskQueueActivityOptions`, and `TaskQueueDiagnosticsOptions` collect the knobs exposed by the `Hugo.TaskQueues.Diagnostics` package. Call `IMeterFactory.AddTaskQueueDiagnostics(...)` (or the `IServiceProvider` overload) to configure meters, activity sources, rate-limited sampling, metric groups, and tag enrichers in one statement. The helper returns a `TaskQueueDiagnosticsRegistration` (an `IAsyncDisposable`) that tears down the instrumentation when disposed.
+- `TaskQueueDiagnosticsHost` aggregates `TaskQueueBackpressureMonitor<T>` and `TaskQueueReplicationSource<T>` signals. Use `Attach` overloads to register monitors/sources, then stream the `ChannelReader<TaskQueueDiagnosticsEvent>` output to HTTP/gRPC clients. `TaskQueueBackpressureDiagnosticsEvent` and `TaskQueueReplicationDiagnosticsEvent` subclasses carry the structured payloads.
 
 When configured, select operations record attempts, completions, timeouts, cancellations, latency, and channel depth; wait groups and task queues also increment their respective counters.
 
@@ -224,6 +238,22 @@ Saga execution respects cancellation tokens and leverages compensation scopes fr
 | `HugoOpenTelemetryBuilderExtensions` | Adds Hugo diagnostics to an `OpenTelemetryBuilder` or `IHostApplicationBuilder`. `AddHugoDiagnostics(Action<HugoOpenTelemetryOptions>?)` configures resources, meters, trace sources, OTLP/Prometheus exporters, runtime instrumentation, and the hosted service that registers `GoDiagnostics`. The host builder overload mirrors ASP.NET Core / .NET Aspire defaults. |
 | `HugoOpenTelemetryOptions` | Options object consumed by the extension. Properties cover schema (`SchemaUrl`), service identity (`ServiceName`), instrument names (`MeterName`, `ActivitySourceName`, `ActivitySourceVersion`), toggles for meter/activity configuration, rate-limited sampling (`EnableRateLimitedSampling`, `MaxActivitiesPerInterval`, `SamplingInterval`, `UnsampledActivityResult`), exporter settings (`AddOtlpExporter`, `OtlpProtocol`, `OtlpEndpoint`, `AddPrometheusExporter`), and runtime metrics (`AddRuntimeInstrumentation`). |
 | `HugoDiagnosticsRegistrationService` | Internal hosted service that wires `GoDiagnostics` into OpenTelemetry when the extensions are used. Automatically applies rate-limited sampling to workflows to avoid excessive spans, aligning with the [OpenTelemetry .NET best practices](https://opentelemetry.io/docs/languages/dotnet/traces/best-practices/). |
+
+## Hugo.TaskQueues.Replication namespace
+
+| Type | Description |
+| --- | --- |
+| `TaskQueueReplicationSource<T>` | Observes `TaskQueue<T>` mutations via lifecycle listeners and emits `TaskQueueReplicationEvent<T>` instances through `IAsyncEnumerable`/`ChannelReader`. Records `taskqueue.replication.events` and lag histograms through `GoDiagnostics`. `RegisterObserver(ITaskQueueReplicationObserver<T>)` mirrors the event stream to diagnostics hosts or custom sinks without draining the primary channel. |
+| `ITaskQueueReplicationObserver<T>` | Observer interface invoked for every replication event (`ValueTask OnReplicationEventAsync(TaskQueueReplicationEvent<T> evt, CancellationToken token)`). Used by `TaskQueueDiagnosticsHost` to tap the stream without consuming the primary reader. |
+| `TaskQueueReplicationSourceOptions<T>` | Configures a replication source (`SourcePeerId`, `DefaultOwnerPeerId`, `OwnerPeerResolver`, `TimeProvider`). |
+| `TaskQueueReplicationEvent<T>` / `TaskQueueReplicationEventKind` | Transport-neutral event contract covering queue name, replication sequence, lifecycle kind, payload, ownership tokens, timestamps, and replication flags. The static `Create` helper enforces monotonic sequences and stamps timestamps with the configured `TimeProvider`. |
+| `CheckpointingTaskQueueReplicationSink<T>` | Base class that consumes replication streams with per-peer/global checkpoints backed by an `ITaskQueueReplicationCheckpointStore`. Override `ApplyEventAsync` to forward events to HTTP writers, gRPC relays, etc. |
+| `ITaskQueueReplicationCheckpointStore` | Abstraction for durable checkpoint persistence (SQL, Cosmos DB, blob, deterministic state). Methods read/persist `TaskQueueReplicationCheckpoint` snapshots. |
+| `TaskQueueReplicationCheckpoint` | Immutable checkpoint structure containing the stream id, global event position, last update time, and per-peer offsets. Helpers evaluate whether events should be processed and advance peer/global state safely. |
+| `TaskQueueDeterministicCoordinator<T>` | Bridges replication events with `DeterministicEffectStore`. `ExecuteAsync` captures a handler result under the event’s effect id so replays reuse the original outcome without re-running side effects. |
+| `TaskQueueReplicationJsonSerialization` / `TaskQueueReplicationJsonContext<T>` | Source-generated `JsonSerializerContext` helpers used when persisting replication events or configuring deterministic stores for replay. |
+
+Refer to `docs/reference/taskqueue-replication.md` for wiring guidance, checkpoint examples, and deterministic replay walkthroughs.
 
 ## Usage guidance and external references
 

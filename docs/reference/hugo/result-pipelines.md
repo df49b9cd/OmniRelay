@@ -57,16 +57,14 @@ var outcome = Go.Ok(request)
 
 ## Async combinators
 
-Every async variation accepts a `CancellationToken` and normalises cancellations to `Error.Canceled`:
+Every async variation accepts a `CancellationToken` and normalises cancellations to `Error.Canceled`. Each helper also ships `*ValueTaskAsync` overloads, so `ValueTask<Result<T>>` sources and delegates compose without forcing an extra `Task` allocation.
 
-- `Functional.ThenAsync` overloads bridge sync→async, async→sync, and async→async pipelines.
-- `Functional.MapAsync` transforms values with synchronous or asynchronous mappers.
-- `Functional.TapAsync` / `Functional.TeeAsync` execute side-effects without altering the pipeline (sync or async).
-- `Functional.RecoverAsync` retries failures with synchronous or asynchronous recovery logic.
-- `Functional.EnsureAsync` validates successful values asynchronously.
-- `Functional.FinallyAsync` awaits success/failure continuations (sync or async callbacks).
-
-> **Hugo v1.4.3:** Every async combinator has a `*ValueTaskAsync` counterpart (for example `Functional.ThenValueTaskAsync`, `Functional.MapValueTaskAsync`) so pipelines that already use `ValueTask<Result<T>>` stay allocation-free when chaining Functional helpers.
+- Execution flow: `Functional.ThenAsync` overloads bridge sync→async, async→sync, and async→async pipelines. `Functional.ThenValueTaskAsync` mirrors the same combinations for ValueTask-based sources or continuations.
+- Mapping & instrumentation: `Functional.MapAsync` transforms values with synchronous or asynchronous mappers, while `Functional.MapValueTaskAsync` keeps ValueTask-returning mappers allocation-free.
+- Side-effects and notifications: `Functional.TapAsync` / `Functional.TeeAsync` execute side-effects without altering the pipeline. `Functional.OnSuccessAsync`, `Functional.OnFailureAsync`, and `Functional.TapErrorAsync` target lifecycle-specific side-effects. Their `*ValueTaskAsync` companions (`TapValueTaskAsync`, `TeeValueTaskAsync`, `OnSuccessValueTaskAsync`, `OnFailureValueTaskAsync`, `TapErrorValueTaskAsync`) accept ValueTask-returning delegates.
+- Recovery: `Functional.RecoverAsync` retries failures with synchronous or asynchronous recovery logic; `Functional.RecoverValueTaskAsync` takes the same inputs when the recovery delegate already returns `ValueTask<Result<T>>`.
+- Validation: `Functional.EnsureAsync` validates successful values asynchronously. Use `Functional.EnsureValueTaskAsync` to keep validation logic in `ValueTask`.
+- Cleanup/finalisation: `Functional.FinallyAsync` awaits success/failure continuations (sync or async callbacks). `Functional.FinallyValueTaskAsync` allows both the source and the continuations to stay on `ValueTask`.
 
 ## Collection helpers
 
@@ -87,7 +85,7 @@ Writers are completed automatically (with the originating error when appropriate
 
 ## Parallel orchestration and retries
 
-- `Result.WhenAll` executes result-aware operations concurrently, applying the supplied `ResultExecutionPolicy` (retries + compensation) to each step.
+- `Result.WhenAll` executes result-aware operations concurrently, applying the supplied `ResultExecutionPolicy` (retries + compensation) to each step. When cancellation interrupts execution—even if `Task.WhenAll` short-circuits with `OperationCanceledException`—previously completed operations have their compensation scopes replayed before the aggregated result returns `Error.Canceled`, so side effects are rolled back deterministically.
 - `Result.WhenAny` resolves once the first success arrives, compensating secondary successes and aggregating errors when every branch fails.
 - `Result.RetryWithPolicyAsync` runs a delegate under a retry/compensation policy, surfacing structured failure metadata when attempts are exhausted.
 - `Result.TieredFallbackAsync` evaluates `ResultFallbackTier<T>` instances sequentially; strategies within a tier run concurrently and cancel once a peer succeeds. Metadata keys (`fallbackTier`, `tierIndex`, `strategyIndex`) are attached to failures for observability.
@@ -140,7 +138,19 @@ group.Go((ctx, ct) =>
 }, stepName: "ship-order", policy: retryPolicy);
 
 var completion = await group.WaitAsync(cancellationToken);
+if (completion.IsFailure && completion.Error?.Code == ErrorCodes.Canceled)
+{
+    // Handle the aborted pipeline (e.g., user-initiated cancellation) and exit early.
+}
+else
+{
+    completion.ValueOrThrow();
+}
 ```
+
+Reusing the same `ErrGroup` instance outside of its `using` scope is unsupported. Once disposed, any `Go(...)` call throws `ObjectDisposedException`, while the exposed `Token` remains valid for listeners already awaiting cancellation.
+Manual calls to `Cancel()` record `Error.Canceled` before the linked `CancellationTokenSource` is signaled, so `WaitAsync` deterministically returns `Result.Fail<Unit>` and `ErrGroup.Error` surfaces the same payload.
+Policy-backed `Go(...)` overloads now cancel peer operations as soon as a failure is captured—before compensation handlers execute—so slow cleanup work cannot mask cancellation from the remaining steps.
 
 ## Error metadata
 
