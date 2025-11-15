@@ -29,6 +29,12 @@ public sealed class TransportTlsManager : IDisposable
             new EventId(1, "TransportCertificateLoaded"),
             "Control-plane TLS certificate loaded from {Source}. Subject={Subject}");
 
+    private static readonly Action<ILogger, string, Exception?> SecretRotationLog =
+        LoggerMessage.Define<string>(
+            LogLevel.Information,
+            new EventId(2, "TransportSecretChanged"),
+            "Control-plane TLS secret {SecretDescription} changed. Certificate will reload on next access.");
+
     public TransportTlsManager(
         TransportTlsOptions options,
         ILogger<TransportTlsManager> logger,
@@ -238,7 +244,7 @@ public sealed class TransportTlsManager : IDisposable
 
         return Result.Try(() =>
         {
-            var secret = _secretProvider.GetSecretAsync(name).GetAwaiter().GetResult();
+            var secret = _secretProvider.GetSecretSync(name);
             if (secret is null)
             {
                 throw new InvalidOperationException($"Secret '{name}' required for {purpose} was not found.");
@@ -326,7 +332,7 @@ public sealed class TransportTlsManager : IDisposable
             _certificate = null;
             _lastLoaded = DateTimeOffset.MinValue;
             _lastWrite = DateTime.MinValue;
-            _logger.LogInformation("Control-plane TLS secret {SecretDescription} changed. Certificate will reload on next access.", description);
+            SecretRotationLog(_logger, description, null);
         }
     }
 

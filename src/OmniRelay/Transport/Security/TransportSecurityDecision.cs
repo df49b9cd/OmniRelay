@@ -5,11 +5,8 @@ public readonly record struct TransportSecurityDecision(bool IsAllowed, string? 
 {
     public static TransportSecurityDecision Allowed { get; } = new(true, null);
 
-    public object ToPayload(string transport, string endpoint) => new
-    {
-        allowed = IsAllowed,
-        transport,
-        endpoint,
-        reason = Reason
-    };
+    public TransportSecurityDecisionPayload ToPayload(string transport, string endpoint) =>
+        new(IsAllowed, transport, endpoint, Reason);
 }
+
+public readonly record struct TransportSecurityDecisionPayload(bool Allowed, string Transport, string Endpoint, string? Reason);

@@ -12,12 +12,12 @@ public sealed class NodeDrainCoordinatorTests
         var participant = new FakeParticipant();
         coordinator.RegisterParticipant("http", participant);
 
-        var snapshot = await coordinator.BeginDrainAsync("rolling upgrade", CancellationToken.None).ConfigureAwait(false);
+        var snapshot = await coordinator.BeginDrainAsync("rolling upgrade", CancellationToken.None);
         Assert.Equal(NodeDrainState.Drained, snapshot.State);
         Assert.Single(snapshot.Participants);
         Assert.Equal(NodeDrainParticipantState.Drained, snapshot.Participants[0].State);
 
-        var resumed = await coordinator.ResumeAsync(CancellationToken.None).ConfigureAwait(false);
+        var resumed = await coordinator.ResumeAsync(CancellationToken.None);
         Assert.Equal(NodeDrainState.Active, resumed.State);
         Assert.Single(resumed.Participants);
         Assert.Equal(NodeDrainParticipantState.Active, resumed.Participants[0].State);

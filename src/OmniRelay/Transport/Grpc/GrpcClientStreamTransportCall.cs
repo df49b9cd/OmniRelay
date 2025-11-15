@@ -39,6 +39,7 @@ internal sealed class GrpcClientStreamTransportCall : IClientStreamTransportCall
     /// <param name="requestMeta">The request metadata.</param>
     /// <param name="call">The active gRPC client-streaming call.</param>
     /// <param name="writeOptions">Optional write options applied per message.</param>
+    /// <param name="callCancellation">Cancellation source bound to the gRPC call lifetime.</param>
     public GrpcClientStreamTransportCall(
         RequestMeta requestMeta,
         AsyncClientStreamingCall<byte[], byte[]> call,
@@ -266,16 +267,16 @@ internal sealed class GrpcClientStreamTransportCall : IClientStreamTransportCall
         {
             var pumpResult = await Result
                 .TryAsync(
-                    async _ =>
+                    async token =>
                     {
-                        await foreach (var payload in _pendingWrites.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+                        await foreach (var payload in _pendingWrites.Reader.ReadAllAsync(token).ConfigureAwait(false))
                         {
                             if (_writeOptions is not null)
                             {
                                 _call.RequestStream.WriteOptions = _writeOptions;
                             }
 
-                            await _call.RequestStream.WriteAsync(payload).ConfigureAwait(false);
+                            await _call.RequestStream.WriteAsync(payload, token).ConfigureAwait(false);
                             Interlocked.Increment(ref _requestCount);
                             GrpcTransportMetrics.ClientClientStreamRequestMessages.Add(1, _baseTags);
                         }

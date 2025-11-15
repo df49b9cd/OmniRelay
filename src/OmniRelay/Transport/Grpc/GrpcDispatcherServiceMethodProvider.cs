@@ -255,7 +255,7 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                                 return Unit.Value;
                             },
                             cancellationToken: cancellationToken,
-                            errorFactory: ex => MapServerStreamPumpError(ex))
+                            errorFactory: MapServerStreamPumpError)
                         .ConfigureAwait(false);
 
                     if (pumpResult.IsFailure && pumpResult.Error is { } pumpError)

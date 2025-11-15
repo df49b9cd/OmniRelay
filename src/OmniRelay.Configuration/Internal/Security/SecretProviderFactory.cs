@@ -42,7 +42,7 @@ internal static class SecretProviderFactory
         };
     }
 
-    private static ISecretProvider CreateFileProvider(SecretProviderConfiguration descriptor, ISecretAccessAuditor auditor)
+    private static FileSecretProvider CreateFileProvider(SecretProviderConfiguration descriptor, ISecretAccessAuditor auditor)
     {
         if (descriptor.Secrets.Count == 0)
         {
@@ -69,7 +69,7 @@ internal static class SecretProviderFactory
         return new FileSecretProvider(options, auditor);
     }
 
-    private static ISecretProvider CreateInlineProvider(IDictionary<string, string> values, ISecretAccessAuditor auditor)
+    private static InMemorySecretProvider CreateInlineProvider(IDictionary<string, string> values, ISecretAccessAuditor auditor)
     {
         var provider = new InMemorySecretProvider(auditor);
         foreach (var (name, value) in values)

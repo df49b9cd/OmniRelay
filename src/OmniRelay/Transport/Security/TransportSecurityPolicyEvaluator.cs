@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 namespace OmniRelay.Transport.Security;
 
 /// <summary>Evaluates requests against the configured transport security policy.</summary>
-public sealed class TransportSecurityPolicyEvaluator
+public sealed partial class TransportSecurityPolicyEvaluator
 {
     private readonly TransportSecurityPolicy _policy;
     private readonly ILogger<TransportSecurityPolicyEvaluator> _logger;
@@ -26,7 +26,7 @@ public sealed class TransportSecurityPolicyEvaluator
         if (_policy.AllowedProtocols.Count > 0 && !_policy.AllowedProtocols.Contains(normalizedProtocol))
         {
             var reason = $"Protocol '{context.Protocol}' is not allowed.";
-            _logger.LogWarning("Transport security denied connection: {Reason}", reason);
+            Log.TransportDenied(_logger, reason);
             return new TransportSecurityDecision(false, reason);
         }
 
@@ -35,7 +35,7 @@ public sealed class TransportSecurityPolicyEvaluator
             if (context.TlsProtocol is not { } tls || !_policy.AllowedTlsVersions.Contains(tls))
             {
                 var reason = "TLS protocol mismatch.";
-                _logger.LogWarning("Transport security denied connection: {Reason}", reason);
+                Log.TransportDenied(_logger, reason);
                 return new TransportSecurityDecision(false, reason);
             }
         }
@@ -45,7 +45,7 @@ public sealed class TransportSecurityPolicyEvaluator
             if (context.Cipher is not { } cipher || !_policy.AllowedCipherAlgorithms.Contains(cipher))
             {
                 var reason = "Cipher suite not permitted.";
-                _logger.LogWarning("Transport security denied connection: {Reason}", reason);
+                Log.TransportDenied(_logger, reason);
                 return new TransportSecurityDecision(false, reason);
             }
         }
@@ -53,7 +53,7 @@ public sealed class TransportSecurityPolicyEvaluator
         if (_policy.RequireClientCertificate && context.ClientCertificate is null)
         {
             var reason = "Client certificate required.";
-            _logger.LogWarning("Transport security denied connection: {Reason}", reason);
+            Log.TransportDenied(_logger, reason);
             return new TransportSecurityDecision(false, reason);
         }
 
@@ -63,7 +63,7 @@ public sealed class TransportSecurityPolicyEvaluator
             if (thumbprint is null || !_policy.AllowedThumbprints.Contains(thumbprint))
             {
                 var reason = "Client certificate thumbprint not allowed.";
-                _logger.LogWarning("Transport security denied connection: {Reason}", reason);
+                Log.TransportDenied(_logger, reason);
                 return new TransportSecurityDecision(false, reason);
             }
         }
@@ -73,7 +73,7 @@ public sealed class TransportSecurityPolicyEvaluator
             var decision = EvaluateEndpoints(context);
             if (!decision.IsAllowed)
             {
-                _logger.LogWarning("Transport security denied connection: {Reason}", decision.Reason);
+                Log.TransportDenied(_logger, decision.Reason ?? "Endpoint blocked by policy.");
                 return decision;
             }
         }
@@ -107,5 +107,11 @@ public sealed class TransportSecurityPolicyEvaluator
         }
 
         return TransportSecurityDecision.Allowed;
+    }
+
+    private static partial class Log
+    {
+        [LoggerMessage(EventId = 1, Level = LogLevel.Warning, Message = "Transport security denied connection: {Reason}")]
+        public static partial void TransportDenied(ILogger logger, string reason);
     }
 }

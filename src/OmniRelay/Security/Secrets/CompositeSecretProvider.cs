@@ -5,7 +5,7 @@ namespace OmniRelay.Security.Secrets;
 /// <summary>Queries multiple providers in precedence order.</summary>
 public sealed class CompositeSecretProvider : ISecretProvider, IDisposable
 {
-    private readonly IReadOnlyList<ISecretProvider> _providers;
+    private readonly ISecretProvider[] _providers;
     private readonly ISecretAccessAuditor _auditor;
     private bool _disposed;
 
@@ -17,7 +17,7 @@ public sealed class CompositeSecretProvider : ISecretProvider, IDisposable
         ArgumentNullException.ThrowIfNull(auditor);
 
         _providers = providers.ToArray();
-        if (_providers.Count == 0)
+        if (_providers.Length == 0)
         {
             throw new ArgumentException("At least one secret provider must be supplied.", nameof(providers));
         }
@@ -60,7 +60,7 @@ public sealed class CompositeSecretProvider : ISecretProvider, IDisposable
 
     public IChangeToken? Watch(string name)
     {
-        var tokens = new List<IChangeToken>(_providers.Count);
+        var tokens = new List<IChangeToken>(_providers.Length);
         foreach (var provider in _providers)
         {
             var token = provider.Watch(name);

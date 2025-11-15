@@ -9,7 +9,7 @@ using static Hugo.Go;
 namespace OmniRelay.ControlPlane.Hosting;
 
 /// <summary>Default implementation that coordinates <see cref="ILifecycle"/> components.</summary>
-public sealed class LifecycleOrchestrator : ILifecycleOrchestrator
+public sealed partial class LifecycleOrchestrator : ILifecycleOrchestrator
 {
     private readonly ImmutableDictionary<string, LifecycleComponentRegistration> _components;
     private readonly ImmutableArray<LifecycleComponentRegistration> _startOrder;
@@ -130,7 +130,7 @@ public sealed class LifecycleOrchestrator : ILifecycleOrchestrator
             {
                 runtime.Status = LifecycleComponentStatus.Faulted;
                 runtime.LastError = Error.FromException(ex).WithMetadata("component", component.Name);
-                _logger.LogWarning(ex, "Failed to roll back lifecycle component {Component}", component.Name);
+                Log.RollbackFailed(_logger, component.Name, ex);
             }
         }
     }
@@ -171,7 +171,7 @@ public sealed class LifecycleOrchestrator : ILifecycleOrchestrator
         {
             var runtime = _runtimeState[component.Name];
             runtime.Status = LifecycleComponentStatus.Starting;
-            _logger.LogInformation("Starting lifecycle component {Component}", component.Name);
+            Log.ComponentStarting(_logger, component.Name);
 
             var policy = component.StartPolicy == ResultExecutionPolicy.None ? _defaultStartPolicy : component.StartPolicy;
 
@@ -186,7 +186,7 @@ public sealed class LifecycleOrchestrator : ILifecycleOrchestrator
                     {
                         started.Push(component);
                     }
-                    _logger.LogInformation("Lifecycle component {Component} started.", component.Name);
+                    Log.ComponentStarted(_logger, component.Name);
                 }
                 else
                 {
@@ -222,7 +222,7 @@ public sealed class LifecycleOrchestrator : ILifecycleOrchestrator
             }
 
             runtime.Status = LifecycleComponentStatus.Stopping;
-            _logger.LogInformation("Stopping lifecycle component {Component}", component.Name);
+            Log.ComponentStopping(_logger, component.Name);
 
             var policy = component.StopPolicy == ResultExecutionPolicy.None ? _defaultStopPolicy : component.StopPolicy;
             scheduled = true;
@@ -234,7 +234,7 @@ public sealed class LifecycleOrchestrator : ILifecycleOrchestrator
                 {
                     runtime.Status = LifecycleComponentStatus.Stopped;
                     runtime.LastError = null;
-                    _logger.LogInformation("Lifecycle component {Component} stopped.", component.Name);
+                    Log.ComponentStopped(_logger, component.Name);
                 }
                 else
                 {
@@ -366,6 +366,24 @@ public sealed class LifecycleOrchestrator : ILifecycleOrchestrator
         public LifecycleComponentRegistration Component { get; }
         public LifecycleComponentStatus Status { get; set; } = LifecycleComponentStatus.Created;
         public Error? LastError { get; set; }
+    }
+
+    private static partial class Log
+    {
+        [LoggerMessage(EventId = 1, Level = LogLevel.Warning, Message = "Failed to roll back lifecycle component {Component}")]
+        public static partial void RollbackFailed(ILogger logger, string component, Exception exception);
+
+        [LoggerMessage(EventId = 2, Level = LogLevel.Information, Message = "Starting lifecycle component {Component}")]
+        public static partial void ComponentStarting(ILogger logger, string component);
+
+        [LoggerMessage(EventId = 3, Level = LogLevel.Information, Message = "Lifecycle component {Component} started.")]
+        public static partial void ComponentStarted(ILogger logger, string component);
+
+        [LoggerMessage(EventId = 4, Level = LogLevel.Information, Message = "Stopping lifecycle component {Component}")]
+        public static partial void ComponentStopping(ILogger logger, string component);
+
+        [LoggerMessage(EventId = 5, Level = LogLevel.Information, Message = "Lifecycle component {Component} stopped.")]
+        public static partial void ComponentStopped(ILogger logger, string component);
     }
 }
 

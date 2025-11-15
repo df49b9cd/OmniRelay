@@ -384,7 +384,11 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
                 {
                     context.Response.StatusCode = StatusCodes.Status403Forbidden;
                     var host = context.Request.Host.HasValue ? context.Request.Host.Value : context.Connection.RemoteIpAddress?.ToString() ?? "*";
-                    await context.Response.WriteAsJsonAsync(decision.ToPayload(HttpTransportName, host), context.RequestAborted).ConfigureAwait(false);
+                    await HttpJsonWriter.WriteAsync(
+                        context.Response,
+                        decision.ToPayload(HttpTransportName, host),
+                        HttpJsonContext.Default.TransportSecurityDecisionPayload,
+                        context.RequestAborted).ConfigureAwait(false);
                     return;
                 }
 
@@ -400,7 +404,12 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
                 if (!decision.IsAllowed)
                 {
                     context.Response.StatusCode = StatusCodes.Status403Forbidden;
-                    await context.Response.WriteAsJsonAsync(new { transport = HttpTransportName, message = decision.Reason ?? "authorization failure" }, context.RequestAborted).ConfigureAwait(false);
+                    var responsePayload = new TransportAuthorizationResponse(HttpTransportName, decision.Reason ?? "authorization failure");
+                    await HttpJsonWriter.WriteAsync(
+                        context.Response,
+                        responsePayload,
+                        HttpJsonContext.Default.TransportAuthorizationResponse,
+                        context.RequestAborted).ConfigureAwait(false);
                     return;
                 }
 
@@ -911,7 +920,7 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
     }
     }
 
-    private ValueTask<Result<HttpUnaryRequestContext>> DecodeUnaryRequestAsync(
+    private static ValueTask<Result<HttpUnaryRequestContext>> DecodeUnaryRequestAsync(
         HttpContext context,
         string serviceName,
         string transport,

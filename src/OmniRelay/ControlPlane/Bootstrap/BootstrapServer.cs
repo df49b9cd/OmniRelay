@@ -7,7 +7,7 @@ using static Hugo.Go;
 namespace OmniRelay.ControlPlane.Bootstrap;
 
 /// <summary>Handles join requests by validating tokens and packaging bootstrap bundles.</summary>
-public sealed class BootstrapServer
+public sealed partial class BootstrapServer
 {
     private readonly BootstrapServerOptions _options;
     private readonly BootstrapTokenService _tokenService;
@@ -58,15 +58,11 @@ public sealed class BootstrapServer
 
         if (envelope.TryGetValue(out var success))
         {
-            _logger.LogInformation(
-                "Issued bootstrap bundle for cluster {ClusterId} role {Role} (token {TokenId}).",
-                success.Response.ClusterId,
-                success.Response.Role,
-                success.Validation.TokenId);
+            Log.BootstrapBundleIssued(_logger, success.Response.ClusterId, success.Response.Role, success.Validation.TokenId);
         }
         else if (envelope.TryGetError(out var error))
         {
-            _logger.LogWarning("Bootstrap join failed: {Message} (code: {Code}).", error.Message, error.Code ?? "unknown");
+            Log.BootstrapJoinFailed(_logger, error.Message ?? "unknown", error.Code ?? "unknown");
         }
 
         return ValueTask.FromResult(envelope.Map(tuple => tuple.Response));
@@ -118,11 +114,7 @@ public sealed class BootstrapServer
             return;
         }
 
-        _logger.LogWarning(
-            "Join request for node {NodeId} attempted to override role '{RequestedRole}' (token role '{TokenRole}').",
-            request.NodeId,
-            request.RequestedRole,
-            role);
+        Log.BootstrapRoleOverride(_logger, request.NodeId ?? "unknown", request.RequestedRole ?? "", role);
     }
 
     private static bool ShouldEnforceTimeout(TimeSpan timeout) =>
@@ -132,5 +124,17 @@ public sealed class BootstrapServer
     {
         var bytes = certificate.Export(X509ContentType.Pfx, password);
         return Convert.ToBase64String(bytes);
+    }
+
+    private static partial class Log
+    {
+        [LoggerMessage(EventId = 1, Level = LogLevel.Information, Message = "Issued bootstrap bundle for cluster {ClusterId} role {Role} (token {TokenId}).")]
+        public static partial void BootstrapBundleIssued(ILogger logger, string clusterId, string role, Guid tokenId);
+
+        [LoggerMessage(EventId = 2, Level = LogLevel.Warning, Message = "Bootstrap join failed: {Message} (code: {Code}).")]
+        public static partial void BootstrapJoinFailed(ILogger logger, string message, string code);
+
+        [LoggerMessage(EventId = 3, Level = LogLevel.Warning, Message = "Join request for node {NodeId} attempted to override role '{RequestedRole}' (token role '{TokenRole}').")]
+        public static partial void BootstrapRoleOverride(ILogger logger, string nodeId, string? requestedRole, string tokenRole);
     }
 }

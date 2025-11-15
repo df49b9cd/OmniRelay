@@ -76,7 +76,7 @@ public static class OmniRelayServiceCollectionExtensions
         services.AddHttpClient();
 
         ConfigureDiagnostics(services, snapshot);
-        ConfigureSecurity(services, configuration, snapshot);
+        ConfigureSecurity(services, snapshot);
 
         if (minimumLevel.HasValue || overrides.Count > 0)
         {
@@ -278,7 +278,6 @@ public static class OmniRelayServiceCollectionExtensions
 
     private static void ConfigureSecurity(
         IServiceCollection services,
-        IConfiguration configuration,
         OmniRelayConfigurationOptions options)
     {
         var security = options.Security ?? new SecurityConfiguration();
@@ -356,7 +355,7 @@ public static class OmniRelayServiceCollectionExtensions
 
         if (!string.IsNullOrWhiteSpace(signing.SigningKeySecret) && secretProvider is not null)
         {
-            using var secret = secretProvider.GetSecretAsync(signing.SigningKeySecret).GetAwaiter().GetResult()
+            using var secret = secretProvider.GetSecretSync(signing.SigningKeySecret)
                 ?? throw new OmniRelayConfigurationException($"Bootstrap signing secret '{signing.SigningKeySecret}' was not found.");
             var value = secret.AsString();
             if (string.IsNullOrWhiteSpace(value))

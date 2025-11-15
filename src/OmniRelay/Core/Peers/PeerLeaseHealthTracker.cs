@@ -137,7 +137,23 @@ public sealed class PeerLeaseHealthTracker : IPeerHealthSnapshotProvider
             $"Peer {peerId} disconnected.",
             metadata);
 
-        _ = _alertPublisher.PublishAsync(alert);
+        var publishTask = _alertPublisher.PublishAsync(alert);
+        if (!publishTask.IsCompletedSuccessfully)
+        {
+            _ = ObservePublishAsync(publishTask);
+        }
+    }
+
+    private static async Task ObservePublishAsync(ValueTask publishTask)
+    {
+        try
+        {
+            await publishTask.ConfigureAwait(false);
+        }
+        catch
+        {
+            // Swallow background alert failures.
+        }
     }
 
     private sealed class PeerLeaseHealthState(string peerId)

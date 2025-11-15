@@ -13,7 +13,6 @@ public sealed class BootstrapClient
 
     private readonly HttpClient _httpClient;
     private readonly TimeProvider _timeProvider;
-    private static readonly JsonSerializerOptions ErrorSerializerOptions = new(JsonSerializerDefaults.Web);
 
     public BootstrapClient(HttpClient httpClient, TimeProvider? timeProvider = null)
     {
@@ -84,10 +83,10 @@ public sealed class BootstrapClient
         {
             try
             {
-                var parsed = JsonSerializer.Deserialize<Error>(payload, ErrorSerializerOptions);
+                var parsed = JsonSerializer.Deserialize(payload, BootstrapJsonContext.Default.BootstrapErrorResponse);
                 if (parsed is not null)
                 {
-                    return parsed;
+                    return Error.From(parsed.Message ?? "Bootstrap server returned an error.", parsed.Code ?? ErrorCodes.Validation);
                 }
             }
             catch (JsonException)

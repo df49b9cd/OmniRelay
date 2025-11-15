@@ -1468,7 +1468,7 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         context.Lease.MarkSuccess();
     }
 
-    private void RecordClientFailure(PeerInvocationContext context, Error error)
+    private static void RecordClientFailure(PeerInvocationContext context, Error error)
     {
         var exception = error.Cause ?? OmniRelayErrors.FromError(error, GrpcTransportConstants.TransportName);
         var status = GrpcStatusMapper.ToStatus(

@@ -3,6 +3,8 @@ using System.Security.Authentication;
 using OmniRelay.Configuration.Models;
 using OmniRelay.Transport.Security;
 
+#pragma warning disable SYSLIB0058
+
 namespace OmniRelay.Configuration.Internal.Security;
 
 internal static class TransportSecurityFactory
@@ -21,8 +23,9 @@ internal static class TransportSecurityFactory
         }
 
         var protocols = configuration.AllowedProtocols
-            .Select(p => p?.Trim().ToLowerInvariant())
+            .Select(p => p?.Trim())
             .Where(p => !string.IsNullOrWhiteSpace(p))
+            .Select(p => p!.ToLowerInvariant())
             .ToImmutableHashSet(StringComparer.OrdinalIgnoreCase);
 
         var tlsVersions = configuration.AllowedTlsVersions
@@ -38,8 +41,9 @@ internal static class TransportSecurityFactory
             .ToImmutableHashSet();
 
         var thumbprints = configuration.AllowedThumbprints
-            .Select(tp => tp?.Trim().ToUpperInvariant())
+            .Select(tp => tp?.Trim())
             .Where(tp => !string.IsNullOrWhiteSpace(tp))
+            .Select(tp => tp!.ToUpperInvariant())
             .ToImmutableHashSet(StringComparer.OrdinalIgnoreCase);
 
         var rulesBuilder = ImmutableArray.CreateBuilder<TransportEndpointRule>(configuration.Endpoints.Count);
@@ -77,10 +81,10 @@ internal static class TransportSecurityFactory
 
         return value.ToUpperInvariant() switch
         {
-            "TLS1.0" or "TLS" => SslProtocols.Tls,
-            "TLS1.1" => SslProtocols.Tls11,
             "TLS1.2" => SslProtocols.Tls12,
             "TLS1.3" => SslProtocols.Tls13,
+            "TLS" => throw new OmniRelayConfigurationException("TLS version 'TLS' is ambiguous. Specify TLS1.2 or TLS1.3."),
+            "TLS1.0" or "TLS1.1" => throw new OmniRelayConfigurationException($"TLS version '{value}' is deprecated and unsupported."),
             _ => throw new OmniRelayConfigurationException($"TLS version '{value}' is not supported.")
         };
     }
@@ -100,3 +104,4 @@ internal static class TransportSecurityFactory
         throw new OmniRelayConfigurationException($"Cipher algorithm '{value}' is not supported.");
     }
 }
+#pragma warning restore SYSLIB0058

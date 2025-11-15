@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 namespace OmniRelay.Diagnostics.Alerting;
 
 /// <summary>Dispatches alerts to configured channels with throttling.</summary>
-internal sealed class AlertPublisher : IAlertPublisher
+internal sealed partial class AlertPublisher : IAlertPublisher
 {
     private readonly IReadOnlyList<IAlertChannel> _channels;
     private readonly IReadOnlyDictionary<string, TimeSpan> _cooldowns;
@@ -45,8 +45,14 @@ internal sealed class AlertPublisher : IAlertPublisher
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Alert channel {Channel} failed to emit event {Alert}.", channel.Name, alert.Name);
+                Log.AlertChannelFailed(_logger, channel.Name, alert.Name, ex);
             }
         }
+    }
+
+    private static partial class Log
+    {
+        [LoggerMessage(EventId = 1, Level = LogLevel.Warning, Message = "Alert channel {Channel} failed to emit event {Alert}.")]
+        public static partial void AlertChannelFailed(ILogger logger, string channel, string alert, Exception exception);
     }
 }

@@ -12,7 +12,7 @@ using OmniRelay.Security.Secrets;
 namespace OmniRelay.ControlPlane.Bootstrap;
 
 /// <summary>Dedicated HTTP host serving bootstrap/join endpoints.</summary>
-internal sealed class BootstrapControlPlaneHost : ILifecycle, IDisposable
+internal sealed partial class BootstrapControlPlaneHost : ILifecycle, IDisposable
 {
     private readonly IServiceProvider _services;
     private readonly HttpControlPlaneHostOptions _options;
@@ -45,7 +45,7 @@ internal sealed class BootstrapControlPlaneHost : ILifecycle, IDisposable
 
         if (_options.Urls.Count == 0)
         {
-            _logger.LogWarning("Bootstrap host did not start because no URLs were configured.");
+            Log.NoBootstrapUrlsConfigured(_logger);
             return;
         }
 
@@ -123,6 +123,13 @@ internal sealed class BootstrapControlPlaneHost : ILifecycle, IDisposable
             _ => StatusCodes.Status500InternalServerError
         };
 
-        return Results.Json(error, statusCode: statusCode);
+        var response = new BootstrapErrorResponse(error.Code, error.Message);
+        return Results.Json(response, BootstrapJsonContext.Default.BootstrapErrorResponse, statusCode: statusCode);
+    }
+
+    private static partial class Log
+    {
+        [LoggerMessage(EventId = 1, Level = LogLevel.Warning, Message = "Bootstrap host did not start because no URLs were configured.")]
+        public static partial void NoBootstrapUrlsConfigured(ILogger logger);
     }
 }

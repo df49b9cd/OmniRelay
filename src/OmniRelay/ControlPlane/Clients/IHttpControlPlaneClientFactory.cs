@@ -1,4 +1,3 @@
-using System.Threading;
 using Hugo;
 
 namespace OmniRelay.ControlPlane.Clients;

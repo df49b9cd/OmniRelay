@@ -35,15 +35,7 @@ internal sealed class WebhookAlertChannel : IAlertChannel
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _authenticationToken);
         }
 
-        var body = new
-        {
-            alert.Name,
-            alert.Severity,
-            alert.Message,
-            metadata = alert.Metadata
-        };
-
-        var json = JsonSerializer.Serialize(body, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        var json = JsonSerializer.Serialize(alert, WebhookAlertJsonContext.Default.AlertEvent);
         request.Content = new StringContent(json, Encoding.UTF8, "application/json");
         using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();

@@ -55,6 +55,8 @@ internal sealed partial class DispatcherBuilder
     private readonly ISecretProvider? _secretProvider;
     private readonly TransportSecurityPolicyEvaluator? _transportSecurityEvaluator;
     private readonly MeshAuthorizationEvaluator? _authorizationEvaluator;
+    private static readonly string[] MeshGossipDependency = ["mesh-gossip"];
+    private static readonly string[] MeshLeadershipDependency = ["mesh-leadership"];
 
     public DispatcherBuilder(OmniRelayConfigurationOptions options, IServiceProvider serviceProvider, IConfiguration configuration)
     {
@@ -1155,7 +1157,7 @@ internal sealed partial class DispatcherBuilder
             throw new OmniRelayConfigurationException($"{purpose} references secret '{name}' but no secret provider was registered.");
         }
 
-        var secret = _secretProvider.GetSecretAsync(name).GetAwaiter().GetResult();
+        var secret = _secretProvider.GetSecretSync(name);
         if (secret is null)
         {
             throw new OmniRelayConfigurationException($"Secret '{name}' referenced by {purpose} was not found.");
@@ -1317,13 +1319,15 @@ internal sealed partial class DispatcherBuilder
             dispatcherOptions.AddLifecycle(
                 "mesh-leadership",
                 leadershipCoordinator,
-                gossipAdded ? new[] { "mesh-gossip" } : null);
+                gossipAdded ? MeshGossipDependency : null);
             leadershipAdded = true;
         }
 
         ConfigureControlPlaneHosts(dispatcherOptions, gossipAdded, leadershipAdded);
     }
 
+    [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Diagnostics control-plane host intentionally uses reflection for service wiring.")]
+    [UnconditionalSuppressMessage("AOT", "IL3050", Justification = "Diagnostics control-plane host intentionally uses reflection for service wiring.")]
     private void ConfigureControlPlaneHosts(DispatcherOptions dispatcherOptions, bool gossipAdded, bool leadershipAdded)
     {
         if (!TryCreateDiagnosticsControlPlaneSettings(out var settings))
@@ -1379,7 +1383,7 @@ internal sealed partial class DispatcherBuilder
             dispatcherOptions.AddLifecycle(
                 "control-plane:grpc",
                 grpcHost,
-                leadershipAdded ? new[] { "mesh-leadership" } : null);
+                leadershipAdded ? MeshLeadershipDependency : null);
         }
 
         ConfigureBootstrapHost(dispatcherOptions);
@@ -1396,7 +1400,7 @@ internal sealed partial class DispatcherBuilder
         coordinator?.RegisterParticipant(name, participant);
     }
 
-    private bool TryCreateDiagnosticsControlPlaneSettings(out DiagnosticsControlPlaneSettings? settings)
+    private bool TryCreateDiagnosticsControlPlaneSettings([NotNullWhen(true)] out DiagnosticsControlPlaneSettings? settings)
     {
         var diagnostics = _options.Diagnostics;
         if (diagnostics is null)
@@ -1458,7 +1462,7 @@ internal sealed partial class DispatcherBuilder
         return true;
     }
 
-    private bool TryCreateBootstrapControlPlaneSettings(out BootstrapControlPlaneSettings? settings)
+    private bool TryCreateBootstrapControlPlaneSettings([NotNullWhen(true)] out BootstrapControlPlaneSettings? settings)
     {
         var bootstrap = _options.Security?.Bootstrap;
         if (bootstrap?.Enabled != true)
@@ -1520,6 +1524,10 @@ internal sealed partial class DispatcherBuilder
         return options;
     }
 
+    [RequiresDynamicCode("Server interceptors are instantiated via dependency injection.")]
+    [RequiresUnreferencedCode("Server interceptors are instantiated via dependency injection.")]
+    [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Diagnostics control-plane host intentionally uses reflection for service wiring.")]
+    [UnconditionalSuppressMessage("AOT", "IL3050", Justification = "Diagnostics control-plane host intentionally uses reflection for service wiring.")]
     private GrpcControlPlaneHostOptions BuildGrpcControlPlaneHostOptions(DiagnosticsControlPlaneConfiguration configuration)
     {
         var options = new GrpcControlPlaneHostOptions();

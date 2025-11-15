@@ -76,7 +76,7 @@ public sealed class TransportEndpointRule
 
         var normalized = host!.Trim().ToLowerInvariant();
         var pattern = HostPattern.ToLowerInvariant();
-        if (pattern.StartsWith("*."))
+        if (pattern.StartsWith("*.", StringComparison.Ordinal))
         {
             return normalized.EndsWith(pattern[1..], StringComparison.OrdinalIgnoreCase);
         }

@@ -36,7 +36,7 @@ internal static class AlertingFactory
             string? authToken = channel.AuthenticationSecret;
             if (!string.IsNullOrWhiteSpace(authToken) && secretProvider is not null)
             {
-                using var secret = secretProvider.GetSecretAsync(authToken).GetAwaiter().GetResult();
+                using var secret = secretProvider.GetSecretSync(authToken);
                 authToken = secret?.AsString();
             }
 

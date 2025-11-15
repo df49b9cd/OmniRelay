@@ -51,6 +51,8 @@ internal sealed class DiagnosticsControlPlaneHost : ILifecycle, IDisposable
         _tlsManager = tlsManager;
     }
 
+    [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Diagnostics endpoints intentionally use reflection-heavy minimal APIs.")]
+    [UnconditionalSuppressMessage("AOT", "IL3050", Justification = "Diagnostics endpoints intentionally use reflection-heavy minimal APIs.")]
     public async ValueTask StartAsync(CancellationToken cancellationToken = default)
     {
         if (_app is not null)
@@ -79,7 +81,7 @@ internal sealed class DiagnosticsControlPlaneHost : ILifecycle, IDisposable
             }
         });
 
-        builder.ConfigureApp(ConfigureApp);
+        builder.ConfigureApp(ConfigureAppCore);
 
         var app = builder.Build();
         await app.StartAsync(_cts.Token).ConfigureAwait(false);
@@ -129,7 +131,7 @@ internal sealed class DiagnosticsControlPlaneHost : ILifecycle, IDisposable
 
     [RequiresDynamicCode("Diagnostics control plane endpoints use minimal APIs with reflection.")]
     [RequiresUnreferencedCode("Diagnostics control plane endpoints use minimal APIs with reflection.")]
-    private void ConfigureApp(WebApplication app)
+    private void ConfigureAppCore(WebApplication app)
     {
         if (_features.EnableLoggingToggle)
         {
@@ -311,8 +313,8 @@ internal sealed class DiagnosticsControlPlaneHost : ILifecycle, IDisposable
     {
         app.MapGet("/control/upgrade", (NodeDrainCoordinator coordinator) =>
         {
-            var snapshot = coordinator.Snapshot();
-            return Results.Json(snapshot);
+                var snapshot = coordinator.Snapshot();
+                return Results.Json(snapshot, DiagnosticsJsonContext.Default.NodeDrainSnapshot);
         });
 
         app.MapPost("/control/upgrade/drain", async (HttpContext context, NodeDrainCoordinator coordinator, NodeDrainCommand? request) =>
@@ -320,7 +322,7 @@ internal sealed class DiagnosticsControlPlaneHost : ILifecycle, IDisposable
             try
             {
                 var snapshot = await coordinator.BeginDrainAsync(request?.Reason, context.RequestAborted).ConfigureAwait(false);
-                return Results.Json(snapshot);
+                return Results.Json(snapshot, DiagnosticsJsonContext.Default.NodeDrainSnapshot);
             }
             catch (InvalidOperationException ex)
             {
@@ -333,7 +335,7 @@ internal sealed class DiagnosticsControlPlaneHost : ILifecycle, IDisposable
             try
             {
                 var snapshot = await coordinator.ResumeAsync(context.RequestAborted).ConfigureAwait(false);
-                return Results.Json(snapshot);
+                return Results.Json(snapshot, DiagnosticsJsonContext.Default.NodeDrainSnapshot);
             }
             catch (InvalidOperationException ex)
             {
@@ -352,4 +354,3 @@ internal readonly record struct DiagnosticsControlPlaneFeatures(
     bool EnableLeaseHealthDiagnostics,
     bool EnablePeerDiagnostics,
     bool EnableLeadershipDiagnostics);
-

@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.CommandLine;
 using System.Diagnostics.CodeAnalysis;
@@ -38,6 +39,7 @@ namespace OmniRelay.Cli;
 public static class Program
 {
     private const string DefaultConfigSection = "omnirelay";
+    private static readonly JsonWriterOptions PrettyWriterOptions = new() { Indented = true };
     private const string DefaultIntrospectionUrl = "http://127.0.0.1:8080/omnirelay/introspect";
     private const string DefaultControlPlaneUrl = "http://127.0.0.1:8080";
     private static readonly JsonSerializerOptions PrettyJsonOptions = new(JsonSerializerDefaults.Web)
@@ -2724,7 +2726,8 @@ public static class Program
         }
 
         var response = result.ValueOrThrow();
-        var json = JsonSerializer.Serialize(response, new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
+        var compactJson = JsonSerializer.Serialize(response, BootstrapJsonContext.Default.BootstrapJoinResponse);
+        var json = FormatJson(compactJson);
         if (!string.IsNullOrWhiteSpace(outputPath))
         {
             File.WriteAllText(outputPath!, json);
@@ -2736,6 +2739,18 @@ public static class Program
         }
 
         return 0;
+    }
+
+    private static string FormatJson(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        var buffer = new ArrayBufferWriter<byte>();
+        using (var writer = new Utf8JsonWriter(buffer, PrettyWriterOptions))
+        {
+            document.WriteTo(writer);
+        }
+
+        return Encoding.UTF8.GetString(buffer.WrittenSpan);
     }
 
     internal static async Task<int> RunMeshPeersListAsync(string baseUrl, MeshPeersOutputFormat format, string? timeoutOption)

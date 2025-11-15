@@ -5,7 +5,7 @@ using OmniRelay.Security.Authorization;
 
 namespace OmniRelay.Configuration.Internal.Security;
 
-internal static class AuthorizationFactory
+internal static partial class AuthorizationFactory
 {
     public static MeshAuthorizationEvaluator? Create(AuthorizationConfiguration configuration, ILogger logger)
     {
@@ -57,10 +57,16 @@ internal static class AuthorizationFactory
 
         if (policies.Count == 0)
         {
-            logger.LogWarning("Authorization was enabled but no valid policies were configured.");
+            Log.AuthorizationMissingPolicies(logger);
             return null;
         }
 
         return new MeshAuthorizationEvaluator(policies);
+    }
+
+    private static partial class Log
+    {
+        [LoggerMessage(EventId = 1, Level = LogLevel.Warning, Message = "Authorization was enabled but no valid policies were configured.")]
+        public static partial void AuthorizationMissingPolicies(ILogger logger);
     }
 }

@@ -1,10 +1,12 @@
+#pragma warning disable IDE0005
 using System.Net;
 using System.Net.Http;
 using System.Net.Security;
 using System.Threading;
 using System.Threading.Tasks;
-using Hugo;
 using Microsoft.Extensions.Logging;
+#pragma warning restore IDE0005
+using Hugo;
 using Microsoft.Extensions.Options;
 using OmniRelay.ControlPlane.Security;
 using static Hugo.Go;

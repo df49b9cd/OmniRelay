@@ -11,7 +11,7 @@ using OmniRelay.Transport.Grpc.Interceptors;
 namespace OmniRelay.Core.Leadership;
 
 /// <summary>Dedicated gRPC host for leadership control-plane streaming APIs.</summary>
-internal sealed class LeadershipControlPlaneHost : ILifecycle, IDisposable, IGrpcServerInterceptorSink
+internal sealed partial class LeadershipControlPlaneHost : ILifecycle, IDisposable, IGrpcServerInterceptorSink
 {
     private readonly IServiceProvider _services;
     private readonly GrpcControlPlaneHostOptions _options;
@@ -43,7 +43,7 @@ internal sealed class LeadershipControlPlaneHost : ILifecycle, IDisposable, IGrp
 
         if (_options.Urls.Count == 0)
         {
-            _logger.LogInformation("Leadership control-plane gRPC host skipped because no URLs were configured.");
+            Log.NoGrpcUrlsConfigured(_logger);
             return;
         }
 
@@ -125,5 +125,10 @@ internal sealed class LeadershipControlPlaneHost : ILifecycle, IDisposable, IGrp
             });
         });
     }
-}
 
+    private static partial class Log
+    {
+        [LoggerMessage(EventId = 1, Level = LogLevel.Information, Message = "Leadership control-plane gRPC host skipped because no URLs were configured.")]
+        public static partial void NoGrpcUrlsConfigured(ILogger logger);
+    }
+}

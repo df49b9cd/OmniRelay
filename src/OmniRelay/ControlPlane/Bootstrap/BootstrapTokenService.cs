@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 namespace OmniRelay.ControlPlane.Bootstrap;
 
 /// <summary>Generates and validates bootstrap tokens with replay protection.</summary>
-public sealed class BootstrapTokenService
+public sealed partial class BootstrapTokenService
 {
     private readonly BootstrapTokenSigningOptions _options;
     private readonly IBootstrapReplayProtector _replayProtector;
@@ -107,7 +107,7 @@ public sealed class BootstrapTokenService
 
         if (!_replayProtector.TryConsume(payload.TokenId, payload.ExpiresAt, payload.MaxUses))
         {
-            _logger.LogWarning("Bootstrap token {TokenId} exceeded its usage allowance.", payload.TokenId);
+            Log.BootstrapTokenReplayed(_logger, payload.TokenId);
             return BootstrapTokenValidationResult.Failed("Token was already consumed.");
         }
 
@@ -188,5 +188,11 @@ public sealed class BootstrapTokenService
         public int? MaxUses { get; set; }
 
         public string Issuer { get; set; } = string.Empty;
+    }
+
+    private static partial class Log
+    {
+        [LoggerMessage(EventId = 1, Level = LogLevel.Warning, Message = "Bootstrap token {TokenId} exceeded its usage allowance.")]
+        public static partial void BootstrapTokenReplayed(ILogger logger, Guid tokenId);
     }
 }
