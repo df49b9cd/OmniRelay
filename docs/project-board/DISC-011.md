@@ -1,4 +1,4 @@
-# DISC-011 – Multi-Cluster Descriptors
+# DISC-011 - Multi-Cluster Descriptors
 
 ## Goal
 Introduce first-class cluster metadata (state, priority, replication endpoints) to support geo-redundant deployments and future failover automation.
@@ -10,10 +10,10 @@ Introduce first-class cluster metadata (state, priority, replication endpoints) 
 - Add validation (unique ids, allowed states, priority rules).
 
 ## Requirements
-1. **States** – Support at least `active`, `passive`, `draining`, `maintenance`; include transition rules.
-2. **Failover metadata** – Track planned vs emergency failover flags, version vectors, and dependencies.
-3. **Governance** – Require owner/team metadata + change-ticket references for updates.
-4. **Observability** – Metrics exposing cluster counts per state and failover readiness; dashboards showing topology.
+1. **States** - Support at least `active`, `passive`, `draining`, `maintenance`; include transition rules.
+2. **Failover metadata** - Track planned vs emergency failover flags, version vectors, and dependencies.
+3. **Governance** - Require owner/team metadata + change-ticket references for updates.
+4. **Observability** - Metrics exposing cluster counts per state and failover readiness; dashboards showing topology.
 
 ## Deliverables
 - Schema migrations/models, API handlers, CLI commands.
@@ -25,7 +25,11 @@ Introduce first-class cluster metadata (state, priority, replication endpoints) 
 - `/control/clusters` reflects state changes immediately; dashboards display new metadata.
 - Failover automation (DISC-012) can consume descriptors for orchestration decisions.
 
+- Native AOT gate: Publish with /p:PublishAot=true and treat trimming warnings as errors per REFDISC-034..037.
+
 ## Testing Strategy
+All test tiers must run against native AOT artifacts per REFDISC-034..037.
+
 
 ### Unit tests
 - Validate schema constraints (unique ids, allowed states, priority ordering, owner metadata) and ensure transition rules reject invalid flows (e.g., `passive` directly to `maintenance`).
@@ -48,4 +52,5 @@ Introduce first-class cluster metadata (state, priority, replication endpoints) 
 - Hammer the APIs with concurrent descriptor edits to validate conflict detection, RBAC enforcement, and audit throughput when many teams coordinate failover data.
 
 ## References
-- `docs/architecture/service-discovery.md` – “Multi-cluster awareness”, “Implementation backlog item 6”.
+- `docs/architecture/service-discovery.md` - “Multi-cluster awareness”, “Implementation backlog item 6”.
+- REFDISC-034..037 - AOT readiness baseline and CI gating.

@@ -1,4 +1,4 @@
-# DISC-005 – Health-Aware Rebalancer
+# DISC-005 - Health-Aware Rebalancer
 
 ## Goal
 Create the automated controller that evaluates mesh health/metrics and reassigns shards responsibly, including dry-run and approval flows.
@@ -10,11 +10,11 @@ Create the automated controller that evaluates mesh health/metrics and reassigns
 - Dry-run + approval APIs (`/control/rebalance-plans`) allowing operators to review before execution.
 
 ## Requirements
-1. **Input adapters** – Pull metrics via OpenTelemetry/Prometheus scrapes or direct feed; support pluggable adapters.
-2. **Safety** – Respect guardrails: cap number of shards moved simultaneously, ensure at least one healthy replica remains, and throttle rebalances during ongoing incidents.
-3. **Notifications** – Emit events/logs/alerts when entering/exiting states; integrate with on-call channels.
-4. **Auditability** – Persist executed plans with before/after snapshot, actor, and change ticket references.
-5. **Transport** – Controller APIs run on gRPC/HTTP3 + Protobuf w/ HTTP2 fallback; CLI integration uses same endpoints.
+1. **Input adapters** - Pull metrics via OpenTelemetry/Prometheus scrapes or direct feed; support pluggable adapters.
+2. **Safety** - Respect guardrails: cap number of shards moved simultaneously, ensure at least one healthy replica remains, and throttle rebalances during ongoing incidents.
+3. **Notifications** - Emit events/logs/alerts when entering/exiting states; integrate with on-call channels.
+4. **Auditability** - Persist executed plans with before/after snapshot, actor, and change ticket references.
+5. **Transport** - Controller APIs run on gRPC/HTTP3 + Protobuf w/ HTTP2 fallback; CLI integration uses same endpoints.
 
 ## Deliverables
 - Controller service + configuration schema.
@@ -27,7 +27,11 @@ Create the automated controller that evaluates mesh health/metrics and reassigns
 - Dry-run generates previews operators can review; approved plans execute and emit completion events.
 - Metrics/alerts fire when controller exceeds thresholds or encounters errors.
 
+- Native AOT gate: Publish with /p:PublishAot=true and treat trimming warnings as errors per REFDISC-034..037.
+
 ## Testing Strategy
+All test tiers must run against native AOT artifacts per REFDISC-034..037.
+
 
 ### Unit tests
 - Validate the scoring engine across combinations of latency, error rate, and backlog inputs to ensure the state machine transitions (`steady`→`investigating`→`draining`…) follow policy.
@@ -50,4 +54,5 @@ Create the automated controller that evaluates mesh health/metrics and reassigns
 - Stress-test dry-run/approval queues under parallel operator actions to verify ordering, audit trails, and rollback hooks behave at large scale.
 
 ## References
-- `docs/architecture/service-discovery.md` – “Health-aware rebalancing”, “Risks & mitigations”.
+- `docs/architecture/service-discovery.md` - “Health-aware rebalancing”, “Risks & mitigations”.
+- REFDISC-034..037 - AOT readiness baseline and CI gating.

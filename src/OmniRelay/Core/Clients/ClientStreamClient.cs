@@ -87,8 +87,15 @@ public sealed class ClientStreamClient<TRequest, TResponse>
                 return OmniRelayErrors.ToResult<Unit>(encodeResult.Error!, RequestMeta.Transport ?? "unknown");
             }
 
-            await _transportCall.WriteAsync(encodeResult.Value, cancellationToken).ConfigureAwait(false);
-            return Ok(Unit.Value);
+            try
+            {
+                await _transportCall.WriteAsync(encodeResult.Value, cancellationToken).ConfigureAwait(false);
+                return Ok(Unit.Value);
+            }
+            catch (Exception ex)
+            {
+                return OmniRelayErrors.ToResult<Unit>(ex, RequestMeta.Transport ?? "unknown");
+            }
         }
 
         /// <summary>Signals completion of the request stream.</summary>

@@ -10,22 +10,30 @@ using System.Text.Json.Serialization;
 using Grpc.Core.Interceptors;
 using Json.Schema;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using OmniRelay.Configuration.Models;
+using OmniRelay.ControlPlane.Bootstrap;
+using OmniRelay.ControlPlane.Hosting;
+using OmniRelay.ControlPlane.Security;
+using OmniRelay.ControlPlane.Upgrade;
 using OmniRelay.Core;
 using OmniRelay.Core.Diagnostics;
 using OmniRelay.Core.Gossip;
 using OmniRelay.Core.Leadership;
 using OmniRelay.Core.Peers;
+using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
+using OmniRelay.Security.Authorization;
+using OmniRelay.Security.Secrets;
 using OmniRelay.Transport.Grpc;
 using OmniRelay.Transport.Http;
+using OmniRelay.Transport.Security;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 
@@ -44,16 +52,20 @@ internal sealed partial class DispatcherBuilder
     private readonly Dictionary<string, ICustomInboundSpec> _customInboundSpecs;
     private readonly Dictionary<string, ICustomOutboundSpec> _customOutboundSpecs;
     private readonly Dictionary<string, ICustomPeerChooserSpec> _customPeerSpecs;
-    private static readonly JsonSerializerOptions LeadershipEventJsonOptions = new(JsonSerializerDefaults.Web)
-    {
-        Converters = { new JsonStringEnumConverter<LeadershipEventKind>(JsonNamingPolicy.CamelCase) }
-    };
+    private readonly ISecretProvider? _secretProvider;
+    private readonly TransportSecurityPolicyEvaluator? _transportSecurityEvaluator;
+    private readonly MeshAuthorizationEvaluator? _authorizationEvaluator;
+    private static readonly string[] MeshGossipDependency = ["mesh-gossip"];
+    private static readonly string[] MeshLeadershipDependency = ["mesh-leadership"];
 
     public DispatcherBuilder(OmniRelayConfigurationOptions options, IServiceProvider serviceProvider, IConfiguration configuration)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+        _secretProvider = _serviceProvider.GetService<ISecretProvider>();
+        _transportSecurityEvaluator = _serviceProvider.GetService<TransportSecurityPolicyEvaluator>();
+        _authorizationEvaluator = _serviceProvider.GetService<MeshAuthorizationEvaluator>();
 
         _customInboundSpecs = _serviceProvider
             .GetServices<ICustomInboundSpec>()
@@ -145,7 +157,16 @@ internal sealed partial class DispatcherBuilder
 
             var configureServices = CreateHttpInboundServiceConfigurator();
             var configureApp = CreateHttpInboundAppConfigurator();
-            dispatcherOptions.AddLifecycle(name, new HttpInbound(urls, configureServices: configureServices, configureApp: configureApp, serverRuntimeOptions: httpRuntimeOptions, serverTlsOptions: httpTlsOptions));
+            var httpInbound = new HttpInbound(
+                urls,
+                configureServices: configureServices,
+                configureApp: configureApp,
+                serverRuntimeOptions: httpRuntimeOptions,
+                serverTlsOptions: httpTlsOptions,
+                transportSecurity: _transportSecurityEvaluator,
+                authorizationEvaluator: _authorizationEvaluator);
+            dispatcherOptions.AddLifecycle(name, httpInbound);
+            RegisterDrainParticipant(name, httpInbound);
             index++;
         }
     }
@@ -175,14 +196,16 @@ internal sealed partial class DispatcherBuilder
                 ? $"grpc-inbound:{index}"
                 : inbound.Name!;
 
-            dispatcherOptions.AddLifecycle(
-                name,
-                new GrpcInbound(
-                    urls,
-                    configureServices: configureServices,
-                    serverRuntimeOptions: runtimeOptions,
-                    serverTlsOptions: tlsOptions,
-                    telemetryOptions: telemetryOptions));
+            var grpcInbound = new GrpcInbound(
+                urls,
+                configureServices: configureServices,
+                serverRuntimeOptions: runtimeOptions,
+                serverTlsOptions: tlsOptions,
+                telemetryOptions: telemetryOptions,
+                transportSecurity: _transportSecurityEvaluator,
+                authorizationEvaluator: _authorizationEvaluator);
+            dispatcherOptions.AddLifecycle(name, grpcInbound);
+            RegisterDrainParticipant(name, grpcInbound);
 
             index++;
         }
@@ -682,7 +705,7 @@ internal sealed partial class DispatcherBuilder
         };
     }
 
-    private static GrpcClientTlsOptions? BuildGrpcClientTlsOptions(GrpcClientTlsConfiguration configuration)
+    private GrpcClientTlsOptions? BuildGrpcClientTlsOptions(GrpcClientTlsConfiguration configuration)
     {
         if (configuration is null)
         {
@@ -690,8 +713,9 @@ internal sealed partial class DispatcherBuilder
         }
 
         var hasValues =
-            HasCertificateMaterial(configuration.CertificatePath, configuration.CertificateData) ||
+            HasCertificateMaterial(configuration.CertificatePath, configuration.CertificateData, configuration.CertificateDataSecret) ||
             !string.IsNullOrWhiteSpace(configuration.CertificatePassword) ||
+            !string.IsNullOrWhiteSpace(configuration.CertificatePasswordSecret) ||
             configuration.AllowUntrustedCertificates.HasValue ||
             !string.IsNullOrWhiteSpace(configuration.TargetNameOverride);
 
@@ -704,7 +728,9 @@ internal sealed partial class DispatcherBuilder
         var clientCertificate = LoadCertificate(
             configuration.CertificatePath,
             configuration.CertificateData,
+            configuration.CertificateDataSecret,
             configuration.CertificatePassword,
+            configuration.CertificatePasswordSecret,
             "gRPC client TLS");
         if (clientCertificate is not null)
         {
@@ -811,11 +837,6 @@ internal sealed partial class DispatcherBuilder
             actions.Add(app => app.MapPrometheusScrapingEndpoint(path));
         }
 
-        if (TryGetDiagnosticsControlPlaneOptions(out var controlPlaneOptions))
-        {
-            actions.Add(app => ConfigureDiagnosticsControlPlane(app, controlPlaneOptions));
-        }
-
         if (actions.Count == 0)
         {
             return null;
@@ -832,98 +853,49 @@ internal sealed partial class DispatcherBuilder
 
     private Action<IServiceCollection>? CreateHttpInboundServiceConfigurator()
     {
-        // The HTTP inbound hosts its own minimal WebApplication instance with its own DI container.
-        // We may need to register a MeterProvider (for Prometheus scraping) and diagnostics runtime services
-        // (for control-plane endpoints) in that container.
+        var actions = new List<Action<IServiceCollection>>();
 
-        var addMetrics = ShouldExposePrometheusMetrics();
-        var addControlPlane = TryGetDiagnosticsControlPlaneOptions(out var controlPlaneOptions);
+        if (ShouldExposePrometheusMetrics())
+        {
+            var scrapePath = NormalizeScrapeEndpointPathForInbound(_options.Diagnostics?.OpenTelemetry?.Prometheus?.ScrapeEndpointPath);
+            var serviceName = string.IsNullOrWhiteSpace(_options.Service) ? "OmniRelay" : _options.Service!;
+            actions.Add(services =>
+            {
+                services.AddOpenTelemetry()
+                    .ConfigureResource(resource => resource.AddService(serviceName: serviceName, serviceInstanceId: serviceName))
+                    .WithMetrics(builder =>
+                    {
+                        builder.AddPrometheusExporter(options => options.ScrapeEndpointPath = scrapePath);
+                        builder.AddMeter("OmniRelay.Core.Diagnostics");
+                        builder.AddMeter("OmniRelay.Transport.Http");
+                        builder.AddMeter("OmniRelay.Transport.Grpc");
+                    });
+            });
+        }
 
-        if (!addMetrics && !addControlPlane)
+        var gossipAgent = _serviceProvider.GetService<IMeshGossipAgent>();
+        if (gossipAgent is not null)
+        {
+            actions.Add(services => services.AddSingleton(gossipAgent));
+        }
+
+        if (actions.Count == 0)
         {
             return null;
         }
 
-        var scrapePath = NormalizeScrapeEndpointPathForInbound(_options.Diagnostics?.OpenTelemetry?.Prometheus?.ScrapeEndpointPath);
-        var rootRuntime = _serviceProvider.GetService<IDiagnosticsRuntime>();
-        var peerHealthProviders = controlPlaneOptions.EnableLeaseHealthDiagnostics
-            ? _serviceProvider.GetServices<IPeerHealthSnapshotProvider>()
-                .Where(static provider => provider is not null)
-                .ToArray()
-            : [];
-        var gossipAgent = controlPlaneOptions.GossipAgent;
-
         return services =>
         {
-            if (addMetrics)
+            foreach (var action in actions)
             {
-                var otel = services.AddOpenTelemetry();
-                // Align resource identity with the configured service name for consistent labels.
-                var serviceName = string.IsNullOrWhiteSpace(_options.Service) ? "OmniRelay" : _options.Service!;
-                otel.ConfigureResource(resource => resource.AddService(serviceName: serviceName));
-                otel.WithMetrics(builder =>
-                {
-                    builder.AddMeter("OmniRelay.Core.Peers", "OmniRelay.Core.Gossip", "OmniRelay.Core.Leadership", "OmniRelay.Transport.Grpc", "OmniRelay.Transport.Http", "OmniRelay.Rpc", "Hugo.Go");
-                    builder.AddPrometheusExporter(options =>
-                    {
-                        options.ScrapeEndpointPath = scrapePath;
-                    });
-                });
-            }
-
-            if (addControlPlane)
-            {
-                // Bridge diagnostics runtime into the inbound DI container so minimal APIs can resolve it from services.
-                if (rootRuntime is not null)
-                {
-                    services.AddSingleton(rootRuntime);
-                }
-                else
-                {
-                    services.AddSingleton<IDiagnosticsRuntime, DiagnosticsRuntimeState>();
-                }
-
-                // Also bridge the root logger factory so inbound logging honors global policies.
-                var rootLoggerFactory = _serviceProvider.GetService<ILoggerFactory>();
-                if (rootLoggerFactory is not null)
-                {
-                    services.AddSingleton(rootLoggerFactory);
-                }
-
-                if (controlPlaneOptions.EnableLeaseHealthDiagnostics && peerHealthProviders.Length > 0)
-                {
-                    services.AddSingleton<IEnumerable<IPeerHealthSnapshotProvider>>(peerHealthProviders);
-                }
-
-                if (controlPlaneOptions.EnablePeerDiagnostics && gossipAgent is not null)
-                {
-                    services.AddSingleton(gossipAgent);
-                }
-
-                if (controlPlaneOptions.EnableLeadershipDiagnostics && controlPlaneOptions.LeadershipObserver is not null)
-                {
-                    services.AddSingleton(controlPlaneOptions.LeadershipObserver);
-                }
+                action(services);
             }
         };
     }
 
-    private Action<IServiceCollection>? CreateGrpcInboundServiceConfigurator()
+    private static Action<IServiceCollection>? CreateGrpcInboundServiceConfigurator()
     {
-        var leadershipOptions = _serviceProvider.GetService<IOptions<LeadershipOptions>>()?.Value;
-        var leadershipObserver = leadershipOptions?.Enabled == true
-            ? _serviceProvider.GetService<ILeadershipObserver>()
-            : null;
-        if (leadershipObserver is null)
-        {
-            return null;
-        }
-
-        return services =>
-        {
-            services.AddSingleton(leadershipObserver);
-            services.AddSingleton<LeadershipControlGrpcService>();
-        };
+        return null;
     }
 
     private static string NormalizeScrapeEndpointPathForInbound(string? path)
@@ -1047,7 +1019,7 @@ internal sealed partial class DispatcherBuilder
         };
     }
 
-    private static HttpServerTlsOptions? BuildHttpServerTlsOptions(HttpServerTlsConfiguration configuration)
+    private HttpServerTlsOptions? BuildHttpServerTlsOptions(HttpServerTlsConfiguration configuration)
     {
         if (configuration is null)
         {
@@ -1057,7 +1029,9 @@ internal sealed partial class DispatcherBuilder
         var certificate = LoadCertificate(
             configuration.CertificatePath,
             configuration.CertificateData,
+            configuration.CertificateDataSecret,
             configuration.CertificatePassword,
+            configuration.CertificatePasswordSecret,
             "HTTP server TLS");
 
         if (certificate is null)
@@ -1075,35 +1049,55 @@ internal sealed partial class DispatcherBuilder
         };
     }
 
-    private static bool HasCertificateMaterial(string? path, string? data)
-        => !string.IsNullOrWhiteSpace(path) || !string.IsNullOrWhiteSpace(data);
+    private static bool HasCertificateMaterial(string? path, string? data, string? dataSecret)
+        => !string.IsNullOrWhiteSpace(path) || !string.IsNullOrWhiteSpace(data) || !string.IsNullOrWhiteSpace(dataSecret);
 
-    private static X509Certificate2? LoadCertificate(string? path, string? base64Data, string? password, string context)
+    private X509Certificate2? LoadCertificate(
+        string? path,
+        string? base64Data,
+        string? base64DataSecret,
+        string? password,
+        string? passwordSecret,
+        string context)
     {
+        var resolvedPassword = password;
+        if (string.IsNullOrWhiteSpace(resolvedPassword) && !string.IsNullOrWhiteSpace(passwordSecret))
+        {
+            using var secret = AcquireSecret(passwordSecret, $"{context} password");
+            resolvedPassword = secret.AsString();
+            if (string.IsNullOrEmpty(resolvedPassword))
+            {
+                throw new OmniRelayConfigurationException($"Secret '{passwordSecret}' referenced by {context} did not contain a password.");
+            }
+        }
+
         if (!string.IsNullOrWhiteSpace(base64Data))
         {
+            var rawBytes = DecodeCertificateData(base64Data, context);
+            return ImportCertificate(rawBytes, resolvedPassword);
+        }
+
+        if (!string.IsNullOrWhiteSpace(base64DataSecret))
+        {
+            using var secret = AcquireSecret(base64DataSecret, $"{context} certificate data");
+            var text = secret.AsString();
             byte[] rawBytes;
-            try
+            if (!string.IsNullOrWhiteSpace(text))
             {
-                rawBytes = Convert.FromBase64String(base64Data);
+                rawBytes = DecodeCertificateData(text!, context);
             }
-            catch (FormatException ex)
+            else
             {
-                throw new OmniRelayConfigurationException($"{context} certificateData is not valid Base64.", ex);
+                var memory = secret.AsMemory();
+                if (memory.IsEmpty)
+                {
+                    throw new OmniRelayConfigurationException($"Secret '{base64DataSecret}' referenced by {context} was empty.");
+                }
+
+                rawBytes = memory.ToArray();
             }
 
-            try
-            {
-#pragma warning disable SYSLIB0057
-                return string.IsNullOrEmpty(password)
-                    ? new X509Certificate2(rawBytes)
-                    : new X509Certificate2(rawBytes, password, X509KeyStorageFlags.Exportable);
-#pragma warning restore SYSLIB0057
-            }
-            finally
-            {
-                CryptographicOperations.ZeroMemory(rawBytes);
-            }
+            return ImportCertificate(rawBytes, resolvedPassword);
         }
 
         if (!string.IsNullOrWhiteSpace(path))
@@ -1115,13 +1109,80 @@ internal sealed partial class DispatcherBuilder
             }
 
 #pragma warning disable SYSLIB0057
-            return string.IsNullOrEmpty(password)
+            return string.IsNullOrEmpty(resolvedPassword)
                 ? new X509Certificate2(resolved)
-                : new X509Certificate2(resolved, password);
+                : new X509Certificate2(resolved, resolvedPassword, X509KeyStorageFlags.Exportable);
 #pragma warning restore SYSLIB0057
         }
 
         return null;
+    }
+
+    private void ConfigureBootstrapHost(DispatcherOptions dispatcherOptions)
+    {
+        if (!TryCreateBootstrapControlPlaneSettings(out var settings))
+        {
+            return;
+        }
+
+        var serverOptions = _serviceProvider.GetService<BootstrapServerOptions>();
+        if (serverOptions is null)
+        {
+            throw new OmniRelayConfigurationException("Bootstrap hosting is enabled but security.bootstrap configuration was not bound.");
+        }
+
+        var loggerFactory = _serviceProvider.GetService<ILoggerFactory>() ?? NullLoggerFactory.Instance;
+        var host = new BootstrapControlPlaneHost(
+            _serviceProvider,
+            settings.HttpOptions,
+            serverOptions,
+            loggerFactory.CreateLogger<BootstrapControlPlaneHost>(),
+            settings.TlsManager);
+        dispatcherOptions.AddLifecycle("control-plane:bootstrap", host);
+    }
+
+    private static byte[] DecodeCertificateData(string data, string context)
+    {
+        try
+        {
+            return Convert.FromBase64String(data);
+        }
+        catch (FormatException ex)
+        {
+            throw new OmniRelayConfigurationException($"{context} certificateData is not valid Base64.", ex);
+        }
+    }
+
+    private static X509Certificate2 ImportCertificate(byte[] rawBytes, string? password)
+    {
+        try
+        {
+#pragma warning disable SYSLIB0057
+            return string.IsNullOrEmpty(password)
+                ? new X509Certificate2(rawBytes)
+                : new X509Certificate2(rawBytes, password, X509KeyStorageFlags.Exportable);
+#pragma warning restore SYSLIB0057
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(rawBytes);
+        }
+    }
+
+    private SecretValue AcquireSecret(string name, string purpose)
+    {
+        if (_secretProvider is null)
+        {
+            throw new OmniRelayConfigurationException($"{purpose} references secret '{name}' but no secret provider was registered.");
+        }
+
+        var secret = _secretProvider.GetSecretSync(name);
+        if (secret is null)
+        {
+            throw new OmniRelayConfigurationException($"Secret '{name}' referenced by {purpose} was not found.");
+        }
+
+        return secret;
     }
 
     private bool ShouldExposePrometheusMetrics()
@@ -1139,283 +1200,6 @@ internal sealed partial class DispatcherBuilder
 
         return otelEnabled && metricsEnabled && promEnabled;
     }
-
-    private bool TryGetDiagnosticsControlPlaneOptions(out DiagnosticsControlPlaneOptions options)
-    {
-        var runtime = _options.Diagnostics?.Runtime;
-        if (runtime is null)
-        {
-            options = default;
-            return false;
-        }
-
-        var enableLogging = runtime.EnableLoggingLevelToggle ?? false;
-        var enableSampling = runtime.EnableTraceSamplingToggle ?? false;
-        var hasPeerHealthProviders = _serviceProvider.GetServices<IPeerHealthSnapshotProvider>().Any();
-        var gossipAgent = _serviceProvider.GetService<IMeshGossipAgent>();
-        var enablePeerDiagnostics = gossipAgent is not null && gossipAgent.IsEnabled;
-        var leadershipObserver = _serviceProvider.GetService<ILeadershipObserver>();
-        var enableLeadershipDiagnostics = leadershipObserver is not null;
-        var enableControlPlane = runtime.EnableControlPlane ?? (enableLogging || enableSampling || hasPeerHealthProviders || enablePeerDiagnostics || enableLeadershipDiagnostics);
-
-        if (!enableControlPlane)
-        {
-            options = default;
-            return false;
-        }
-
-        options = new DiagnosticsControlPlaneOptions(
-            enableLogging,
-            enableSampling,
-            hasPeerHealthProviders,
-            enablePeerDiagnostics,
-            enableLeadershipDiagnostics,
-            gossipAgent,
-            leadershipObserver);
-        return enableLogging || enableSampling || hasPeerHealthProviders || enablePeerDiagnostics || enableLeadershipDiagnostics;
-    }
-
-    [RequiresDynamicCode("Calls Microsoft.AspNetCore.Builder.EndpointRouteBuilderExtensions.MapGet(String, Delegate)")]
-    [RequiresUnreferencedCode("Calls Microsoft.AspNetCore.Builder.EndpointRouteBuilderExtensions.MapGet(String, Delegate)")]
-    private static void ConfigureDiagnosticsControlPlane(WebApplication app, DiagnosticsControlPlaneOptions options)
-    {
-        if (options.EnableLoggingToggle)
-        {
-            app.MapGet("/omnirelay/control/logging", (IDiagnosticsRuntime runtime) =>
-            {
-                var level = runtime.MinimumLogLevel?.ToString();
-                return Results.Json(new { minimumLevel = level });
-            });
-
-            app.MapPost("/omnirelay/control/logging", (DiagnosticsLogLevelRequest request, IDiagnosticsRuntime runtime) =>
-            {
-                if (request is null)
-                {
-                    return Results.BadRequest(new { error = "Request body required." });
-                }
-
-                if (string.IsNullOrWhiteSpace(request.Level))
-                {
-                    runtime.SetMinimumLogLevel(null);
-                    return Results.NoContent();
-                }
-
-                if (!Enum.TryParse<LogLevel>(request.Level, ignoreCase: true, out var parsed))
-                {
-                    return Results.BadRequest(new { error = $"Invalid log level '{request.Level}'." });
-                }
-
-                runtime.SetMinimumLogLevel(parsed);
-                return Results.NoContent();
-            });
-        }
-
-        if (options.EnableSamplingToggle)
-        {
-            app.MapGet("/omnirelay/control/tracing", (IDiagnosticsRuntime runtime) =>
-            {
-                return Results.Json(new { samplingProbability = runtime.TraceSamplingProbability });
-            });
-
-            app.MapPost("/omnirelay/control/tracing", (DiagnosticsSamplingRequest request, IDiagnosticsRuntime runtime) =>
-            {
-                if (request is null)
-                {
-                    return Results.BadRequest(new { error = "Request body required." });
-                }
-
-                try
-                {
-                    runtime.SetTraceSamplingProbability(request.Probability);
-                }
-                catch (ArgumentOutOfRangeException ex)
-                {
-                    return Results.BadRequest(new { error = ex.Message });
-                }
-
-                return Results.NoContent();
-            });
-        }
-
-        if (options.EnableLeaseHealthDiagnostics)
-        {
-            app.MapGet("/omnirelay/control/lease-health", (IEnumerable<IPeerHealthSnapshotProvider> providers) =>
-            {
-                var builder = ImmutableArray.CreateBuilder<PeerLeaseHealthSnapshot>();
-                foreach (var provider in providers)
-                {
-                    if (provider is null)
-                    {
-                        continue;
-                    }
-
-                    var snapshot = provider.Snapshot();
-                    if (!snapshot.IsDefaultOrEmpty)
-                    {
-                        builder.AddRange(snapshot);
-                    }
-                }
-
-                var diagnostics = PeerLeaseHealthDiagnostics.FromSnapshots(builder.ToImmutable());
-                return Results.Json(diagnostics);
-            });
-        }
-
-        if (options.EnablePeerDiagnostics)
-        {
-            static IResult HandlePeers(IMeshGossipAgent agent)
-            {
-                var snapshot = agent.Snapshot();
-                var peers = snapshot.Members.Select(member => new
-                {
-                    member.NodeId,
-                    status = member.Status.ToString(),
-                    member.LastSeen,
-                    rttMs = member.RoundTripTimeMs,
-                    metadata = new
-                    {
-                        member.Metadata.Role,
-                        member.Metadata.ClusterId,
-                        member.Metadata.Region,
-                        member.Metadata.MeshVersion,
-                        member.Metadata.Http3Support,
-                        member.Metadata.Endpoint,
-                        member.Metadata.MetadataVersion,
-                        Labels = member.Metadata.Labels
-                    }
-                });
-
-                return Results.Json(new
-                {
-                    snapshot.SchemaVersion,
-                    snapshot.GeneratedAt,
-                    snapshot.LocalNodeId,
-                    peers
-                });
-            }
-
-            app.MapGet("/control/peers", HandlePeers);
-            app.MapGet("/omnirelay/control/peers", HandlePeers);
-        }
-
-        if (options.EnableLeadershipDiagnostics && options.LeadershipObserver is not null)
-        {
-            app.MapGet("/control/leaders", (HttpRequest request, ILeadershipObserver observer) =>
-            {
-                var snapshot = observer.Snapshot();
-                if (request.Query.TryGetValue("scope", out var scopeValues) && !string.IsNullOrWhiteSpace(scopeValues))
-                {
-                    var scopeFilter = scopeValues.ToString();
-                    var filtered = snapshot.Tokens
-                        .Where(token => string.Equals(token.Scope, scopeFilter, StringComparison.OrdinalIgnoreCase))
-                        .ToImmutableArray();
-                    snapshot = new LeadershipSnapshot(snapshot.GeneratedAt, filtered);
-                }
-
-                return Results.Json(snapshot);
-            });
-            app.MapGet("/control/events/leadership", async (HttpContext context, ILeadershipObserver observer, ILogger<LeadershipEventStreamMarker> logger) =>
-            {
-                await StreamLeadershipEventsAsync(context, observer, logger).ConfigureAwait(false);
-            });
-        }
-    }
-
-    [RequiresDynamicCode("Serializes leadership events using System.Text.Json.")]
-    [RequiresUnreferencedCode("Serializes leadership events using System.Text.Json.")]
-    private static async Task StreamLeadershipEventsAsync(HttpContext context, ILeadershipObserver observer, ILogger<LeadershipEventStreamMarker> logger)
-    {
-        context.Response.Headers.CacheControl = "no-cache";
-        context.Response.Headers["Content-Type"] = "text/event-stream";
-        var scopeFilter = context.Request.Query.TryGetValue("scope", out var scopeValues)
-            ? scopeValues.ToString()
-            : null;
-        var scopeLabel = string.IsNullOrWhiteSpace(scopeFilter) ? "*" : scopeFilter!;
-        var transport = context.Request.Protocol;
-        LeadershipDiagnosticsLog.LeadershipStreamOpened(logger, scopeLabel, transport);
-
-        try
-        {
-            await foreach (var leadershipEvent in observer.SubscribeAsync(scopeFilter, context.RequestAborted).ConfigureAwait(false))
-            {
-                var payload = JsonSerializer.Serialize(leadershipEvent, LeadershipEventJsonOptions);
-                await context.Response.WriteAsync($"data: {payload}\\n\\n", context.RequestAborted).ConfigureAwait(false);
-                await context.Response.Body.FlushAsync(context.RequestAborted).ConfigureAwait(false);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // Expected when the client disconnects or the request is cancelled.
-        }
-        finally
-        {
-            LeadershipDiagnosticsLog.LeadershipStreamClosed(logger, scopeLabel);
-        }
-    }
-
-    private readonly record struct DiagnosticsControlPlaneOptions(
-        bool EnableLoggingToggle,
-        bool EnableSamplingToggle,
-        bool EnableLeaseHealthDiagnostics,
-        bool EnablePeerDiagnostics,
-        bool EnableLeadershipDiagnostics,
-        IMeshGossipAgent? GossipAgent,
-        ILeadershipObserver? LeadershipObserver)
-    {
-        public bool EnableLoggingToggle { get; init; } = EnableLoggingToggle;
-
-        public bool EnableSamplingToggle { get; init; } = EnableSamplingToggle;
-
-        public bool EnableLeaseHealthDiagnostics { get; init; } = EnableLeaseHealthDiagnostics;
-
-        public bool EnablePeerDiagnostics
-        {
-            get => field;
-            init => field = value;
-        } = EnablePeerDiagnostics;
-
-        public bool EnableLeadershipDiagnostics
-        {
-            get => field;
-            init => field = value;
-        } = EnableLeadershipDiagnostics;
-
-        public IMeshGossipAgent? GossipAgent
-        {
-            get => field;
-            init => field = value;
-        } = GossipAgent;
-
-        public ILeadershipObserver? LeadershipObserver
-        {
-            get => field;
-            init => field = value;
-        } = LeadershipObserver;
-    }
-
-    internal sealed record DiagnosticsLogLevelRequest(string? Level)
-    {
-        public string? Level { get; init; } = Level;
-    }
-
-    internal sealed record DiagnosticsSamplingRequest(double? Probability)
-    {
-        public double? Probability { get; init; } = Probability;
-    }
-
-    internal sealed class LeadershipEventStreamMarker
-    {
-    }
-
-    private static partial class LeadershipDiagnosticsLog
-    {
-        [LoggerMessage(EventId = 1, Level = LogLevel.Information, Message = "Leadership SSE stream opened (scope={Scope}, transport={Transport}).")]
-        public static partial void LeadershipStreamOpened(ILogger logger, string scope, string transport);
-
-        [LoggerMessage(EventId = 2, Level = LogLevel.Information, Message = "Leadership SSE stream closed (scope={Scope}).")]
-        public static partial void LeadershipStreamClosed(ILogger logger, string scope);
-    }
-
     [RequiresDynamicCode("Server interceptors are instantiated via dependency injection.")]
     [RequiresUnreferencedCode("Server interceptors are instantiated via dependency injection.")]
     private static GrpcServerRuntimeOptions? BuildGrpcServerRuntimeOptions(GrpcServerRuntimeConfiguration configuration)
@@ -1484,7 +1268,7 @@ internal sealed partial class DispatcherBuilder
         return resolved;
     }
 
-    private static GrpcServerTlsOptions? BuildGrpcServerTlsOptions(GrpcServerTlsConfiguration configuration)
+    private GrpcServerTlsOptions? BuildGrpcServerTlsOptions(GrpcServerTlsConfiguration configuration)
     {
         if (configuration is null)
         {
@@ -1494,7 +1278,9 @@ internal sealed partial class DispatcherBuilder
         var certificate = LoadCertificate(
             configuration.CertificatePath,
             configuration.CertificateData,
+            configuration.CertificateDataSecret,
             configuration.CertificatePassword,
+            configuration.CertificatePasswordSecret,
             "gRPC server TLS");
 
         if (certificate is null)
@@ -1536,19 +1322,336 @@ internal sealed partial class DispatcherBuilder
 
     private void ConfigureMeshComponents(DispatcherOptions dispatcherOptions)
     {
+        var gossipAdded = false;
         var gossipAgent = _serviceProvider.GetService<IMeshGossipAgent>();
         if (gossipAgent is not null && gossipAgent.IsEnabled)
         {
             dispatcherOptions.AddLifecycle("mesh-gossip", gossipAgent);
+            gossipAdded = true;
         }
 
+        var leadershipAdded = false;
         var leadershipCoordinator = _serviceProvider.GetService<LeadershipCoordinator>();
         var leadershipOptions = _serviceProvider.GetService<IOptions<LeadershipOptions>>()?.Value;
         if (leadershipCoordinator is not null && leadershipOptions?.Enabled == true)
         {
-            dispatcherOptions.AddLifecycle("mesh-leadership", leadershipCoordinator);
+            dispatcherOptions.AddLifecycle(
+                "mesh-leadership",
+                leadershipCoordinator,
+                gossipAdded ? MeshGossipDependency : null);
+            leadershipAdded = true;
         }
+
+        ConfigureControlPlaneHosts(dispatcherOptions, gossipAdded, leadershipAdded);
     }
+
+    [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Diagnostics control-plane host intentionally uses reflection for service wiring.")]
+    [UnconditionalSuppressMessage("AOT", "IL3050", Justification = "Diagnostics control-plane host intentionally uses reflection for service wiring.")]
+    private void ConfigureControlPlaneHosts(DispatcherOptions dispatcherOptions, bool gossipAdded, bool leadershipAdded)
+    {
+        if (!TryCreateDiagnosticsControlPlaneSettings(out var settings))
+        {
+            return;
+        }
+
+        if (settings.HttpTlsManager is not null)
+        {
+            settings.HttpOptions.SharedTls = settings.HttpTlsManager;
+        }
+
+        if (settings.GrpcOptions is not null && settings.GrpcTlsManager is not null)
+        {
+            settings.GrpcOptions.SharedTls = settings.GrpcTlsManager;
+        }
+
+        var loggerFactory = _serviceProvider.GetService<ILoggerFactory>() ?? NullLoggerFactory.Instance;
+        var httpHost = new DiagnosticsControlPlaneHost(
+            _serviceProvider,
+            settings.HttpOptions,
+            settings.EnableLoggingToggle,
+            settings.EnableSamplingToggle,
+            settings.EnableLeaseHealthDiagnostics,
+            settings.EnablePeerDiagnostics,
+            settings.EnableLeadershipDiagnostics,
+            loggerFactory.CreateLogger<DiagnosticsControlPlaneHost>(),
+            settings.HttpTlsManager);
+
+        var httpDependencies = new List<string>();
+        if (gossipAdded)
+        {
+            httpDependencies.Add("mesh-gossip");
+        }
+
+        if (leadershipAdded && settings.EnableLeadershipDiagnostics)
+        {
+            httpDependencies.Add("mesh-leadership");
+        }
+
+        dispatcherOptions.AddLifecycle(
+            "control-plane:http",
+            httpHost,
+            httpDependencies.Count == 0 ? null : httpDependencies);
+
+        if (settings.GrpcOptions is not null)
+        {
+            var grpcHost = new LeadershipControlPlaneHost(
+                _serviceProvider,
+                settings.GrpcOptions,
+                loggerFactory.CreateLogger<LeadershipControlPlaneHost>(),
+                settings.GrpcTlsManager);
+            dispatcherOptions.AddLifecycle(
+                "control-plane:grpc",
+                grpcHost,
+                leadershipAdded ? MeshLeadershipDependency : null);
+        }
+
+        ConfigureBootstrapHost(dispatcherOptions);
+    }
+
+    private void RegisterDrainParticipant(string name, ILifecycle lifecycle)
+    {
+        if (lifecycle is not INodeDrainParticipant participant)
+        {
+            return;
+        }
+
+        var coordinator = _serviceProvider.GetService<NodeDrainCoordinator>();
+        coordinator?.RegisterParticipant(name, participant);
+    }
+
+    private bool TryCreateDiagnosticsControlPlaneSettings([NotNullWhen(true)] out DiagnosticsControlPlaneSettings? settings)
+    {
+        var diagnostics = _options.Diagnostics;
+        if (diagnostics is null)
+        {
+            settings = default;
+            return false;
+        }
+
+        var runtime = diagnostics.Runtime ?? new RuntimeDiagnosticsConfiguration();
+        var enableLogging = runtime.EnableLoggingLevelToggle ?? false;
+        var enableSampling = runtime.EnableTraceSamplingToggle ?? false;
+
+        var peerHealthProviders = _serviceProvider.GetServices<IPeerHealthSnapshotProvider>()
+            .Where(static provider => provider is not null)
+            .ToArray();
+        var enableLeaseHealth = peerHealthProviders.Length > 0;
+
+        var gossipAgent = _serviceProvider.GetService<IMeshGossipAgent>();
+        var enablePeerDiagnostics = gossipAgent is not null && gossipAgent.IsEnabled;
+
+        var leadershipObserver = _serviceProvider.GetService<ILeadershipObserver>();
+        var enableLeadershipDiagnostics = leadershipObserver is not null;
+
+        var enableControlPlane = runtime.EnableControlPlane ?? (enableLogging || enableSampling || enableLeaseHealth || enablePeerDiagnostics || enableLeadershipDiagnostics);
+        if (!enableControlPlane)
+        {
+            settings = default;
+            return false;
+        }
+
+        var controlPlane = diagnostics.ControlPlane ?? new DiagnosticsControlPlaneConfiguration();
+        var httpOptions = BuildHttpControlPlaneHostOptions(controlPlane);
+        if (httpOptions.Urls.Count == 0)
+        {
+            settings = default;
+            return false;
+        }
+
+        var httpTlsManager = CreateTransportTlsManager(controlPlane.Tls, "diagnostics HTTP");
+
+        GrpcControlPlaneHostOptions? grpcOptions = null;
+        TransportTlsManager? grpcTlsManager = null;
+        if (controlPlane.GrpcUrls.Count > 0 && enableLeadershipDiagnostics)
+        {
+            grpcOptions = BuildGrpcControlPlaneHostOptions(controlPlane);
+            grpcTlsManager = CreateTransportTlsManager(controlPlane.Tls, "diagnostics gRPC");
+        }
+
+        settings = new DiagnosticsControlPlaneSettings(
+            httpOptions,
+            grpcOptions,
+            httpTlsManager,
+            grpcTlsManager,
+            enableLogging,
+            enableSampling,
+            enableLeaseHealth,
+            enablePeerDiagnostics,
+            enableLeadershipDiagnostics);
+        return true;
+    }
+
+    private bool TryCreateBootstrapControlPlaneSettings([NotNullWhen(true)] out BootstrapControlPlaneSettings? settings)
+    {
+        var bootstrap = _options.Security?.Bootstrap;
+        if (bootstrap?.Enabled != true)
+        {
+            settings = default;
+            return false;
+        }
+
+        if (bootstrap.HttpUrls.Count == 0)
+        {
+            settings = default;
+            return false;
+        }
+
+        var httpOptions = new HttpControlPlaneHostOptions();
+        foreach (var url in bootstrap.HttpUrls)
+        {
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                continue;
+            }
+
+            httpOptions.Urls.Add(url);
+        }
+
+        if (httpOptions.Urls.Count == 0)
+        {
+            settings = default;
+            return false;
+        }
+
+        var tlsManager = CreateTransportTlsManager(bootstrap.Tls, "bootstrap HTTP");
+        if (tlsManager is not null)
+        {
+            httpOptions.SharedTls = tlsManager;
+        }
+
+        settings = new BootstrapControlPlaneSettings(httpOptions, tlsManager);
+        return true;
+    }
+
+    private HttpControlPlaneHostOptions BuildHttpControlPlaneHostOptions(DiagnosticsControlPlaneConfiguration configuration)
+    {
+        var options = new HttpControlPlaneHostOptions();
+        var hasCustomUrls = false;
+        foreach (var url in configuration.HttpUrls)
+        {
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                continue;
+            }
+
+            if (!hasCustomUrls)
+            {
+                options.Urls.Clear();
+                hasCustomUrls = true;
+            }
+
+            options.Urls.Add(url);
+        }
+
+        options.Runtime = BuildHttpServerRuntimeOptions(configuration.HttpRuntime);
+        options.Tls = BuildHttpServerTlsOptions(configuration.HttpTls);
+        options.ClientCertificateMode = ParseClientCertificateMode(configuration.HttpTls.ClientCertificateMode);
+        options.CheckCertificateRevocation = configuration.HttpTls.CheckCertificateRevocation;
+        return options;
+    }
+
+    [RequiresDynamicCode("Server interceptors are instantiated via dependency injection.")]
+    [RequiresUnreferencedCode("Server interceptors are instantiated via dependency injection.")]
+    [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Diagnostics control-plane host intentionally uses reflection for service wiring.")]
+    [UnconditionalSuppressMessage("AOT", "IL3050", Justification = "Diagnostics control-plane host intentionally uses reflection for service wiring.")]
+    private GrpcControlPlaneHostOptions BuildGrpcControlPlaneHostOptions(DiagnosticsControlPlaneConfiguration configuration)
+    {
+        var options = new GrpcControlPlaneHostOptions();
+        var hasCustomUrls = false;
+        foreach (var url in configuration.GrpcUrls)
+        {
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                continue;
+            }
+
+            if (!hasCustomUrls)
+            {
+                options.Urls.Clear();
+                hasCustomUrls = true;
+            }
+
+            options.Urls.Add(url);
+        }
+
+        options.Runtime = BuildGrpcServerRuntimeOptions(configuration.GrpcRuntime);
+        options.Tls = BuildGrpcServerTlsOptions(configuration.GrpcTls);
+        options.ClientCertificateMode = ParseClientCertificateMode(configuration.GrpcTls.ClientCertificateMode);
+        options.CheckCertificateRevocation = configuration.GrpcTls.CheckCertificateRevocation;
+        options.Telemetry = new GrpcTelemetryOptions
+        {
+            EnableServerLogging = true,
+            LoggerFactory = _serviceProvider.GetService<ILoggerFactory>()
+        };
+        return options;
+    }
+
+    private TransportTlsManager? CreateTransportTlsManager(TransportTlsConfiguration configuration, string purpose)
+    {
+        if (configuration is null)
+        {
+            return null;
+        }
+
+        var hasCertificate = !string.IsNullOrWhiteSpace(configuration.CertificatePath) ||
+            !string.IsNullOrWhiteSpace(configuration.CertificateData);
+
+        if (!hasCertificate)
+        {
+            return null;
+        }
+
+        var options = new TransportTlsOptions
+        {
+            CertificatePath = configuration.CertificatePath,
+            CertificateData = configuration.CertificateData,
+            CertificateDataSecret = configuration.CertificateDataSecret,
+            CertificatePassword = configuration.CertificatePassword,
+            CertificatePasswordSecret = configuration.CertificatePasswordSecret,
+            AllowUntrustedCertificates = configuration.AllowUntrustedCertificates ?? false,
+            CheckCertificateRevocation = configuration.CheckCertificateRevocation ?? true
+        };
+
+        if (!string.IsNullOrWhiteSpace(configuration.ReloadInterval))
+        {
+            if (TimeSpan.TryParse(configuration.ReloadInterval, CultureInfo.InvariantCulture, out var parsed))
+            {
+                options.ReloadInterval = parsed;
+            }
+            else
+            {
+                throw new OmniRelayConfigurationException($"Invalid TLS reload interval '{configuration.ReloadInterval}' for {purpose}.");
+            }
+        }
+
+        foreach (var thumbprint in configuration.AllowedThumbprints)
+        {
+            if (string.IsNullOrWhiteSpace(thumbprint))
+            {
+                continue;
+            }
+
+            options.AllowedThumbprints.Add(thumbprint.Trim());
+        }
+
+        var loggerFactory = _serviceProvider.GetService<ILoggerFactory>() ?? NullLoggerFactory.Instance;
+        return new TransportTlsManager(options, loggerFactory.CreateLogger<TransportTlsManager>(), _secretProvider);
+    }
+
+    private sealed record DiagnosticsControlPlaneSettings(
+        HttpControlPlaneHostOptions HttpOptions,
+        GrpcControlPlaneHostOptions? GrpcOptions,
+        TransportTlsManager? HttpTlsManager,
+        TransportTlsManager? GrpcTlsManager,
+        bool EnableLoggingToggle,
+        bool EnableSamplingToggle,
+        bool EnableLeaseHealthDiagnostics,
+        bool EnablePeerDiagnostics,
+        bool EnableLeadershipDiagnostics);
+
+    private sealed record BootstrapControlPlaneSettings(
+        HttpControlPlaneHostOptions HttpOptions,
+        TransportTlsManager? TlsManager);
 
     [RequiresDynamicCode("JSON codec registration relies on reflection.")]
     [RequiresUnreferencedCode("JSON codec registration relies on reflection.")]

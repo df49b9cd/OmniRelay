@@ -1,4 +1,4 @@
-# DISC-004 – Shard APIs & Tooling
+# DISC-004 - Shard APIs & Tooling
 
 ## Goal
 Expose shard ownership data through control-plane APIs/streams and provide CLI utilities to inspect, diff, and simulate shard assignments.
@@ -13,10 +13,10 @@ Expose shard ownership data through control-plane APIs/streams and provide CLI u
 - Add API docs/OpenAPI schemas and examples.
 
 ## Requirements
-1. **Security/RBAC** – Enforce `mesh.read` scope for read endpoints; require `mesh.operate` for diff/simulate features if they expose sensitive data.
-2. **Performance** – API must return 95th percentile responses <200 ms for 1k shards; watchers should handle at least 100 subscribers per node.
-3. **Resilience** – Watch streams support resume tokens so clients can recover after disconnect without missing updates.
-4. **CLI UX** – Commands must support JSON and table output, include progress indicators for simulations, and exit non-zero on validation errors.
+1. **Security/RBAC** - Enforce `mesh.read` scope for read endpoints; require `mesh.operate` for diff/simulate features if they expose sensitive data.
+2. **Performance** - API must return 95th percentile responses <200 ms for 1k shards; watchers should handle at least 100 subscribers per node.
+3. **Resilience** - Watch streams support resume tokens so clients can recover after disconnect without missing updates.
+4. **CLI UX** - Commands must support JSON and table output, include progress indicators for simulations, and exit non-zero on validation errors.
 
 ## Deliverables
 - API controllers/handlers + Protobuf definitions.
@@ -28,7 +28,11 @@ Expose shard ownership data through control-plane APIs/streams and provide CLI u
 - CLI commands operate end-to-end against a test cluster and produce human-readable output.
 - Security tests confirm RBAC enforcement and proper HTTP status codes for unauthorized requests.
 
+- Native AOT gate: Publish with /p:PublishAot=true and treat trimming warnings as errors per REFDISC-034..037.
+
 ## Testing Strategy
+All test tiers must run against native AOT artifacts per REFDISC-034..037.
+
 
 ### Unit tests
 - Cover request validators and pagination/filter builders so `/control/shards` enforces namespaces, owners, statuses, and search semantics before hitting the data store.
@@ -51,4 +55,5 @@ Expose shard ownership data through control-plane APIs/streams and provide CLI u
 - Perform failover drills where dozens of watchers reconnect simultaneously after an upgrade, confirming resume tokens prevent gaps and that audit logs capture the surge.
 
 ## References
-- `docs/architecture/service-discovery.md` – “Shard ownership + routing metadata”, “Peer/cluster registry APIs”.
+- `docs/architecture/service-discovery.md` - “Shard ownership + routing metadata”, “Peer/cluster registry APIs”.
+- REFDISC-034..037 - AOT readiness baseline and CI gating.

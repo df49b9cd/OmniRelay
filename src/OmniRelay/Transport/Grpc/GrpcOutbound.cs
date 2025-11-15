@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
+using System.Diagnostics;
 using System.Net;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading.Channels;
@@ -46,6 +47,7 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
     private CompositeClientInterceptor? _compositeClientInterceptor;
     private string? _interceptorService;
     private int _interceptorConfigured;
+    private const string Http2FallbackMetadataKey = "omnirelay.grpc.force_http2";
 
     /// <summary>
     /// Creates a gRPC outbound transport for a single peer address.
@@ -294,127 +296,36 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         }
 
         var procedure = request.Meta.Procedure!;
-        var acquireResult = await AcquirePeerAsync(request.Meta, cancellationToken).ConfigureAwait(false);
-        if (acquireResult.IsFailure)
-        {
-            return Err<Response<ReadOnlyMemory<byte>>>(acquireResult.Error!);
-        }
 
-        var (lease, peer, usedPreferred) = acquireResult.Value;
-        await using var _ = lease.ConfigureAwait(false);
-
-        using var activity = GrpcTransportDiagnostics.StartClientActivity(_remoteService, procedure, peer.Address, "unary");
-        if (activity is not null)
-        {
-            activity.SetTag("omnirelay.discovery.preferred_protocol", _clientRuntimeOptions?.EnableHttp3 == true ? "h3" : "any");
-            var supportsH3 = _endpointHttp3Support?.TryGetValue(peer.Address, out var s) == true && s;
-            activity.SetTag("omnirelay.peer.supports_h3", supportsH3);
-            activity.SetTag("omnirelay.discovery.selection", usedPreferred ? "preferred" : "fallback");
-        }
-
-        // Metrics: record fallback if HTTP/3 desired but preferred peer not used
-        if (_clientRuntimeOptions?.EnableHttp3 == true && !usedPreferred)
-        {
-            var metaForTags = request.Meta;
-            GrpcTransportMetrics.RecordClientFallback(metaForTags, http3Desired: true);
-        }
-
-        var method = _unaryMethods.GetOrAdd(procedure, CreateUnaryMethod);
-        var callOptions = CreateCallOptions(request.Meta, cancellationToken);
-        var callInvoker = peer.CallInvoker;
-
-        try
-        {
-            var call = callInvoker.AsyncUnaryCall(method, null, callOptions, request.Body.ToArray());
-            var response = await call.ResponseAsync.ConfigureAwait(false);
-
-            var headers = await call.ResponseHeadersAsync.ConfigureAwait(false);
-            var trailers = call.GetTrailers();
-            var responseMeta = GrpcMetadataAdapter.CreateResponseMeta(headers, trailers);
-
-            GrpcTransportDiagnostics.SetStatus(activity, StatusCode.OK);
-            lease.MarkSuccess();
-            return Ok(Response<ReadOnlyMemory<byte>>.Create(response, responseMeta));
-        }
-        catch (RpcException rpcEx)
-        {
-            // Fallback: if HTTP version negotiation failed to establish HTTP/2, retry with a forced HTTP/2 client.
-            var shouldFallback = CanFallbackToHttp2(rpcEx);
-
-            if (shouldFallback)
+        return await WithPeerContextAsync(
+            request.Meta,
+            procedure,
+            "unary",
+            disposeLeaseOnCompletion: true,
+            async (context, token) =>
             {
-                try
-                {
-                    using var fallbackChannel = GrpcChannel.ForAddress(peer.Address, CreateHttp2FallbackOptions());
-                    var fallbackInvoker = AttachClientInterceptors(fallbackChannel.CreateCallInvoker());
-                    var fallbackCallOptions = callOptions;
-                    var retryCall = fallbackInvoker.AsyncUnaryCall(method, null, fallbackCallOptions, request.Body.ToArray());
-                    var retryResponse = await retryCall.ResponseAsync.ConfigureAwait(false);
+                var method = _unaryMethods.GetOrAdd(procedure, CreateUnaryMethod);
+                var payload = request.Body.ToArray();
+                var callOptions = CreateCallOptions(request.Meta, token);
 
-                    // Metrics: count explicit OrHigher fallback to HTTP/2
-                    if (_clientRuntimeOptions?.EnableHttp3 == true)
+                var operation = new Func<CallInvoker, CallOptions, CancellationToken, Task<Response<ReadOnlyMemory<byte>>>>(
+                    async (invoker, options, innerToken) =>
                     {
-                        var metaForTags = request.Meta;
-                        GrpcTransportMetrics.RecordClientFallback(metaForTags, http3Desired: true);
-                    }
+                        var call = invoker.AsyncUnaryCall(method, null, options, payload);
+                        var body = await call.ResponseAsync.ConfigureAwait(false);
+                        var headers = await call.ResponseHeadersAsync.ConfigureAwait(false);
+                        var trailers = call.GetTrailers();
+                        var responseMeta = GrpcMetadataAdapter.CreateResponseMeta(headers, trailers);
+                        return Response<ReadOnlyMemory<byte>>.Create(body, responseMeta);
+                    });
 
-                    var retryHeaders = await retryCall.ResponseHeadersAsync.ConfigureAwait(false);
-                    var retryTrailers = retryCall.GetTrailers();
-                    var retryMeta = GrpcMetadataAdapter.CreateResponseMeta(retryHeaders, retryTrailers);
+                var callResult = await ExecuteGrpcCallAsync(context, request.Meta, callOptions, operation, token).ConfigureAwait(false);
 
-                    GrpcTransportDiagnostics.SetStatus(activity, StatusCode.OK);
-                    lease.MarkSuccess();
-                    return Ok(Response<ReadOnlyMemory<byte>>.Create(retryResponse, retryMeta));
-                }
-                catch
-                {
-                    // Ignore and fall through to normal error handling
-                }
-            }
-            var status = GrpcStatusMapper.FromStatus(rpcEx.Status);
-            var message = string.IsNullOrWhiteSpace(rpcEx.Status.Detail) ? rpcEx.Status.StatusCode.ToString() : rpcEx.Status.Detail;
-            GrpcTransportDiagnostics.RecordException(activity, rpcEx, rpcEx.Status.StatusCode, message);
-            var error = OmniRelayErrorAdapter.FromStatus(status, message, transport: GrpcTransportConstants.TransportName);
-            RecordPeerOutcome(lease, error);
-            return Err<Response<ReadOnlyMemory<byte>>>(error);
-        }
-        catch (Exception ex)
-        {
-            if (CanFallbackToHttp2(ex))
-            {
-                try
-                {
-                    using var fallbackChannel = GrpcChannel.ForAddress(peer.Address, CreateHttp2FallbackOptions());
-                    var fallbackInvoker = AttachClientInterceptors(fallbackChannel.CreateCallInvoker());
-                    var fallbackCallOptions = callOptions;
-                    var retryCall = fallbackInvoker.AsyncUnaryCall(method, null, fallbackCallOptions, request.Body.ToArray());
-                    var retryResponse = await retryCall.ResponseAsync.ConfigureAwait(false);
-
-                    if (_clientRuntimeOptions?.EnableHttp3 == true)
-                    {
-                        var metaForTags = request.Meta;
-                        GrpcTransportMetrics.RecordClientFallback(metaForTags, http3Desired: true);
-                    }
-
-                    var retryHeaders = await retryCall.ResponseHeadersAsync.ConfigureAwait(false);
-                    var retryTrailers = retryCall.GetTrailers();
-                    var retryMeta = GrpcMetadataAdapter.CreateResponseMeta(retryHeaders, retryTrailers);
-
-                    GrpcTransportDiagnostics.SetStatus(activity, StatusCode.OK);
-                    lease.MarkSuccess();
-                    return Ok(Response<ReadOnlyMemory<byte>>.Create(retryResponse, retryMeta));
-                }
-                catch
-                {
-                    // Ignore and fall through to normal error handling.
-                }
-            }
-
-            GrpcTransportDiagnostics.RecordException(activity, ex, StatusCode.Unknown, ex.Message);
-            var result = OmniRelayErrors.ToResult<Response<ReadOnlyMemory<byte>>>(ex, transport: GrpcTransportConstants.TransportName);
-            RecordPeerOutcome(lease, result.Error!);
-            return result;
-        }
+                return callResult
+                    .Tap(_ => RecordClientSuccess(context))
+                    .TapError(error => RecordClientFailure(context, error));
+            },
+            cancellationToken).ConfigureAwait(false);
     }
 
     async ValueTask<Result<OnewayAck>> IOnewayOutbound.CallAsync(
@@ -433,57 +344,36 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         }
 
         var procedure = request.Meta.Procedure!;
-        var acquireResult = await AcquirePeerAsync(request.Meta, cancellationToken).ConfigureAwait(false);
-        if (acquireResult.IsFailure)
-        {
-            return Err<OnewayAck>(acquireResult.Error!);
-        }
 
-        var (lease, peer, usedPreferred) = acquireResult.Value;
-        await using var _ = lease.ConfigureAwait(false);
+        return await WithPeerContextAsync(
+            request.Meta,
+            procedure,
+            "oneway",
+            disposeLeaseOnCompletion: true,
+            async (context, token) =>
+            {
+                var method = _unaryMethods.GetOrAdd(procedure, CreateUnaryMethod);
+                var payload = request.Body.ToArray();
+                var callOptions = CreateCallOptions(request.Meta, token);
 
-        using var activity = GrpcTransportDiagnostics.StartClientActivity(_remoteService, procedure, peer.Address, "oneway");
-        if (activity is not null)
-        {
-            activity.SetTag("omnirelay.discovery.preferred_protocol", _clientRuntimeOptions?.EnableHttp3 == true ? "h3" : "any");
-            var supportsH3 = _endpointHttp3Support?.TryGetValue(peer.Address, out var s) == true && s;
-            activity.SetTag("omnirelay.peer.supports_h3", supportsH3);
-            activity.SetTag("omnirelay.discovery.selection", usedPreferred ? "preferred" : "fallback");
-        }
+                var operation = new Func<CallInvoker, CallOptions, CancellationToken, Task<OnewayAck>>(
+                    async (invoker, options, innerToken) =>
+                    {
+                        var call = invoker.AsyncUnaryCall(method, null, options, payload);
+                        await call.ResponseAsync.ConfigureAwait(false);
+                        var headers = await call.ResponseHeadersAsync.ConfigureAwait(false);
+                        var trailers = call.GetTrailers();
+                        var responseMeta = GrpcMetadataAdapter.CreateResponseMeta(headers, trailers);
+                        return OnewayAck.Ack(responseMeta);
+                    });
 
-        var method = _unaryMethods.GetOrAdd(procedure, CreateUnaryMethod);
-        var callOptions = CreateCallOptions(request.Meta, cancellationToken);
-        var callInvoker = peer.CallInvoker;
+                var callResult = await ExecuteGrpcCallAsync(context, request.Meta, callOptions, operation, token).ConfigureAwait(false);
 
-        try
-        {
-            var call = callInvoker.AsyncUnaryCall(method, null, callOptions, request.Body.ToArray());
-            await call.ResponseAsync.ConfigureAwait(false);
-
-            var headers = await call.ResponseHeadersAsync.ConfigureAwait(false);
-            var trailers = call.GetTrailers();
-            var responseMeta = GrpcMetadataAdapter.CreateResponseMeta(headers, trailers);
-
-            GrpcTransportDiagnostics.SetStatus(activity, StatusCode.OK);
-            lease.MarkSuccess();
-            return Ok(OnewayAck.Ack(responseMeta));
-        }
-        catch (RpcException rpcEx)
-        {
-            var status = GrpcStatusMapper.FromStatus(rpcEx.Status);
-            var message = string.IsNullOrWhiteSpace(rpcEx.Status.Detail) ? rpcEx.Status.StatusCode.ToString() : rpcEx.Status.Detail;
-            GrpcTransportDiagnostics.RecordException(activity, rpcEx, rpcEx.Status.StatusCode, message);
-            var error = OmniRelayErrorAdapter.FromStatus(status, message, transport: GrpcTransportConstants.TransportName);
-            RecordPeerOutcome(lease, error);
-            return Err<OnewayAck>(error);
-        }
-        catch (Exception ex)
-        {
-            GrpcTransportDiagnostics.RecordException(activity, ex, StatusCode.Unknown, ex.Message);
-            var result = OmniRelayErrors.ToResult<OnewayAck>(ex, transport: GrpcTransportConstants.TransportName);
-            RecordPeerOutcome(lease, result.Error!);
-            return result;
-        }
+                return callResult
+                    .Tap(_ => RecordClientSuccess(context))
+                    .TapError(error => RecordClientFailure(context, error));
+            },
+            cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -518,64 +408,47 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         }
 
         var procedure = request.Meta.Procedure!;
-        var acquireResult = await AcquirePeerAsync(request.Meta, cancellationToken).ConfigureAwait(false);
-        if (acquireResult.IsFailure)
-        {
-            return Err<IStreamCall>(acquireResult.Error!);
-        }
 
-        var (lease, peer, usedPreferred) = acquireResult.Value;
-        using var activity = GrpcTransportDiagnostics.StartClientActivity(_remoteService, procedure, peer.Address, "server_stream");
-        if (activity is not null)
-        {
-            activity.SetTag("omnirelay.discovery.preferred_protocol", _clientRuntimeOptions?.EnableHttp3 == true ? "h3" : "any");
-            var supportsH3 = _endpointHttp3Support?.TryGetValue(peer.Address, out var s) == true && s;
-            activity.SetTag("omnirelay.peer.supports_h3", supportsH3);
-            activity.SetTag("omnirelay.discovery.selection", usedPreferred ? "preferred" : "fallback");
-        }
-
-        var method = _serverStreamMethods.GetOrAdd(procedure, CreateServerStreamingMethod);
-        var callOptions = CreateCallOptions(request.Meta, cancellationToken);
-        var callInvoker = peer.CallInvoker;
-
-        try
-        {
-            var call = callInvoker.AsyncServerStreamingCall(method, null, callOptions, request.Body.ToArray());
-            var streamCallResult = await GrpcClientStreamCall.CreateAsync(request.Meta, call, cancellationToken).ConfigureAwait(false);
-            if (streamCallResult.IsFailure)
+        return await WithPeerContextAsync(
+            request.Meta,
+            procedure,
+            "server_stream",
+            disposeLeaseOnCompletion: false,
+            async (context, token) =>
             {
-                call.Dispose();
-                RecordPeerOutcome(lease, streamCallResult.Error!);
-                await lease.DisposeAsync().ConfigureAwait(false);
-                var exception = OmniRelayErrors.FromError(streamCallResult.Error!, GrpcTransportConstants.TransportName);
-                var grpcStatus = GrpcStatusMapper.ToStatus(exception.StatusCode, exception.Message);
-                GrpcTransportDiagnostics.RecordException(activity, exception, grpcStatus.StatusCode, exception.Message);
-                return Err<IStreamCall>(streamCallResult.Error!);
-            }
+                var method = _serverStreamMethods.GetOrAdd(procedure, CreateServerStreamingMethod);
+                var payload = request.Body.ToArray();
+                var callOptions = CreateCallOptions(request.Meta, token);
 
-            GrpcTransportDiagnostics.SetStatus(activity, StatusCode.OK);
-            lease.MarkSuccess();
-            var wrapped = new PeerTrackedStreamCall(streamCallResult.Value, lease);
-            return Ok((IStreamCall)wrapped);
-        }
-        catch (RpcException rpcEx)
-        {
-            var status = GrpcStatusMapper.FromStatus(rpcEx.Status);
-            var message = string.IsNullOrWhiteSpace(rpcEx.Status.Detail) ? rpcEx.Status.StatusCode.ToString() : rpcEx.Status.Detail;
-            GrpcTransportDiagnostics.RecordException(activity, rpcEx, rpcEx.Status.StatusCode, message);
-            var error = OmniRelayErrorAdapter.FromStatus(status, message, transport: GrpcTransportConstants.TransportName);
-            RecordPeerOutcome(lease, error);
-            await lease.DisposeAsync().ConfigureAwait(false);
-            return Err<IStreamCall>(error);
-        }
-        catch (Exception ex)
-        {
-            GrpcTransportDiagnostics.RecordException(activity, ex, StatusCode.Unknown, ex.Message);
-            var result = OmniRelayErrors.ToResult<IStreamCall>(ex, transport: GrpcTransportConstants.TransportName);
-            RecordPeerOutcome(lease, result.Error!);
-            await lease.DisposeAsync().ConfigureAwait(false);
-            return result;
-        }
+                var operation = new Func<CallInvoker, CallOptions, CancellationToken, Task<IStreamCall>>(
+                    async (invoker, options, innerToken) =>
+                    {
+                        var call = invoker.AsyncServerStreamingCall(method, null, options, payload);
+                        var streamCallResult = await GrpcClientStreamCall.CreateAsync(request.Meta, call, innerToken).ConfigureAwait(false);
+
+                        if (streamCallResult.IsFailure)
+                        {
+                            call.Dispose();
+                            throw new ResultException(streamCallResult.Error!);
+                        }
+
+                        return streamCallResult.Value;
+                    });
+
+                var streamResult = await ExecuteGrpcCallAsync(context, request.Meta, callOptions, operation, token).ConfigureAwait(false);
+
+                if (streamResult.IsFailure && streamResult.Error is { } failure)
+                {
+                    RecordClientFailure(context, failure);
+                    await context.Lease.DisposeAsync().ConfigureAwait(false);
+                    return streamResult;
+                }
+
+                RecordClientSuccess(context);
+                var wrapped = new PeerTrackedStreamCall(streamResult.Value, context.Lease);
+                return Ok((IStreamCall)wrapped);
+            },
+            cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -605,53 +478,41 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         }
 
         var procedure = requestMeta.Procedure!;
-        var acquireResult = await AcquirePeerAsync(requestMeta, cancellationToken).ConfigureAwait(false);
-        if (acquireResult.IsFailure)
-        {
-            return Err<IClientStreamTransportCall>(acquireResult.Error!);
-        }
 
-        var (lease, peer, usedPreferred) = acquireResult.Value;
-        using var activity = GrpcTransportDiagnostics.StartClientActivity(_remoteService, procedure, peer.Address, "client_stream");
-        if (activity is not null)
-        {
-            activity.SetTag("omnirelay.discovery.preferred_protocol", _clientRuntimeOptions?.EnableHttp3 == true ? "h3" : "any");
-            var supportsH3 = _endpointHttp3Support?.TryGetValue(peer.Address, out var s) == true && s;
-            activity.SetTag("omnirelay.peer.supports_h3", supportsH3);
-            activity.SetTag("omnirelay.discovery.selection", usedPreferred ? "preferred" : "fallback");
-        }
+        return await WithPeerContextAsync(
+            requestMeta,
+            procedure,
+            "client_stream",
+            disposeLeaseOnCompletion: false,
+            async (context, token) =>
+            {
+                var method = _clientStreamMethods.GetOrAdd(procedure, CreateClientStreamingMethod);
+                var callCts = CancellationTokenSource.CreateLinkedTokenSource(token, cancellationToken);
+                var callOptions = CreateCallOptions(requestMeta, callCts.Token);
 
-        var method = _clientStreamMethods.GetOrAdd(procedure, CreateClientStreamingMethod);
-        var callOptions = CreateCallOptions(requestMeta, cancellationToken);
-        var callInvoker = peer.CallInvoker;
+                var operation = new Func<CallInvoker, CallOptions, CancellationToken, Task<IClientStreamTransportCall>>(
+                    (invoker, options, innerToken) =>
+                    {
+                        var call = invoker.AsyncClientStreamingCall(method, null, options);
+                        IClientStreamTransportCall transportCall = new GrpcClientStreamTransportCall(requestMeta, call, null, callCts);
+                        return Task.FromResult(transportCall);
+                    });
 
-        try
-        {
-            var call = callInvoker.AsyncClientStreamingCall(method, null, callOptions);
-            var streamingCall = new GrpcClientStreamTransportCall(requestMeta, call, null);
-            lease.MarkSuccess();
-            var wrapped = new PeerTrackedClientStreamCall(streamingCall, lease);
-            GrpcTransportDiagnostics.SetStatus(activity, StatusCode.OK);
-            return Ok((IClientStreamTransportCall)wrapped);
-        }
-        catch (RpcException rpcEx)
-        {
-            var status = GrpcStatusMapper.FromStatus(rpcEx.Status);
-            var message = string.IsNullOrWhiteSpace(rpcEx.Status.Detail) ? rpcEx.Status.StatusCode.ToString() : rpcEx.Status.Detail;
-            GrpcTransportDiagnostics.RecordException(activity, rpcEx, rpcEx.Status.StatusCode, message);
-            var error = OmniRelayErrorAdapter.FromStatus(status, message, transport: GrpcTransportConstants.TransportName);
-            RecordPeerOutcome(lease, error);
-            await lease.DisposeAsync().ConfigureAwait(false);
-            return Err<IClientStreamTransportCall>(error);
-        }
-        catch (Exception ex)
-        {
-            GrpcTransportDiagnostics.RecordException(activity, ex, StatusCode.Unknown, ex.Message);
-            var result = OmniRelayErrors.ToResult<IClientStreamTransportCall>(ex, transport: GrpcTransportConstants.TransportName);
-            RecordPeerOutcome(lease, result.Error!);
-            await lease.DisposeAsync().ConfigureAwait(false);
-            return result;
-        }
+                var clientResult = await ExecuteGrpcCallAsync(context, requestMeta, callOptions, operation, token).ConfigureAwait(false);
+
+                if (clientResult.IsFailure && clientResult.Error is { } failure)
+                {
+                    RecordClientFailure(context, failure);
+                    callCts.Dispose();
+                    await context.Lease.DisposeAsync().ConfigureAwait(false);
+                    return clientResult;
+                }
+
+                RecordClientSuccess(context);
+                var wrapped = new PeerTrackedClientStreamCall(clientResult.Value, context.Lease);
+                return Ok((IClientStreamTransportCall)wrapped);
+            },
+            cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -675,64 +536,46 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         }
 
         var procedure = request.Meta.Procedure!;
-        var acquireResult = await AcquirePeerAsync(request.Meta, cancellationToken).ConfigureAwait(false);
-        if (acquireResult.IsFailure)
-        {
-            return Err<IDuplexStreamCall>(acquireResult.Error!);
-        }
 
-        var (lease, peer, usedPreferred) = acquireResult.Value;
-        using var activity = GrpcTransportDiagnostics.StartClientActivity(_remoteService, procedure, peer.Address, "bidi_stream");
-        if (activity is not null)
-        {
-            activity.SetTag("omnirelay.discovery.preferred_protocol", _clientRuntimeOptions?.EnableHttp3 == true ? "h3" : "any");
-            var supportsH3 = _endpointHttp3Support?.TryGetValue(peer.Address, out var s) == true && s;
-            activity.SetTag("omnirelay.peer.supports_h3", supportsH3);
-            activity.SetTag("omnirelay.discovery.selection", usedPreferred ? "preferred" : "fallback");
-        }
-
-        var method = _duplexMethods.GetOrAdd(procedure, CreateDuplexStreamingMethod);
-        var callOptions = CreateCallOptions(request.Meta, cancellationToken);
-        var callInvoker = peer.CallInvoker;
-
-        try
-        {
-            var call = callInvoker.AsyncDuplexStreamingCall(method, null, callOptions);
-            var duplexResult = await GrpcDuplexStreamTransportCall.CreateAsync(request.Meta, call, cancellationToken).ConfigureAwait(false);
-            if (duplexResult.IsFailure)
+        return await WithPeerContextAsync(
+            request.Meta,
+            procedure,
+            "bidi_stream",
+            disposeLeaseOnCompletion: false,
+            async (context, token) =>
             {
-                call.Dispose();
-                RecordPeerOutcome(lease, duplexResult.Error!);
-                await lease.DisposeAsync().ConfigureAwait(false);
-                var exception = OmniRelayErrors.FromError(duplexResult.Error!, GrpcTransportConstants.TransportName);
-                var grpcStatus = GrpcStatusMapper.ToStatus(exception.StatusCode, exception.Message);
-                GrpcTransportDiagnostics.RecordException(activity, exception, grpcStatus.StatusCode, exception.Message);
-                return Err<IDuplexStreamCall>(duplexResult.Error!);
-            }
+                var method = _duplexMethods.GetOrAdd(procedure, CreateDuplexStreamingMethod);
+                var callOptions = CreateCallOptions(request.Meta, token);
 
-            GrpcTransportDiagnostics.SetStatus(activity, StatusCode.OK);
-            lease.MarkSuccess();
-            var wrapped = new PeerTrackedDuplexStreamCall(duplexResult.Value, lease);
-            return Ok<IDuplexStreamCall>(wrapped);
-        }
-        catch (RpcException rpcEx)
-        {
-            var status = GrpcStatusMapper.FromStatus(rpcEx.Status);
-            var message = string.IsNullOrWhiteSpace(rpcEx.Status.Detail) ? rpcEx.Status.StatusCode.ToString() : rpcEx.Status.Detail;
-            GrpcTransportDiagnostics.RecordException(activity, rpcEx, rpcEx.Status.StatusCode, message);
-            var error = OmniRelayErrorAdapter.FromStatus(status, message, transport: GrpcTransportConstants.TransportName);
-            RecordPeerOutcome(lease, error);
-            await lease.DisposeAsync().ConfigureAwait(false);
-            return Err<IDuplexStreamCall>(error);
-        }
-        catch (Exception ex)
-        {
-            GrpcTransportDiagnostics.RecordException(activity, ex, StatusCode.Unknown, ex.Message);
-            var result = OmniRelayErrors.ToResult<IDuplexStreamCall>(ex, transport: GrpcTransportConstants.TransportName);
-            RecordPeerOutcome(lease, result.Error!);
-            await lease.DisposeAsync().ConfigureAwait(false);
-            return result;
-        }
+                var operation = new Func<CallInvoker, CallOptions, CancellationToken, Task<IDuplexStreamCall>>(
+                    async (invoker, options, innerToken) =>
+                    {
+                        var call = invoker.AsyncDuplexStreamingCall(method, null, options);
+                        var duplexResult = await GrpcDuplexStreamTransportCall.CreateAsync(request.Meta, call, innerToken).ConfigureAwait(false);
+
+                        if (duplexResult.IsFailure)
+                        {
+                            call.Dispose();
+                            throw new ResultException(duplexResult.Error!);
+                        }
+
+                        return duplexResult.Value;
+                    });
+
+                var duplexResult = await ExecuteGrpcCallAsync(context, request.Meta, callOptions, operation, token).ConfigureAwait(false);
+
+                if (duplexResult.IsFailure && duplexResult.Error is { } failure)
+                {
+                    RecordClientFailure(context, failure);
+                    await context.Lease.DisposeAsync().ConfigureAwait(false);
+                    return duplexResult;
+                }
+
+                RecordClientSuccess(context);
+                var wrapped = new PeerTrackedDuplexStreamCall(duplexResult.Value, context.Lease);
+                return Ok((IDuplexStreamCall)wrapped);
+            },
+            cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -873,6 +716,46 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         }
 
         return Ok((lease, grpcPeer, false));
+    }
+
+    private readonly record struct PeerInvocationContext(PeerLease Lease, GrpcPeer Peer, bool UsedPreferred, Activity? Activity);
+
+    private ValueTask<Result<TResult>> WithPeerContextAsync<TResult>(
+        RequestMeta meta,
+        string procedure,
+        string callKind,
+        bool disposeLeaseOnCompletion,
+        Func<PeerInvocationContext, CancellationToken, ValueTask<Result<TResult>>> operation,
+        CancellationToken cancellationToken)
+    {
+        return AcquirePeerAsync(meta, cancellationToken)
+            .ThenValueTaskAsync(async (acquired, token) =>
+            {
+                var (lease, peer, usedPreferred) = acquired;
+                using var activity = GrpcTransportDiagnostics.StartClientActivity(_remoteService, procedure, peer.Address, callKind);
+                if (activity is not null)
+                {
+                    activity.SetTag("omnirelay.discovery.preferred_protocol", _clientRuntimeOptions?.EnableHttp3 == true ? "h3" : "any");
+                    var supportsH3 = _endpointHttp3Support?.TryGetValue(peer.Address, out var supported) == true && supported;
+                    activity.SetTag("omnirelay.peer.supports_h3", supportsH3);
+                    activity.SetTag("omnirelay.discovery.selection", usedPreferred ? "preferred" : "fallback");
+                }
+
+                if (_clientRuntimeOptions?.EnableHttp3 == true && !usedPreferred)
+                {
+                    GrpcTransportMetrics.RecordClientFallback(meta, http3Desired: true);
+                }
+
+                var context = new PeerInvocationContext(lease, peer, usedPreferred, activity);
+
+                if (!disposeLeaseOnCompletion)
+                {
+                    return await operation(context, token).ConfigureAwait(false);
+                }
+
+                await using var leaseScope = lease.ConfigureAwait(false);
+                return await operation(context, token).ConfigureAwait(false);
+            }, cancellationToken);
     }
 
     private static DateTime? ResolveDeadline(RequestMeta meta)
@@ -1496,6 +1379,103 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
                 throw;
             }
         }
+    }
+
+    private async ValueTask<Result<T>> ExecuteGrpcCallAsync<T>(
+        PeerInvocationContext context,
+        RequestMeta requestMeta,
+        CallOptions callOptions,
+        Func<CallInvoker, CallOptions, CancellationToken, Task<T>> operation,
+        CancellationToken cancellationToken)
+    {
+        var result = await Result.TryAsync(
+                token => operation(context.Peer.CallInvoker, callOptions, token),
+                cancellationToken: cancellationToken,
+                errorFactory: ex => NormalizeCallException(ex))
+            .ConfigureAwait(false);
+
+        if (!result.IsFailure || result.Error is null)
+        {
+            return result;
+        }
+
+        return await TryHttp2FallbackAsync(context, requestMeta, callOptions, operation, result.Error, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async ValueTask<Result<T>> TryHttp2FallbackAsync<T>(
+        PeerInvocationContext context,
+        RequestMeta requestMeta,
+        CallOptions callOptions,
+        Func<CallInvoker, CallOptions, CancellationToken, Task<T>> operation,
+        Error originalError,
+        CancellationToken cancellationToken)
+    {
+        if (!RequiresHttp2Fallback(originalError))
+        {
+            return Err<T>(originalError);
+        }
+
+        try
+        {
+            using var fallbackChannel = GrpcChannel.ForAddress(context.Peer.Address, CreateHttp2FallbackOptions());
+            var fallbackInvoker = AttachClientInterceptors(fallbackChannel.CreateCallInvoker());
+
+            if (_clientRuntimeOptions?.EnableHttp3 == true)
+            {
+                GrpcTransportMetrics.RecordClientFallback(requestMeta, http3Desired: true);
+            }
+
+            return await Result.TryAsync(
+                    token => operation(fallbackInvoker, callOptions, token),
+                    cancellationToken: cancellationToken,
+                    errorFactory: ex => NormalizeCallException(ex, annotateFallback: false))
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            var fallbackError = NormalizeCallException(ex, annotateFallback: false);
+            return Err<T>(fallbackError);
+        }
+    }
+
+    private Error NormalizeCallException(Exception exception, bool annotateFallback = true)
+    {
+        Error error = exception switch
+        {
+            RpcException rpcException => OmniRelayErrorAdapter.FromStatus(
+                GrpcStatusMapper.FromStatus(rpcException.Status),
+                string.IsNullOrWhiteSpace(rpcException.Status.Detail) ? rpcException.Status.StatusCode.ToString() : rpcException.Status.Detail,
+                transport: GrpcTransportConstants.TransportName),
+            OmniRelayException omnirelayException => omnirelayException.Error,
+            ResultException resultException when resultException.Error is not null => resultException.Error,
+            _ => OmniRelayErrors.FromException(exception, GrpcTransportConstants.TransportName).Error
+        };
+
+        if (annotateFallback && CanFallbackToHttp2(exception))
+        {
+            error = error.WithMetadata(Http2FallbackMetadataKey, true);
+        }
+
+        return error.WithCause(exception);
+    }
+
+    private static bool RequiresHttp2Fallback(Error error) =>
+        error.TryGetMetadata(Http2FallbackMetadataKey, out bool fallback) && fallback;
+
+    private static void RecordClientSuccess(PeerInvocationContext context)
+    {
+        GrpcTransportDiagnostics.SetStatus(context.Activity, StatusCode.OK);
+        context.Lease.MarkSuccess();
+    }
+
+    private static void RecordClientFailure(PeerInvocationContext context, Error error)
+    {
+        var exception = error.Cause ?? OmniRelayErrors.FromError(error, GrpcTransportConstants.TransportName);
+        var status = GrpcStatusMapper.ToStatus(
+            OmniRelayErrorAdapter.ToStatus(error),
+            error.Message ?? exception.Message ?? "gRPC call failed.");
+        GrpcTransportDiagnostics.RecordException(context.Activity, exception, status.StatusCode, status.Detail);
+        RecordPeerOutcome(context.Lease, error);
     }
 
     private static void RecordPeerOutcome(PeerLease lease, Error error)

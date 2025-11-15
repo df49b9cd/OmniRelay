@@ -1,4 +1,4 @@
-# DISC-014 – Sample & Documentation Refresh
+# DISC-014 - Sample & Documentation Refresh
 
 ## Goal
 Update samples, README files, and docker assets to demonstrate the new discovery plane, transport defaults (gRPC/HTTP3), and configuration workflows.
@@ -10,10 +10,10 @@ Update samples, README files, and docker assets to demonstrate the new discovery
 - Add diagrams/flowcharts showing bootstrap, transport negotiation, and failover.
 
 ## Requirements
-1. **Accuracy** – Documentation must match the latest architecture sections; include cross-links to `docs/architecture/service-discovery.md`.
-2. **Examples** – Provide step-by-step instructions for enabling HTTP/3, running the CLI, inspecting shard maps, and performing rebalances.
-3. **Consistency** – Ensure terminology (clusters, shards, leadership tokens) matches architecture docs.
-4. **Validation** – Run `docs` lint/Markdown checks; ensure screenshots/diagrams updated.
+1. **Accuracy** - Documentation must match the latest architecture sections; include cross-links to `docs/architecture/service-discovery.md`.
+2. **Examples** - Provide step-by-step instructions for enabling HTTP/3, running the CLI, inspecting shard maps, and performing rebalances.
+3. **Consistency** - Ensure terminology (clusters, shards, leadership tokens) matches architecture docs.
+4. **Validation** - Run `docs` lint/Markdown checks; ensure screenshots/diagrams updated.
 
 ## Deliverables
 - Updated README files, docs pages, and diagrams.
@@ -28,7 +28,11 @@ Update samples, README files, and docker assets to demonstrate the new discovery
 ## References
 - `docs/architecture/service-discovery.md`, `docs/architecture/omnirelay-rpc-mesh.md`.
 
+- Native AOT gate: Publish with /p:PublishAot=true and treat trimming warnings as errors per REFDISC-034..037.
+
 ## Testing Strategy
+All test tiers must run against native AOT artifacts per REFDISC-034..037.
+
 
 ### Unit tests
 - Run markdown/link linting plus Vale/DocsStyle rules to catch outdated references, terminology mismatches, or broken cross-links introduced by the refresh.
@@ -49,3 +53,4 @@ Update samples, README files, and docker assets to demonstrate the new discovery
 #### OmniRelay.HyperscaleFeatureTests
 - Run parallel documentation validations across multiple OS/cluster combinations to ensure the guidance scales beyond the standard developer setup.
 - Review localization or role-specific variants (SRE vs product) in large batches to confirm terminology, links, and diagrams remain accurate across dozens of documents.
+- REFDISC-034..037 - AOT readiness baseline and CI gating.

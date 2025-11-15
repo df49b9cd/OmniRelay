@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using OmniRelay.ControlPlane.Security;
 
 namespace OmniRelay.Core.Gossip;
 
@@ -110,9 +111,17 @@ public sealed class MeshGossipTlsOptions
     public string? CertificateData { get; set; }
         = Environment.GetEnvironmentVariable("MESH_GOSSIP_CERT_DATA");
 
+    /// <summary>Secret name containing base64 PKCS12 certificate data.</summary>
+    public string? CertificateDataSecret { get; set; }
+        = Environment.GetEnvironmentVariable("MESH_GOSSIP_CERT_DATA_SECRET");
+
     /// <summary>Password for the certificate if required.</summary>
     public string? CertificatePassword { get; set; }
         = Environment.GetEnvironmentVariable("MESH_GOSSIP_CERT_PASSWORD");
+
+    /// <summary>Secret resolving the certificate password.</summary>
+    public string? CertificatePasswordSecret { get; set; }
+        = Environment.GetEnvironmentVariable("MESH_GOSSIP_CERT_PASSWORD_SECRET");
 
     /// <summary>When true, certificate validation errors are ignored (dev use only).</summary>
     public bool AllowUntrustedCertificates { get; set; }
@@ -127,4 +136,30 @@ public sealed class MeshGossipTlsOptions
     /// <summary>Optional override for certificate reload interval.</summary>
     public TimeSpan? ReloadIntervalOverride { get; set; }
 
+    internal TransportTlsOptions ToTransportTlsOptions(TimeSpan defaultReloadInterval)
+    {
+        var options = new TransportTlsOptions
+        {
+            CertificatePath = CertificatePath,
+            CertificateData = CertificateData,
+            CertificateDataSecret = CertificateDataSecret,
+            CertificatePassword = CertificatePassword,
+            CertificatePasswordSecret = CertificatePasswordSecret,
+            AllowUntrustedCertificates = AllowUntrustedCertificates,
+            CheckCertificateRevocation = CheckCertificateRevocation,
+            ReloadInterval = ReloadIntervalOverride ?? defaultReloadInterval
+        };
+
+        foreach (var thumbprint in AllowedThumbprints)
+        {
+            if (string.IsNullOrWhiteSpace(thumbprint))
+            {
+                continue;
+            }
+
+            options.AllowedThumbprints.Add(thumbprint.Trim());
+        }
+
+        return options;
+    }
 }

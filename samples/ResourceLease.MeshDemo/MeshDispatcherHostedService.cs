@@ -1,5 +1,6 @@
 using Hugo;
 using Microsoft.Extensions.Options;
+using OmniRelay.ControlPlane.Throttling;
 using OmniRelay.Core.Gossip;
 using OmniRelay.Core.Peers;
 using OmniRelay.Dispatcher;

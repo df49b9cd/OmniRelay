@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OmniRelay.Core.Peers;
+using OmniRelay.Security.Secrets;
 
 namespace OmniRelay.Core.Gossip;
 
@@ -46,7 +47,8 @@ public static class MeshGossipServiceCollectionExtensions
             var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
             var timeProvider = sp.GetService<TimeProvider>() ?? TimeProvider.System;
             var tracker = sp.GetService<PeerLeaseHealthTracker>();
-            return new MeshGossipHost(options, metadata: null, logger, loggerFactory, timeProvider, tracker);
+            var secretProvider = sp.GetService<ISecretProvider>();
+            return new MeshGossipHost(options, metadata: null, logger, loggerFactory, timeProvider, tracker, secretProvider: secretProvider);
         });
 
         return services;

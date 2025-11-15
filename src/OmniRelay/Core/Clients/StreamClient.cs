@@ -43,18 +43,14 @@ public sealed class StreamClient<TRequest, TResponse>
 
         var meta = EnsureEncoding(request.Meta);
 
-        var encodeResult = _codec.EncodeRequest(request.Body, meta);
-        if (encodeResult.IsFailure)
-        {
-            yield return OmniRelayErrors.ToResult<Response<TResponse>>(encodeResult.Error!, options.Direction.ToString());
-            yield break;
-        }
-
-        var rawRequest = new Request<ReadOnlyMemory<byte>>(meta, encodeResult.Value);
-        var streamResult = await _pipeline(rawRequest, options, cancellationToken).ConfigureAwait(false);
+        var streamResult = await _codec.EncodeRequest(request.Body, meta)
+            .Map(payload => new Request<ReadOnlyMemory<byte>>(meta, payload))
+            .ThenValueTaskAsync((outboundRequest, token) => _pipeline(outboundRequest, options, token), cancellationToken)
+            .ConfigureAwait(false);
         if (streamResult.IsFailure)
         {
-            yield return OmniRelayErrors.ToResult<Response<TResponse>>(streamResult.Error!, options.Direction.ToString());
+            var transport = request.Meta.Transport ?? options.Direction.ToString();
+            yield return OmniRelayErrors.ToResult<Response<TResponse>>(streamResult.Error!, transport);
             yield break;
         }
 

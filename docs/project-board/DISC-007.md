@@ -1,4 +1,4 @@
-# DISC-007 – Registry Read APIs
+# DISC-007 - Registry Read APIs
 
 ## Goal
 Expose authoritative peer, cluster, version, and configuration data through versioned control-plane read endpoints with strong RBAC and streaming support.
@@ -14,11 +14,11 @@ Expose authoritative peer, cluster, version, and configuration data through vers
 - Generate OpenAPI/Protobuf contracts and publish sample queries.
 
 ## Requirements
-1. **RBAC** – Enforce scopes (`mesh.read`, `mesh.observe`) and integrate with existing auth providers.
-2. **Performance** – Target <200 ms responses for 1k peers; handle 100+ concurrent streaming clients.
-3. **Caching** – Support ETag + `If-None-Match` semantics for REST endpoints.
-4. **Consistency** – Document snapshot semantics (e.g., data reflects last committed registry version).
-5. **Telemetry** – Log/metric each request including negotiated transport/encoding for visibility.
+1. **RBAC** - Enforce scopes (`mesh.read`, `mesh.observe`) and integrate with existing auth providers.
+2. **Performance** - Target <200 ms responses for 1k peers; handle 100+ concurrent streaming clients.
+3. **Caching** - Support ETag + `If-None-Match` semantics for REST endpoints.
+4. **Consistency** - Document snapshot semantics (e.g., data reflects last committed registry version).
+5. **Telemetry** - Log/metric each request including negotiated transport/encoding for visibility.
 
 ## Deliverables
 - API implementations with unit/integration tests.
@@ -30,7 +30,11 @@ Expose authoritative peer, cluster, version, and configuration data through vers
 - Unauthorized calls fail with 401/403 and audit entries appear.
 - CLI `omnirelay mesh peers/clusters` commands consume these APIs with pagination support.
 
+- Native AOT gate: Publish with /p:PublishAot=true and treat trimming warnings as errors per REFDISC-034..037.
+
 ## Testing Strategy
+All test tiers must run against native AOT artifacts per REFDISC-034..037.
+
 
 ### Unit tests
 - Verify validators for filtering, pagination, sorting, and RBAC claims to ensure only supported query combinations reach the repository layer.
@@ -53,4 +57,5 @@ Expose authoritative peer, cluster, version, and configuration data through vers
 - Execute bulk RBAC changes across many users to confirm audit trails, caching layers, and client retry behavior remain consistent at scale.
 
 ## References
-- `docs/architecture/service-discovery.md` – “Discoverable peer registry API”, “Peer/cluster registry APIs”.
+- `docs/architecture/service-discovery.md` - “Discoverable peer registry API”, “Peer/cluster registry APIs”.
+- REFDISC-034..037 - AOT readiness baseline and CI gating.

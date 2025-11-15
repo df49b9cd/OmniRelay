@@ -20,6 +20,10 @@ public sealed class OmniRelayConfigurationOptions
     public EncodingsConfiguration Encodings { get; init; } = new();
 
     public DiagnosticsConfiguration Diagnostics { get; init; } = new();
+
+    public ShardingConfiguration Sharding { get; init; } = new();
+
+    public SecurityConfiguration Security { get; init; } = new();
 }
 
 /// <summary>Inbound transport configuration for HTTP and gRPC servers.</summary>
@@ -91,7 +95,11 @@ public sealed class GrpcServerTlsConfiguration
 
     public string? CertificateData { get; set; }
 
+    public string? CertificateDataSecret { get; set; }
+
     public string? CertificatePassword { get; set; }
+
+    public string? CertificatePasswordSecret { get; set; }
 
     public bool? CheckCertificateRevocation { get; set; }
 
@@ -155,7 +163,11 @@ public sealed class HttpServerTlsConfiguration
 
     public string? CertificateData { get; set; }
 
+    public string? CertificateDataSecret { get; set; }
+
     public string? CertificatePassword { get; set; }
+
+    public string? CertificatePasswordSecret { get; set; }
 
     public string? ClientCertificateMode { get; set; }
 
@@ -283,7 +295,11 @@ public sealed class GrpcClientTlsConfiguration
 
     public string? CertificateData { get; set; }
 
+    public string? CertificateDataSecret { get; set; }
+
     public string? CertificatePassword { get; set; }
+
+    public string? CertificatePasswordSecret { get; set; }
 
     public string? TargetNameOverride { get; set; }
 

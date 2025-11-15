@@ -1,4 +1,4 @@
-# DISC-015 – Operator Dashboards & Alerts
+# DISC-015 - Operator Dashboards & Alerts
 
 ## Goal
 Deliver a comprehensive observability pack (Grafana dashboards + Prometheus/OTLP alerts) covering leadership, shard distribution, gossip health, transport negotiation, and replication lag.
@@ -14,10 +14,10 @@ Deliver a comprehensive observability pack (Grafana dashboards + Prometheus/OTLP
 - Include templating for namespace/cluster filters and RBAC-friendly views.
 
 ## Requirements
-1. **Data sources** – Use standardized Prometheus metrics; ensure label cardinality manageable.
-2. **Docs** – Each dashboard must have a README section describing panels, common questions, and remediation steps.
-3. **Testing** – Add automated snapshots/tests ensuring dashboards load (via Grafana provisioning tests).
-4. **Versioning** – Store dashboard JSON + alert YAML under version control with release notes.
+1. **Data sources** - Use standardized Prometheus metrics; ensure label cardinality manageable.
+2. **Docs** - Each dashboard must have a README section describing panels, common questions, and remediation steps.
+3. **Testing** - Add automated snapshots/tests ensuring dashboards load (via Grafana provisioning tests).
+4. **Versioning** - Store dashboard JSON + alert YAML under version control with release notes.
 
 ## Deliverables
 - Grafana JSON dashboards, Prometheus rule files.
@@ -30,9 +30,13 @@ Deliver a comprehensive observability pack (Grafana dashboards + Prometheus/OTLP
 - Synthetic checks pass in CI/CD and after environment rollout.
 
 ## References
-- `docs/architecture/service-discovery.md` – “Observability + operator tooling”, “Risks & mitigations”.
+- `docs/architecture/service-discovery.md` - “Observability + operator tooling”, “Risks & mitigations”.
+
+- Native AOT gate: Publish with /p:PublishAot=true and treat trimming warnings as errors per REFDISC-034..037.
 
 ## Testing Strategy
+All test tiers must run against native AOT artifacts per REFDISC-034..037.
+
 
 ### Unit tests
 - Validate dashboard JSON and alert YAML via schema/tooling (`grizzly`, `tanka`, or Grafana JSON lint) so every commit passes structure and datasource checks.
@@ -53,3 +57,4 @@ Deliver a comprehensive observability pack (Grafana dashboards + Prometheus/OTLP
 #### OmniRelay.HyperscaleFeatureTests
 - Replay simultaneous incidents across multiple clusters to test dashboard performance, alert deduplication, and silence handling when signal volume spikes.
 - Validate export/report tooling by generating organization-wide snapshots from dozens of dashboards, ensuring links, screenshots, and annotations remain coherent at scale.
+- REFDISC-034..037 - AOT readiness baseline and CI gating.

@@ -32,7 +32,7 @@ OmniRelay is the .NET port of Uber's YARPC runtime, layered on top of Hugo concu
 - `src/OmniRelay.Cli` - builds the `OmniRelay.Cli` global tool (`omnirelay` command) for config validation, introspection, and scripted smoke tests.
 - `src/OmniRelay.Codegen.Protobuf` - builds the `OmniRelay.Codegen.Protobuf` console plug-in (`protoc-gen-omnirelay-csharp`).
 - `src/OmniRelay.Codegen.Protobuf.Generator` - Roslyn incremental generator package (ships OmniRelay runtime dependencies).
-- `tests/OmniRelay.Tests` - xUnit coverage across transports, middleware, peer logic, codecs, configuration, and codegen.
+- `tests/OmniRelay.Core.UnitTests` - xUnit coverage across transports, middleware, peer logic, codecs, configuration, and codegen.
 - `tests/OmniRelay.YabInterop` - yab-driven HTTP/gRPC interop harness.
 - `docs/` - architecture plan, backlog, and reference guides (streaming, middleware, diagnostics, shadowing, etc.).
 
@@ -40,7 +40,7 @@ OmniRelay is the .NET port of Uber's YARPC runtime, layered on top of Hugo concu
 
 ```bash
 dotnet build OmniRelay.slnx
-dotnet test tests/OmniRelay.Tests/OmniRelay.Tests.csproj
+dotnet test tests/OmniRelay.Core.UnitTests/OmniRelay.Core.UnitTests.csproj
 ```
 
 OmniRelay targets `.NET 10` and pulls Hugo, gRPC, and JsonSchema.Net from NuGet. Tests expect loopback HTTP/2 support for gRPC scenarios.
@@ -60,6 +60,27 @@ Docker logging levels map to `docker build --progress=<level>`:
 - `auto` (default) – Docker chooses between TTY/plain depending on the terminal.
 - `plain` – line-oriented logs, useful for CI and truncation-free output.
 - `tty` – interactive TTY view with live-updating build steps.
+
+### Native AOT Builds
+
+OmniRelay is AOT-first for cloud-native deployments. Run the shared helper to produce native binaries (defaults to `linux-x64`):
+
+```bash
+./eng/run-aot-publish.sh
+./eng/run-aot-publish.sh linux-arm64 Release
+```
+
+See `docs/architecture/aot-guidelines.md` for trimming guidance, contributor expectations, and troubleshooting tips.
+
+### Hyperscale Smoke Testing
+
+Use the hyperscale CI Dockerfile to run feature/integration/hyperscale suites in a controlled container:
+
+```bash
+docker build -f docker/Dockerfile.hyperscale.ci .
+```
+
+Internally it calls `eng/run-hyperscale-smoke.sh`, which executes the representative chaos/diagnostics suites to validate control-plane readiness.
 
 ## Samples
 
@@ -205,7 +226,7 @@ See `docs/reference/cli.md` for profiles, protobuf automation, and CI recipes.
 ## Protobuf Automation
 
 - `src/OmniRelay.Codegen.Protobuf` provides `protoc-gen-omnirelay-csharp`, which emits dispatcher registration helpers (`Register<Service>`), service interfaces, and typed OmniRelay clients (unary + streaming) with codecs pre-wired.
-- `src/OmniRelay.Codegen.Protobuf.Generator` packages the same emitter as a Roslyn incremental generator. Reference it as an analyzer, generate descriptor sets via `Grpc.Tools`, and add them to `AdditionalFiles` to light up IntelliSense-friendly clients. See `tests/OmniRelay.Tests/Projects/ProtobufIncrementalSample`.
+- `src/OmniRelay.Codegen.Protobuf.Generator` packages the same emitter as a Roslyn incremental generator. Reference it as an analyzer, generate descriptor sets via `Grpc.Tools`, and add them to `AdditionalFiles` to light up IntelliSense-friendly clients. See `tests/OmniRelay.Codegen.Tests/Projects/ProtobufIncrementalSample`.
 
 ## Observability
 

@@ -1,4 +1,4 @@
-# DISC-008 – Registry Mutation APIs
+# DISC-008 - Registry Mutation APIs
 
 ## Goal
 Enable operators and automation to modify peer and cluster state via authenticated control-plane operations (cordon, drain, label, promote, config edit) with full auditing.
@@ -14,11 +14,11 @@ Enable operators and automation to modify peer and cluster state via authenticat
 - Surface operations via CLI (`omnirelay mesh peers drain ...`, `... clusters promote ...`) with confirmation prompts.
 
 ## Requirements
-1. **RBAC** – Require `mesh.operate` or `mesh.admin` scopes; double-confirm destructive actions.
-2. **Workflow hooks** – Support optional change-ticket IDs and reason strings stored in audit log.
-3. **Safety** – Validate preconditions (e.g., cannot demote last active cluster) and return actionable errors.
-4. **Idempotency** – Mutations must be idempotent; repeated requests should not cause inconsistent state.
-5. **Telemetry** – Log actor, action, target, outcome, and latency; emit metrics for operations/sec and failures.
+1. **RBAC** - Require `mesh.operate` or `mesh.admin` scopes; double-confirm destructive actions.
+2. **Workflow hooks** - Support optional change-ticket IDs and reason strings stored in audit log.
+3. **Safety** - Validate preconditions (e.g., cannot demote last active cluster) and return actionable errors.
+4. **Idempotency** - Mutations must be idempotent; repeated requests should not cause inconsistent state.
+5. **Telemetry** - Log actor, action, target, outcome, and latency; emit metrics for operations/sec and failures.
 
 ## Deliverables
 - API handlers, validation logic, and persistence updates.
@@ -31,7 +31,11 @@ Enable operators and automation to modify peer and cluster state via authenticat
 - CLI workflows demonstrate cordon/drain/promote flows end-to-end in integration tests.
 - Error handling covers invalid states with descriptive messages and HTTP status codes.
 
+- Native AOT gate: Publish with /p:PublishAot=true and treat trimming warnings as errors per REFDISC-034..037.
+
 ## Testing Strategy
+All test tiers must run against native AOT artifacts per REFDISC-034..037.
+
 
 ### Unit tests
 - Cover validator logic for cordon/drain/promote requests, ensuring preconditions (e.g., cannot demote the last active cluster) throw consistent problem-detail payloads.
@@ -54,4 +58,5 @@ Enable operators and automation to modify peer and cluster state via authenticat
 - Stress destructive workflows (mass drains, config edits) with staged approvals to ensure guardrails, confirmation prompts, and telemetry remain responsive under scale.
 
 ## References
-- `docs/architecture/service-discovery.md` – “Discoverable peer registry API”, “Required refactorings”, “Risks & mitigations”.
+- `docs/architecture/service-discovery.md` - “Discoverable peer registry API”, “Required refactorings”, “Risks & mitigations”.
+- REFDISC-034..037 - AOT readiness baseline and CI gating.

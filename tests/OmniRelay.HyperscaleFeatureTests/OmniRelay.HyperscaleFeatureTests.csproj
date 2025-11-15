@@ -8,8 +8,10 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <PackageReference Include="Microsoft.Data.Sqlite" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="Shouldly" />
     <PackageReference Include="Testcontainers" />
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio">
@@ -21,6 +23,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\OmniRelay\OmniRelay.csproj" />
     <ProjectReference Include="..\..\src\OmniRelay.Configuration\OmniRelay.Configuration.csproj" />
+    <ProjectReference Include="..\..\src\OmniRelay.ShardStore.Sqlite\OmniRelay.ShardStore.Sqlite.csproj" />
   </ItemGroup>
 
   <ItemGroup>

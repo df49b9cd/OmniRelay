@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics.Metrics;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -28,8 +29,14 @@ public sealed class MeshGossipFeatureTests(FeatureTestApplication application) :
         Assert.True(dispatcherAgent.IsEnabled, "Feature test dispatcher gossip agent is not enabled.");
         var loggerFactory = _application.Services.GetRequiredService<ILoggerFactory>();
         var dispatcherPort = _application.GossipPort;
-        var workerPort = TestPortAllocator.GetRandomPort();
-        var gatewayPort = TestPortAllocator.GetRandomPort();
+        var reservedPorts = new HashSet<int>
+        {
+            _application.ControlPlanePort,
+            _application.HttpInboundPort,
+            dispatcherPort
+        };
+        var workerPort = AllocateUniquePort(reservedPorts);
+        var gatewayPort = AllocateUniquePort(reservedPorts);
 
         var workerHost = await StartPeerAsync(
             "feature-tests-worker",
@@ -42,7 +49,7 @@ public sealed class MeshGossipFeatureTests(FeatureTestApplication application) :
                 $"127.0.0.1:{gatewayPort}"
             },
             loggerFactory,
-            ct).ConfigureAwait(false);
+            ct);
 
         var gatewayHost = await StartPeerAsync(
             "feature-tests-gateway",
@@ -55,25 +62,25 @@ public sealed class MeshGossipFeatureTests(FeatureTestApplication application) :
                 $"127.0.0.1:{workerPort}"
             },
             loggerFactory,
-            ct).ConfigureAwait(false);
+            ct);
 
         var convergenceSucceeded = await WaitForConditionAsync(
             () => AllAlive(dispatcherAgent, workerHost.LocalMetadata.NodeId, gatewayHost.LocalMetadata.NodeId) &&
                   AllAlive(workerHost, dispatcherAgent.LocalMetadata.NodeId, gatewayHost.LocalMetadata.NodeId) &&
                   AllAlive(gatewayHost, dispatcherAgent.LocalMetadata.NodeId, workerHost.LocalMetadata.NodeId),
             TimeSpan.FromSeconds(15),
-            ct).ConfigureAwait(false);
+            ct);
 
         Assert.True(
             convergenceSucceeded,
             $"Mesh peers did not converge.{Environment.NewLine}{DescribeSnapshots(dispatcherAgent, workerHost, gatewayHost)}");
 
-        var diagnosticsSnapshot = await ReadPeerDiagnosticsAsync(ct).ConfigureAwait(false);
-        var cliSnapshot = await ReadCliPeersAsync(ct).ConfigureAwait(false);
+        var diagnosticsSnapshot = await ReadPeerDiagnosticsAsync(ct);
+        var cliSnapshot = await ReadCliPeersAsync(ct);
 
         AssertViewsMatch(diagnosticsSnapshot, cliSnapshot);
 
-        await AssertMetricsAsync(metrics, expectedAlive: 3, ct).ConfigureAwait(false);
+        await AssertMetricsAsync(metrics, expectedAlive: 3, ct);
     }
 
     public ValueTask InitializeAsync() => ValueTask.CompletedTask;
@@ -293,5 +300,17 @@ public sealed class MeshGossipFeatureTests(FeatureTestApplication application) :
             _counts.TryGetValue(status, out var value) ? value : 0;
 
         public void Dispose() => _listener.Dispose();
+    }
+
+    private static int AllocateUniquePort(ISet<int> reserved)
+    {
+        while (true)
+        {
+            var port = TestPortAllocator.GetRandomPort();
+            if (reserved.Add(port))
+            {
+                return port;
+            }
+        }
     }
 }

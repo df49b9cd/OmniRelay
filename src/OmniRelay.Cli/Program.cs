@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.CommandLine;
 using System.Diagnostics.CodeAnalysis;
@@ -10,19 +11,26 @@ using System.Text.Json.Serialization.Metadata;
 using Google.Protobuf;
 using Google.Protobuf.Reflection;
 using Google.Protobuf.WellKnownTypes;
+using Grpc.Core;
 using Hugo;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using OmniRelay.Configuration;
-using OmniRelay.Core.Gossip;
+using OmniRelay.ControlPlane.Bootstrap;
+using OmniRelay.ControlPlane.Clients;
+using OmniRelay.ControlPlane.Upgrade;
 using OmniRelay.Core;
-using OmniRelay.Core.Leadership;
 using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
 using OmniRelay.Errors;
+using OmniRelay.Mesh.Control.V1;
 using OmniRelay.Transport.Grpc;
 using OmniRelay.Transport.Http;
+using CoreLeadershipEventKind = OmniRelay.Core.Leadership.LeadershipEventKind;
+using ProtoLeadershipEvent = OmniRelay.Mesh.Control.V1.LeadershipEvent;
+using ProtoLeadershipEventKind = OmniRelay.Mesh.Control.V1.LeadershipEventKind;
 
 namespace OmniRelay.Cli;
 
@@ -31,6 +39,7 @@ namespace OmniRelay.Cli;
 public static class Program
 {
     private const string DefaultConfigSection = "omnirelay";
+    private static readonly JsonWriterOptions PrettyWriterOptions = new() { Indented = true };
     private const string DefaultIntrospectionUrl = "http://127.0.0.1:8080/omnirelay/introspect";
     private const string DefaultControlPlaneUrl = "http://127.0.0.1:8080";
     private static readonly JsonSerializerOptions PrettyJsonOptions = new(JsonSerializerDefaults.Web)
@@ -434,7 +443,9 @@ public static class Program
         var command = new Command("mesh", "Mesh control-plane tooling.")
         {
             CreateMeshLeadersCommand(),
-            CreateMeshPeersCommand()
+            CreateMeshPeersCommand(),
+            CreateMeshUpgradeCommand(),
+            CreateMeshBootstrapCommand()
         };
         return command;
     }
@@ -454,6 +465,201 @@ public static class Program
         {
             CreateMeshPeersListCommand()
         };
+
+        return command;
+    }
+
+    internal static Command CreateMeshUpgradeCommand()
+    {
+        var command = new Command("upgrade", "Node upgrade and drain orchestration.")
+        {
+            CreateMeshUpgradeStatusCommand(),
+            CreateMeshUpgradeDrainCommand(),
+            CreateMeshUpgradeResumeCommand()
+        };
+
+        return command;
+    }
+
+    internal static Command CreateMeshBootstrapCommand()
+    {
+        var command = new Command("bootstrap", "Bootstrap token and join tooling.")
+        {
+            CreateMeshBootstrapIssueCommand(),
+            CreateMeshBootstrapJoinCommand()
+        };
+        return command;
+    }
+
+    internal static Command CreateMeshUpgradeStatusCommand()
+    {
+        var command = new Command("status", "Show node drain state.");
+
+        var urlOption = new Option<string>("--url")
+        {
+            Description = "Base control-plane URL (e.g. http://127.0.0.1:8080).",
+            DefaultValueFactory = _ => DefaultControlPlaneUrl
+        };
+        urlOption.Aliases.Add("-u");
+
+        var jsonOption = new Option<bool>("--json")
+        {
+            Description = "Emit JSON instead of plain text."
+        };
+
+        var timeoutOption = new Option<string?>("--timeout")
+        {
+            Description = "Request timeout (e.g. 10s, 1m)."
+        };
+
+        command.Add(urlOption);
+        command.Add(jsonOption);
+        command.Add(timeoutOption);
+
+        command.SetAction(parseResult =>
+        {
+            var url = parseResult.GetValue(urlOption) ?? DefaultControlPlaneUrl;
+            var asJson = parseResult.GetValue(jsonOption);
+            var timeout = parseResult.GetValue(timeoutOption);
+            return RunMeshUpgradeStatusAsync(url, asJson, timeout).GetAwaiter().GetResult();
+        });
+
+        return command;
+    }
+
+    internal static Command CreateMeshUpgradeDrainCommand()
+    {
+        var command = new Command("drain", "Begin draining the node for an upgrade.");
+
+        var urlOption = new Option<string>("--url")
+        {
+            Description = "Base control-plane URL (e.g. http://127.0.0.1:8080).",
+            DefaultValueFactory = _ => DefaultControlPlaneUrl
+        };
+        urlOption.Aliases.Add("-u");
+
+        var reasonOption = new Option<string?>("--reason")
+        {
+            Description = "Optional reason to record with the drain request."
+        };
+
+        var timeoutOption = new Option<string?>("--timeout")
+        {
+            Description = "Request timeout (e.g. 10s, 1m)."
+        };
+
+        command.Add(urlOption);
+        command.Add(reasonOption);
+        command.Add(timeoutOption);
+
+        command.SetAction(parseResult =>
+        {
+            var url = parseResult.GetValue(urlOption) ?? DefaultControlPlaneUrl;
+            var reason = parseResult.GetValue(reasonOption);
+            var timeout = parseResult.GetValue(timeoutOption);
+            return RunMeshUpgradeDrainAsync(url, reason, timeout).GetAwaiter().GetResult();
+        });
+
+        return command;
+    }
+
+    internal static Command CreateMeshUpgradeResumeCommand()
+    {
+        var command = new Command("resume", "Resume serving traffic after a drain.");
+
+        var urlOption = new Option<string>("--url")
+        {
+            Description = "Base control-plane URL (e.g. http://127.0.0.1:8080).",
+            DefaultValueFactory = _ => DefaultControlPlaneUrl
+        };
+        urlOption.Aliases.Add("-u");
+
+        var timeoutOption = new Option<string?>("--timeout")
+        {
+            Description = "Request timeout (e.g. 10s, 1m)."
+        };
+
+        command.Add(urlOption);
+        command.Add(timeoutOption);
+
+        command.SetAction(parseResult =>
+        {
+            var url = parseResult.GetValue(urlOption) ?? DefaultControlPlaneUrl;
+            var timeout = parseResult.GetValue(timeoutOption);
+            return RunMeshUpgradeResumeAsync(url, timeout).GetAwaiter().GetResult();
+        });
+
+        return command;
+    }
+
+    internal static Command CreateMeshBootstrapIssueCommand()
+    {
+        var command = new Command("issue-token", "Generate a bootstrap join token.");
+
+        var signingKeyOption = new Option<string>("--signing-key")
+        {
+            Description = "Signing key used for HMAC tokens.",
+            Arity = ArgumentArity.ExactlyOne
+        };
+        var clusterOption = new Option<string>("--cluster") { Description = "Cluster identifier for the token." };
+        var roleOption = new Option<string>("--role") { Description = "Role assigned to the joining node." };
+        var lifetimeOption = new Option<string?>("--lifetime") { Description = "Token lifetime (e.g. 1h, 30m). Defaults to 1h." };
+        var maxUsesOption = new Option<int?>("--max-uses") { Description = "Maximum number of times the token can be consumed." };
+        var issuerOption = new Option<string?>("--issuer") { Description = "Token issuer (defaults to omnirelay-cli)." };
+
+        command.Add(signingKeyOption);
+        command.Add(clusterOption);
+        command.Add(roleOption);
+        command.Add(lifetimeOption);
+        command.Add(maxUsesOption);
+        command.Add(issuerOption);
+
+        command.SetAction(parseResult =>
+        {
+            var signingKey = parseResult.GetValue(signingKeyOption) ?? string.Empty;
+            var cluster = parseResult.GetValue(clusterOption) ?? "default";
+            var role = parseResult.GetValue(roleOption) ?? "worker";
+            var lifetime = parseResult.GetValue(lifetimeOption);
+            var maxUses = parseResult.GetValue(maxUsesOption);
+            var issuer = parseResult.GetValue(issuerOption) ?? "omnirelay-cli";
+            return RunMeshBootstrapIssueToken(signingKey, cluster, role, lifetime, maxUses, issuer);
+        });
+
+        return command;
+    }
+
+    internal static Command CreateMeshBootstrapJoinCommand()
+    {
+        var command = new Command("join", "Request a bootstrap bundle using a join token.");
+
+        var urlOption = new Option<string>("--url")
+        {
+            Description = "Bootstrap server base URL (e.g. https://127.0.0.1:9443).",
+            DefaultValueFactory = _ => DefaultControlPlaneUrl
+        };
+        urlOption.Aliases.Add("-u");
+
+        var tokenOption = new Option<string>("--token")
+        {
+            Description = "Join token issued by the bootstrap service.",
+            Arity = ArgumentArity.ExactlyOne
+        };
+        var outputOption = new Option<string?>("--output") { Description = "Optional path to write the bootstrap bundle (JSON)." };
+        var timeoutOption = new Option<string?>("--timeout") { Description = "Request timeout (e.g. 30s, 1m)." };
+
+        command.Add(urlOption);
+        command.Add(tokenOption);
+        command.Add(outputOption);
+        command.Add(timeoutOption);
+
+        command.SetAction(parseResult =>
+        {
+            var url = parseResult.GetValue(urlOption) ?? DefaultControlPlaneUrl;
+            var token = parseResult.GetValue(tokenOption) ?? string.Empty;
+            var output = parseResult.GetValue(outputOption);
+            var timeout = parseResult.GetValue(timeoutOption);
+            return RunMeshBootstrapJoinAsync(url, token, output, timeout).GetAwaiter().GetResult();
+        });
 
         return command;
     }
@@ -519,10 +725,16 @@ public static class Program
             Description = "Request timeout (e.g. 10s, 1m)."
         };
 
+        var grpcUrlOption = new Option<string?>("--grpc-url")
+        {
+            Description = "Optional gRPC control-plane URL for leadership streaming (e.g. http://127.0.0.1:9090)."
+        };
+
         command.Add(urlOption);
         command.Add(scopeOption);
         command.Add(watchOption);
         command.Add(timeoutOption);
+        command.Add(grpcUrlOption);
 
         command.SetAction(parseResult =>
         {
@@ -530,7 +742,8 @@ public static class Program
             var scope = parseResult.GetValue(scopeOption);
             var watch = parseResult.GetValue(watchOption);
             var timeout = parseResult.GetValue(timeoutOption);
-            return RunMeshLeadersStatusAsync(url, scope, watch, timeout).GetAwaiter().GetResult();
+            var grpcUrl = parseResult.GetValue(grpcUrlOption);
+            return RunMeshLeadersStatusAsync(url, scope, watch, timeout, grpcUrl).GetAwaiter().GetResult();
         });
 
         return command;
@@ -1162,10 +1375,10 @@ public static class Program
         }
 
         var resolvedSection = string.IsNullOrWhiteSpace(section) ? DefaultConfigSection : section;
-        IServeHost? serveHost;
+        IServeHost host;
         try
         {
-            serveHost = CliRuntime.ServeHostFactory.CreateHost(configuration, resolvedSection);
+            host = CliRuntime.ServeHostFactory.CreateHost(configuration, resolvedSection);
         }
         catch (Exception ex)
         {
@@ -1173,67 +1386,69 @@ public static class Program
             return 1;
         }
 
-        await using var host = serveHost;
-        var shutdownSignal = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        ConsoleCancelEventHandler? cancelHandler = null;
-
-        void RequestShutdown()
+        await using (host.ConfigureAwait(false))
         {
-            shutdownSignal.TrySetResult(true);
-        }
+            var shutdownSignal = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            ConsoleCancelEventHandler? cancelHandler = null;
 
-        cancelHandler = (_, eventArgs) =>
-        {
-            eventArgs.Cancel = true;
-            RequestShutdown();
-        };
-
-        Console.CancelKeyPress += cancelHandler;
-
-        if (shutdownAfter.HasValue)
-        {
-            _ = Task.Run(async () =>
+            void RequestShutdown()
             {
-                try
-                {
-                    await Task.Delay(shutdownAfter.Value).ConfigureAwait(false);
-                    RequestShutdown();
-                }
-                catch
-                {
-                    RequestShutdown();
-                }
-            });
-        }
-
-        try
-        {
-            await host.StartAsync(CancellationToken.None).ConfigureAwait(false);
-            var dispatcher = host.Dispatcher;
-            var serviceName = dispatcher?.ServiceName ?? resolvedSection;
-            Console.WriteLine($"OmniRelay dispatcher '{serviceName}' started.");
-
-            if (!string.IsNullOrWhiteSpace(readyFile))
-            {
-                TryWriteReadyFile(readyFile!);
+                shutdownSignal.TrySetResult(true);
             }
 
-            Console.WriteLine(shutdownAfter.HasValue
-                ? $"Shutting down automatically after {shutdownAfter.Value:c}."
-                : "Press Ctrl+C to stop.");
+            cancelHandler = (_, eventArgs) =>
+            {
+                eventArgs.Cancel = true;
+                RequestShutdown();
+            };
 
-            await shutdownSignal.Task.ConfigureAwait(false);
-            await host.StopAsync(CancellationToken.None).ConfigureAwait(false);
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            await Console.Error.WriteLineAsync($"Failed to run dispatcher: {ex.Message}").ConfigureAwait(false);
-            return 1;
-        }
-        finally
-        {
-            Console.CancelKeyPress -= cancelHandler;
+            Console.CancelKeyPress += cancelHandler;
+
+            if (shutdownAfter.HasValue)
+            {
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await Task.Delay(shutdownAfter.Value).ConfigureAwait(false);
+                        RequestShutdown();
+                    }
+                    catch
+                    {
+                        RequestShutdown();
+                    }
+                });
+            }
+
+            try
+            {
+                await host.StartAsync(CancellationToken.None).ConfigureAwait(false);
+                var dispatcher = host.Dispatcher;
+                var serviceName = dispatcher?.ServiceName ?? resolvedSection;
+                Console.WriteLine($"OmniRelay dispatcher '{serviceName}' started.");
+
+                if (!string.IsNullOrWhiteSpace(readyFile))
+                {
+                    TryWriteReadyFile(readyFile!);
+                }
+
+                Console.WriteLine(shutdownAfter.HasValue
+                    ? $"Shutting down automatically after {shutdownAfter.Value:c}."
+                    : "Press Ctrl+C to stop.");
+
+                await shutdownSignal.Task.ConfigureAwait(false);
+                await host.StopAsync(CancellationToken.None).ConfigureAwait(false);
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                await Console.Error.WriteLineAsync($"Failed to run dispatcher: {ex.Message}").ConfigureAwait(false);
+                return 1;
+            }
+            finally
+            {
+                Console.CancelKeyPress -= cancelHandler;
+            }
         }
     }
 
@@ -1845,30 +2060,33 @@ public static class Program
             uris.Add(uri);
         }
 
-        await using var invoker = CliRuntime.GrpcInvokerFactory.Create(uris, remoteService, runtimeOptions);
+        var invoker = CliRuntime.GrpcInvokerFactory.Create(uris, remoteService, runtimeOptions);
 
-        try
+        await using (invoker.ConfigureAwait(false))
         {
-            await invoker.StartAsync(cancellationToken).ConfigureAwait(false);
-            var result = await invoker.CallAsync(request, cancellationToken).ConfigureAwait(false);
-
-            if (result.IsSuccess)
+            try
             {
-                PrintResponse(result.Value);
-                return 0;
-            }
+                await invoker.StartAsync(cancellationToken).ConfigureAwait(false);
+                var result = await invoker.CallAsync(request, cancellationToken).ConfigureAwait(false);
 
-            PrintError(result.Error!, "grpc");
-            return 1;
-        }
-        catch (Exception ex)
-        {
-            await Console.Error.WriteLineAsync($"gRPC call failed: {ex.Message}").ConfigureAwait(false);
-            return 1;
-        }
-        finally
-        {
-            await invoker.StopAsync(CancellationToken.None).ConfigureAwait(false);
+                if (result.IsSuccess)
+                {
+                    PrintResponse(result.Value);
+                    return 0;
+                }
+
+                PrintError(result.Error!, "grpc");
+                return 1;
+            }
+            catch (Exception ex)
+            {
+                await Console.Error.WriteLineAsync($"gRPC call failed: {ex.Message}").ConfigureAwait(false);
+                return 1;
+            }
+            finally
+            {
+                await invoker.StopAsync(CancellationToken.None).ConfigureAwait(false);
+            }
         }
     }
 
@@ -2238,7 +2456,7 @@ public static class Program
         PrintMiddlewareLine("Duplex", snapshot.Middleware.InboundDuplex, snapshot.Middleware.OutboundDuplex);
     }
 
-    internal static async Task<int> RunMeshLeadersStatusAsync(string baseUrl, string? scope, bool watch, string? timeoutOption)
+    internal static async Task<int> RunMeshLeadersStatusAsync(string baseUrl, string? scope, bool watch, string? timeoutOption, string? grpcUrlOption)
     {
         var timeout = TimeSpan.FromSeconds(10);
         if (!string.IsNullOrWhiteSpace(timeoutOption) && !TryParseDuration(timeoutOption!, out timeout))
@@ -2249,10 +2467,290 @@ public static class Program
 
         if (watch)
         {
+            if (!string.IsNullOrWhiteSpace(grpcUrlOption))
+            {
+                var grpcResult = await TryRunMeshLeadersWatchGrpcAsync(grpcUrlOption!, scope, timeout).ConfigureAwait(false);
+                if (grpcResult.HasValue)
+                {
+                    return grpcResult.Value;
+                }
+            }
+
             return await RunMeshLeadersWatchAsync(baseUrl, scope, timeout).ConfigureAwait(false);
         }
 
         return await RunMeshLeadersSnapshotAsync(baseUrl, scope, timeout).ConfigureAwait(false);
+    }
+
+    internal static async Task<int> RunMeshUpgradeStatusAsync(string baseUrl, bool asJson, string? timeoutOption)
+    {
+        var timeout = TimeSpan.FromSeconds(10);
+        if (!string.IsNullOrWhiteSpace(timeoutOption) && !TryParseDuration(timeoutOption!, out timeout))
+        {
+            await Console.Error.WriteLineAsync($"Could not parse timeout '{timeoutOption}'.").ConfigureAwait(false);
+            return 1;
+        }
+
+        Uri target;
+        try
+        {
+            target = BuildControlPlaneUri(baseUrl, "/control/upgrade", scope: null);
+        }
+        catch (ArgumentException ex)
+        {
+            await Console.Error.WriteLineAsync(ex.Message).ConfigureAwait(false);
+            return 1;
+        }
+
+        using var client = CliRuntime.HttpClientFactory.CreateClient();
+        client.Timeout = Timeout.InfiniteTimeSpan;
+        using var cts = new CancellationTokenSource(timeout);
+
+        try
+        {
+            using var response = await client.GetAsync(target, cts.Token).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                await Console.Error.WriteLineAsync($"Upgrade status request failed: {(int)response.StatusCode} {response.ReasonPhrase}.").ConfigureAwait(false);
+                return 1;
+            }
+
+            NodeDrainSnapshot? snapshot;
+            await using ((await response.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false)).AsAsyncDisposable(out var stream))
+            {
+                snapshot = await JsonSerializer.DeserializeAsync(stream, OmniRelayCliJsonContext.Default.NodeDrainSnapshot, cts.Token).ConfigureAwait(false);
+            }
+
+            if (snapshot is null)
+            {
+                await Console.Error.WriteLineAsync("Upgrade status response was empty.").ConfigureAwait(false);
+                return 1;
+            }
+
+            if (asJson)
+            {
+                var json = JsonSerializer.Serialize(snapshot, OmniRelayCliJsonContext.Default.NodeDrainSnapshot);
+                CliRuntime.Console.WriteLine(json);
+            }
+            else
+            {
+                PrintNodeDrainSnapshot(snapshot);
+            }
+
+            return 0;
+        }
+        catch (TaskCanceledException)
+        {
+            await Console.Error.WriteLineAsync("Upgrade status request timed out.").ConfigureAwait(false);
+            return 2;
+        }
+    }
+
+    internal static async Task<int> RunMeshUpgradeDrainAsync(string baseUrl, string? reason, string? timeoutOption)
+    {
+        var timeout = TimeSpan.FromSeconds(10);
+        if (!string.IsNullOrWhiteSpace(timeoutOption) && !TryParseDuration(timeoutOption!, out timeout))
+        {
+            await Console.Error.WriteLineAsync($"Could not parse timeout '{timeoutOption}'.").ConfigureAwait(false);
+            return 1;
+        }
+
+        Uri target;
+        try
+        {
+            target = BuildControlPlaneUri(baseUrl, "/control/upgrade/drain", scope: null);
+        }
+        catch (ArgumentException ex)
+        {
+            await Console.Error.WriteLineAsync(ex.Message).ConfigureAwait(false);
+            return 1;
+        }
+
+        using var client = CliRuntime.HttpClientFactory.CreateClient();
+        client.Timeout = Timeout.InfiniteTimeSpan;
+        using var cts = new CancellationTokenSource(timeout);
+
+        try
+        {
+            var payload = JsonSerializer.SerializeToUtf8Bytes(new NodeDrainCommandDto(reason), OmniRelayCliJsonContext.Default.NodeDrainCommandDto);
+            using var request = new HttpRequestMessage(HttpMethod.Post, target)
+            {
+                Content = new ByteArrayContent(payload)
+            };
+            request.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
+
+            using var response = await client.SendAsync(request, cts.Token).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                await Console.Error.WriteLineAsync($"Drain request failed: {(int)response.StatusCode} {response.ReasonPhrase}.").ConfigureAwait(false);
+                return 1;
+            }
+
+            NodeDrainSnapshot? snapshot;
+            await using ((await response.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false)).AsAsyncDisposable(out var stream))
+            {
+                snapshot = await JsonSerializer.DeserializeAsync(stream, OmniRelayCliJsonContext.Default.NodeDrainSnapshot, cts.Token).ConfigureAwait(false);
+            }
+
+            if (snapshot is null)
+            {
+                await Console.Error.WriteLineAsync("Drain response was empty.").ConfigureAwait(false);
+                return 1;
+            }
+
+            PrintNodeDrainSnapshot(snapshot);
+            return 0;
+        }
+        catch (TaskCanceledException)
+        {
+            await Console.Error.WriteLineAsync("Drain request timed out.").ConfigureAwait(false);
+            return 2;
+        }
+    }
+
+    internal static async Task<int> RunMeshUpgradeResumeAsync(string baseUrl, string? timeoutOption)
+    {
+        var timeout = TimeSpan.FromSeconds(10);
+        if (!string.IsNullOrWhiteSpace(timeoutOption) && !TryParseDuration(timeoutOption!, out timeout))
+        {
+            await Console.Error.WriteLineAsync($"Could not parse timeout '{timeoutOption}'.").ConfigureAwait(false);
+            return 1;
+        }
+
+        Uri target;
+        try
+        {
+            target = BuildControlPlaneUri(baseUrl, "/control/upgrade/resume", scope: null);
+        }
+        catch (ArgumentException ex)
+        {
+            await Console.Error.WriteLineAsync(ex.Message).ConfigureAwait(false);
+            return 1;
+        }
+
+        using var client = CliRuntime.HttpClientFactory.CreateClient();
+        client.Timeout = Timeout.InfiniteTimeSpan;
+        using var cts = new CancellationTokenSource(timeout);
+
+        try
+        {
+            using var response = await client.PostAsync(target, content: null, cts.Token).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                await Console.Error.WriteLineAsync($"Resume request failed: {(int)response.StatusCode} {response.ReasonPhrase}.").ConfigureAwait(false);
+                return 1;
+            }
+
+            NodeDrainSnapshot? snapshot;
+            await using ((await response.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false)).AsAsyncDisposable(out var stream))
+            {
+                snapshot = await JsonSerializer.DeserializeAsync(stream, OmniRelayCliJsonContext.Default.NodeDrainSnapshot, cts.Token).ConfigureAwait(false);
+            }
+
+            if (snapshot is null)
+            {
+                await Console.Error.WriteLineAsync("Resume response was empty.").ConfigureAwait(false);
+                return 1;
+            }
+
+            PrintNodeDrainSnapshot(snapshot);
+            return 0;
+        }
+        catch (TaskCanceledException)
+        {
+            await Console.Error.WriteLineAsync("Resume request timed out.").ConfigureAwait(false);
+            return 2;
+        }
+    }
+
+    internal static int RunMeshBootstrapIssueToken(string signingKey, string cluster, string role, string? lifetimeOption, int? maxUses, string issuer)
+    {
+        if (string.IsNullOrWhiteSpace(signingKey))
+        {
+            throw new InvalidOperationException("Signing key must be provided.");
+        }
+
+        var lifetime = TimeSpan.FromHours(1);
+        if (!string.IsNullOrWhiteSpace(lifetimeOption) && !TryParseDuration(lifetimeOption!, out lifetime))
+        {
+            throw new InvalidOperationException($"Lifetime '{lifetimeOption}' is not a valid duration.");
+        }
+
+        var descriptor = new BootstrapTokenDescriptor
+        {
+            ClusterId = cluster,
+            Role = role,
+            Lifetime = lifetime,
+            MaxUses = maxUses
+        };
+
+        var signingOptions = new BootstrapTokenSigningOptions
+        {
+            SigningKey = Encoding.UTF8.GetBytes(signingKey),
+            Issuer = issuer,
+            DefaultLifetime = lifetime,
+            DefaultMaxUses = maxUses
+        };
+
+        var service = new BootstrapTokenService(signingOptions, new InMemoryBootstrapReplayProtector(), NullLogger<BootstrapTokenService>.Instance);
+        var token = service.CreateToken(descriptor);
+        Console.WriteLine(token);
+        return 0;
+    }
+
+    internal static async Task<int> RunMeshBootstrapJoinAsync(string baseUrl, string token, string? outputPath, string? timeoutOption)
+    {
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            throw new InvalidOperationException("A join token must be provided.");
+        }
+
+        var timeout = TimeSpan.FromSeconds(30);
+        if (!string.IsNullOrWhiteSpace(timeoutOption) && !TryParseDuration(timeoutOption!, out timeout))
+        {
+            throw new InvalidOperationException($"Timeout '{timeoutOption}' is not a valid duration.");
+        }
+
+        using var httpClient = new HttpClient { Timeout = timeout };
+        var client = new BootstrapClient(httpClient);
+        var result = await client.JoinAsync(
+            new Uri(baseUrl),
+            new BootstrapJoinRequest { Token = token },
+            timeout,
+            CancellationToken.None).ConfigureAwait(false);
+        if (result.IsFailure)
+        {
+            var error = result.Error!;
+            await Console.Error.WriteLineAsync($"Bootstrap join failed: {error.Message} ({error.Code ?? "error"})").ConfigureAwait(false);
+            return error.Code == ErrorCodes.Timeout ? 2 : 1;
+        }
+
+        var response = result.ValueOrThrow();
+        var compactJson = JsonSerializer.Serialize(response, BootstrapJsonContext.Default.BootstrapJoinResponse);
+        var json = FormatJson(compactJson);
+        if (!string.IsNullOrWhiteSpace(outputPath))
+        {
+            File.WriteAllText(outputPath!, json);
+            Console.WriteLine($"Bootstrap bundle written to {outputPath}");
+        }
+        else
+        {
+            Console.WriteLine(json);
+        }
+
+        return 0;
+    }
+
+    private static string FormatJson(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        var buffer = new ArrayBufferWriter<byte>();
+        using (var writer = new Utf8JsonWriter(buffer, PrettyWriterOptions))
+        {
+            document.WriteTo(writer);
+        }
+
+        return Encoding.UTF8.GetString(buffer.WrittenSpan);
     }
 
     internal static async Task<int> RunMeshPeersListAsync(string baseUrl, MeshPeersOutputFormat format, string? timeoutOption)
@@ -2288,8 +2786,11 @@ public static class Program
                 return 1;
             }
 
-            await using var stream = await response.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false);
-            var result = await JsonSerializer.DeserializeAsync(stream, OmniRelayCliJsonContext.Default.MeshPeersResponse, cts.Token).ConfigureAwait(false);
+            MeshPeersResponse? result;
+            await using ((await response.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false)).AsAsyncDisposable(out var stream))
+            {
+                result = await JsonSerializer.DeserializeAsync(stream, OmniRelayCliJsonContext.Default.MeshPeersResponse, cts.Token).ConfigureAwait(false);
+            }
             if (result is null)
             {
                 await Console.Error.WriteLineAsync("Peer diagnostics response was empty.").ConfigureAwait(false);
@@ -2439,6 +2940,82 @@ public static class Program
         }
     }
 
+    private static readonly Method<LeadershipSubscribeRequest, ProtoLeadershipEvent> LeadershipSubscribeMethod =
+        new Method<LeadershipSubscribeRequest, ProtoLeadershipEvent>(
+            MethodType.ServerStreaming,
+            "omnirelay.mesh.control.v1.LeadershipControlService",
+            "Subscribe",
+            Marshallers.Create(
+                request => request.ToByteArray(),
+                data => LeadershipSubscribeRequest.Parser.ParseFrom(data)),
+            Marshallers.Create(
+                response => response.ToByteArray(),
+                data => ProtoLeadershipEvent.Parser.ParseFrom(data)));
+
+    private static async Task<int?> TryRunMeshLeadersWatchGrpcAsync(string grpcUrl, string? scope, TimeSpan timeout)
+    {
+        if (!Uri.TryCreate(grpcUrl, UriKind.Absolute, out var address))
+        {
+            await Console.Error.WriteLineAsync($"Invalid gRPC URL '{grpcUrl}'.").ConfigureAwait(false);
+            return 1;
+        }
+
+        var profile = new GrpcControlPlaneClientProfile
+        {
+            Address = address,
+            PreferHttp3 = !string.Equals(address.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase),
+            UseSharedTls = false,
+            Runtime = new GrpcClientRuntimeOptions
+            {
+                EnableHttp3 = true
+            }
+        };
+
+        try
+        {
+            var channelResult = CliRuntime.GrpcControlPlaneClientFactory.CreateChannel(profile);
+            if (channelResult.IsFailure)
+            {
+                await Console.Error.WriteLineAsync($"Failed to create gRPC control-plane channel: {channelResult.Error?.Message ?? "unknown"}").ConfigureAwait(false);
+                return 1;
+            }
+
+            using var channel = channelResult.ValueOrThrow();
+            using var cts = new CancellationTokenSource(timeout);
+            var invoker = channel.CreateCallInvoker();
+            using var call = invoker.AsyncServerStreamingCall(
+                LeadershipSubscribeMethod,
+                host: null,
+                options: new CallOptions(cancellationToken: cts.Token),
+                request: new LeadershipSubscribeRequest { Scope = scope ?? string.Empty });
+
+            Console.WriteLine($"Streaming leadership events via gRPC from {address} (scope={scope ?? "*"}). Press Ctrl+C to exit.");
+
+            while (await call.ResponseStream.MoveNext(cts.Token).ConfigureAwait(false))
+            {
+                var dto = LeadershipEventDto.FromProto(call.ResponseStream.Current);
+                PrintLeadershipEvent(dto);
+            }
+
+            return 0;
+        }
+        catch (RpcException ex) when (ex.StatusCode is StatusCode.Unavailable or StatusCode.Unimplemented)
+        {
+            await Console.Error.WriteLineAsync($"gRPC leadership stream unavailable ({ex.StatusCode}). Falling back to HTTP SSE...").ConfigureAwait(false);
+            return null;
+        }
+        catch (RpcException ex)
+        {
+            await Console.Error.WriteLineAsync($"gRPC leadership stream failed: {ex.StatusCode} {ex.Message}").ConfigureAwait(false);
+            return 1;
+        }
+        catch (TaskCanceledException)
+        {
+            await Console.Error.WriteLineAsync("Leadership stream connection timed out.").ConfigureAwait(false);
+            return 2;
+        }
+    }
+
     private static Uri BuildControlPlaneUri(string baseUrl, string relativePath, string? scope)
     {
         if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var baseUri))
@@ -2508,6 +3085,30 @@ public static class Program
             var rtt = peer.RoundTripTimeMs.HasValue ? peer.RoundTripTimeMs.Value.ToString("0.##", CultureInfo.InvariantCulture) : "-";
             Console.WriteLine(
                 $"{peer.NodeId,-24} {peer.Status,-8} {metadata.Role,-12} {metadata.ClusterId,-18} {metadata.Region,-18} {metadata.MeshVersion,-12} {(metadata.Http3Support ? "yes" : "no"),-7} {rtt,8}");
+        }
+    }
+
+    private static void PrintNodeDrainSnapshot(NodeDrainSnapshot snapshot)
+    {
+        Console.WriteLine($"State   : {snapshot.State}");
+        if (!string.IsNullOrWhiteSpace(snapshot.Reason))
+        {
+            Console.WriteLine($"Reason  : {snapshot.Reason}");
+        }
+
+        Console.WriteLine($"Updated : {snapshot.UpdatedAt:O}");
+
+        if (snapshot.Participants.Length == 0)
+        {
+            return;
+        }
+
+        Console.WriteLine();
+        Console.WriteLine("Participants:");
+        foreach (var participant in snapshot.Participants.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            var errorSuffix = string.IsNullOrWhiteSpace(participant.LastError) ? string.Empty : $" (error: {participant.LastError})";
+            Console.WriteLine($"  - {participant.Name}: {participant.State} @ {participant.UpdatedAt:O}{errorSuffix}");
         }
     }
 
@@ -3664,7 +4265,7 @@ public static class Program
 
     private sealed class LeadershipEventDto
     {
-        public LeadershipEventKind EventKind { get; set; } = LeadershipEventKind.Snapshot;
+        public CoreLeadershipEventKind EventKind { get; set; } = CoreLeadershipEventKind.Snapshot;
 
         public string? Scope { get; set; }
 
@@ -3677,6 +4278,50 @@ public static class Program
         public Guid CorrelationId { get; set; }
 
         public DateTimeOffset OccurredAt { get; set; }
+
+        public static LeadershipEventDto FromProto(ProtoLeadershipEvent source)
+        {
+            ArgumentNullException.ThrowIfNull(source);
+
+            var dto = new LeadershipEventDto
+            {
+                EventKind = source.Kind switch
+                {
+                    ProtoLeadershipEventKind.Observed => CoreLeadershipEventKind.Observed,
+                    ProtoLeadershipEventKind.Elected => CoreLeadershipEventKind.Elected,
+                    ProtoLeadershipEventKind.Renewed => CoreLeadershipEventKind.Renewed,
+                    ProtoLeadershipEventKind.Lost => CoreLeadershipEventKind.Lost,
+                    ProtoLeadershipEventKind.Expired => CoreLeadershipEventKind.Expired,
+                    ProtoLeadershipEventKind.SteppedDown => CoreLeadershipEventKind.SteppedDown,
+                    _ => CoreLeadershipEventKind.Snapshot
+                },
+                Scope = string.IsNullOrWhiteSpace(source.Scope) ? null : source.Scope,
+                LeaderId = string.IsNullOrWhiteSpace(source.LeaderId) ? null : source.LeaderId,
+                Reason = string.IsNullOrWhiteSpace(source.Reason) ? null : source.Reason,
+                CorrelationId = Guid.TryParse(source.CorrelationId, out var correlation) ? correlation : Guid.Empty,
+                OccurredAt = source.OccurredAt?.ToDateTimeOffset() ?? DateTimeOffset.UtcNow
+            };
+
+            if (source.Token is not null)
+            {
+                dto.Token = new LeadershipTokenResponse
+                {
+                    Scope = source.Token.Scope,
+                    ScopeKind = source.Token.ScopeKind,
+                    LeaderId = source.Token.LeaderId,
+                    Term = source.Token.Term,
+                    FenceToken = source.Token.FenceToken,
+                    IssuedAt = source.Token.IssuedAt?.ToDateTimeOffset() ?? DateTimeOffset.MinValue,
+                    ExpiresAt = source.Token.ExpiresAt?.ToDateTimeOffset() ?? DateTimeOffset.MinValue,
+                    Labels = source.Token.Labels.ToDictionary(
+                        pair => pair.Key,
+                        pair => pair.Value,
+                        StringComparer.OrdinalIgnoreCase)
+                };
+            }
+
+            return dto;
+        }
     }
 
     private sealed record DescriptorCacheEntry(
@@ -3688,7 +4333,6 @@ public static class Program
         Table,
         Json
     }
-
 
     private static bool TryDecodeUtf8(ReadOnlySpan<byte> data, out string text)
     {
