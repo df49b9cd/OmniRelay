@@ -1507,11 +1507,18 @@ internal sealed partial class DispatcherBuilder
     private HttpControlPlaneHostOptions BuildHttpControlPlaneHostOptions(DiagnosticsControlPlaneConfiguration configuration)
     {
         var options = new HttpControlPlaneHostOptions();
+        var hasCustomUrls = false;
         foreach (var url in configuration.HttpUrls)
         {
             if (string.IsNullOrWhiteSpace(url))
             {
                 continue;
+            }
+
+            if (!hasCustomUrls)
+            {
+                options.Urls.Clear();
+                hasCustomUrls = true;
             }
 
             options.Urls.Add(url);
@@ -1531,11 +1538,18 @@ internal sealed partial class DispatcherBuilder
     private GrpcControlPlaneHostOptions BuildGrpcControlPlaneHostOptions(DiagnosticsControlPlaneConfiguration configuration)
     {
         var options = new GrpcControlPlaneHostOptions();
+        var hasCustomUrls = false;
         foreach (var url in configuration.GrpcUrls)
         {
             if (string.IsNullOrWhiteSpace(url))
             {
                 continue;
+            }
+
+            if (!hasCustomUrls)
+            {
+                options.Urls.Clear();
+                hasCustomUrls = true;
             }
 
             options.Urls.Add(url);

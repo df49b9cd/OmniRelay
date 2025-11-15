@@ -311,8 +311,19 @@ public static class OmniRelayServiceCollectionExtensions
             services.TryAddSingleton<IAlertPublisher, NullAlertPublisher>();
         }
 
-        services.TryAddSingleton<PeerLeaseHealthTracker>();
-        services.TryAddEnumerable(ServiceDescriptor.Singleton<IPeerHealthSnapshotProvider>(sp => sp.GetRequiredService<PeerLeaseHealthTracker>()));
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IPeerHealthSnapshotProvider, PeerLeaseHealthTracker>());
+        services.TryAddSingleton<PeerLeaseHealthTracker>(sp =>
+        {
+            foreach (var provider in sp.GetServices<IPeerHealthSnapshotProvider>())
+            {
+                if (provider is PeerLeaseHealthTracker tracker)
+                {
+                    return tracker;
+                }
+            }
+
+            throw new InvalidOperationException("PeerLeaseHealthTracker must be registered as an IPeerHealthSnapshotProvider.");
+        });
 
         ConfigureBootstrapServices(services, security.Bootstrap, options.Service);
     }

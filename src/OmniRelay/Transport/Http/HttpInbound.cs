@@ -805,6 +805,13 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
 
         try
         {
+            if (!AcceptsServerSentEvents(context.Request.Headers))
+            {
+                context.Response.StatusCode = StatusCodes.Status406NotAcceptable;
+                await context.Response.WriteAsync("text/event-stream Accept header required for streaming", context.RequestAborted).ConfigureAwait(false);
+                return;
+            }
+
             var decodeResult = DecodeServerStreamRequest(context, dispatcher.ServiceName, transport);
             if (decodeResult.IsFailure)
             {
@@ -1127,6 +1134,8 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
                             OmniRelayStatusCode.ResourceExhausted,
                             "The server stream payload exceeds the configured limit.",
                             transport: transport);
+                        frames.Writer.TryComplete();
+                        await call.CompleteAsync(error, CancellationToken.None).ConfigureAwait(false);
                         return Err<Unit>(error);
                     }
 
@@ -1211,8 +1220,8 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
         {
             if (!context.WebSockets.IsWebSocketRequest)
             {
-                context.Response.StatusCode = StatusCodes.Status400BadRequest;
-                await WriteErrorAsync(context, "WebSocket upgrade required for duplex streaming.", OmniRelayStatusCode.InvalidArgument, transport).ConfigureAwait(false);
+                context.Response.StatusCode = StatusCodes.Status406NotAcceptable;
+                await context.Response.WriteAsync("WebSocket upgrade required for duplex streaming.", context.RequestAborted).ConfigureAwait(false);
                 return;
             }
 
@@ -1361,7 +1370,15 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
                         while (!token.IsCancellationRequested)
                         {
                             var frame = await HttpDuplexProtocol.ReceiveFrameAsync(webSocket, tempBuffer, frameLimit, token).ConfigureAwait(false);
-                            await frameChannel.Writer.WriteAsync(frame, token).ConfigureAwait(false);
+
+                            HttpDuplexProtocol.Frame frameToWrite = frame;
+                            if (!frame.Payload.IsEmpty)
+                            {
+                                var payloadCopy = frame.Payload.ToArray();
+                                frameToWrite = new HttpDuplexProtocol.Frame(frame.MessageType, frame.Type, payloadCopy);
+                            }
+
+                            await frameChannel.Writer.WriteAsync(frameToWrite, token).ConfigureAwait(false);
 
                             if (frame.MessageType == WebSocketMessageType.Close)
                             {
