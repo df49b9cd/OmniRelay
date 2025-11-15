@@ -3,8 +3,8 @@ namespace OmniRelay.Configuration.Models;
 /// <summary>Configures the dedicated diagnostics/leadership control-plane hosts.</summary>
 public sealed class DiagnosticsControlPlaneConfiguration
 {
-    /// <summary>HTTP control-plane bindings. Defaults to the classic dispatcher diagnostics endpoint.</summary>
-    public List<string> HttpUrls { get; set; } = ["http://127.0.0.1:8080"];
+    /// <summary>HTTP control-plane bindings. Defaults to loopback on an ephemeral port to avoid conflicts.</summary>
+    public List<string> HttpUrls { get; set; } = ["http://127.0.0.1:0"];
 
     public HttpServerRuntimeConfiguration HttpRuntime { get; init; } = new();
 

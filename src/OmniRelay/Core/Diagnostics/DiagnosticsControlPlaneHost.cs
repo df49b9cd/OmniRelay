@@ -217,39 +217,7 @@ internal sealed class DiagnosticsControlPlaneHost : ILifecycle, IDisposable
 
         if (_features.EnablePeerDiagnostics)
         {
-            static IResult HandlePeers(IMeshGossipAgent agent)
-            {
-                var snapshot = agent.Snapshot();
-                var peers = snapshot.Members.Select(member => new
-                {
-                    member.NodeId,
-                    status = member.Status.ToString(),
-                    member.LastSeen,
-                    rttMs = member.RoundTripTimeMs,
-                    metadata = new
-                    {
-                        member.Metadata.Role,
-                        member.Metadata.ClusterId,
-                        member.Metadata.Region,
-                        member.Metadata.MeshVersion,
-                        member.Metadata.Http3Support,
-                        member.Metadata.Endpoint,
-                        member.Metadata.MetadataVersion,
-                        Labels = member.Metadata.Labels
-                    }
-                });
-
-                return Results.Json(new
-                {
-                    snapshot.SchemaVersion,
-                    snapshot.GeneratedAt,
-                    snapshot.LocalNodeId,
-                    peers
-                });
-            }
-
-            app.MapGet("/control/peers", HandlePeers);
-            app.MapGet("/omnirelay/control/peers", HandlePeers);
+            PeerDiagnosticsEndpoint.Map(app);
         }
 
         if (_features.EnableLeadershipDiagnostics)

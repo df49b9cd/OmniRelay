@@ -22,6 +22,8 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Primitives;
 using OmniRelay.ControlPlane.Upgrade;
 using OmniRelay.Core;
+using OmniRelay.Core.Gossip;
+using OmniRelay.Core.Diagnostics;
 using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
 using OmniRelay.Errors;
@@ -52,6 +54,8 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
     private readonly object _contextLock = new();
     private readonly HashSet<HttpContext> _activeHttpContexts = [];
     private static readonly HttpInboundJsonContext JsonContext = HttpInboundJsonContext.Default;
+    private static readonly PathString ControlPeersPath = new("/control/peers");
+    private static readonly PathString ControlPeersAltPath = new("/omnirelay/control/peers");
     private const string RetryAfterHeaderValue = "1";
     private const int DefaultDuplexFrameBytes = 16 * 1024;
     private const string HttpTransportName = "http";
@@ -805,6 +809,12 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
 
         try
         {
+            if (IsPeerDiagnosticsRequest(context.Request.Path))
+            {
+                await HandlePeerDiagnosticsAsync(context).ConfigureAwait(false);
+                return;
+            }
+
             if (!AcceptsServerSentEvents(context.Request.Headers))
             {
                 context.Response.StatusCode = StatusCodes.Status406NotAcceptable;
@@ -1204,6 +1214,24 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
         string? Encoding);
 
     private readonly record struct HttpServerStreamRequestContext(string Procedure, RequestMeta Meta);
+
+    private static bool IsPeerDiagnosticsRequest(PathString path) =>
+        path.HasValue &&
+        (path.Equals(ControlPeersPath, StringComparison.OrdinalIgnoreCase) ||
+         path.Equals(ControlPeersAltPath, StringComparison.OrdinalIgnoreCase));
+
+    private static async Task HandlePeerDiagnosticsAsync(HttpContext context)
+    {
+        var agent = context.RequestServices.GetService<IMeshGossipAgent>();
+        if (agent is null || !agent.IsEnabled)
+        {
+            context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+            await context.Response.WriteAsync("mesh gossip diagnostics unavailable.", context.RequestAborted).ConfigureAwait(false);
+            return;
+        }
+
+        await PeerDiagnosticsEndpoint.CreateResponse(agent).ExecuteAsync(context).ConfigureAwait(false);
+    }
 
     private async Task HandleDuplexAsync(HttpContext context)
     {

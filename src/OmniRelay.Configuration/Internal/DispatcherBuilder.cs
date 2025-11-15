@@ -853,24 +853,43 @@ internal sealed partial class DispatcherBuilder
 
     private Action<IServiceCollection>? CreateHttpInboundServiceConfigurator()
     {
-        if (!ShouldExposePrometheusMetrics())
+        var actions = new List<Action<IServiceCollection>>();
+
+        if (ShouldExposePrometheusMetrics())
+        {
+            var scrapePath = NormalizeScrapeEndpointPathForInbound(_options.Diagnostics?.OpenTelemetry?.Prometheus?.ScrapeEndpointPath);
+            var serviceName = string.IsNullOrWhiteSpace(_options.Service) ? "OmniRelay" : _options.Service!;
+            actions.Add(services =>
+            {
+                services.AddOpenTelemetry()
+                    .ConfigureResource(resource => resource.AddService(serviceName: serviceName, serviceInstanceId: serviceName))
+                    .WithMetrics(builder =>
+                    {
+                        builder.AddPrometheusExporter(options => options.ScrapeEndpointPath = scrapePath);
+                        builder.AddMeter("OmniRelay.Core.Diagnostics");
+                        builder.AddMeter("OmniRelay.Transport.Http");
+                        builder.AddMeter("OmniRelay.Transport.Grpc");
+                    });
+            });
+        }
+
+        var gossipAgent = _serviceProvider.GetService<IMeshGossipAgent>();
+        if (gossipAgent is not null)
+        {
+            actions.Add(services => services.AddSingleton(gossipAgent));
+        }
+
+        if (actions.Count == 0)
         {
             return null;
         }
 
-        var scrapePath = NormalizeScrapeEndpointPathForInbound(_options.Diagnostics?.OpenTelemetry?.Prometheus?.ScrapeEndpointPath);
-        var serviceName = string.IsNullOrWhiteSpace(_options.Service) ? "OmniRelay" : _options.Service!;
         return services =>
         {
-            services.AddOpenTelemetry()
-                .ConfigureResource(resource => resource.AddService(serviceName: serviceName, serviceInstanceId: serviceName))
-                .WithMetrics(builder =>
-                {
-                    builder.AddPrometheusExporter(options => options.ScrapeEndpointPath = scrapePath);
-                    builder.AddMeter("OmniRelay.Core.Diagnostics");
-                    builder.AddMeter("OmniRelay.Transport.Http");
-                    builder.AddMeter("OmniRelay.Transport.Grpc");
-                });
+            foreach (var action in actions)
+            {
+                action(services);
+            }
         };
     }
 
