@@ -1,8 +1,10 @@
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using Hugo;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Primitives;
 using OmniRelay.Security.Secrets;
+using static Hugo.Go;
 
 namespace OmniRelay.ControlPlane.Security;
 
@@ -47,16 +49,23 @@ public sealed class TransportTlsManager : IDisposable
     /// Retrieves the latest certificate instance, reloading from disk/inline data when necessary.
     /// The caller takes ownership over the returned <see cref="X509Certificate2"/>.
     /// </summary>
-    public X509Certificate2 GetCertificate()
+    public X509Certificate2 GetCertificate() =>
+        GetCertificateResult().ValueOrThrow();
+
+    public Result<X509Certificate2> GetCertificateResult()
     {
         lock (_lock)
         {
             if (_certificate is null || ShouldReloadLocked())
             {
-                ReloadLocked();
+                var reload = ReloadLocked();
+                if (reload.IsFailure)
+                {
+                    return reload.CastFailure<X509Certificate2>();
+                }
             }
 
-            return new X509Certificate2(_certificate!);
+            return Result.Try(() => new X509Certificate2(_certificate!));
         }
     }
 
@@ -97,29 +106,72 @@ public sealed class TransportTlsManager : IDisposable
         return write > _lastWrite;
     }
 
-    private void ReloadLocked()
+    private Result<Unit> ReloadLocked()
     {
-        var flags = _options.KeyStorageFlags;
-        X509Certificate2 certificate;
-        string source;
-        DateTime? lastWrite = null;
+        return ResolveCertificatePasswordResult()
+            .Then(password => LoadCertificateMaterial()
+                .Map(material => (Material: material, Password: password)))
+            .Map(tuple =>
+            {
+                var material = tuple.Material;
+                var certificate = ImportCertificate(material, tuple.Password);
+                UpdateCertificateCache(certificate, material);
+                return Unit.Value;
+            });
+    }
 
-        var inlineBytes = TryLoadInlineCertificate(out source);
-        var password = ResolveCertificatePassword();
+    private Result<CertificateMaterial> LoadCertificateMaterial()
+    {
+        return LoadInlineCertificate()
+            .Then(inline =>
+            {
+                if (inline is InlineCertificate value)
+                {
+                    return Ok(new CertificateMaterial(value.Bytes, value.Source, null, Sensitive: true));
+                }
 
-        if (inlineBytes is not null)
+                return LoadFileCertificate();
+            });
+    }
+
+    private Result<InlineCertificate?> LoadInlineCertificate()
+    {
+        if (!string.IsNullOrWhiteSpace(_options.CertificateData))
         {
-            try
+            return Result.Try<InlineCertificate?>(() =>
             {
-                certificate = X509CertificateLoader.LoadPkcs12(inlineBytes, password, flags);
-            }
-            finally
-            {
-                CryptographicOperations.ZeroMemory(inlineBytes);
-                TransportTlsManagerTestHooks.NotifySecretsCleared(inlineBytes);
-            }
+                var bytes = DecodeBase64(_options.CertificateData);
+                return new InlineCertificate(bytes, "inline certificate data");
+            });
         }
-        else
+
+        if (string.IsNullOrWhiteSpace(_options.CertificateDataSecret))
+        {
+            return Ok<InlineCertificate?>(null);
+        }
+
+        return AcquireSecretResult(_options.CertificateDataSecret, "transport TLS certificate data")
+            .Then(secret =>
+            {
+                using (secret)
+                {
+                    try
+                    {
+                        RegisterSecretReload(ref _dataReloadRegistration, secret.ChangeToken, $"secret:{_options.CertificateDataSecret}");
+                        var bytes = DecodeSecretBytes(secret);
+                        return Ok<InlineCertificate?>(new InlineCertificate(bytes, $"secret:{_options.CertificateDataSecret}"));
+                    }
+                    catch (Exception ex)
+                    {
+                        return Err<InlineCertificate?>(Error.FromException(ex));
+                    }
+                }
+            });
+    }
+
+    private Result<CertificateMaterial> LoadFileCertificate()
+    {
+        return Result.Try(() =>
         {
             var path = ResolveCertificatePath();
             if (!File.Exists(path))
@@ -128,75 +180,89 @@ public sealed class TransportTlsManager : IDisposable
             }
 
             var raw = File.ReadAllBytes(path);
-            certificate = X509CertificateLoader.LoadPkcs12(raw, password, flags);
-            source = path;
-            lastWrite = File.GetLastWriteTimeUtc(path);
-        }
-
-        _certificate?.Dispose();
-        _certificate = certificate;
-        _lastLoaded = DateTimeOffset.UtcNow;
-        _lastWrite = lastWrite ?? DateTime.MinValue;
-        CertificateLoadedLog(_logger, source, certificate.Subject, null);
+            var write = File.GetLastWriteTimeUtc(path);
+            return new CertificateMaterial(raw, path, write, Sensitive: false);
+        });
     }
 
-    private byte[]? TryLoadInlineCertificate(out string source)
-    {
-        if (!string.IsNullOrWhiteSpace(_options.CertificateData))
-        {
-            source = "inline certificate data";
-            return DecodeBase64(_options.CertificateData);
-        }
-
-        if (string.IsNullOrWhiteSpace(_options.CertificateDataSecret))
-        {
-            source = string.Empty;
-            return null;
-        }
-
-        using var secret = AcquireSecret(_options.CertificateDataSecret, "transport TLS certificate data");
-        RegisterSecretReload(ref _dataReloadRegistration, secret.ChangeToken, $"secret:{_options.CertificateDataSecret}");
-        source = $"secret:{_options.CertificateDataSecret}";
-        return DecodeSecretBytes(secret);
-    }
-
-    private string? ResolveCertificatePassword()
+    private Result<string?> ResolveCertificatePasswordResult()
     {
         if (!string.IsNullOrWhiteSpace(_options.CertificatePassword))
         {
-            return _options.CertificatePassword;
+            return Ok<string?>(_options.CertificatePassword);
         }
 
         if (string.IsNullOrWhiteSpace(_options.CertificatePasswordSecret))
         {
-            return null;
+            return Ok<string?>(null);
         }
 
-        using var secret = AcquireSecret(_options.CertificatePasswordSecret, "transport TLS certificate password");
-        RegisterSecretReload(ref _passwordReloadRegistration, secret.ChangeToken, $"secret:{_options.CertificatePasswordSecret}");
-        var password = secret.AsString();
-        if (string.IsNullOrEmpty(password))
-        {
-            throw new InvalidOperationException($"Secret '{_options.CertificatePasswordSecret}' did not contain a TLS password.");
-        }
+        return AcquireSecretResult(_options.CertificatePasswordSecret, "transport TLS certificate password")
+            .Then(secret =>
+            {
+                using (secret)
+                {
+                    try
+                    {
+                        RegisterSecretReload(ref _passwordReloadRegistration, secret.ChangeToken, $"secret:{_options.CertificatePasswordSecret}");
+                        var password = secret.AsString();
+                        if (string.IsNullOrEmpty(password))
+                        {
+                            return Err<string?>(Error.From($"Secret '{_options.CertificatePasswordSecret}' did not contain a TLS password.", "transport.tls.password_missing"));
+                        }
 
-        return password;
+                        return Ok<string?>(password);
+                    }
+                    catch (Exception ex)
+                    {
+                        return Err<string?>(Error.FromException(ex));
+                    }
+                }
+            });
     }
 
-    private SecretValue AcquireSecret(string name, string purpose)
+    private Result<SecretValue> AcquireSecretResult(string name, string purpose)
     {
         if (_secretProvider is null)
         {
-            throw new InvalidOperationException($"{purpose} references secret '{name}' but no secret provider is configured.");
+            return Err<SecretValue>(Error.From($"{purpose} references secret '{name}' but no secret provider is configured.", "transport.tls.secret_provider_missing"));
         }
 
-        var secret = _secretProvider.GetSecretAsync(name).GetAwaiter().GetResult();
-        if (secret is null)
+        return Result.Try(() =>
         {
-            throw new InvalidOperationException($"Secret '{name}' required for {purpose} was not found.");
-        }
+            var secret = _secretProvider.GetSecretAsync(name).GetAwaiter().GetResult();
+            if (secret is null)
+            {
+                throw new InvalidOperationException($"Secret '{name}' required for {purpose} was not found.");
+            }
 
-        return secret;
+            return secret;
+        });
+    }
+
+    private X509Certificate2 ImportCertificate(CertificateMaterial material, string? password)
+    {
+        try
+        {
+            return X509CertificateLoader.LoadPkcs12(material.Bytes, password, _options.KeyStorageFlags);
+        }
+        finally
+        {
+            if (material.Sensitive && material.Bytes.Length > 0)
+            {
+                CryptographicOperations.ZeroMemory(material.Bytes);
+                TransportTlsManagerTestHooks.NotifySecretsCleared(material.Bytes);
+            }
+        }
+    }
+
+    private void UpdateCertificateCache(X509Certificate2 certificate, CertificateMaterial material)
+    {
+        _certificate?.Dispose();
+        _certificate = certificate;
+        _lastLoaded = DateTimeOffset.UtcNow;
+        _lastWrite = material.LastWrite ?? DateTime.MinValue;
+        CertificateLoadedLog(_logger, material.Source, certificate.Subject, null);
     }
 
     private static byte[] DecodeBase64(string data)
@@ -279,6 +345,9 @@ public sealed class TransportTlsManager : IDisposable
             _passwordReloadRegistration = null;
         }
     }
+    private readonly record struct CertificateMaterial(byte[] Bytes, string Source, DateTime? LastWrite, bool Sensitive);
+
+    private readonly record struct InlineCertificate(byte[] Bytes, string Source);
 }
 
 internal static class TransportTlsManagerTestHooks
