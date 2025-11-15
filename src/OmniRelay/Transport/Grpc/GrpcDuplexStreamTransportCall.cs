@@ -69,23 +69,32 @@ internal sealed class GrpcDuplexStreamTransportCall : IDuplexStreamCall
         AsyncDuplexStreamingCall<byte[], byte[]> call,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            var headers = await call.ResponseHeadersAsync.ConfigureAwait(false);
-            var responseMeta = GrpcMetadataAdapter.CreateResponseMeta(headers, null);
-            var transportCall = new GrpcDuplexStreamTransportCall(requestMeta, call, responseMeta, cancellationToken);
-            return Ok((IDuplexStreamCall)transportCall);
-        }
-        catch (RpcException rpcEx)
-        {
-            var status = GrpcStatusMapper.FromStatus(rpcEx.Status);
-            var message = string.IsNullOrWhiteSpace(rpcEx.Status.Detail) ? rpcEx.Status.StatusCode.ToString() : rpcEx.Status.Detail;
-            return Err<IDuplexStreamCall>(OmniRelayErrorAdapter.FromStatus(status, message, transport: GrpcTransportConstants.TransportName));
-        }
-        catch (Exception ex)
-        {
-            return OmniRelayErrors.ToResult<IDuplexStreamCall>(ex, transport: GrpcTransportConstants.TransportName);
-        }
+        var creationResult = await Result
+            .TryAsync(
+                async _ =>
+                {
+                    var headers = await call.ResponseHeadersAsync.ConfigureAwait(false);
+                    var responseMeta = GrpcMetadataAdapter.CreateResponseMeta(headers, null);
+                    return (IDuplexStreamCall)new GrpcDuplexStreamTransportCall(requestMeta, call, responseMeta, cancellationToken);
+                },
+                cancellationToken: cancellationToken,
+                errorFactory: ex => ex switch
+                {
+                    RpcException rpcException => OmniRelayErrorAdapter.FromStatus(
+                        GrpcStatusMapper.FromStatus(rpcException.Status),
+                        string.IsNullOrWhiteSpace(rpcException.Status.Detail)
+                            ? rpcException.Status.StatusCode.ToString()
+                            : rpcException.Status.Detail,
+                        transport: GrpcTransportConstants.TransportName),
+                    _ => OmniRelayErrorAdapter.FromStatus(
+                        OmniRelayStatusCode.Internal,
+                        ex.Message ?? "An error occurred while creating the duplex stream.",
+                        transport: GrpcTransportConstants.TransportName,
+                        inner: Error.FromException(ex))
+                })
+            .ConfigureAwait(false);
+
+        return creationResult;
     }
 
     /// <inheritdoc />
@@ -156,77 +165,144 @@ internal sealed class GrpcDuplexStreamTransportCall : IDuplexStreamCall
 
     private async Task PumpRequestsAsync(CancellationToken cancellationToken)
     {
-        try
+        var requestStatus = StatusCode.OK;
+
+        var pumpResult = await Result
+            .TryAsync(
+                async token =>
+                {
+                    await foreach (var payload in _inner.RequestReader.ReadAllAsync(token).ConfigureAwait(false))
+                    {
+                        Interlocked.Increment(ref _requestCount);
+                        GrpcTransportMetrics.ClientDuplexRequestMessages.Add(1, _baseTags);
+                        await _call.RequestStream.WriteAsync(payload.ToArray(), token).ConfigureAwait(false);
+                    }
+
+                    await _call.RequestStream.CompleteAsync().ConfigureAwait(false);
+                    return Unit.Value;
+                },
+                cancellationToken: cancellationToken,
+                errorFactory: ex => MapRequestPumpException(ex, ref requestStatus))
+            .ConfigureAwait(false);
+
+        if (pumpResult.IsFailure && pumpResult.Error is { } error)
         {
-            await foreach (var payload in _inner.RequestReader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+            if (OmniRelayErrorAdapter.ToStatus(error) == OmniRelayStatusCode.Cancelled)
             {
-                Interlocked.Increment(ref _requestCount);
-                GrpcTransportMetrics.ClientDuplexRequestMessages.Add(1, _baseTags);
-                await _call.RequestStream.WriteAsync(payload.ToArray(), cancellationToken).ConfigureAwait(false);
+                await _call.RequestStream.CompleteAsync().ConfigureAwait(false);
+                return;
             }
 
-            await _call.RequestStream.CompleteAsync().ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            await _call.RequestStream.CompleteAsync().ConfigureAwait(false);
-        }
-        catch (RpcException rpcEx)
-        {
-            var error = MapRpcException(rpcEx);
             await _inner.CompleteResponsesAsync(error, cancellationToken).ConfigureAwait(false);
-            RecordCompletion(rpcEx.Status.StatusCode);
-        }
-        catch (Exception ex)
-        {
-            await _inner.CompleteResponsesAsync(OmniRelayErrorAdapter.FromStatus(
-                OmniRelayStatusCode.Internal,
-                ex.Message ?? "An error occurred while sending request stream.",
-                transport: GrpcTransportConstants.TransportName,
-                inner: Error.FromException(ex)), cancellationToken).ConfigureAwait(false);
-            RecordCompletion(StatusCode.Unknown);
+            RecordCompletion(requestStatus);
         }
     }
 
     private async Task PumpResponsesAsync(CancellationToken cancellationToken)
     {
-        try
-        {
-            await foreach (var payload in _call.ResponseStream.ReadAllAsync(cancellationToken).ConfigureAwait(false))
-            {
-                Interlocked.Increment(ref _responseCount);
-                GrpcTransportMetrics.ClientDuplexResponseMessages.Add(1, _baseTags);
-                await _inner.ResponseWriter.WriteAsync(payload, cancellationToken).ConfigureAwait(false);
-            }
+        var responseStatus = StatusCode.OK;
 
-            var trailers = _call.GetTrailers();
-            _inner.SetResponseMeta(GrpcMetadataAdapter.CreateResponseMeta(null, trailers));
-            await _inner.CompleteResponsesAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
-            RecordCompletion(StatusCode.OK);
-        }
-        catch (OperationCanceledException)
+        var pumpResult = await Result
+            .TryAsync(
+                async token =>
+                {
+                    await foreach (var payload in _call.ResponseStream.ReadAllAsync(token).ConfigureAwait(false))
+                    {
+                        Interlocked.Increment(ref _responseCount);
+                        GrpcTransportMetrics.ClientDuplexResponseMessages.Add(1, _baseTags);
+                        await _inner.ResponseWriter.WriteAsync(payload, token).ConfigureAwait(false);
+                    }
+
+                    var trailers = _call.GetTrailers();
+                    _inner.SetResponseMeta(GrpcMetadataAdapter.CreateResponseMeta(null, trailers));
+                    await _inner.CompleteResponsesAsync(cancellationToken: token).ConfigureAwait(false);
+                    RecordCompletion(StatusCode.OK);
+                    return Unit.Value;
+                },
+                cancellationToken: cancellationToken,
+                errorFactory: ex => MapResponsePumpException(ex, ref responseStatus))
+            .ConfigureAwait(false);
+
+        if (pumpResult.IsFailure && pumpResult.Error is { } error)
         {
-            var error = OmniRelayErrorAdapter.FromStatus(
+            await _inner.CompleteResponsesAsync(error, cancellationToken).ConfigureAwait(false);
+            RecordCompletion(responseStatus);
+        }
+    }
+
+    private static Error MapRequestPumpException(Exception exception, ref StatusCode completionStatus)
+    {
+        return exception switch
+        {
+            RpcException rpcException =>
+                MapRpcError(rpcException, ref completionStatus),
+            OperationCanceledException canceled =>
+                MapCanceled(canceled, ref completionStatus),
+            _ => MapInternal(exception, ref completionStatus, "An error occurred while sending request stream.")
+        };
+
+        static Error MapRpcError(RpcException rpcException, ref StatusCode completionStatus)
+        {
+            completionStatus = rpcException.Status.StatusCode;
+            return MapRpcException(rpcException);
+        }
+
+        static Error MapCanceled(OperationCanceledException canceled, ref StatusCode completionStatus)
+        {
+            completionStatus = StatusCode.Cancelled;
+            return OmniRelayErrorAdapter.FromStatus(
                 OmniRelayStatusCode.Cancelled,
-                "The gRPC duplex call was cancelled.",
-                transport: GrpcTransportConstants.TransportName);
-            await _inner.CompleteResponsesAsync(error, cancellationToken).ConfigureAwait(false);
-            RecordCompletion(StatusCode.Cancelled);
-        }
-        catch (RpcException rpcEx)
-        {
-            var error = MapRpcException(rpcEx);
-            await _inner.CompleteResponsesAsync(error, cancellationToken).ConfigureAwait(false);
-            RecordCompletion(rpcEx.Status.StatusCode);
-        }
-        catch (Exception ex)
-        {
-            await _inner.CompleteResponsesAsync(OmniRelayErrorAdapter.FromStatus(
-                OmniRelayStatusCode.Internal,
-                ex.Message ?? "An error occurred while reading response stream.",
+                canceled.Message ?? "The gRPC duplex request pump was cancelled.",
                 transport: GrpcTransportConstants.TransportName,
-                inner: Error.FromException(ex)), cancellationToken).ConfigureAwait(false);
-            RecordCompletion(StatusCode.Unknown);
+                inner: Error.Canceled().WithCause(canceled));
+        }
+
+        static Error MapInternal(Exception exception, ref StatusCode completionStatus, string fallback)
+        {
+            completionStatus = StatusCode.Unknown;
+            return OmniRelayErrorAdapter.FromStatus(
+                OmniRelayStatusCode.Internal,
+                exception.Message ?? fallback,
+                transport: GrpcTransportConstants.TransportName,
+                inner: Error.FromException(exception));
+        }
+    }
+
+    private static Error MapResponsePumpException(Exception exception, ref StatusCode completionStatus)
+    {
+        return exception switch
+        {
+            RpcException rpcException =>
+                MapRpcError(rpcException, ref completionStatus),
+            OperationCanceledException canceled =>
+                MapCanceled(canceled, ref completionStatus),
+            _ => MapInternal(exception, ref completionStatus, "An error occurred while reading response stream.")
+        };
+
+        static Error MapRpcError(RpcException rpcException, ref StatusCode completionStatus)
+        {
+            completionStatus = rpcException.Status.StatusCode;
+            return MapRpcException(rpcException);
+        }
+
+        static Error MapCanceled(OperationCanceledException canceled, ref StatusCode completionStatus)
+        {
+            completionStatus = StatusCode.Cancelled;
+            return OmniRelayErrorAdapter.FromStatus(
+                OmniRelayStatusCode.Cancelled,
+                canceled.Message ?? "The gRPC duplex call was cancelled.",
+                transport: GrpcTransportConstants.TransportName,
+                inner: Error.Canceled().WithCause(canceled));
+        }
+
+        static Error MapInternal(Exception exception, ref StatusCode completionStatus, string fallback)
+        {
+            completionStatus = StatusCode.Unknown;
+            return OmniRelayErrorAdapter.FromStatus(
+                OmniRelayStatusCode.Internal,
+                exception.Message ?? fallback,
+                transport: GrpcTransportConstants.TransportName,
+                inner: Error.FromException(exception));
         }
     }
 
