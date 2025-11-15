@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Threading.Channels;
 using Grpc.Core;
 using Hugo;
 using OmniRelay.Core;
@@ -22,6 +23,10 @@ internal sealed class GrpcClientStreamTransportCall : IClientStreamTransportCall
     private int _metricsRecorded;
     private readonly TaskCompletionSource<Result<Response<ReadOnlyMemory<byte>>>> _completion =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly Channel<byte[]> _pendingWrites;
+    private readonly Task _writePump;
+    private Error? _terminalError;
+    private int _completionRequested;
     private int _completed;
     private bool _disposed;
 
@@ -41,7 +46,14 @@ internal sealed class GrpcClientStreamTransportCall : IClientStreamTransportCall
         _writeOptions = writeOptions;
         ResponseMeta = new ResponseMeta();
         _baseTags = GrpcTransportMetrics.CreateBaseTags(requestMeta);
+        _pendingWrites = MakeChannel<byte[]>(new UnboundedChannelOptions
+        {
+            SingleReader = true,
+            SingleWriter = false,
+            AllowSynchronousContinuations = false
+        });
 
+        _writePump = RunWritePumpAsync();
         _ = ObserveResponseAsync();
     }
 
@@ -64,69 +76,40 @@ internal sealed class GrpcClientStreamTransportCall : IClientStreamTransportCall
 
         cancellationToken.ThrowIfCancellationRequested();
 
+        var buffer = payload.ToArray();
+
         try
         {
-            if (_writeOptions is not null)
+            await _pendingWrites.Writer.WriteAsync(buffer, cancellationToken).ConfigureAwait(false);
+        }
+        catch (ChannelClosedException)
+        {
+            if (_terminalError is Error error)
             {
-                _call.RequestStream.WriteOptions = _writeOptions;
+                throw OmniRelayErrors.FromError(error, GrpcTransportConstants.TransportName);
             }
 
-            await _call.RequestStream.WriteAsync(payload.ToArray(), cancellationToken).ConfigureAwait(false);
-            Interlocked.Increment(ref _requestCount);
-            GrpcTransportMetrics.ClientClientStreamRequestMessages.Add(1, _baseTags);
-        }
-        catch (RpcException rpcEx)
-        {
-            var error = MapRpcException(rpcEx);
-            _completion.TrySetResult(Err<Response<ReadOnlyMemory<byte>>>(error));
-            RecordCompletion(rpcEx.Status.StatusCode);
-            throw OmniRelayErrors.FromError(error, GrpcTransportConstants.TransportName);
-        }
-        catch (Exception ex)
-        {
-            var error = OmniRelayErrorAdapter.FromStatus(
-                OmniRelayStatusCode.Internal,
-                ex.Message ?? "An error occurred while writing to the client stream.",
-                transport: GrpcTransportConstants.TransportName,
-                inner: Error.FromException(ex));
-            _completion.TrySetResult(Err<Response<ReadOnlyMemory<byte>>>(error));
-            RecordCompletion(StatusCode.Unknown);
-            throw OmniRelayErrors.FromError(error, GrpcTransportConstants.TransportName);
+            throw;
         }
     }
 
     /// <inheritdoc />
     public async ValueTask CompleteAsync(CancellationToken cancellationToken = default)
     {
-        if (_disposed || Interlocked.Exchange(ref _completed, 1) == 1)
+        if (_disposed)
         {
             return;
         }
 
-        cancellationToken.ThrowIfCancellationRequested();
+        if (Interlocked.Exchange(ref _completionRequested, 1) == 1)
+        {
+            await _writePump.ConfigureAwait(false);
+            return;
+        }
 
-        try
-        {
-            await _call.RequestStream.CompleteAsync().ConfigureAwait(false);
-        }
-        catch (RpcException rpcEx)
-        {
-            var error = MapRpcException(rpcEx);
-            _completion.TrySetResult(Err<Response<ReadOnlyMemory<byte>>>(error));
-            RecordCompletion(rpcEx.Status.StatusCode);
-            throw OmniRelayErrors.FromError(error, GrpcTransportConstants.TransportName);
-        }
-        catch (Exception ex)
-        {
-            var error = OmniRelayErrorAdapter.FromStatus(
-                OmniRelayStatusCode.Internal,
-                ex.Message ?? "An error occurred while completing the client stream.",
-                transport: GrpcTransportConstants.TransportName,
-                inner: Error.FromException(ex));
-            _completion.TrySetResult(Err<Response<ReadOnlyMemory<byte>>>(error));
-            RecordCompletion(StatusCode.Unknown);
-            throw OmniRelayErrors.FromError(error, GrpcTransportConstants.TransportName);
-        }
+        cancellationToken.ThrowIfCancellationRequested();
+        _pendingWrites.Writer.TryComplete();
+        await _writePump.ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -139,19 +122,11 @@ internal sealed class GrpcClientStreamTransportCall : IClientStreamTransportCall
 
         _disposed = true;
 
+        _pendingWrites.Writer.TryComplete();
+
         try
         {
-            if (Volatile.Read(ref _completed) == 0)
-            {
-                try
-                {
-                    await _call.RequestStream.CompleteAsync().ConfigureAwait(false);
-                }
-                catch
-                {
-                    // ignored
-                }
-            }
+            await _writePump.ConfigureAwait(false);
         }
         finally
         {
@@ -172,12 +147,16 @@ internal sealed class GrpcClientStreamTransportCall : IClientStreamTransportCall
             var response = Response<ReadOnlyMemory<byte>>.Create(payload, ResponseMeta);
             _completion.TrySetResult(Ok(response));
             RecordCompletion(StatusCode.OK);
+            _pendingWrites.Writer.TryComplete();
         }
         catch (RpcException rpcEx)
         {
             var error = MapRpcException(rpcEx);
             _completion.TrySetResult(Err<Response<ReadOnlyMemory<byte>>>(error));
+            _terminalError = error;
             RecordCompletion(rpcEx.Status.StatusCode);
+            var exception = OmniRelayErrors.FromError(error, GrpcTransportConstants.TransportName);
+            _pendingWrites.Writer.TryComplete(exception);
         }
         catch (Exception ex)
         {
@@ -187,7 +166,55 @@ internal sealed class GrpcClientStreamTransportCall : IClientStreamTransportCall
                 transport: GrpcTransportConstants.TransportName,
                 inner: Error.FromException(ex));
             _completion.TrySetResult(Err<Response<ReadOnlyMemory<byte>>>(error));
+            _terminalError = error;
             RecordCompletion(StatusCode.Unknown);
+            var exception = OmniRelayErrors.FromError(error, GrpcTransportConstants.TransportName);
+            _pendingWrites.Writer.TryComplete(exception);
+        }
+    }
+
+    private async Task RunWritePumpAsync()
+    {
+        try
+        {
+            await foreach (var payload in _pendingWrites.Reader.ReadAllAsync().ConfigureAwait(false))
+            {
+                if (_writeOptions is not null)
+                {
+                    _call.RequestStream.WriteOptions = _writeOptions;
+                }
+
+                await _call.RequestStream.WriteAsync(payload).ConfigureAwait(false);
+                Interlocked.Increment(ref _requestCount);
+                GrpcTransportMetrics.ClientClientStreamRequestMessages.Add(1, _baseTags);
+            }
+
+            if (Interlocked.Exchange(ref _completed, 1) == 0)
+            {
+                await _call.RequestStream.CompleteAsync().ConfigureAwait(false);
+            }
+        }
+        catch (RpcException rpcEx)
+        {
+            var error = MapRpcException(rpcEx);
+            _terminalError = error;
+            _completion.TrySetResult(Err<Response<ReadOnlyMemory<byte>>>(error));
+            RecordCompletion(rpcEx.Status.StatusCode);
+            var exception = OmniRelayErrors.FromError(error, GrpcTransportConstants.TransportName);
+            _pendingWrites.Writer.TryComplete(exception);
+        }
+        catch (Exception ex)
+        {
+            var error = OmniRelayErrorAdapter.FromStatus(
+                OmniRelayStatusCode.Internal,
+                ex.Message ?? "An error occurred while writing to the client stream.",
+                transport: GrpcTransportConstants.TransportName,
+                inner: Error.FromException(ex));
+            _terminalError = error;
+            _completion.TrySetResult(Err<Response<ReadOnlyMemory<byte>>>(error));
+            RecordCompletion(StatusCode.Unknown);
+            var exception = OmniRelayErrors.FromError(error, GrpcTransportConstants.TransportName);
+            _pendingWrites.Writer.TryComplete(exception);
         }
     }
 

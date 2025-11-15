@@ -49,8 +49,16 @@ public sealed class TransportTlsManager : IDisposable
     /// Retrieves the latest certificate instance, reloading from disk/inline data when necessary.
     /// The caller takes ownership over the returned <see cref="X509Certificate2"/>.
     /// </summary>
-    public X509Certificate2 GetCertificate() =>
-        GetCertificateResult().ValueOrThrow();
+    public X509Certificate2 GetCertificate()
+    {
+        var result = GetCertificateResult();
+        if (result.IsFailure)
+        {
+            throw CreateCertificateException(result.Error);
+        }
+
+        return result.Value;
+    }
 
     public Result<X509Certificate2> GetCertificateResult()
     {
@@ -348,6 +356,15 @@ public sealed class TransportTlsManager : IDisposable
     private readonly record struct CertificateMaterial(byte[] Bytes, string Source, DateTime? LastWrite, bool Sensitive);
 
     private readonly record struct InlineCertificate(byte[] Bytes, string Source);
+    private static Exception CreateCertificateException(Error? error)
+    {
+        if (error?.Cause is Exception cause)
+        {
+            return cause;
+        }
+
+        return new InvalidOperationException(error?.Message ?? "Transport TLS certificate could not be loaded.");
+    }
 }
 
 internal static class TransportTlsManagerTestHooks
