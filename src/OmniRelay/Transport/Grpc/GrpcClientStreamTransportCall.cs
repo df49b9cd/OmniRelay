@@ -24,7 +24,10 @@ internal sealed class GrpcClientStreamTransportCall : IClientStreamTransportCall
     private readonly TaskCompletionSource<Result<Response<ReadOnlyMemory<byte>>>> _completion =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Channel<byte[]> _pendingWrites;
-    private readonly Task _writePump;
+    private readonly TaskCompletionSource<bool> _writePumpCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly CancellationTokenSource _cts;
+    private readonly CancellationTokenSource _callCts;
+    private ErrGroup? _pumpGroup;
     private Error? _terminalError;
     private int _completionRequested;
     private int _completed;
@@ -39,7 +42,8 @@ internal sealed class GrpcClientStreamTransportCall : IClientStreamTransportCall
     public GrpcClientStreamTransportCall(
         RequestMeta requestMeta,
         AsyncClientStreamingCall<byte[], byte[]> call,
-        WriteOptions? writeOptions)
+        WriteOptions? writeOptions,
+        CancellationTokenSource callCancellation)
     {
         RequestMeta = requestMeta ?? throw new ArgumentNullException(nameof(requestMeta));
         _call = call ?? throw new ArgumentNullException(nameof(call));
@@ -53,8 +57,28 @@ internal sealed class GrpcClientStreamTransportCall : IClientStreamTransportCall
             AllowSynchronousContinuations = false
         });
 
-        _writePump = RunWritePumpAsync();
-        _ = ObserveResponseAsync();
+        _callCts = callCancellation ?? throw new ArgumentNullException(nameof(callCancellation));
+        _cts = CancellationTokenSource.CreateLinkedTokenSource(_callCts.Token);
+        StartPumps();
+    }
+
+    private void StartPumps()
+    {
+        var group = new ErrGroup(_cts.Token);
+
+        group.Go(async token =>
+        {
+            await RunWritePumpAsync(token).ConfigureAwait(false);
+            return Ok(Unit.Value);
+        });
+
+        group.Go(async token =>
+        {
+            await ObserveResponseAsync(token).ConfigureAwait(false);
+            return Ok(Unit.Value);
+        });
+
+        _pumpGroup = group;
     }
 
     /// <inheritdoc />
@@ -74,13 +98,26 @@ internal sealed class GrpcClientStreamTransportCall : IClientStreamTransportCall
     {
         ObjectDisposedException.ThrowIf(_disposed, nameof(GrpcClientStreamTransportCall));
 
-        cancellationToken.ThrowIfCancellationRequested();
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+        catch (OperationCanceledException)
+        {
+            CancelFromWriteCancellation();
+            throw;
+        }
 
         var buffer = payload.ToArray();
 
         try
         {
             await _pendingWrites.Writer.WriteAsync(buffer, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            CancelFromWriteCancellation();
+            throw;
         }
         catch (ChannelClosedException)
         {
@@ -103,13 +140,13 @@ internal sealed class GrpcClientStreamTransportCall : IClientStreamTransportCall
 
         if (Interlocked.Exchange(ref _completionRequested, 1) == 1)
         {
-            await _writePump.ConfigureAwait(false);
+            await _writePumpCompletion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
             return;
         }
 
         cancellationToken.ThrowIfCancellationRequested();
         _pendingWrites.Writer.TryComplete();
-        await _writePump.ConfigureAwait(false);
+        await _writePumpCompletion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -121,21 +158,58 @@ internal sealed class GrpcClientStreamTransportCall : IClientStreamTransportCall
         }
 
         _disposed = true;
-
+        await _callCts.CancelAsync().ConfigureAwait(false);
+        await _cts.CancelAsync().ConfigureAwait(false);
         _pendingWrites.Writer.TryComplete();
 
-        try
+        if (_pumpGroup is not null)
         {
-            await _writePump.ConfigureAwait(false);
+            Result<Unit> pumpResult = default;
+            var hasPumpResult = false;
+
+            try
+            {
+                pumpResult = await _pumpGroup.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+                hasPumpResult = true;
+            }
+            catch (Exception ex)
+            {
+                HandlePumpGroupFailure(MapInternalError(ex, "The client stream pumps failed."));
+            }
+            finally
+            {
+                _pumpGroup.Dispose();
+                _pumpGroup = null;
+            }
+
+            if (hasPumpResult && pumpResult.IsFailure && pumpResult.Error is { } error)
+            {
+                HandlePumpGroupFailure(error);
+            }
         }
-        finally
-        {
-            _call.Dispose();
-            RecordCompletion(StatusCode.Cancelled);
-        }
+
+        _cts.Dispose();
+        _callCts.Dispose();
+        _call.Dispose();
+        RecordCompletion(StatusCode.Cancelled);
     }
 
-    private async Task ObserveResponseAsync()
+    private void CancelFromWriteCancellation()
+    {
+        if (!_callCts.IsCancellationRequested)
+        {
+            _callCts.Cancel();
+        }
+
+        if (!_cts.IsCancellationRequested)
+        {
+            _cts.Cancel();
+        }
+
+        _pendingWrites.Writer.TryComplete();
+    }
+
+    private async Task ObserveResponseAsync(CancellationToken cancellationToken)
     {
         StatusCode completionStatus = StatusCode.OK;
 
@@ -148,7 +222,7 @@ internal sealed class GrpcClientStreamTransportCall : IClientStreamTransportCall
                         var trailers = _call.GetTrailers();
                         return (headers, payload, trailers);
                     },
-                    cancellationToken: CancellationToken.None,
+                    cancellationToken: cancellationToken,
                     errorFactory: ex =>
                     {
                         if (ex is RpcException rpcException)
@@ -184,52 +258,62 @@ internal sealed class GrpcClientStreamTransportCall : IClientStreamTransportCall
         }
     }
 
-    private async Task RunWritePumpAsync()
+    private async Task RunWritePumpAsync(CancellationToken cancellationToken)
     {
         StatusCode failureStatus = StatusCode.Unknown;
 
-        var pumpResult = await Result
-            .TryAsync(
-                async _ =>
-                {
-                    await foreach (var payload in _pendingWrites.Reader.ReadAllAsync().ConfigureAwait(false))
+        try
+        {
+            var pumpResult = await Result
+                .TryAsync(
+                    async _ =>
                     {
-                        if (_writeOptions is not null)
+                        await foreach (var payload in _pendingWrites.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
                         {
-                            _call.RequestStream.WriteOptions = _writeOptions;
+                            if (_writeOptions is not null)
+                            {
+                                _call.RequestStream.WriteOptions = _writeOptions;
+                            }
+
+                            await _call.RequestStream.WriteAsync(payload).ConfigureAwait(false);
+                            Interlocked.Increment(ref _requestCount);
+                            GrpcTransportMetrics.ClientClientStreamRequestMessages.Add(1, _baseTags);
                         }
 
-                        await _call.RequestStream.WriteAsync(payload).ConfigureAwait(false);
-                        Interlocked.Increment(ref _requestCount);
-                        GrpcTransportMetrics.ClientClientStreamRequestMessages.Add(1, _baseTags);
-                    }
+                        if (Interlocked.Exchange(ref _completed, 1) == 0)
+                        {
+                            await _call.RequestStream.CompleteAsync().ConfigureAwait(false);
+                        }
 
-                    if (Interlocked.Exchange(ref _completed, 1) == 0)
+                        return Unit.Value;
+                    },
+                    cancellationToken: cancellationToken,
+                    errorFactory: ex =>
                     {
-                        await _call.RequestStream.CompleteAsync().ConfigureAwait(false);
-                    }
+                        if (ex is RpcException rpcException)
+                        {
+                            failureStatus = rpcException.Status.StatusCode;
+                            return MapRpcException(rpcException);
+                        }
 
-                    return Unit.Value;
-                },
-                cancellationToken: CancellationToken.None,
-                errorFactory: ex =>
-                {
-                    if (ex is RpcException rpcException)
-                    {
-                        failureStatus = rpcException.Status.StatusCode;
-                        return MapRpcException(rpcException);
-                    }
+                        failureStatus = StatusCode.Unknown;
+                        return MapInternalError(ex, "An error occurred while writing to the client stream.");
+                    })
+                .ConfigureAwait(false);
 
-                    failureStatus = StatusCode.Unknown;
-                    return MapInternalError(ex, "An error occurred while writing to the client stream.");
-                })
-            .ConfigureAwait(false);
-
-        if (pumpResult.IsFailure && pumpResult.Error is { } error)
+            if (pumpResult.IsFailure && pumpResult.Error is { } error)
+            {
+                FailPipeline(error, failureStatus);
+            }
+        }
+        finally
         {
-            FailPipeline(error, failureStatus);
+            _writePumpCompletion.TrySetResult(true);
         }
     }
+
+    private void HandlePumpGroupFailure(Error pumpError) =>
+        FailPipeline(pumpError, StatusCode.Unknown);
 
     private void FailPipeline(Error error, StatusCode statusCode)
     {

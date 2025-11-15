@@ -90,7 +90,6 @@ public sealed class LifecycleOrchestrator : ILifecycleOrchestrator
 
         foreach (var layer in _stopLayers)
         {
-            cancellationToken.ThrowIfCancellationRequested();
             var layerResult = await StopLayerAsync(layer, cancellationToken).ConfigureAwait(false);
             if (layerResult.IsFailure)
             {
@@ -167,7 +166,7 @@ public sealed class LifecycleOrchestrator : ILifecycleOrchestrator
         Stack<LifecycleComponentRegistration> started,
         CancellationToken cancellationToken)
     {
-        using var group = new ErrGroup(cancellationToken);
+        using var group = new ErrGroup();
         foreach (var component in layer)
         {
             var runtime = _runtimeState[component.Name];
@@ -228,9 +227,9 @@ public sealed class LifecycleOrchestrator : ILifecycleOrchestrator
             var policy = component.StopPolicy == ResultExecutionPolicy.None ? _defaultStopPolicy : component.StopPolicy;
             scheduled = true;
 
-            group.Go(async (_, token) =>
+            group.Go(async (_, _) =>
             {
-                var result = await ExecuteLifecycleAsync(component.Name, component.Lifecycle.StopAsync, policy, token).ConfigureAwait(false);
+                var result = await ExecuteLifecycleAsync(component.Name, component.Lifecycle.StopAsync, policy, cancellationToken).ConfigureAwait(false);
                 if (result.IsSuccess)
                 {
                     runtime.Status = LifecycleComponentStatus.Stopped;
@@ -252,7 +251,7 @@ public sealed class LifecycleOrchestrator : ILifecycleOrchestrator
             return Ok(Unit.Value);
         }
 
-        return await group.WaitAsync(cancellationToken).ConfigureAwait(false);
+        return await group.WaitAsync(CancellationToken.None).ConfigureAwait(false);
     }
 
     private static ImmutableArray<LifecycleComponentRegistration> BuildStartOrder(
