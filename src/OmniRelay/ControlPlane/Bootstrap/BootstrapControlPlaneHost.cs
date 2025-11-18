@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Hugo;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -36,6 +37,8 @@ internal sealed partial class BootstrapControlPlaneHost : ILifecycle, IDisposabl
         _tlsManager = tlsManager;
     }
 
+    [UnconditionalSuppressMessage("TrimAnalysis", "IL2026", Justification = "Minimal API endpoint mapping is not part of trimmed publishing scenarios.")]
+    [UnconditionalSuppressMessage("AOT", "IL3050", Justification = "Bootstrap control-plane host runs on dynamic runtime, not native AOT.")]
     public async ValueTask StartAsync(CancellationToken cancellationToken = default)
     {
         if (_app is not null)

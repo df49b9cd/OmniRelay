@@ -35,6 +35,8 @@ public static class OmniRelayProbesExtensions
         return services;
     }
 
+    [RequiresUnreferencedCode("Minimal API endpoints use reflection for binding diagnostic delegates.")]
+    [RequiresDynamicCode("Minimal API endpoint mapping relies on runtime code generation and is not AOT-safe.")]
     public static IEndpointRouteBuilder MapOmniRelayProbeDiagnostics(
         this IEndpointRouteBuilder builder,
         Action<ProbeDiagnosticsOptions>? configure = null)

@@ -10,6 +10,7 @@ namespace OmniRelay.Core.Leadership;
 public static class LeadershipServiceCollectionExtensions
 {
     [UnconditionalSuppressMessage("TrimAnalysis", "IL2026", Justification = "Leadership options binding occurs in non-trimmed hosting environments.")]
+    [RequiresDynamicCode("Configuration binding uses reflection and runtime-generated code.")]
     public static IServiceCollection AddLeadershipCoordinator(this IServiceCollection services, IConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(configuration);

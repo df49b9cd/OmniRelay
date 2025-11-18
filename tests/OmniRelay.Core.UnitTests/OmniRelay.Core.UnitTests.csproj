@@ -33,10 +33,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Include="../TestSupport/Http3FactAttribute.cs" Link="Support/Http3FactAttribute.cs" />
-    <Compile Include="../TestSupport/Http3TestHelper.cs" Link="Support/Http3TestHelper.cs" />
-    <Compile Include="../TestSupport/TestPortAllocator.cs" Link="Support/TestPortAllocator.cs" />
     <Compile Include="../TestSupport/Support/TestLogger.cs" Link="Support/TestLogger.cs" />
-    <Compile Include="../TestSupport/TestCertificateFactory.cs" Link="Support/TestCertificateFactory.cs" />
   </ItemGroup>
+
 </Project>

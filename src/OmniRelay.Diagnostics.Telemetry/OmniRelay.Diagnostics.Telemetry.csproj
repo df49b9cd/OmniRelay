@@ -3,6 +3,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <Authors>Soeren Magnus Olesen</Authors>
     <Company>df49b9cd</Company>
     <IsTrimmable>true</IsTrimmable>

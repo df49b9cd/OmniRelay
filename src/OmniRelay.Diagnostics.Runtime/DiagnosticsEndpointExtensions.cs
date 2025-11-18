@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -9,6 +10,8 @@ namespace OmniRelay.Diagnostics;
 /// <summary>Endpoint helpers for OmniRelay diagnostics control-plane routes.</summary>
 public static class DiagnosticsEndpointExtensions
 {
+    [RequiresUnreferencedCode("Minimal API endpoints use reflection for delegate parameter binding.")]
+    [RequiresDynamicCode("Minimal API endpoints rely on runtime code generation and aren't AOT-friendly.")]
     public static IEndpointRouteBuilder MapOmniRelayDiagnosticsControlPlane(
         this IEndpointRouteBuilder builder,
         Action<DiagnosticsEndpointOptions>? configure = null)

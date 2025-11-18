@@ -13,6 +13,7 @@ namespace OmniRelay.Core.Gossip;
 public static class MeshGossipServiceCollectionExtensions
 {
     [UnconditionalSuppressMessage("TrimAnalysis", "IL2026", Justification = "Mesh gossip options are bound from configuration in non-trimmed hosting scenarios.")]
+    [RequiresDynamicCode("Configuration binding uses reflection and runtime code generation.")]
     public static IServiceCollection AddMeshGossipAgent(this IServiceCollection services, IConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(configuration);

@@ -234,6 +234,8 @@ internal sealed class DiagnosticsControlPlaneHost : ILifecycle, IDisposable
         }
     }
 
+    [RequiresUnreferencedCode("Endpoint route building uses reflection for delegate parameter binding.")]
+    [RequiresDynamicCode("Endpoint route building uses runtime code generation and is not AOT-safe.")]
     private static void MapUpgradeEndpoints(WebApplication app)
     {
         app.MapGet("/control/upgrade", (NodeDrainCoordinator coordinator) =>

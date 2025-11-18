@@ -6,6 +6,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="$(MSBuildThisFileDirectory)TestSupport/*.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)TestSupport/*.cs"
+             Link="Support/%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

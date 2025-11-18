@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Net.Http.Json;
 using System.Net.Security;
@@ -207,6 +208,8 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
         return client;
     }
 
+    [UnconditionalSuppressMessage("TrimAnalysis", "IL2026", Justification = "Mesh gossip listener isn't published as a trimmed binary.")]
+    [UnconditionalSuppressMessage("AOT", "IL3050", Justification = "Mesh gossip listener runs on a dynamic runtime, not native AOT.")]
     private WebApplication BuildListener()
     {
         var builder = WebApplication.CreateSlimBuilder();
