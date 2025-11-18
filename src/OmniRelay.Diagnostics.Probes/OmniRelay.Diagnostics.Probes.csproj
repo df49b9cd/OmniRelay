@@ -16,6 +16,9 @@
     <Description>Synthetic health probe scheduler and chaos experiment coordinator for OmniRelay control-plane hosts.</Description>
     <PackageTags>omnirelay;diagnostics;probes;chaos</PackageTags>
   </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
   <PropertyGroup>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>

@@ -15,6 +15,7 @@
     <PackageId>OmniRelay.Diagnostics.Abstractions</PackageId>
     <Description>Core diagnostics interfaces, data contracts, and peer health models for OmniRelay hosts.</Description>
     <PackageTags>omnirelay;diagnostics</PackageTags>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
 
   <ItemGroup>
