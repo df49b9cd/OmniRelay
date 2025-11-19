@@ -42,3 +42,4 @@
 - WORK-001..WORK-022 for the active roadmap across OmniRelay, MeshKit, and operator experience tracks.
 - `docs/reference/omnirelay-transport-story.md` and `docs/reference/meshkit-control-plane-story.md` for the originating narratives.
 - Legacy backlog notes (archived outside this board) for historical context.
+- `docs/reference/transport-policy.md` for HTTP/3 + Protobuf policy configuration, exceptions, and CLI validation workflows.

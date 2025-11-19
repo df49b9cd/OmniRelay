@@ -29,6 +29,7 @@ using OmniRelay.Core.Shards.Hashing;
 using OmniRelay.Security.Authorization;
 using OmniRelay.Security.Secrets;
 using OmniRelay.Transport.Security;
+using OmniRelay.Configuration.Internal.TransportPolicy;
 
 namespace OmniRelay.Configuration;
 
@@ -54,6 +55,7 @@ public static class OmniRelayServiceCollectionExtensions
         var snapshot = new OmniRelayConfigurationOptions();
         configuration.Bind(snapshot);
         ValidateBasicConfiguration(snapshot);
+        TransportPolicyEvaluator.Enforce(snapshot);
 
         var (minimumLevel, overrides) = ParseLoggingConfiguration(snapshot.Logging);
 

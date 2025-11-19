@@ -18,6 +18,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using OmniRelay.Configuration;
+using OmniRelay.Configuration.Internal.TransportPolicy;
+using OmniRelay.Configuration.Models;
 using OmniRelay.ControlPlane.Bootstrap;
 using OmniRelay.ControlPlane.Clients;
 using OmniRelay.ControlPlane.Upgrade;
@@ -453,10 +455,44 @@ public static class Program
             CreateMeshPeersCommand(),
             CreateMeshUpgradeCommand(),
             CreateMeshBootstrapCommand(),
-            CreateMeshShardsCommand()
+            CreateMeshShardsCommand(),
+            CreateMeshConfigCommand()
         };
         return command;
     }
+
+    internal static Command CreateMeshConfigCommand()
+    {
+        var command = new Command("config", "Mesh configuration and transport policy tooling.")
+        {
+            CreateMeshConfigValidateCommand()
+        };
+
+        return command;
+    }
+
+    internal static Command CreateMeshConfigValidateCommand()
+    {
+        var command = new Command("validate", "Validate transports/encodings against the mesh transport policy.");
+
+        var configOption = new Option<string[]>(\"--config\")
+        {
+            Description = \"Configuration file(s) to load.\",
+            AllowMultipleArgumentsPerToken = true,
+            Required = true,
+            Arity = ArgumentArity.OneOrMore
+        };
+        configOption.Aliases.Add(\"-c\");
+
+        var sectionOption = new Option<string>(\"--section\")
+        {
+            Description = \"Root configuration section (defaults to omnirelay).\",
+            DefaultValueFactory = _ => DefaultConfigSection
+        };
+
+        var setOption = new Option<string[]>(\"--set\")
+        {
+            Description = \"Override configuration values (KEY=VALUE).\",\n            AllowMultipleArgumentsPerToken = true,\n            DefaultValueFactory = _ => []\n        };\n\n        var formatOption = new Option<string>(\"--format\")\n        {\n            Description = \"Output format (text|json).\",\n            DefaultValueFactory = _ => \"text\"\n        };\n\n        command.Add(configOption);\n        command.Add(sectionOption);\n        command.Add(setOption);\n        command.Add(formatOption);\n\n        command.SetAction(parseResult =>\n        {\n            var configs = parseResult.GetValue(configOption) ?? [];\n            var section = parseResult.GetValue(sectionOption) ?? DefaultConfigSection;\n            var overrides = parseResult.GetValue(setOption) ?? [];\n            var format = parseResult.GetValue(formatOption) ?? \"text\";\n            return RunMeshConfigValidateAsync(configs, section, overrides, format).GetAwaiter().GetResult();\n        });\n\n        return command;\n    }\n*** End Patch```} to=functions.apply_patch codex code box to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions_apply_patch to=functions_apply_patch to=functions_apply_patch to=functions_apply_patch to=functions_apply_patch to=functions_apply_patch to=functions_apply_patch to=functions_apply_patch to=functions_apply_patch to=functions apply patch ...*** End Patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions_apply_patch to=functions_apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions_apply_patch to=functions_apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions_apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions_apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions_apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions_apply_patch to=functions.apply_patch to=functions.apply_patch to=functions_apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions_apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions_apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions_apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions_apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions_apply_patch to=functions.apply_patch to=functions.apply_patch to=functions_apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions_apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions_apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions_apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions_apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions_apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions_apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions_apply_patch to=functions.apply_patch to=functions.apply_patch to=functions.apply_patch to=functions_apply_patch to=functions.apply_patch... (error)
 
     internal static Command CreateMeshLeadersCommand()
     {
@@ -1422,6 +1458,95 @@ public static class Program
         });
 
         return command;
+    }
+
+    internal static async Task<int> RunMeshConfigValidateAsync(
+        string[] configPaths,
+        string section,
+        string[] setOverrides,
+        string format)
+    {
+        if (!TryBuildConfiguration(configPaths, setOverrides, out var configuration, out var errorMessage))
+        {
+            await Console.Error.WriteLineAsync(errorMessage ?? "Failed to load configuration.").ConfigureAwait(false);
+            return 1;
+        }
+
+        var resolvedSection = string.IsNullOrWhiteSpace(section) ? DefaultConfigSection : section;
+        var options = new OmniRelayConfigurationOptions();
+        configuration.GetSection(resolvedSection).Bind(options);
+
+        TransportPolicyEvaluationResult evaluation;
+        try
+        {
+            evaluation = TransportPolicyEvaluator.Evaluate(options);
+        }
+        catch (Exception ex)
+        {
+            await Console.Error.WriteLineAsync($"Transport policy evaluation failed: {ex.Message}").ConfigureAwait(false);
+            return 1;
+        }
+
+        var normalizedFormat = string.IsNullOrWhiteSpace(format) ? "text" : format.Trim().ToLowerInvariant();
+        if (normalizedFormat is not ("text" or "json"))
+        {
+            await Console.Error.WriteLineAsync($"Unsupported --format '{format}'. Use 'text' or 'json'.").ConfigureAwait(false);
+            return 1;
+        }
+
+        if (normalizedFormat == "json")
+        {
+            var report = MeshConfigValidationReport.From(resolvedSection, evaluation);
+            var json = JsonSerializer.Serialize(report, OmniRelayCliJsonContext.Default.MeshConfigValidationReport);
+            Console.WriteLine(json);
+        }
+        else
+        {
+            EmitPolicyReport(resolvedSection, evaluation);
+        }
+
+        if (evaluation.HasViolations)
+        {
+            await Console.Error.WriteLineAsync("Transport policy violations detected. Update configuration or register an approved exception.").ConfigureAwait(false);
+            return 1;
+        }
+
+        return 0;
+    }
+
+    private static void EmitPolicyReport(string section, TransportPolicyEvaluationResult evaluation)
+    {
+        Console.WriteLine($"Transport policy evaluation for section '{section}':");
+        if (evaluation.Findings.Count == 0)
+        {
+            Console.WriteLine("  No control-plane or diagnostics endpoints configured.");
+            return;
+        }
+
+        foreach (var finding in evaluation.Findings)
+        {
+            var statusLabel = finding.Status switch
+            {
+                TransportPolicyFindingStatus.Compliant => "OK",
+                TransportPolicyFindingStatus.Excepted => "EXCEPT",
+                _ => "VIOLATION"
+            };
+
+            Console.WriteLine($"  [{statusLabel}] {finding.Endpoint} ({finding.Category}) -> {finding.Transport}/{finding.Encoding}");
+            Console.WriteLine($"      {finding.Message}");
+            if (finding.ExceptionName is not null)
+            {
+                var reason = string.IsNullOrWhiteSpace(finding.ExceptionReason) ? "no reason provided" : finding.ExceptionReason;
+                var expires = finding.ExceptionExpiresAfter is { } expiry
+                    ? $"expires {expiry:O}"
+                    : "no expiration";
+                Console.WriteLine($"      Exception '{finding.ExceptionName}' ({reason}, {expires})");
+            }
+        }
+
+        Console.WriteLine(evaluation.HasViolations
+            ? "Policy violations detected. See details above."
+            : "Transport policy satisfied.");
     }
 
     internal static async Task<int> RunConfigValidateAsync(string[] configPaths, string section, string[] setOverrides)

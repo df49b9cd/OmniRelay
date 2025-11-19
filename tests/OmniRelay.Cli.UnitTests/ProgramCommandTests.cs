@@ -640,10 +640,80 @@ public sealed class ProgramCommandTests : CliTestBase
         result.StdErr.ShouldContain("Leadership stream connection timed out.");
     }
 
+    [Fact(Timeout = TestTimeouts.Default)]
+    public async Task MeshConfigValidateCommand_WithDowngrade_PrintsError()
+    {
+        var configPath = CreateDiagnosticsConfigFile(enableHttp3: false);
+        try
+        {
+            var harness = new CommandTestHarness(Program.BuildRootCommand());
+            var result = await harness.InvokeAsync("mesh", "config", "validate", "--config", configPath);
+            result.ExitCode.ShouldBe(1);
+            result.StdErr.ShouldContain("policy violations", StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            File.Delete(configPath);
+        }
+    }
+
+    [Fact(Timeout = TestTimeouts.Default)]
+    public async Task MeshConfigValidateCommand_WithOverrides_Succeeds()
+    {
+        var configPath = CreateDiagnosticsConfigFile(enableHttp3: false);
+        try
+        {
+            var harness = new CommandTestHarness(Program.BuildRootCommand());
+            var result = await harness.InvokeAsync(
+                "mesh",
+                "config",
+                "validate",
+                "--config",
+                configPath,
+                "--set",
+                "omnirelay:diagnostics:controlPlane:httpRuntime:enableHttp3=true",
+                "--set",
+                "omnirelay:diagnostics:controlPlane:grpcRuntime:enableHttp3=true");
+
+            result.ExitCode.ShouldBe(0);
+            result.StdOut.ShouldContain("Transport policy satisfied", StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            File.Delete(configPath);
+        }
+    }
+
     private static string CreateConfigFile()
     {
         var path = Path.Combine(Path.GetTempPath(), $"omnirelay-cli-config-{Guid.NewGuid():N}.json");
         File.WriteAllText(path, """{"omnirelay":{}}""");
+        return path;
+    }
+
+    private static string CreateDiagnosticsConfigFile(bool enableHttp3)
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"omnirelay-cli-policy-{Guid.NewGuid():N}.json");
+        var json = $"""
+        {{
+          "omnirelay": {{
+            "service": "cli-policy",
+            "diagnostics": {{
+              "controlPlane": {{
+                "httpUrls": [ "https://127.0.0.1:9443" ],
+                "grpcUrls": [ "https://127.0.0.1:9444" ],
+                "httpRuntime": {{
+                  "enableHttp3": {enableHttp3.ToString().ToLowerInvariant()}
+                }},
+                "grpcRuntime": {{
+                  "enableHttp3": {enableHttp3.ToString().ToLowerInvariant()}
+                }}
+              }}
+            }}
+          }}
+        }}
+        """;
+        File.WriteAllText(path, json);
         return path;
     }
 

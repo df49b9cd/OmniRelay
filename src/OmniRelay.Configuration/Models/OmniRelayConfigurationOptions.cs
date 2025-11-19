@@ -24,6 +24,8 @@ public sealed class OmniRelayConfigurationOptions
     public ShardingConfiguration Sharding { get; init; } = new();
 
     public SecurityConfiguration Security { get; init; } = new();
+
+    public TransportPolicyConfiguration TransportPolicy { get; init; } = new();
 }
 
 /// <summary>Inbound transport configuration for HTTP and gRPC servers.</summary>

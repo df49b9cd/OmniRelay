@@ -28,4 +28,5 @@ namespace OmniRelay.Cli;
 [JsonSerializable(typeof(ShardSimulationAssignment))]
 [JsonSerializable(typeof(ShardSimulationChange))]
 [JsonSerializable(typeof(ShardSimulationRequest))]
+[JsonSerializable(typeof(MeshConfigValidationReport))]
 internal sealed partial class OmniRelayCliJsonContext : JsonSerializerContext;

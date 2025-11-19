@@ -78,6 +78,10 @@ Respond with file:line refs for changes; note tests/commands run.
 - `mcp__desktop-commander__write_file` — write/append content in ≤30-line chunks per call.
 - `apply_patch` — freeform multi-line patch tool for complex edits not suited to `edit_block`.
 
+## MCP Graph Memory
+- You have access to the MCP graph memory via the knowledge-graph tooling (`mcp__MCP_DOCKER__read_graph`, `open_nodes`, `search_nodes`, `create_entities`, `add_observations`, `create_relations`, etc.); consult it to retrieve prior context whenever it can inform the task at hand.
+- Keep the graph updated as you discover new facts, decisions, or dependencies so future work can leverage that captured memory.
+
 ## Codex CLI Tools
 - Codex CLI mcp tool strategies:
   1. Always chunk `read_file` access: request at most 200 lines (or <10 KiB) per call using `offset`/`length`, and immediately follow with the next chunk until the entire file or log is captured—never rely on a single call for large files.
