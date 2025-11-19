@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
+using System.Linq;
 using OmniRelay.Core.Shards;
 
 namespace OmniRelay.ShardStore.ObjectStorage;
@@ -30,6 +31,30 @@ public sealed class ObjectStorageShardStore : IShardRepository
     {
         var documents = await _storage.ListAsync(namespaceId, cancellationToken).ConfigureAwait(false);
         return documents.Select(doc => doc.Record).ToArray();
+    }
+
+    public async ValueTask<ShardQueryResult> QueryAsync(ShardQueryOptions options, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        var pageSize = options.ResolvePageSize();
+        var documents = await _storage.ListAsync(options.Namespace, cancellationToken).ConfigureAwait(false);
+        var filtered = documents
+            .Select(doc => doc.Record)
+            .Where(record => Matches(record, options))
+            .OrderBy(record => record.Namespace, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(record => record.ShardId, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        var startIndex = GetStartIndex(filtered, options.Cursor);
+        var page = filtered.Skip(startIndex).Take(pageSize).ToArray();
+        ShardQueryCursor? nextCursor = null;
+        if (page.Length > 0 && startIndex + page.Length < filtered.Length)
+        {
+            nextCursor = ShardQueryCursor.FromRecord(page[^1]);
+        }
+
+        var highestVersion = filtered.Length == 0 ? 0 : filtered.Max(record => record.Version);
+        return new ShardQueryResult(page, nextCursor, highestVersion);
     }
 
     public async ValueTask<ShardMutationResult> UpsertAsync(ShardMutationRequest request, CancellationToken cancellationToken = default)
@@ -126,6 +151,47 @@ public sealed class ObjectStorageShardStore : IShardRepository
         }
 
         await Task.CompletedTask;
+    }
+
+    private static bool Matches(ShardRecord record, ShardQueryOptions options)
+    {
+        if (!string.IsNullOrWhiteSpace(options.OwnerNodeId) &&
+            !string.Equals(record.OwnerNodeId, options.OwnerNodeId, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (options.Statuses.Count > 0 && !options.Statuses.Contains(record.Status))
+        {
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(options.SearchShardId) &&
+            record.ShardId?.Contains(options.SearchShardId, StringComparison.OrdinalIgnoreCase) != true)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static int GetStartIndex(IReadOnlyList<ShardRecord> records, ShardQueryCursor? cursor)
+    {
+        if (records.Count == 0 || cursor is null)
+        {
+            return 0;
+        }
+
+        for (var i = 0; i < records.Count; i++)
+        {
+            if (string.Equals(records[i].Namespace, cursor.Namespace, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(records[i].ShardId, cursor.ShardId, StringComparison.OrdinalIgnoreCase))
+            {
+                return i + 1;
+            }
+        }
+
+        return 0;
     }
 }
 

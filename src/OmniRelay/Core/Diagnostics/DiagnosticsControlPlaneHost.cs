@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Builder;
@@ -12,6 +13,8 @@ using OmniRelay.ControlPlane.Security;
 using OmniRelay.ControlPlane.Upgrade;
 using OmniRelay.Core.Gossip;
 using OmniRelay.Core.Leadership;
+using OmniRelay.Core.Shards;
+using OmniRelay.Core.Shards.ControlPlane;
 using OmniRelay.Core.Transport;
 using OmniRelay.Diagnostics;
 
@@ -44,12 +47,13 @@ internal sealed class DiagnosticsControlPlaneHost : ILifecycle, IDisposable
         bool enableDocumentation,
         bool enableProbeDiagnostics,
         bool enableChaosControl,
+        bool enableShardDiagnostics,
         ILogger<DiagnosticsControlPlaneHost> logger,
         TransportTlsManager? tlsManager = null)
     {
         _services = services ?? throw new ArgumentNullException(nameof(services));
         _options = options ?? throw new ArgumentNullException(nameof(options));
-        _features = new DiagnosticsControlPlaneFeatures(enableLoggingToggle, enableSamplingToggle, enableLeaseHealthDiagnostics, enablePeerDiagnostics, enableLeadershipDiagnostics, enableDocumentation, enableProbeDiagnostics, enableChaosControl);
+        _features = new DiagnosticsControlPlaneFeatures(enableLoggingToggle, enableSamplingToggle, enableLeaseHealthDiagnostics, enablePeerDiagnostics, enableLeadershipDiagnostics, enableDocumentation, enableProbeDiagnostics, enableChaosControl, enableShardDiagnostics);
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _tlsManager = tlsManager;
     }
@@ -100,6 +104,12 @@ internal sealed class DiagnosticsControlPlaneHost : ILifecycle, IDisposable
             if (drainCoordinator is not null)
             {
                 services.AddSingleton(drainCoordinator);
+            }
+
+            var shardService = _services.GetService<ShardControlPlaneService>();
+            if (shardService is not null)
+            {
+                services.AddSingleton(shardService);
             }
         });
 
@@ -200,6 +210,11 @@ internal sealed class DiagnosticsControlPlaneHost : ILifecycle, IDisposable
             });
         }
 
+        if (_features.EnableShardDiagnostics)
+        {
+            app.MapShardDiagnosticsEndpoints();
+        }
+
         MapUpgradeEndpoints(app);
     }
 
@@ -241,7 +256,7 @@ internal sealed class DiagnosticsControlPlaneHost : ILifecycle, IDisposable
         app.MapGet("/control/upgrade", (NodeDrainCoordinator coordinator) =>
         {
                 var snapshot = coordinator.Snapshot();
-                return Results.Json(snapshot, DiagnosticsJsonContext.Default.NodeDrainSnapshot);
+                return Results.Json(snapshot, ShardDiagnosticsJsonContext.Default.NodeDrainSnapshot);
         });
 
         app.MapPost("/control/upgrade/drain", async (HttpContext context, NodeDrainCoordinator coordinator, NodeDrainCommand? request) =>
@@ -249,7 +264,7 @@ internal sealed class DiagnosticsControlPlaneHost : ILifecycle, IDisposable
             try
             {
                 var snapshot = await coordinator.BeginDrainAsync(request?.Reason, context.RequestAborted).ConfigureAwait(false);
-                return Results.Json(snapshot, DiagnosticsJsonContext.Default.NodeDrainSnapshot);
+                return Results.Json(snapshot, ShardDiagnosticsJsonContext.Default.NodeDrainSnapshot);
             }
             catch (InvalidOperationException ex)
             {
@@ -262,7 +277,7 @@ internal sealed class DiagnosticsControlPlaneHost : ILifecycle, IDisposable
             try
             {
                 var snapshot = await coordinator.ResumeAsync(context.RequestAborted).ConfigureAwait(false);
-                return Results.Json(snapshot, DiagnosticsJsonContext.Default.NodeDrainSnapshot);
+                return Results.Json(snapshot, ShardDiagnosticsJsonContext.Default.NodeDrainSnapshot);
             }
             catch (InvalidOperationException ex)
             {
@@ -283,4 +298,5 @@ internal readonly record struct DiagnosticsControlPlaneFeatures(
     bool EnableLeadershipDiagnostics,
     bool EnableDocumentation,
     bool EnableProbeDiagnostics,
-    bool EnableChaosControl);
+    bool EnableChaosControl,
+    bool EnableShardDiagnostics);

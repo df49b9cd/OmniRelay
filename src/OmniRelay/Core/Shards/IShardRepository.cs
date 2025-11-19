@@ -10,4 +10,6 @@ public interface IShardRepository
     ValueTask<ShardMutationResult> UpsertAsync(ShardMutationRequest request, CancellationToken cancellationToken = default);
 
     IAsyncEnumerable<ShardRecordDiff> StreamDiffsAsync(long? sinceVersion, CancellationToken cancellationToken = default);
+
+    ValueTask<ShardQueryResult> QueryAsync(ShardQueryOptions options, CancellationToken cancellationToken = default);
 }

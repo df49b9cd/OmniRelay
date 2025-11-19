@@ -117,6 +117,77 @@ public sealed class RelationalShardStoreTests : IAsyncLifetime, IDisposable
         await Should.ThrowAsync<ShardConcurrencyException>(async () => await _repository.UpsertAsync(stale, ct));
     }
 
+    [Fact(Timeout = TestTimeouts.Default)]
+    public async Task QueryAsync_FiltersByNamespaceOwnerStatusAndSearch()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        for (var i = 0; i < 6; i++)
+        {
+            var shardId = $"shard-{i:D2}";
+            var owner = i % 2 == 0 ? "node-a" : "node-b";
+            var status = i % 2 == 0 ? ShardStatus.Active : ShardStatus.Draining;
+            await _repository.UpsertAsync(CreateMutation("mesh.query", shardId, owner, status: status), ct);
+        }
+
+        await _repository.UpsertAsync(CreateMutation("mesh.other", "shard-77", "node-a"), ct);
+
+        var options = new ShardQueryOptions
+        {
+            Namespace = "mesh.query",
+            OwnerNodeId = "node-a",
+            Statuses = new[] { ShardStatus.Active },
+            SearchShardId = "shard-0",
+            PageSize = 10
+        };
+
+        var result = await _repository.QueryAsync(options, ct);
+
+        result.Items.ShouldNotBeEmpty();
+        result.Items.ShouldAllBe(record => record.Namespace == "mesh.query");
+        result.Items.ShouldAllBe(record => record.OwnerNodeId == "node-a");
+        result.Items.ShouldAllBe(record => record.Status == ShardStatus.Active);
+        result.HighestVersion.ShouldBeGreaterThan(0);
+    }
+
+    [Fact(Timeout = TestTimeouts.Default)]
+    public async Task QueryAsync_PaginatesWithCursor()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        for (var i = 0; i < 5; i++)
+        {
+            await _repository.UpsertAsync(CreateMutation("mesh.page", $"page-{i:D2}", "node-a"), ct);
+        }
+
+        var first = await _repository.QueryAsync(new ShardQueryOptions
+        {
+            Namespace = "mesh.page",
+            PageSize = 2
+        }, ct);
+
+        first.Items.Count.ShouldBe(2);
+        first.NextCursor.ShouldNotBeNull();
+
+        var second = await _repository.QueryAsync(new ShardQueryOptions
+        {
+            Namespace = "mesh.page",
+            PageSize = 2,
+            Cursor = first.NextCursor
+        }, ct);
+
+        second.Items.Count.ShouldBe(2);
+        second.NextCursor.ShouldNotBeNull();
+
+        var third = await _repository.QueryAsync(new ShardQueryOptions
+        {
+            Namespace = "mesh.page",
+            PageSize = 2,
+            Cursor = second.NextCursor
+        }, ct);
+
+        third.Items.Count.ShouldBe(1);
+        third.NextCursor.ShouldBeNull();
+    }
+
     private static ShardMutationRequest CreateMutation(
         string @namespace,
         string shardId,
@@ -124,7 +195,8 @@ public sealed class RelationalShardStoreTests : IAsyncLifetime, IDisposable
         string strategy = ShardHashStrategyIds.Rendezvous,
         long? expectedVersion = null,
         string changeTicket = "chg-001",
-        ShardChangeMetadata? metadata = null)
+        ShardChangeMetadata? metadata = null,
+        ShardStatus status = ShardStatus.Active)
     {
         return new ShardMutationRequest
         {
@@ -134,7 +206,7 @@ public sealed class RelationalShardStoreTests : IAsyncLifetime, IDisposable
             OwnerNodeId = owner,
             LeaderId = owner,
             CapacityHint = 1,
-            Status = ShardStatus.Active,
+            Status = status,
             ExpectedVersion = expectedVersion,
             ChangeTicket = changeTicket,
             ChangeMetadata = metadata ?? new ShardChangeMetadata("operator", "seed", changeTicket)

@@ -1,7 +1,7 @@
 # MeshKit Control-Plane Story
 
 ## Goal
-- Extract and standardize the control-plane capabilities (gossip, leadership, SafeTaskQueue orchestration, diagnostics) currently embedded in OmniRelay so any service can compose a mesh-aware peer layer alongside Hugo and OmniRelay.
+- Extract and standardize the control-plane capabilities (gossip, leadership, SafeTaskQueue orchestration, diagnostics, Shards) currently embedded in OmniRelay so any service can compose a mesh-aware peer layer alongside Hugo and OmniRelay.
 
 ## Scope
 - New MeshKit library providing peering foundations: gossip membership, leadership coordination, SafeTaskQueue backpressure/replication wiring, diagnostics/control endpoints.

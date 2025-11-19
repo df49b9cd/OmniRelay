@@ -2,7 +2,10 @@ using System.Collections.Immutable;
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using OmniRelay.Cli;
 using OmniRelay.Cli.UnitTests.Infrastructure;
+using OmniRelay.Core.Shards;
+using OmniRelay.Core.Shards.ControlPlane;
 using OmniRelay.Dispatcher;
 
 namespace OmniRelay.Cli.UnitTests;
@@ -24,6 +27,215 @@ public sealed class ProgramCommandTests : CliTestBase
         finally
         {
             File.Delete(configPath);
+        }
+    }
+
+    [Fact(Timeout = TestTimeouts.Default)]
+    public async Task MeshShardsListCommand_WithFilters_PrintsTable()
+    {
+        var shard = new ShardSummary(
+            "mesh.control",
+            "shard-0001",
+            "rendezvous",
+            "node-a",
+            "node-a",
+            1.0,
+            ShardStatus.Active,
+            7,
+            "abcd",
+            DateTimeOffset.Parse("2024-10-01T00:00:00Z"),
+            "chg-1");
+        var response = new ShardListResponse(new[] { shard }, "cursor-123", 42);
+        var json = JsonSerializer.Serialize(response, OmniRelayCliJsonContext.Default.ShardListResponse);
+        var handler = new StubHttpMessageHandler(request =>
+        {
+            request.RequestUri.ShouldNotBeNull();
+            request.RequestUri!.Query.ShouldContain("namespace=mesh.control");
+            request.RequestUri!.Query.ShouldContain("owner=node-a");
+            request.RequestUri!.Query.ShouldContain("status=Active");
+            request.Headers.TryGetValues("x-mesh-scope", out var scopes).ShouldBeTrue();
+            scopes.ShouldContain("mesh.read");
+
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            };
+        });
+
+        CliRuntime.HttpClientFactory = new FakeHttpClientFactory(handler);
+
+        try
+        {
+            var harness = new CommandTestHarness(Program.BuildRootCommand());
+            var result = await harness.InvokeAsync(
+                "mesh",
+                "shards",
+                "list",
+                "--url",
+                "http://127.0.0.1:19081",
+                "--namespace",
+                "mesh.control",
+                "--owner",
+                "node-a",
+                "--status",
+                "Active",
+                "--search",
+                "0001",
+                "--page-size",
+                "5");
+
+            result.ExitCode.ShouldBe(0);
+            result.StdOut.ShouldContain("mesh.control");
+            result.StdOut.ShouldContain("shard-0001");
+        }
+        finally
+        {
+            CliRuntime.Reset();
+        }
+    }
+
+    [Fact(Timeout = TestTimeouts.Default)]
+    public async Task MeshShardsListCommand_WithInvalidStatus_ExitsEarly()
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.InternalServerError));
+        CliRuntime.HttpClientFactory = new FakeHttpClientFactory(handler);
+        try
+        {
+            var harness = new CommandTestHarness(Program.BuildRootCommand());
+            var result = await harness.InvokeAsync(
+                "mesh",
+                "shards",
+                "list",
+                "--status",
+                "bogus");
+
+            result.ExitCode.ShouldBe(1);
+            result.StdErr.ShouldContain("Invalid shard status");
+            handler.Requests.ShouldBeEmpty();
+        }
+        finally
+        {
+            CliRuntime.Reset();
+        }
+    }
+
+    [Fact(Timeout = TestTimeouts.Default)]
+    public async Task MeshShardsDiffCommand_PrintsChanges()
+    {
+        var shard = new ShardSummary(
+            "mesh.control",
+            "shard-0900",
+            "rendezvous",
+            "node-b",
+            "node-b",
+            1.0,
+            ShardStatus.Draining,
+            9,
+            "ffff",
+            DateTimeOffset.Parse("2024-10-02T00:00:00Z"),
+            "chg-2");
+        var diff = new ShardDiffEntry(12, shard, shard with { OwnerNodeId = "node-a" }, new ShardHistoryRecord
+        {
+            Namespace = shard.Namespace,
+            ShardId = shard.ShardId,
+            Version = shard.Version,
+            StrategyId = shard.StrategyId,
+            Actor = "operator",
+            Reason = "rebalance",
+            ChangeTicket = "chg-2",
+            CreatedAt = shard.UpdatedAt,
+            OwnerNodeId = shard.OwnerNodeId,
+            PreviousOwnerNodeId = "node-a"
+        });
+        var response = new ShardDiffResponse(new[] { diff }, diff.Position);
+        var json = JsonSerializer.Serialize(response, OmniRelayCliJsonContext.Default.ShardDiffResponse);
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(json, Encoding.UTF8, "application/json")
+        });
+
+        CliRuntime.HttpClientFactory = new FakeHttpClientFactory(handler);
+
+        try
+        {
+            var harness = new CommandTestHarness(Program.BuildRootCommand());
+            var result = await harness.InvokeAsync(
+                "mesh",
+                "shards",
+                "diff",
+                "--from-version",
+                "1",
+                "--to-version",
+                "20");
+
+            result.ExitCode.ShouldBe(0);
+            result.StdOut.ShouldContain("shard-0900");
+            handler.Requests.ShouldHaveSingleItem();
+            handler.Requests[0].Headers.TryGetValues("x-mesh-scope", out var scopes).ShouldBeTrue();
+            scopes.ShouldContain("mesh.operate");
+        }
+        finally
+        {
+            CliRuntime.Reset();
+        }
+    }
+
+    [Fact(Timeout = TestTimeouts.Default)]
+    public async Task MeshShardsSimulateCommand_SendsNodePayload()
+    {
+        var simulation = new ShardSimulationResponse(
+            "mesh.control",
+            "rendezvous",
+            DateTimeOffset.UtcNow,
+            new[]
+            {
+                new ShardSimulationAssignment("mesh.control", "shard-01", "node-a", 1, null)
+            },
+            new[]
+            {
+                new ShardSimulationChange("mesh.control", "shard-01", "node-a", "node-b", true)
+            });
+
+        var json = JsonSerializer.Serialize(simulation, OmniRelayCliJsonContext.Default.ShardSimulationResponse);
+        var handler = new StubHttpMessageHandler(request =>
+        {
+            request.Headers.TryGetValues("x-mesh-scope", out var scopes).ShouldBeTrue();
+            scopes.ShouldContain("mesh.operate");
+            var payload = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            payload.ShouldContain("\"nodes\"");
+            payload.ShouldContain("node-a");
+            payload.ShouldContain("node-b");
+
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            };
+        });
+
+        CliRuntime.HttpClientFactory = new FakeHttpClientFactory(handler);
+
+        try
+        {
+            var harness = new CommandTestHarness(Program.BuildRootCommand());
+            var result = await harness.InvokeAsync(
+                "mesh",
+                "shards",
+                "simulate",
+                "--namespace",
+                "mesh.control",
+                "--strategy",
+                "rendezvous",
+                "--node",
+                "node-a:1.0",
+                "--node",
+                "node-b:0.8");
+
+            result.ExitCode.ShouldBe(0);
+            result.StdOut.ShouldContain("Changes");
+        }
+        finally
+        {
+            CliRuntime.Reset();
         }
     }
 

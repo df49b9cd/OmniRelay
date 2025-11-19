@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using OmniRelay.ControlPlane.Hosting;
 using OmniRelay.ControlPlane.Security;
 using OmniRelay.Core.Transport;
+using OmniRelay.Core.Shards.ControlPlane;
 using OmniRelay.Transport.Grpc;
 using OmniRelay.Transport.Grpc.Interceptors;
 
@@ -50,11 +51,23 @@ internal sealed partial class LeadershipControlPlaneHost : ILifecycle, IDisposab
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
         var builder = new GrpcControlPlaneHostBuilder(_options);
+        var shardGrpcService = _services.GetService<ShardControlGrpcService>();
         builder.ConfigureServices(services =>
         {
             services.AddSingleton(_ => _services.GetRequiredService<LeadershipControlGrpcService>());
+            if (shardGrpcService is not null)
+            {
+                services.AddSingleton(shardGrpcService);
+            }
         });
-        builder.ConfigureApp(app => app.MapGrpcService<LeadershipControlGrpcService>());
+        builder.ConfigureApp(app =>
+        {
+            app.MapGrpcService<LeadershipControlGrpcService>();
+            if (shardGrpcService is not null)
+            {
+                app.MapGrpcService<ShardControlGrpcService>();
+            }
+        });
 
         ConfigureInterceptorPipeline(builder);
 

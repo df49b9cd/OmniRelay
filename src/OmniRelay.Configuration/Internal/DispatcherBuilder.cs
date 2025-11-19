@@ -27,6 +27,7 @@ using OmniRelay.Core.Diagnostics;
 using OmniRelay.Core.Gossip;
 using OmniRelay.Core.Leadership;
 using OmniRelay.Core.Peers;
+using OmniRelay.Core.Shards.ControlPlane;
 using OmniRelay.Core.Transport;
 using OmniRelay.Diagnostics;
 using OmniRelay.Dispatcher;
@@ -1377,6 +1378,7 @@ internal sealed partial class DispatcherBuilder
             settings.EnableDocumentation,
             settings.EnableProbeDiagnostics,
             settings.EnableChaosControl,
+            settings.EnableShardDiagnostics,
             loggerFactory.CreateLogger<DiagnosticsControlPlaneHost>(),
             settings.HttpTlsManager);
 
@@ -1458,7 +1460,10 @@ internal sealed partial class DispatcherBuilder
         var chaos = diagnostics.Chaos ?? new ChaosDiagnosticsConfiguration();
         var enableChaosControl = chaos.EnableControlEndpoint ?? false;
 
-        var enableControlPlane = runtime.EnableControlPlane ?? (enableLogging || enableSampling || enableLeaseHealth || enablePeerDiagnostics || enableLeadershipDiagnostics || enableDocumentation || enableProbeDiagnostics || enableChaosControl);
+        var shardService = _serviceProvider.GetService<ShardControlPlaneService>();
+        var enableShardDiagnostics = shardService is not null;
+
+        var enableControlPlane = runtime.EnableControlPlane ?? (enableLogging || enableSampling || enableLeaseHealth || enablePeerDiagnostics || enableLeadershipDiagnostics || enableDocumentation || enableProbeDiagnostics || enableChaosControl || enableShardDiagnostics);
         if (!enableControlPlane)
         {
             settings = default;
@@ -1495,7 +1500,8 @@ internal sealed partial class DispatcherBuilder
             enableLeadershipDiagnostics,
             enableDocumentation,
             enableProbeDiagnostics,
-            enableChaosControl);
+            enableChaosControl,
+            enableShardDiagnostics);
         return true;
     }
 
@@ -1668,7 +1674,8 @@ internal sealed partial class DispatcherBuilder
         bool EnableLeadershipDiagnostics,
         bool EnableDocumentation,
         bool EnableProbeDiagnostics,
-        bool EnableChaosControl);
+        bool EnableChaosControl,
+        bool EnableShardDiagnostics);
 
     private sealed record BootstrapControlPlaneSettings(
         HttpControlPlaneHostOptions HttpOptions,

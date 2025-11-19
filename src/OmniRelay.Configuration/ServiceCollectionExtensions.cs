@@ -23,6 +23,9 @@ using OmniRelay.Core.Gossip;
 using OmniRelay.Core.Leadership;
 using OmniRelay.Diagnostics;
 using OmniRelay.Diagnostics.Alerting;
+using OmniRelay.Core.Shards;
+using OmniRelay.Core.Shards.ControlPlane;
+using OmniRelay.Core.Shards.Hashing;
 using OmniRelay.Security.Authorization;
 using OmniRelay.Security.Secrets;
 using OmniRelay.Transport.Security;
@@ -98,6 +101,25 @@ public static class OmniRelayServiceCollectionExtensions
 
         // Ensure HttpClientFactory is available so named HTTP outbounds can be used if configured.
         services.AddHttpClient();
+
+        services.TryAddSingleton<ShardHashStrategyRegistry>();
+        if (services.Any(descriptor => descriptor.ServiceType == typeof(IShardRepository)))
+        {
+            services.TryAddSingleton(sp =>
+            {
+                var repository = sp.GetRequiredService<IShardRepository>();
+                var strategies = sp.GetRequiredService<ShardHashStrategyRegistry>();
+                var timeProvider = sp.GetService<TimeProvider>();
+                var logger = sp.GetRequiredService<ILogger<ShardControlPlaneService>>();
+                return new ShardControlPlaneService(repository, strategies, timeProvider, logger);
+            });
+            services.TryAddSingleton(sp =>
+            {
+                var planeService = sp.GetRequiredService<ShardControlPlaneService>();
+                var logger = sp.GetRequiredService<ILogger<ShardControlGrpcService>>();
+                return new ShardControlGrpcService(planeService, logger);
+            });
+        }
 
         ConfigureDiagnostics(services, snapshot);
         ConfigureSecurity(services, snapshot);

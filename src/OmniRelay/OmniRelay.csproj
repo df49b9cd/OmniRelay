@@ -42,6 +42,7 @@
 
   <ItemGroup>
     <Protobuf Include="Core/Leadership/Protos/leadership_control.proto" GrpcServices="Server" />
+    <Protobuf Include="Core/Shards/Protos/shard_control.proto" GrpcServices="Server" />
   </ItemGroup>
 
   <ItemGroup>

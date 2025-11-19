@@ -14,6 +14,7 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <PackageReference Include="Microsoft.Data.Sqlite" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="NSubstitute" />
     <PackageReference Include="Shouldly" />
@@ -31,10 +32,12 @@
 
   <ItemGroup>
     <Compile Include="../OmniRelay.Codegen.Tests/Generated/TestService.OmniRelay.g.cs" Link="Support/Generated/TestService.OmniRelay.g.cs" />
+    <Compile Include="../TestSupport/Shards/ShardControlPlaneTestHost.cs" Link="Support/ShardControlPlaneTestHost.cs" />
     <Compile Include="../TestSupport/Support/TestRuntimeConfigurator.cs" Link="Support/TestRuntimeConfigurator.cs" />
     <ProjectReference Include="../../src/OmniRelay/OmniRelay.csproj" />
     <ProjectReference Include="../../src/OmniRelay.Configuration/OmniRelay.Configuration.csproj" />
     <ProjectReference Include="../../src/OmniRelay.Cli/OmniRelay.Cli.csproj" />
+    <ProjectReference Include="../../src/OmniRelay.ShardStore.Relational/OmniRelay.ShardStore.Relational.csproj" />
   </ItemGroup>
 
   <ItemGroup>

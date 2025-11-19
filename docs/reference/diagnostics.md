@@ -148,6 +148,31 @@ Each workflow measurement includes metric tags for `workflow.namespace`, `workfl
 
 These endpoints appear alongside `/omnirelay/introspect` on every HTTP inbound when `runtime.enableControlPlane` is true.
 
+### Shard control endpoints
+
+When an `IShardRepository` is registered the diagnostics host exposes `/control/shards*` for operators that need real‑time ownership visibility. All shard APIs require either the `mesh.read` (list/watch) or `mesh.operate` (diff/simulate) scope passed via the `x-mesh-scope` header.
+
+- `GET /control/shards` returns the paged shard catalog. Query parameters: `namespace`, `owner`, `status=Active,Draining`, `search=shard-id-fragment`, `pageSize` (defaults to 100/max 500), and `cursor`. Responses include `nextCursor` and `x-omnirelay-shards-version` headers for cache validation.
+- `GET /control/shards/diff` replays shard diffs (version history) between `fromVersion`/`toVersion`. Each entry includes the previous owner plus audit metadata, so auditors can reconcile who moved a shard and why.
+- `GET /control/shards/watch` streams `text/event-stream` updates with `event: shard.diff` frames. Clients can supply a `resumeToken` (the previous diff id) to recover after disconnects without losing events.
+- `POST /control/shards/simulate` accepts `{ \"namespace\": \"mesh.payments\", \"strategyId\": \"rendezvous\", \"nodes\": [{ \"nodeId\": \"node-a\", \"weight\": 1.0 }] }` and returns both the generated plan and the set of ownership changes compared to the current state.
+
+The CLI wraps these flows:
+
+```bash
+# List shards in a namespace (table or JSON)
+omnirelay mesh shards list --url http://127.0.0.1:8080 --namespace mesh.orders --status Active --json
+
+# Fetch diffs between resume tokens
+omnirelay mesh shards diff --url http://127.0.0.1:8080 --from-version 10 --to-version 20
+
+# Run a simulation against a custom node set
+omnirelay mesh shards simulate --url http://127.0.0.1:8080 --namespace mesh.orders \\
+  --node node-a:1.0 --node node-b:0.8
+```
+
+These commands set the appropriate scope header automatically; use `--json` for machine readable output or rely on the default table format for on-call runbooks.
+
 ### Control-plane quickstart
 
 With the `appsettings.json` above and an OmniRelay HTTP inbound listening on `http://localhost:8080`, the following commands exercise the runtime controls end-to-end:

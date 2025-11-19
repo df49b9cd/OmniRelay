@@ -2,6 +2,8 @@ using System.Data;
 using System.Data.Common;
 using System.Globalization;
 using System.Runtime.CompilerServices;
+using System.Text;
+using System.Linq;
 using OmniRelay.Core.Shards;
 
 #pragma warning disable CA2007 // awaited disposals cannot use ConfigureAwait
@@ -65,6 +67,71 @@ public sealed class RelationalShardStore : IShardRepository
         }
 
         return results;
+    }
+
+    public async ValueTask<ShardQueryResult> QueryAsync(ShardQueryOptions options, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        var pageSize = options.ResolvePageSize();
+        var connection = _connectionFactory();
+        await using var connectionScope = connection.ConfigureAwait(false);
+        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+        var results = new List<ShardRecord>();
+        await using (var command = connection.CreateCommand())
+        {
+            var whereClause = BuildFilterClause(options, command, includeCursorFilters: true);
+            var builder = new StringBuilder(Sql.SelectColumns);
+            if (whereClause.Length > 0)
+            {
+                builder.Append(" WHERE ").Append(whereClause);
+            }
+
+            builder.Append(" ORDER BY namespace, shard_id LIMIT @limit");
+            command.CommandText = builder.ToString();
+            AddParameter(command, "@limit", pageSize, DbType.Int32);
+
+            var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            await using var readerScope = reader.ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                results.Add(ReadRecord(reader));
+            }
+        }
+
+        ShardQueryCursor? nextCursor = null;
+        if (results.Count == pageSize)
+        {
+            nextCursor = ShardQueryCursor.FromRecord(results[^1]);
+        }
+
+        long highestVersion = 0;
+        await using (var versionCommand = connection.CreateCommand())
+        {
+            var whereClause = BuildFilterClause(options, versionCommand, includeCursorFilters: false);
+            var builder = new StringBuilder(Sql.SelectMaxVersion);
+            if (whereClause.Length > 0)
+            {
+                builder.Append(" WHERE ").Append(whereClause);
+            }
+
+            versionCommand.CommandText = builder.ToString();
+            var scalar = await versionCommand.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+            if (scalar is long longValue)
+            {
+                highestVersion = longValue;
+            }
+            else if (scalar is int intValue)
+            {
+                highestVersion = intValue;
+            }
+            else if (scalar is IConvertible convertible)
+            {
+                highestVersion = convertible.ToInt64(CultureInfo.InvariantCulture);
+            }
+        }
+
+        return new ShardQueryResult(results, nextCursor, highestVersion);
     }
 
     public async ValueTask<ShardMutationResult> UpsertAsync(ShardMutationRequest request, CancellationToken cancellationToken = default)
@@ -343,8 +410,81 @@ public sealed class RelationalShardStore : IShardRepository
         command.Parameters.Add(parameter);
     }
 
+    private static string BuildFilterClause(ShardQueryOptions options, DbCommand command, bool includeCursorFilters)
+    {
+        var builder = new StringBuilder();
+
+        void Append(string clause)
+        {
+            if (builder.Length > 0)
+            {
+                builder.Append(" AND ");
+            }
+
+            builder.Append(clause);
+        }
+
+        if (!string.IsNullOrWhiteSpace(options.Namespace))
+        {
+            Append("namespace = @namespace");
+            AddParameter(command, "@namespace", options.Namespace!.Trim());
+        }
+
+        if (!string.IsNullOrWhiteSpace(options.OwnerNodeId))
+        {
+            Append("owner_node_id = @owner");
+            AddParameter(command, "@owner", options.OwnerNodeId!.Trim());
+        }
+
+        if (!string.IsNullOrWhiteSpace(options.SearchShardId))
+        {
+            Append("shard_id LIKE @search");
+            AddParameter(command, "@search", $"%{options.SearchShardId!.Trim()}%");
+        }
+
+        if (options.Statuses.Count > 0)
+        {
+            var distinctStatuses = options.Statuses.Distinct().ToArray();
+            if (distinctStatuses.Length > 0)
+            {
+                var placeholders = new string[distinctStatuses.Length];
+                for (var i = 0; i < distinctStatuses.Length; i++)
+                {
+                    var parameterName = $"@status{i}";
+                    placeholders[i] = parameterName;
+                    AddParameter(command, parameterName, (int)distinctStatuses[i], DbType.Int32);
+                }
+
+                Append($"status IN ({string.Join(", ", placeholders)})");
+            }
+        }
+
+        if (includeCursorFilters && options.Cursor is { } cursor)
+        {
+            if (!string.IsNullOrWhiteSpace(options.Namespace))
+            {
+                Append("shard_id > @cursorShard");
+                AddParameter(command, "@cursorShard", cursor.ShardId);
+            }
+            else
+            {
+                Append("(namespace > @cursorNamespace OR (namespace = @cursorNamespace AND shard_id > @cursorShard))");
+                AddParameter(command, "@cursorNamespace", cursor.Namespace);
+                AddParameter(command, "@cursorShard", cursor.ShardId);
+            }
+        }
+
+        return builder.ToString();
+    }
+
     private static class Sql
     {
+        public const string SelectColumns = @"
+SELECT namespace, shard_id, strategy_id, owner_node_id, leader_id, capacity_hint, status, version, checksum, updated_at, change_ticket
+FROM shard_records";
+
+        public const string SelectMaxVersion = @"SELECT COALESCE(MAX(version), 0) FROM shard_records";
+
         public const string SelectSingle = @"SELECT namespace, shard_id, strategy_id, owner_node_id, leader_id, capacity_hint, status, version, checksum, updated_at, change_ticket FROM shard_records WHERE namespace = @namespace AND shard_id = @shard LIMIT 1";
 
         public const string SelectAll = @"SELECT namespace, shard_id, strategy_id, owner_node_id, leader_id, capacity_hint, status, version, checksum, updated_at, change_ticket FROM shard_records ORDER BY namespace, shard_id";

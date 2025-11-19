@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using OmniRelay.ControlPlane.Upgrade;
 using OmniRelay.Core.Gossip;
+using OmniRelay.Core.Shards.ControlPlane;
 using OmniRelay.Dispatcher;
 
 namespace OmniRelay.Cli;
@@ -19,4 +20,12 @@ namespace OmniRelay.Cli;
 [JsonSerializable(typeof(NodeDrainSnapshot))]
 [JsonSerializable(typeof(NodeDrainParticipantSnapshot))]
 [JsonSerializable(typeof(NodeDrainCommandDto))]
+[JsonSerializable(typeof(ShardListResponse))]
+[JsonSerializable(typeof(ShardDiffResponse))]
+[JsonSerializable(typeof(ShardDiffEntry))]
+[JsonSerializable(typeof(ShardSimulationResponse))]
+[JsonSerializable(typeof(ShardSummary))]
+[JsonSerializable(typeof(ShardSimulationAssignment))]
+[JsonSerializable(typeof(ShardSimulationChange))]
+[JsonSerializable(typeof(ShardSimulationRequest))]
 internal sealed partial class OmniRelayCliJsonContext : JsonSerializerContext;

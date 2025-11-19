@@ -5,7 +5,7 @@
     <UseMicrosoftTestingPlatform>false</UseMicrosoftTestingPlatform>
   </PropertyGroup>
 
-  <ItemGroup>
+  <ItemGroup Condition="'$(MSBuildProjectName)' != 'ProtobufIncrementalSample'">
     <Compile Include="$(MSBuildThisFileDirectory)TestSupport/*.cs"
              Link="Support/%(Filename)%(Extension)" />
   </ItemGroup>

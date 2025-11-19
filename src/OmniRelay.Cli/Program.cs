@@ -22,7 +22,11 @@ using OmniRelay.ControlPlane.Bootstrap;
 using OmniRelay.ControlPlane.Clients;
 using OmniRelay.ControlPlane.Upgrade;
 using OmniRelay.Core;
+using OmniRelay.Core.Shards;
+using OmniRelay.Core.Shards.ControlPlane;
 using OmniRelay.Core.Transport;
+using ShardControl = OmniRelay.Core.Shards.ControlPlane;
+using DomainShardStatus = OmniRelay.Core.Shards.ShardStatus;
 using OmniRelay.Dispatcher;
 using OmniRelay.Errors;
 using OmniRelay.Mesh.Control.V1;
@@ -42,6 +46,9 @@ public static class Program
     private static readonly JsonWriterOptions PrettyWriterOptions = new() { Indented = true };
     private const string DefaultIntrospectionUrl = "http://127.0.0.1:8080/omnirelay/introspect";
     private const string DefaultControlPlaneUrl = "http://127.0.0.1:8080";
+    private const string MeshScopeHeader = "x-mesh-scope";
+    private const string MeshReadScope = "mesh.read";
+    private const string MeshOperateScope = "mesh.operate";
     private static readonly JsonSerializerOptions PrettyJsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true
@@ -445,7 +452,8 @@ public static class Program
             CreateMeshLeadersCommand(),
             CreateMeshPeersCommand(),
             CreateMeshUpgradeCommand(),
-            CreateMeshBootstrapCommand()
+            CreateMeshBootstrapCommand(),
+            CreateMeshShardsCommand()
         };
         return command;
     }
@@ -488,6 +496,145 @@ public static class Program
             CreateMeshBootstrapIssueCommand(),
             CreateMeshBootstrapJoinCommand()
         };
+        return command;
+    }
+
+    internal static Command CreateMeshShardsCommand()
+    {
+        var command = new Command("shards", "Shard ownership APIs.")
+        {
+            CreateMeshShardsListCommand(),
+            CreateMeshShardsDiffCommand(),
+            CreateMeshShardsSimulateCommand()
+        };
+
+        return command;
+    }
+
+    internal static Command CreateMeshShardsListCommand()
+    {
+        var command = new Command("list", "List shard ownership records.");
+
+        var urlOption = new Option<string>("--url")
+        {
+            Description = "Base control-plane URL (e.g. http://127.0.0.1:8080).",
+            DefaultValueFactory = _ => DefaultControlPlaneUrl
+        };
+
+        var namespaceOption = new Option<string?>("--namespace") { Description = "Filter by namespace id." };
+        var ownerOption = new Option<string?>("--owner") { Description = "Filter by owner node id." };
+        var statusOption = new Option<string[]>("--status") { Description = "Filter by shard status (repeat for multiple)." };
+        var searchOption = new Option<string?>("--search") { Description = "Filter shard id substring." };
+        var cursorOption = new Option<string?>("--cursor") { Description = "Resume cursor token." };
+        var pageSizeOption = new Option<int?>("--page-size") { Description = "Page size (default 100)." };
+        var jsonOption = new Option<bool>("--json") { Description = "Emit JSON instead of tables." };
+
+        command.Add(urlOption);
+        command.Add(namespaceOption);
+        command.Add(ownerOption);
+        command.Add(statusOption);
+        command.Add(searchOption);
+        command.Add(cursorOption);
+        command.Add(pageSizeOption);
+        command.Add(jsonOption);
+
+        command.SetAction(parseResult =>
+        {
+            var url = parseResult.GetValue(urlOption) ?? DefaultControlPlaneUrl;
+            var ns = parseResult.GetValue(namespaceOption);
+            var owner = parseResult.GetValue(ownerOption);
+            var statuses = parseResult.GetValue(statusOption) ?? Array.Empty<string>();
+            var search = parseResult.GetValue(searchOption);
+            var cursor = parseResult.GetValue(cursorOption);
+            var pageSize = parseResult.GetValue(pageSizeOption);
+            var asJson = parseResult.GetValue(jsonOption);
+            return RunMeshShardsListAsync(url, ns, owner, statuses, search, cursor, pageSize, asJson).GetAwaiter().GetResult();
+        });
+
+        return command;
+    }
+
+    internal static Command CreateMeshShardsDiffCommand()
+    {
+        var command = new Command("diff", "Fetch shard diff stream between resume tokens.");
+
+        var urlOption = new Option<string>("--url")
+        {
+            Description = "Base control-plane URL.",
+            DefaultValueFactory = _ => DefaultControlPlaneUrl
+        };
+
+        var namespaceOption = new Option<string?>("--namespace") { Description = "Filter by namespace id." };
+        var ownerOption = new Option<string?>("--owner") { Description = "Filter by owner node id." };
+        var statusOption = new Option<string[]>("--status") { Description = "Filter by shard status." };
+        var searchOption = new Option<string?>("--search") { Description = "Filter shard id substring." };
+        var fromOption = new Option<long?>("--from-version") { Description = "Starting resume token." };
+        var toOption = new Option<long?>("--to-version") { Description = "Ending resume token." };
+        var jsonOption = new Option<bool>("--json") { Description = "Emit JSON instead of tables." };
+
+        command.Add(urlOption);
+        command.Add(namespaceOption);
+        command.Add(ownerOption);
+        command.Add(statusOption);
+        command.Add(searchOption);
+        command.Add(fromOption);
+        command.Add(toOption);
+        command.Add(jsonOption);
+
+        command.SetAction(parseResult =>
+        {
+            var url = parseResult.GetValue(urlOption) ?? DefaultControlPlaneUrl;
+            var ns = parseResult.GetValue(namespaceOption);
+            var owner = parseResult.GetValue(ownerOption);
+            var statuses = parseResult.GetValue(statusOption) ?? Array.Empty<string>();
+            var search = parseResult.GetValue(searchOption);
+            var from = parseResult.GetValue(fromOption);
+            var to = parseResult.GetValue(toOption);
+            var asJson = parseResult.GetValue(jsonOption);
+            return RunMeshShardsDiffAsync(url, ns, owner, statuses, search, from, to, asJson).GetAwaiter().GetResult();
+        });
+
+        return command;
+    }
+
+    internal static Command CreateMeshShardsSimulateCommand()
+    {
+        var command = new Command("simulate", "Run shard simulation with custom node set.");
+
+        var urlOption = new Option<string>("--url")
+        {
+            Description = "Base control-plane URL.",
+            DefaultValueFactory = _ => DefaultControlPlaneUrl
+        };
+
+        var namespaceOption = new Option<string>("--namespace")
+        {
+            Description = "Namespace to simulate."
+        };
+
+        var strategyOption = new Option<string?>("--strategy") { Description = "Override shard strategy id." };
+        var nodeOption = new Option<string[]>("--node")
+        {
+            Description = "Simulation node descriptor (nodeId[:weight]). Repeat for multiple."
+        };
+        var jsonOption = new Option<bool>("--json") { Description = "Emit JSON instead of tables." };
+
+        command.Add(urlOption);
+        command.Add(namespaceOption);
+        command.Add(strategyOption);
+        command.Add(nodeOption);
+        command.Add(jsonOption);
+
+        command.SetAction(parseResult =>
+        {
+            var url = parseResult.GetValue(urlOption) ?? DefaultControlPlaneUrl;
+            var ns = parseResult.GetValue(namespaceOption) ?? string.Empty;
+            var strategy = parseResult.GetValue(strategyOption);
+            var nodes = parseResult.GetValue(nodeOption) ?? Array.Empty<string>();
+            var asJson = parseResult.GetValue(jsonOption);
+            return RunMeshShardsSimulateAsync(url, ns, strategy, nodes, asJson).GetAwaiter().GetResult();
+        });
+
         return command;
     }
 
@@ -2663,6 +2810,265 @@ public static class Program
         }
     }
 
+    internal static async Task<int> RunMeshShardsListAsync(
+        string baseUrl,
+        string? namespaceId,
+        string? ownerNodeId,
+        string[] statusFilters,
+        string? search,
+        string? cursor,
+        int? pageSize,
+        bool asJson)
+    {
+        if (!TryNormalizeShardStatuses(statusFilters, out var normalizedStatuses, out var statusError))
+        {
+            await Console.Error.WriteLineAsync(statusError!).ConfigureAwait(false);
+            return 1;
+        }
+
+        if (pageSize.HasValue && pageSize <= 0)
+        {
+            await Console.Error.WriteLineAsync("Page size must be greater than zero.").ConfigureAwait(false);
+            return 1;
+        }
+
+        Uri target;
+        try
+        {
+            target = BuildShardUri(baseUrl, "/control/shards", namespaceId, ownerNodeId, normalizedStatuses, search, cursor, pageSize, fromVersion: null, toVersion: null);
+        }
+        catch (ArgumentException ex)
+        {
+            await Console.Error.WriteLineAsync(ex.Message).ConfigureAwait(false);
+            return 1;
+        }
+
+        using var client = CliRuntime.HttpClientFactory.CreateClient();
+        client.Timeout = Timeout.InfiniteTimeSpan;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var request = new HttpRequestMessage(HttpMethod.Get, target);
+        ApplyMeshScope(request, MeshReadScope);
+
+        try
+        {
+            using var response = await client.SendAsync(request, cts.Token).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                await Console.Error.WriteLineAsync($"Shard list request failed: {(int)response.StatusCode} {response.ReasonPhrase}.").ConfigureAwait(false);
+                return 1;
+            }
+
+            ShardControl.ShardListResponse? payload;
+            await using ((await response.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false)).AsAsyncDisposable(out var stream))
+            {
+                payload = await JsonSerializer.DeserializeAsync(stream, OmniRelayCliJsonContext.Default.ShardListResponse, cts.Token).ConfigureAwait(false);
+            }
+
+            if (payload is null)
+            {
+                await Console.Error.WriteLineAsync("Shard list response was empty.").ConfigureAwait(false);
+                return 1;
+            }
+
+            if (asJson)
+            {
+                var json = JsonSerializer.Serialize(payload, OmniRelayCliJsonContext.Default.ShardListResponse);
+                CliRuntime.Console.WriteLine(FormatJson(json));
+            }
+            else
+            {
+                PrintShardList(payload);
+            }
+
+            return 0;
+        }
+        catch (TaskCanceledException)
+        {
+            await Console.Error.WriteLineAsync("Shard list request timed out.").ConfigureAwait(false);
+            return 2;
+        }
+    }
+
+    internal static async Task<int> RunMeshShardsDiffAsync(
+        string baseUrl,
+        string? namespaceId,
+        string? ownerNodeId,
+        string[] statusFilters,
+        string? search,
+        long? fromVersion,
+        long? toVersion,
+        bool asJson)
+    {
+        if (!TryNormalizeShardStatuses(statusFilters, out var normalizedStatuses, out var statusError))
+        {
+            await Console.Error.WriteLineAsync(statusError!).ConfigureAwait(false);
+            return 1;
+        }
+
+        if (fromVersion.HasValue && fromVersion < 0)
+        {
+            await Console.Error.WriteLineAsync("from-version must be non-negative.").ConfigureAwait(false);
+            return 1;
+        }
+
+        if (toVersion.HasValue && toVersion < 0)
+        {
+            await Console.Error.WriteLineAsync("to-version must be non-negative.").ConfigureAwait(false);
+            return 1;
+        }
+
+        if (fromVersion.HasValue && toVersion.HasValue && fromVersion > toVersion)
+        {
+            await Console.Error.WriteLineAsync("from-version must be less than or equal to to-version.").ConfigureAwait(false);
+            return 1;
+        }
+
+        Uri target;
+        try
+        {
+            target = BuildShardUri(baseUrl, "/control/shards/diff", namespaceId, ownerNodeId, normalizedStatuses, search, cursor: null, pageSize: null, fromVersion, toVersion);
+        }
+        catch (ArgumentException ex)
+        {
+            await Console.Error.WriteLineAsync(ex.Message).ConfigureAwait(false);
+            return 1;
+        }
+
+        using var client = CliRuntime.HttpClientFactory.CreateClient();
+        client.Timeout = Timeout.InfiniteTimeSpan;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        using var request = new HttpRequestMessage(HttpMethod.Get, target);
+        ApplyMeshScope(request, MeshOperateScope);
+
+        try
+        {
+            using var response = await client.SendAsync(request, cts.Token).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                await Console.Error.WriteLineAsync($"Shard diff request failed: {(int)response.StatusCode} {response.ReasonPhrase}.").ConfigureAwait(false);
+                return 1;
+            }
+
+            ShardControl.ShardDiffResponse? payload;
+            await using ((await response.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false)).AsAsyncDisposable(out var stream))
+            {
+                payload = await JsonSerializer.DeserializeAsync(stream, OmniRelayCliJsonContext.Default.ShardDiffResponse, cts.Token).ConfigureAwait(false);
+            }
+
+            if (payload is null)
+            {
+                await Console.Error.WriteLineAsync("Shard diff response was empty.").ConfigureAwait(false);
+                return 1;
+            }
+
+            if (asJson)
+            {
+                var json = JsonSerializer.Serialize(payload, OmniRelayCliJsonContext.Default.ShardDiffResponse);
+                CliRuntime.Console.WriteLine(FormatJson(json));
+            }
+            else
+            {
+                PrintShardDiff(payload);
+            }
+
+            return 0;
+        }
+        catch (TaskCanceledException)
+        {
+            await Console.Error.WriteLineAsync("Shard diff request timed out.").ConfigureAwait(false);
+            return 2;
+        }
+    }
+
+    internal static async Task<int> RunMeshShardsSimulateAsync(
+        string baseUrl,
+        string namespaceId,
+        string? strategyId,
+        string[] nodeTokens,
+        bool asJson)
+    {
+        if (string.IsNullOrWhiteSpace(namespaceId))
+        {
+            await Console.Error.WriteLineAsync("Namespace must be provided.").ConfigureAwait(false);
+            return 1;
+        }
+
+        if (!TryParseSimulationNodes(nodeTokens, out var nodes, out var nodeError))
+        {
+            await Console.Error.WriteLineAsync(nodeError!).ConfigureAwait(false);
+            return 1;
+        }
+
+        Uri target;
+        try
+        {
+            target = BuildControlPlaneUri(baseUrl, "/control/shards/simulate", scope: null);
+        }
+        catch (ArgumentException ex)
+        {
+            await Console.Error.WriteLineAsync(ex.Message).ConfigureAwait(false);
+            return 1;
+        }
+
+        using var client = CliRuntime.HttpClientFactory.CreateClient();
+        client.Timeout = Timeout.InfiniteTimeSpan;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+
+        var requestPayload = new ShardControl.ShardSimulationRequest
+        {
+            Namespace = namespaceId,
+            StrategyId = strategyId,
+            Nodes = nodes
+        };
+
+        var body = JsonSerializer.SerializeToUtf8Bytes(requestPayload, OmniRelayCliJsonContext.Default.ShardSimulationRequest);
+        using var request = new HttpRequestMessage(HttpMethod.Post, target)
+        {
+            Content = new ByteArrayContent(body)
+        };
+        request.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
+        ApplyMeshScope(request, MeshOperateScope);
+
+        try
+        {
+            using var response = await client.SendAsync(request, cts.Token).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                await Console.Error.WriteLineAsync($"Simulation request failed: {(int)response.StatusCode} {response.ReasonPhrase}.").ConfigureAwait(false);
+                return 1;
+            }
+
+            ShardControl.ShardSimulationResponse? payload;
+            await using ((await response.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false)).AsAsyncDisposable(out var stream))
+            {
+                payload = await JsonSerializer.DeserializeAsync(stream, OmniRelayCliJsonContext.Default.ShardSimulationResponse, cts.Token).ConfigureAwait(false);
+            }
+
+            if (payload is null)
+            {
+                await Console.Error.WriteLineAsync("Simulation response was empty.").ConfigureAwait(false);
+                return 1;
+            }
+
+            if (asJson)
+            {
+                var json = JsonSerializer.Serialize(payload, OmniRelayCliJsonContext.Default.ShardSimulationResponse);
+                CliRuntime.Console.WriteLine(FormatJson(json));
+            }
+            else
+            {
+                PrintShardSimulation(payload);
+            }
+
+            return 0;
+        }
+        catch (TaskCanceledException)
+        {
+            await Console.Error.WriteLineAsync("Simulation request timed out.").ConfigureAwait(false);
+            return 2;
+        }
+    }
+
     internal static int RunMeshBootstrapIssueToken(string signingKey, string cluster, string role, string? lifetimeOption, int? maxUses, string issuer)
     {
         if (string.IsNullOrWhiteSpace(signingKey))
@@ -3110,6 +3516,250 @@ public static class Program
             var errorSuffix = string.IsNullOrWhiteSpace(participant.LastError) ? string.Empty : $" (error: {participant.LastError})";
             Console.WriteLine($"  - {participant.Name}: {participant.State} @ {participant.UpdatedAt:O}{errorSuffix}");
         }
+    }
+
+    private static void PrintShardList(ShardControl.ShardListResponse response)
+    {
+        Console.WriteLine($"Shard version : {response.Version}");
+        Console.WriteLine($"Next cursor   : {response.NextCursor ?? "(none)"}");
+        Console.WriteLine();
+
+        if (response.Items.Count == 0)
+        {
+            Console.WriteLine("No shards matched the filters.");
+            return;
+        }
+
+        Console.WriteLine($"{ "Namespace",-24} { "Shard",-18} { "Owner",-18} { "Status",-10} { "Version",8} { "Updated",-24}");
+        foreach (var shard in response.Items
+                     .OrderBy(s => s.Namespace, StringComparer.OrdinalIgnoreCase)
+                     .ThenBy(s => s.ShardId, StringComparer.OrdinalIgnoreCase))
+        {
+            var updated = shard.UpdatedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss\\Z", CultureInfo.InvariantCulture);
+            Console.WriteLine($"{shard.Namespace,-24} {shard.ShardId,-18} {shard.OwnerNodeId,-18} {shard.Status,-10} {shard.Version,8} {updated,-24}");
+        }
+    }
+
+    private static void PrintShardDiff(ShardControl.ShardDiffResponse response)
+    {
+        if (response.Items.Count == 0)
+        {
+            Console.WriteLine("No shard diffs were found for the requested range.");
+        }
+        else
+        {
+            foreach (var entry in response.Items.OrderBy(diff => diff.Position))
+            {
+                Console.WriteLine($"[{entry.Position}] {entry.Current.Namespace}/{entry.Current.ShardId}");
+                var previousOwner = entry.Previous?.OwnerNodeId ?? "(new)";
+                Console.WriteLine($"  owner : {previousOwner} -> {entry.Current.OwnerNodeId} ({entry.Current.Status})");
+                Console.WriteLine($"  version: {entry.Current.Version}");
+                if (!string.IsNullOrWhiteSpace(entry.Current.ChangeTicket))
+                {
+                    Console.WriteLine($"  ticket : {entry.Current.ChangeTicket}");
+                }
+
+                if (entry.History is { } history)
+                {
+                    Console.WriteLine($"  actor  : {history.Actor} reason={history.Reason}");
+                }
+            }
+        }
+
+        Console.WriteLine();
+        Console.WriteLine($"Last position: {response.LastPosition?.ToString(CultureInfo.InvariantCulture) ?? "(none)"}");
+    }
+
+    private static void PrintShardSimulation(ShardControl.ShardSimulationResponse response)
+    {
+        Console.WriteLine($"Namespace : {response.Namespace}");
+        Console.WriteLine($"Strategy  : {response.StrategyId}");
+        Console.WriteLine($"Generated : {response.GeneratedAt:O}");
+        Console.WriteLine($"Assignments: {response.Assignments.Count}");
+        Console.WriteLine($"Changes    : {response.Changes.Count}");
+        Console.WriteLine();
+
+        if (response.Changes.Count == 0)
+        {
+            Console.WriteLine("Existing owners already match the proposed plan.");
+            return;
+        }
+
+        Console.WriteLine($"{ "Shard",-18} { "Current",-18} { "Proposed",-18}");
+        foreach (var change in response.Changes
+                     .OrderBy(c => c.Namespace, StringComparer.OrdinalIgnoreCase)
+                     .ThenBy(c => c.ShardId, StringComparer.OrdinalIgnoreCase))
+        {
+            Console.WriteLine($"{change.ShardId,-18} {change.CurrentOwner,-18} {change.ProposedOwner,-18}");
+        }
+    }
+
+    private static Uri BuildShardUri(
+        string baseUrl,
+        string relativePath,
+        string? namespaceId,
+        string? ownerNodeId,
+        IReadOnlyList<string> statuses,
+        string? search,
+        string? cursor,
+        int? pageSize,
+        long? fromVersion,
+        long? toVersion)
+    {
+        var target = BuildControlPlaneUri(baseUrl, relativePath, scope: null);
+        var parameters = new List<KeyValuePair<string, string>>();
+
+        if (!string.IsNullOrWhiteSpace(namespaceId))
+        {
+            parameters.Add(new KeyValuePair<string, string>("namespace", namespaceId));
+        }
+
+        if (!string.IsNullOrWhiteSpace(ownerNodeId))
+        {
+            parameters.Add(new KeyValuePair<string, string>("owner", ownerNodeId));
+        }
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            parameters.Add(new KeyValuePair<string, string>("search", search));
+        }
+
+        if (!string.IsNullOrWhiteSpace(cursor))
+        {
+            parameters.Add(new KeyValuePair<string, string>("cursor", cursor));
+        }
+
+        if (pageSize.HasValue)
+        {
+            parameters.Add(new KeyValuePair<string, string>("pageSize", pageSize.Value.ToString(CultureInfo.InvariantCulture)));
+        }
+
+        if (fromVersion.HasValue)
+        {
+            parameters.Add(new KeyValuePair<string, string>("fromVersion", fromVersion.Value.ToString(CultureInfo.InvariantCulture)));
+        }
+
+        if (toVersion.HasValue)
+        {
+            parameters.Add(new KeyValuePair<string, string>("toVersion", toVersion.Value.ToString(CultureInfo.InvariantCulture)));
+        }
+
+        if (statuses.Count > 0)
+        {
+            parameters.Add(new KeyValuePair<string, string>("status", string.Join(',', statuses)));
+        }
+
+        if (parameters.Count == 0)
+        {
+            return target;
+        }
+
+        var builder = new UriBuilder(target)
+        {
+            Query = BuildQueryString(parameters)
+        };
+        return builder.Uri;
+    }
+
+    private static string BuildQueryString(IEnumerable<KeyValuePair<string, string>> parameters)
+    {
+        var builder = new StringBuilder();
+        foreach (var (key, value) in parameters)
+        {
+            if (string.IsNullOrEmpty(key) || value is null)
+            {
+                continue;
+            }
+
+            if (builder.Length > 0)
+            {
+                builder.Append('&');
+            }
+
+            builder.Append(Uri.EscapeDataString(key));
+            builder.Append('=');
+            builder.Append(Uri.EscapeDataString(value));
+        }
+
+        return builder.ToString();
+    }
+
+    private static bool TryNormalizeShardStatuses(string[] values, out List<string> normalized, out string? error)
+    {
+        normalized = new List<string>();
+        error = null;
+        if (values is null || values.Length == 0)
+        {
+            return true;
+        }
+
+        foreach (var value in values
+                     .SelectMany(v => v.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)))
+        {
+            if (!System.Enum.TryParse(value, ignoreCase: true, out DomainShardStatus parsed))
+            {
+                normalized = new List<string>();
+                error = $"Invalid shard status '{value}'. Valid values: {string.Join(", ", System.Enum.GetNames<DomainShardStatus>())}.";
+                return false;
+            }
+
+            normalized.Add(parsed.ToString());
+        }
+
+        return true;
+    }
+
+    private static bool TryParseSimulationNodes(string[] nodeTokens, out List<ShardControl.ShardSimulationNode> nodes, out string? error)
+    {
+        nodes = new List<ShardControl.ShardSimulationNode>();
+        error = null;
+
+        if (nodeTokens is null || nodeTokens.Length == 0)
+        {
+            error = "At least one --node value must be provided (e.g. --node node-a:1.0).";
+            return false;
+        }
+
+        foreach (var token in nodeTokens.SelectMany(value => value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)))
+        {
+            var parts = token.Split(':', StringSplitOptions.TrimEntries);
+            if (parts.Length == 0 || string.IsNullOrWhiteSpace(parts[0]))
+            {
+                error = $"Could not parse node '{token}'. Expected nodeId[:weight[:region[:zone]]].";
+                nodes = new List<ShardControl.ShardSimulationNode>();
+                return false;
+            }
+
+            double? weight = null;
+            if (parts.Length > 1)
+            {
+                if (!double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var parsedWeight))
+                {
+                    error = $"Invalid weight '{parts[1]}' for node '{parts[0]}'.";
+                    nodes = new List<ShardControl.ShardSimulationNode>();
+                    return false;
+                }
+
+                weight = parsedWeight;
+            }
+
+            var region = parts.Length > 2 ? parts[2] : null;
+            var zone = parts.Length > 3 ? parts[3] : null;
+            nodes.Add(new ShardControl.ShardSimulationNode(parts[0], weight, region, zone));
+        }
+
+        if (nodes.Count == 0)
+        {
+            error = "Unable to parse any --node values.";
+            return false;
+        }
+
+        return true;
+    }
+
+    private static void ApplyMeshScope(HttpRequestMessage request, string scope)
+    {
+        request.Headers.TryAddWithoutValidation(MeshScopeHeader, scope);
     }
 
     private static void PrintLeadershipEvent(LeadershipEventDto leadershipEvent)
