@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Net.Http.Json;
 using System.Net.Security;
@@ -208,8 +207,6 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
         return client;
     }
 
-    [UnconditionalSuppressMessage("TrimAnalysis", "IL2026", Justification = "Mesh gossip listener isn't published as a trimmed binary.")]
-    [UnconditionalSuppressMessage("AOT", "IL3050", Justification = "Mesh gossip listener runs on a dynamic runtime, not native AOT.")]
     private WebApplication BuildListener()
     {
         var builder = WebApplication.CreateSlimBuilder();
@@ -231,13 +228,15 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
         });
 
         var app = builder.Build();
-        app.MapPost("/mesh/gossip/v1/messages", async (HttpContext context, MeshGossipEnvelope envelope, MeshGossipHost host) =>
-        {
-            var result = await host.ProcessEnvelopeAsync(envelope, context.RequestAborted).ConfigureAwait(false);
-            return Results.Json(result, MeshGossipJsonSerializerContext.Default.MeshGossipEnvelope);
-        });
+        app.MapPost("/mesh/gossip/v1/messages", HandleGossipEnvelopeAsync);
 
         return app;
+    }
+
+    private static async Task<IResult> HandleGossipEnvelopeAsync(HttpContext context, MeshGossipEnvelope envelope, MeshGossipHost host)
+    {
+        var result = await host.ProcessEnvelopeAsync(envelope, context.RequestAborted).ConfigureAwait(false);
+        return Results.Json(result, MeshGossipJsonSerializerContext.Default.MeshGossipEnvelope);
     }
 
     private HttpsConnectionAdapterOptions CreateHttpsOptions()

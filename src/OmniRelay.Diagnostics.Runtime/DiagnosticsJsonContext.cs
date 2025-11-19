@@ -15,4 +15,6 @@ public sealed record TraceSamplingResponse(double? SamplingProbability);
 [JsonSerializable(typeof(TraceSamplingResponse))]
 [JsonSerializable(typeof(PeerLeaseHealthDiagnostics))]
 [JsonSerializable(typeof(PeerDiagnosticsResponse))]
+[JsonSerializable(typeof(DiagnosticsLogLevelRequest))]
+[JsonSerializable(typeof(DiagnosticsSamplingRequest))]
 public sealed partial class DiagnosticsJsonContext : JsonSerializerContext;

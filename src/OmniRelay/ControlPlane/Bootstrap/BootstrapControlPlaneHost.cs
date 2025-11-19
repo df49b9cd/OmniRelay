@@ -36,8 +36,6 @@ internal sealed partial class BootstrapControlPlaneHost : ILifecycle, IDisposabl
         _tlsManager = tlsManager;
     }
 
-    [UnconditionalSuppressMessage("TrimAnalysis", "IL2026", Justification = "Minimal API endpoint mapping is not part of trimmed publishing scenarios.")]
-    [UnconditionalSuppressMessage("AOT", "IL3050", Justification = "Bootstrap control-plane host runs on dynamic runtime, not native AOT.")]
     public async ValueTask StartAsync(CancellationToken cancellationToken = default)
     {
         if (_app is not null)
@@ -72,17 +70,7 @@ internal sealed partial class BootstrapControlPlaneHost : ILifecycle, IDisposabl
 
         builder.ConfigureApp(app =>
         {
-            app.MapPost("/omnirelay/bootstrap/join", async (BootstrapJoinRequest request, BootstrapServer server, CancellationToken token) =>
-            {
-                var result = await server.JoinAsync(request, token).ConfigureAwait(false);
-                if (result.TryGetValue(out var payload))
-                {
-                    return Results.Ok(payload);
-                }
-
-                _ = result.TryGetError(out var error);
-                return MapJoinError(error ?? Error.From("Unknown bootstrap failure."));
-            });
+            app.MapPost("/omnirelay/bootstrap/join", HandleJoinAsync);
         });
 
         var app = builder.Build();
@@ -114,6 +102,33 @@ internal sealed partial class BootstrapControlPlaneHost : ILifecycle, IDisposabl
     public void Dispose()
     {
         _tlsManager?.Dispose();
+    }
+
+    private static async Task HandleJoinAsync(HttpContext context)
+    {
+        var request = await context.Request.ReadFromJsonAsync(
+            BootstrapJsonContext.Default.BootstrapJoinRequest,
+            context.RequestAborted).ConfigureAwait(false);
+
+        if (request is null)
+        {
+            await Results.BadRequest(new { error = "Request body required." }).ExecuteAsync(context).ConfigureAwait(false);
+            return;
+        }
+
+        var server = context.RequestServices.GetRequiredService<BootstrapServer>();
+        var token = context.RequestAborted;
+        var result = await server.JoinAsync(request, token).ConfigureAwait(false);
+        if (result.TryGetValue(out var payload))
+        {
+            await Results.Ok(payload).ExecuteAsync(context).ConfigureAwait(false);
+            return;
+        }
+
+        _ = result.TryGetError(out var error);
+        await MapJoinError(error ?? Error.From("Unknown bootstrap failure."))
+            .ExecuteAsync(context)
+            .ConfigureAwait(false);
     }
 
     private static IResult MapJoinError(Error error)

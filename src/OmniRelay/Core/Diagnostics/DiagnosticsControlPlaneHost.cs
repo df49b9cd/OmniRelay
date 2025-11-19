@@ -1,7 +1,7 @@
 using System.Collections.Immutable;
-using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Linq;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -56,8 +56,6 @@ internal sealed class DiagnosticsControlPlaneHost : ILifecycle, IDisposable
         _tlsManager = tlsManager;
     }
 
-    [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Diagnostics endpoints intentionally use reflection-heavy minimal APIs.")]
-    [UnconditionalSuppressMessage("AOT", "IL3050", Justification = "Diagnostics endpoints intentionally use reflection-heavy minimal APIs.")]
     public async ValueTask StartAsync(CancellationToken cancellationToken = default)
     {
         if (_app is not null)
@@ -159,8 +157,6 @@ internal sealed class DiagnosticsControlPlaneHost : ILifecycle, IDisposable
         _tlsManager?.Dispose();
     }
 
-    [RequiresDynamicCode("Diagnostics control plane endpoints use minimal APIs with reflection.")]
-    [RequiresUnreferencedCode("Diagnostics control plane endpoints use minimal APIs with reflection.")]
     private void ConfigureAppCore(WebApplication app)
     {
         app.MapOmniRelayDiagnosticsControlPlane(options =>
@@ -187,25 +183,8 @@ internal sealed class DiagnosticsControlPlaneHost : ILifecycle, IDisposable
 
         if (_features.EnableLeadershipDiagnostics)
         {
-            app.MapGet("/control/leaders", (HttpRequest request, ILeadershipObserver observer) =>
-            {
-                var snapshot = observer?.Snapshot() ?? new LeadershipSnapshot(DateTimeOffset.UtcNow, []);
-                if (request.Query.TryGetValue("scope", out var scopeValues) && !string.IsNullOrWhiteSpace(scopeValues))
-                {
-                    var scopeFilter = scopeValues.ToString();
-                    var filtered = snapshot.Tokens
-                        .Where(token => string.Equals(token.Scope, scopeFilter, StringComparison.OrdinalIgnoreCase))
-                        .ToImmutableArray();
-                    snapshot = new LeadershipSnapshot(snapshot.GeneratedAt, filtered);
-                }
-
-                return Results.Json(snapshot);
-            });
-
-            app.MapGet("/control/events/leadership", async (HttpContext context, ILeadershipObserver observer, ILogger<LeadershipEventStreamMarker> logger) =>
-            {
-                await StreamLeadershipEventsAsync(context, observer, logger).ConfigureAwait(false);
-            });
+            app.MapGet("/control/leaders", GetLeadershipSnapshot);
+            app.MapGet("/control/events/leadership", StreamLeadershipEvents);
         }
 
         if (_features.EnableShardDiagnostics)
@@ -216,8 +195,28 @@ internal sealed class DiagnosticsControlPlaneHost : ILifecycle, IDisposable
         MapUpgradeEndpoints(app);
     }
 
-    [RequiresDynamicCode("Diagnostics control plane streaming uses System.Text.Json reflection serialization.")]
-    [RequiresUnreferencedCode("Diagnostics control plane streaming uses System.Text.Json reflection serialization.")]
+    private static async Task GetLeadershipSnapshot(HttpContext context)
+    {
+        var observer = context.RequestServices.GetService<ILeadershipObserver>();
+        var snapshot = observer?.Snapshot() ?? new LeadershipSnapshot(DateTimeOffset.UtcNow, []);
+        if (context.Request.Query.TryGetValue("scope", out var scopeValues) && !string.IsNullOrWhiteSpace(scopeValues))
+        {
+            var scopeFilter = scopeValues.ToString();
+            var filtered = snapshot.Tokens
+                .Where(token => string.Equals(token.Scope, scopeFilter, StringComparison.OrdinalIgnoreCase))
+                .ToImmutableArray();
+            snapshot = new LeadershipSnapshot(snapshot.GeneratedAt, filtered);
+        }
+
+        await Results.Json(snapshot).ExecuteAsync(context).ConfigureAwait(false);
+    }
+
+    private static Task StreamLeadershipEvents(HttpContext context) =>
+        StreamLeadershipEventsAsync(
+            context,
+            context.RequestServices.GetRequiredService<ILeadershipObserver>(),
+            context.RequestServices.GetRequiredService<ILogger<LeadershipEventStreamMarker>>());
+
     private static async Task StreamLeadershipEventsAsync(HttpContext context, ILeadershipObserver observer, ILogger<LeadershipEventStreamMarker> logger)
     {
         context.Response.Headers.CacheControl = "no-cache";
@@ -247,46 +246,64 @@ internal sealed class DiagnosticsControlPlaneHost : ILifecycle, IDisposable
         }
     }
 
-    [RequiresUnreferencedCode("Endpoint route building uses reflection for delegate parameter binding.")]
-    [RequiresDynamicCode("Endpoint route building uses runtime code generation and is not AOT-safe.")]
     private static void MapUpgradeEndpoints(WebApplication app)
     {
-        app.MapGet("/control/upgrade", (NodeDrainCoordinator coordinator) =>
-        {
-                var snapshot = coordinator.Snapshot();
-                return Results.Json(snapshot, ShardDiagnosticsJsonContext.Default.NodeDrainSnapshot);
-        });
+        app.MapGet("/control/upgrade", GetUpgradeSnapshot);
+        app.MapPost("/control/upgrade/drain", BeginDrainAsync);
+        app.MapPost("/control/upgrade/resume", ResumeDrainAsync);
+    }
 
-        app.MapPost("/control/upgrade/drain", async (HttpContext context, NodeDrainCoordinator coordinator, NodeDrainCommand? request) =>
-        {
-            try
-            {
-                var snapshot = await coordinator.BeginDrainAsync(request?.Reason, context.RequestAborted).ConfigureAwait(false);
-                return Results.Json(snapshot, ShardDiagnosticsJsonContext.Default.NodeDrainSnapshot);
-            }
-            catch (InvalidOperationException ex)
-            {
-                return Results.Problem(ex.Message, statusCode: StatusCodes.Status409Conflict);
-            }
-        });
+    private static async Task GetUpgradeSnapshot(HttpContext context)
+    {
+        var coordinator = context.RequestServices.GetRequiredService<NodeDrainCoordinator>();
+        var snapshot = coordinator.Snapshot();
+        await Results.Json(snapshot, ShardDiagnosticsJsonContext.Default.NodeDrainSnapshot)
+            .ExecuteAsync(context)
+            .ConfigureAwait(false);
+    }
 
-        app.MapPost("/control/upgrade/resume", async (HttpContext context, NodeDrainCoordinator coordinator) =>
+    private static async Task BeginDrainAsync(HttpContext context)
+    {
+        var coordinator = context.RequestServices.GetRequiredService<NodeDrainCoordinator>();
+        var request = await context.Request.ReadFromJsonAsync(
+            ShardDiagnosticsJsonContext.Default.NodeDrainCommand,
+            context.RequestAborted).ConfigureAwait(false);
+        try
         {
-            try
-            {
-                var snapshot = await coordinator.ResumeAsync(context.RequestAborted).ConfigureAwait(false);
-                return Results.Json(snapshot, ShardDiagnosticsJsonContext.Default.NodeDrainSnapshot);
-            }
-            catch (InvalidOperationException ex)
-            {
-                return Results.Problem(ex.Message, statusCode: StatusCodes.Status409Conflict);
-            }
-        });
+            var snapshot = await coordinator.BeginDrainAsync(request?.Reason, context.RequestAborted).ConfigureAwait(false);
+            await Results.Json(snapshot, ShardDiagnosticsJsonContext.Default.NodeDrainSnapshot)
+                .ExecuteAsync(context)
+                .ConfigureAwait(false);
+        }
+        catch (InvalidOperationException ex)
+        {
+            await Results.Problem(ex.Message, statusCode: StatusCodes.Status409Conflict)
+                .ExecuteAsync(context)
+                .ConfigureAwait(false);
+        }
+    }
+
+    private static async Task ResumeDrainAsync(HttpContext context)
+    {
+        var coordinator = context.RequestServices.GetRequiredService<NodeDrainCoordinator>();
+        try
+        {
+            var snapshot = await coordinator.ResumeAsync(context.RequestAborted).ConfigureAwait(false);
+            await Results.Json(snapshot, ShardDiagnosticsJsonContext.Default.NodeDrainSnapshot)
+                .ExecuteAsync(context)
+                .ConfigureAwait(false);
+        }
+        catch (InvalidOperationException ex)
+        {
+            await Results.Problem(ex.Message, statusCode: StatusCodes.Status409Conflict)
+                .ExecuteAsync(context)
+                .ConfigureAwait(false);
+        }
     }
 
 }
 
-internal sealed record NodeDrainCommand(string? Reason);
+public sealed record NodeDrainCommand(string? Reason);
 
 internal readonly record struct DiagnosticsControlPlaneFeatures(
     bool EnableLoggingToggle,

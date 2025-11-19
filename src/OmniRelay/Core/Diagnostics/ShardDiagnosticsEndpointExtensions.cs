@@ -1,8 +1,9 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.DependencyInjection;
 using OmniRelay.Core.Shards;
 using OmniRelay.Core.Shards.ControlPlane;
 
@@ -14,156 +15,197 @@ internal static class ShardDiagnosticsEndpointExtensions
     private const string MeshOperateScope = "mesh.operate";
     private static readonly char[] ScopeSeparators = [' ', ',', ';'];
 
-    [RequiresDynamicCode("Minimal API handlers use reflection during binding.")]
-    [RequiresUnreferencedCode("Minimal API handlers use reflection during binding.")]
     public static void MapShardDiagnosticsEndpoints(this WebApplication app)
     {
-        app.MapGet("/control/shards", async Task<IResult> (HttpContext context, ShardControlPlaneService service) =>
-        {
-            if (!HasRequiredScope(context, MeshReadScope, MeshOperateScope))
-            {
-                return Results.StatusCode(StatusCodes.Status403Forbidden);
-            }
-
-            if (!TryCreateShardFilter(context.Request, out var filter, out var errorResult))
-            {
-                return errorResult ?? Results.BadRequest(new { error = "Invalid shard filter parameters." });
-            }
-
-            int? pageSize = null;
-            if (context.Request.Query.TryGetValue("pageSize", out var sizeValues))
-            {
-                if (!int.TryParse(sizeValues, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedPageSize))
-                {
-                    return Results.BadRequest(new { error = "Invalid pageSize value." });
-                }
-
-                pageSize = parsedPageSize;
-            }
-
-            var cursor = context.Request.Query.TryGetValue("cursor", out var cursorValues)
-                ? cursorValues.ToString()
-                : null;
-
-            try
-            {
-                var response = await service.ListAsync(filter, cursor, pageSize, context.RequestAborted).ConfigureAwait(false);
-                context.Response.Headers.ETag = $@"W/""shards-{response.Version}""";
-                context.Response.Headers["x-omnirelay-shards-version"] = response.Version.ToString(CultureInfo.InvariantCulture);
-                return Results.Json(response, ShardDiagnosticsJsonContext.Default.ShardListResponse);
-            }
-            catch (ArgumentException ex)
-            {
-                return Results.BadRequest(new { error = ex.Message });
-            }
-        });
-
-        app.MapGet("/control/shards/diff", async Task<IResult> (HttpContext context, ShardControlPlaneService service) =>
-        {
-            if (!HasRequiredScope(context, MeshOperateScope))
-            {
-                return Results.StatusCode(StatusCodes.Status403Forbidden);
-            }
-
-            if (!TryCreateShardFilter(context.Request, out var filter, out var errorResult))
-            {
-                return errorResult ?? Results.BadRequest(new { error = "Invalid shard filter parameters." });
-            }
-
-            if (!TryParseLongQuery(context.Request, "fromVersion", out var fromVersion, out var parseError))
-            {
-                return parseError ?? Results.BadRequest(new { error = "Invalid fromVersion value." });
-            }
-
-            if (!TryParseLongQuery(context.Request, "toVersion", out var toVersion, out parseError))
-            {
-                return parseError ?? Results.BadRequest(new { error = "Invalid toVersion value." });
-            }
-
-            var response = await service.DiffAsync(fromVersion, toVersion, filter, context.RequestAborted).ConfigureAwait(false);
-            return Results.Json(response, ShardDiagnosticsJsonContext.Default.ShardDiffResponse);
-        });
-
-        app.MapGet("/control/shards/watch", async (HttpContext context, ShardControlPlaneService service) =>
-        {
-            if (!HasRequiredScope(context, MeshReadScope, MeshOperateScope))
-            {
-                await Results.StatusCode(StatusCodes.Status403Forbidden).ExecuteAsync(context).ConfigureAwait(false);
-                return;
-            }
-
-            if (!TryCreateShardFilter(context.Request, out var filter, out var errorResult))
-            {
-                await (errorResult ?? Results.BadRequest(new { error = "Invalid shard filter parameters." }))
-                    .ExecuteAsync(context)
-                    .ConfigureAwait(false);
-                return;
-            }
-
-            if (!TryParseLongQuery(context.Request, "resumeToken", out var resumeToken, out var parseError))
-            {
-                await (parseError ?? Results.BadRequest(new { error = "Invalid resumeToken value." }))
-                    .ExecuteAsync(context)
-                    .ConfigureAwait(false);
-                return;
-            }
-
-            context.Response.Headers.CacheControl = "no-cache";
-            context.Response.Headers["Content-Type"] = "text/event-stream";
-            await context.Response.WriteAsync("retry: 2000\n\n", context.RequestAborted).ConfigureAwait(false);
-
-            try
-            {
-                await foreach (var diff in service.WatchAsync(resumeToken, filter, context.RequestAborted).ConfigureAwait(false))
-                {
-                    if (diff.Current is null)
-                    {
-                        continue;
-                    }
-
-                    var current = ShardControlPlaneMapper.ToSummary(diff.Current);
-                    var previous = diff.Previous is null ? null : ShardControlPlaneMapper.ToSummary(diff.Previous);
-                    var entry = new ShardDiffEntry(diff.Position, current, previous, diff.History);
-
-                    var payload = JsonSerializer.Serialize(entry, ShardDiagnosticsJsonContext.Default.ShardDiffEntry);
-                    await context.Response.WriteAsync($"id: {diff.Position}\n", context.RequestAborted).ConfigureAwait(false);
-                    await context.Response.WriteAsync("event: shard.diff\n", context.RequestAborted).ConfigureAwait(false);
-                    await context.Response.WriteAsync($"data: {payload}\n\n", context.RequestAborted).ConfigureAwait(false);
-                    await context.Response.Body.FlushAsync(context.RequestAborted).ConfigureAwait(false);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-        });
-
-        app.MapPost("/control/shards/simulate", async Task<IResult> (HttpContext context, ShardSimulationRequest request, ShardControlPlaneService service) =>
-        {
-            if (!HasRequiredScope(context, MeshOperateScope))
-            {
-                return Results.StatusCode(StatusCodes.Status403Forbidden);
-            }
-
-            if (request is null)
-            {
-                return Results.BadRequest(new { error = "Request body is required." });
-            }
-
-            try
-            {
-                var response = await service.SimulateAsync(request, context.RequestAborted).ConfigureAwait(false);
-                return Results.Json(response, ShardDiagnosticsJsonContext.Default.ShardSimulationResponse);
-            }
-            catch (ArgumentException ex)
-            {
-                return Results.BadRequest(new { error = ex.Message });
-            }
-            catch (InvalidOperationException ex)
-            {
-                return Results.Problem(ex.Message, statusCode: StatusCodes.Status404NotFound);
-            }
-        });
+        app.MapGet("/control/shards", ListShardsAsync);
+        app.MapGet("/control/shards/diff", DiffShardsAsync);
+        app.MapGet("/control/shards/watch", WatchShardsAsync);
+        app.MapPost("/control/shards/simulate", SimulateShardsAsync);
     }
+
+    private static async Task ListShardsAsync(HttpContext context)
+    {
+        var service = context.RequestServices.GetRequiredService<ShardControlPlaneService>();
+        if (!HasRequiredScope(context, MeshReadScope, MeshOperateScope))
+        {
+            await Results.StatusCode(StatusCodes.Status403Forbidden).ExecuteAsync(context).ConfigureAwait(false);
+            return;
+        }
+
+        if (!TryCreateShardFilter(context.Request, out var filter, out var errorResult))
+        {
+            await (errorResult ?? Results.BadRequest(new { error = "Invalid shard filter parameters." }))
+                .ExecuteAsync(context)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        int? pageSize = null;
+        if (context.Request.Query.TryGetValue("pageSize", out var sizeValues))
+        {
+            if (!int.TryParse(sizeValues, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedPageSize))
+            {
+                await Results.BadRequest(new { error = "Invalid pageSize value." })
+                    .ExecuteAsync(context)
+                    .ConfigureAwait(false);
+                return;
+            }
+
+            pageSize = parsedPageSize;
+        }
+
+        var cursor = context.Request.Query.TryGetValue("cursor", out var cursorValues)
+            ? cursorValues.ToString()
+            : null;
+
+        try
+        {
+            var response = await service.ListAsync(filter, cursor, pageSize, context.RequestAborted).ConfigureAwait(false);
+            context.Response.Headers.ETag = $@"W/""shards-{response.Version}""";
+            context.Response.Headers["x-omnirelay-shards-version"] = response.Version.ToString(CultureInfo.InvariantCulture);
+            await Results.Json(response, ShardDiagnosticsJsonContext.Default.ShardListResponse)
+                .ExecuteAsync(context)
+                .ConfigureAwait(false);
+        }
+        catch (ArgumentException ex)
+        {
+            await Results.BadRequest(new { error = ex.Message })
+                .ExecuteAsync(context)
+                .ConfigureAwait(false);
+        }
+    }
+
+    private static async Task DiffShardsAsync(HttpContext context)
+    {
+        var service = context.RequestServices.GetRequiredService<ShardControlPlaneService>();
+        if (!HasRequiredScope(context, MeshOperateScope))
+        {
+            await Results.StatusCode(StatusCodes.Status403Forbidden).ExecuteAsync(context).ConfigureAwait(false);
+            return;
+        }
+
+        if (!TryCreateShardFilter(context.Request, out var filter, out var errorResult))
+        {
+            await (errorResult ?? Results.BadRequest(new { error = "Invalid shard filter parameters." }))
+                .ExecuteAsync(context)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        if (!TryParseLongQuery(context.Request, "fromVersion", out var fromVersion, out var parseError))
+        {
+            await (parseError ?? Results.BadRequest(new { error = "Invalid fromVersion value." }))
+                .ExecuteAsync(context)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        if (!TryParseLongQuery(context.Request, "toVersion", out var toVersion, out parseError))
+        {
+            await (parseError ?? Results.BadRequest(new { error = "Invalid toVersion value." }))
+                .ExecuteAsync(context)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        var response = await service.DiffAsync(fromVersion, toVersion, filter, context.RequestAborted).ConfigureAwait(false);
+        await Results.Json(response, ShardDiagnosticsJsonContext.Default.ShardDiffResponse)
+            .ExecuteAsync(context)
+            .ConfigureAwait(false);
+    }
+
+    private static async Task WatchShardsAsync(HttpContext context)
+    {
+        var service = context.RequestServices.GetRequiredService<ShardControlPlaneService>();
+        if (!HasRequiredScope(context, MeshReadScope, MeshOperateScope))
+        {
+            await Results.StatusCode(StatusCodes.Status403Forbidden).ExecuteAsync(context).ConfigureAwait(false);
+            return;
+        }
+
+        if (!TryCreateShardFilter(context.Request, out var filter, out var errorResult))
+        {
+            await (errorResult ?? Results.BadRequest(new { error = "Invalid shard filter parameters." }))
+                .ExecuteAsync(context)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        if (!TryParseLongQuery(context.Request, "resumeToken", out var resumeToken, out var parseError))
+        {
+            await (parseError ?? Results.BadRequest(new { error = "Invalid resumeToken value." }))
+                .ExecuteAsync(context)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        context.Response.Headers.CacheControl = "no-cache";
+        context.Response.Headers["Content-Type"] = "text/event-stream";
+        await context.Response.WriteAsync("retry: 2000\n\n", context.RequestAborted).ConfigureAwait(false);
+
+        try
+        {
+            await foreach (var diff in service.WatchAsync(resumeToken, filter, context.RequestAborted).ConfigureAwait(false))
+            {
+                if (diff.Current is null)
+                {
+                    continue;
+                }
+
+                var current = ShardControlPlaneMapper.ToSummary(diff.Current);
+                var previous = diff.Previous is null ? null : ShardControlPlaneMapper.ToSummary(diff.Previous);
+                var entry = new ShardDiffEntry(diff.Position, current, previous, diff.History);
+
+                var payload = JsonSerializer.Serialize(entry, ShardDiagnosticsJsonContext.Default.ShardDiffEntry);
+                await context.Response.WriteAsync($"id: {diff.Position}\n", context.RequestAborted).ConfigureAwait(false);
+                await context.Response.WriteAsync("event: shard.diff\n", context.RequestAborted).ConfigureAwait(false);
+                await context.Response.WriteAsync($"data: {payload}\n\n", context.RequestAborted).ConfigureAwait(false);
+                await context.Response.Body.FlushAsync(context.RequestAborted).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private static async Task SimulateShardsAsync(HttpContext context)
+    {
+        var service = context.RequestServices.GetRequiredService<ShardControlPlaneService>();
+        var request = await context.Request.ReadFromJsonAsync(
+            ShardDiagnosticsJsonContext.Default.ShardSimulationRequest,
+            context.RequestAborted).ConfigureAwait(false);
+
+        if (!HasRequiredScope(context, MeshOperateScope))
+        {
+            await Results.StatusCode(StatusCodes.Status403Forbidden).ExecuteAsync(context).ConfigureAwait(false);
+            return;
+        }
+
+        if (request is null)
+        {
+            await Results.BadRequest(new { error = "Request body is required." }).ExecuteAsync(context).ConfigureAwait(false);
+            return;
+        }
+
+        try
+        {
+            var response = await service.SimulateAsync(request, context.RequestAborted).ConfigureAwait(false);
+            await Results.Json(response, ShardDiagnosticsJsonContext.Default.ShardSimulationResponse)
+                .ExecuteAsync(context)
+                .ConfigureAwait(false);
+        }
+        catch (ArgumentException ex)
+        {
+            await Results.BadRequest(new { error = ex.Message }).ExecuteAsync(context).ConfigureAwait(false);
+        }
+        catch (InvalidOperationException ex)
+        {
+            await Results.Problem(ex.Message, statusCode: StatusCodes.Status404NotFound)
+                .ExecuteAsync(context)
+                .ConfigureAwait(false);
+        }
+    }
+
 
     private static bool TryParseLongQuery(HttpRequest request, string key, out long? value, out IResult? error)
     {

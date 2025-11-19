@@ -10,8 +10,8 @@ namespace OmniRelay.Diagnostics;
 /// <summary>Endpoint helpers for OmniRelay diagnostics control-plane routes.</summary>
 public static class DiagnosticsEndpointExtensions
 {
-    [RequiresUnreferencedCode("Minimal API endpoints use reflection for delegate parameter binding.")]
-    [RequiresDynamicCode("Minimal API endpoints rely on runtime code generation and aren't AOT-friendly.")]
+    [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Diagnostic endpoints run in non-trimmed control plane hosts.")]
+    [UnconditionalSuppressMessage("AOT", "IL3050", Justification = "Diagnostic control plane is not published as native AOT.")]
     public static IEndpointRouteBuilder MapOmniRelayDiagnosticsControlPlane(
         this IEndpointRouteBuilder builder,
         Action<DiagnosticsEndpointOptions>? configure = null)
@@ -22,88 +22,19 @@ public static class DiagnosticsEndpointExtensions
 
         if (options.EnableLoggingToggle)
         {
-            builder.MapGet("/omnirelay/control/logging", (IDiagnosticsRuntime runtime) =>
-            {
-                var level = runtime.MinimumLogLevel?.ToString();
-                return TypedResults.Json(
-                    new LoggingStateResponse(level),
-                    DiagnosticsJsonContext.Default.LoggingStateResponse);
-            });
-
-            builder.MapPost("/omnirelay/control/logging", (DiagnosticsLogLevelRequest request, IDiagnosticsRuntime runtime) =>
-            {
-                if (request is null)
-                {
-                    return Results.BadRequest(new { error = "Request body required." });
-                }
-
-                if (string.IsNullOrWhiteSpace(request.Level))
-                {
-                    runtime.SetMinimumLogLevel(null);
-                    return Results.NoContent();
-                }
-
-                if (!Enum.TryParse<LogLevel>(request.Level, ignoreCase: true, out var parsed))
-                {
-                    return Results.BadRequest(new { error = $"Invalid log level '{request.Level}'." });
-                }
-
-                runtime.SetMinimumLogLevel(parsed);
-                return Results.NoContent();
-            });
+            builder.MapGet("/omnirelay/control/logging", GetLoggingState);
+            builder.MapPost("/omnirelay/control/logging", SetLoggingLevel);
         }
 
         if (options.EnableTraceSamplingToggle)
         {
-            builder.MapGet("/omnirelay/control/tracing", (IDiagnosticsRuntime runtime) =>
-            {
-                return TypedResults.Json(
-                    new TraceSamplingResponse(runtime.TraceSamplingProbability),
-                    DiagnosticsJsonContext.Default.TraceSamplingResponse);
-            });
-
-            builder.MapPost("/omnirelay/control/tracing", (DiagnosticsSamplingRequest request, IDiagnosticsRuntime runtime) =>
-            {
-                if (request is null)
-                {
-                    return Results.BadRequest(new { error = "Request body required." });
-                }
-
-                try
-                {
-                    runtime.SetTraceSamplingProbability(request.Probability);
-                }
-                catch (ArgumentOutOfRangeException ex)
-                {
-                    return Results.BadRequest(new { error = ex.Message });
-                }
-
-                return Results.NoContent();
-            });
+            builder.MapGet("/omnirelay/control/tracing", GetTraceSampling);
+            builder.MapPost("/omnirelay/control/tracing", SetTraceSampling);
         }
 
         if (options.EnableLeaseHealthDiagnostics)
         {
-            builder.MapGet("/omnirelay/control/lease-health", (IEnumerable<IPeerHealthSnapshotProvider> providers) =>
-            {
-                var builder = ImmutableArray.CreateBuilder<PeerLeaseHealthSnapshot>();
-                foreach (var provider in providers)
-                {
-                    if (provider is null)
-                    {
-                        continue;
-                    }
-
-                    var snapshot = provider.Snapshot();
-                    if (!snapshot.IsDefaultOrEmpty)
-                    {
-                        builder.AddRange(snapshot);
-                    }
-                }
-
-                var diagnostics = PeerLeaseHealthDiagnostics.FromSnapshots(builder.ToImmutable());
-                return TypedResults.Json(diagnostics, DiagnosticsJsonContext.Default.PeerLeaseHealthDiagnostics);
-            });
+            builder.MapGet("/omnirelay/control/lease-health", GetLeaseHealth);
         }
 
         if (options.EnablePeerDiagnostics)
@@ -113,6 +44,83 @@ public static class DiagnosticsEndpointExtensions
         }
 
         return builder;
+    }
+
+    private static IResult GetLoggingState(IDiagnosticsRuntime runtime)
+    {
+        var level = runtime.MinimumLogLevel?.ToString();
+        return TypedResults.Json(
+            new LoggingStateResponse(level),
+            DiagnosticsJsonContext.Default.LoggingStateResponse);
+    }
+
+    private static IResult SetLoggingLevel(DiagnosticsLogLevelRequest request, IDiagnosticsRuntime runtime)
+    {
+        if (request is null)
+        {
+            return Results.BadRequest(new { error = "Request body required." });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Level))
+        {
+            runtime.SetMinimumLogLevel(null);
+            return Results.NoContent();
+        }
+
+        if (!Enum.TryParse<LogLevel>(request.Level, ignoreCase: true, out var parsed))
+        {
+            return Results.BadRequest(new { error = $"Invalid log level '{request.Level}'." });
+        }
+
+        runtime.SetMinimumLogLevel(parsed);
+        return Results.NoContent();
+    }
+
+    private static IResult GetTraceSampling(IDiagnosticsRuntime runtime)
+    {
+        return TypedResults.Json(
+            new TraceSamplingResponse(runtime.TraceSamplingProbability),
+            DiagnosticsJsonContext.Default.TraceSamplingResponse);
+    }
+
+    private static IResult SetTraceSampling(DiagnosticsSamplingRequest request, IDiagnosticsRuntime runtime)
+    {
+        if (request is null)
+        {
+            return Results.BadRequest(new { error = "Request body required." });
+        }
+
+        try
+        {
+            runtime.SetTraceSamplingProbability(request.Probability);
+        }
+        catch (ArgumentOutOfRangeException ex)
+        {
+            return Results.BadRequest(new { error = ex.Message });
+        }
+
+        return Results.NoContent();
+    }
+
+    private static IResult GetLeaseHealth(IEnumerable<IPeerHealthSnapshotProvider> providers)
+    {
+        var snapshots = ImmutableArray.CreateBuilder<PeerLeaseHealthSnapshot>();
+        foreach (var provider in providers)
+        {
+            if (provider is null)
+            {
+                continue;
+            }
+
+            var snapshot = provider.Snapshot();
+            if (!snapshot.IsDefaultOrEmpty)
+            {
+                snapshots.AddRange(snapshot);
+            }
+        }
+
+        var diagnostics = PeerLeaseHealthDiagnostics.FromSnapshots(snapshots.ToImmutable());
+        return TypedResults.Json(diagnostics, DiagnosticsJsonContext.Default.PeerLeaseHealthDiagnostics);
     }
 
     private static IResult MapPeerDiagnostics(IPeerDiagnosticsProvider? provider)
