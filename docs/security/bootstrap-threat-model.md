@@ -2,7 +2,7 @@
 
 ## Scope
 
-This document tracks the security posture of the DISC-009 bootstrap workflow: attestation, token issuance, workload identity minting, policy enforcement, and certificate lifecycle (renewal + revocation). It complements the broader service-discovery architecture note.
+This document tracks the security posture of the MeshKit bootstrap workflow (originally tracked as discovery story 009): attestation, token issuance, workload identity minting, policy enforcement, and certificate lifecycle (renewal + revocation). It complements the broader service-discovery architecture note.
 
 ## Assets
 

@@ -1,6 +1,7 @@
 # Service Discovery + Peering Gaps
 
-OmniRelay should own the connectivity fabric so product services stay focused on business logic (workflows, catalog updates, etc.). The features below describe what the mesh layer must deliver regardless of which domain-specific service rides on top.
+OmniRelay should own the connectivity fabric so product services stay focused on business logic (workflows, catalog updates, etc.). The features below describe what the mesh layer must deliver regardless of which domain-specific service rides on top.  
+⚠️ **Modern status:** These requirements now map to MeshKit modules (WORK-010..WORK-016) that run on top of OmniRelay transports. This document remains as the canonical requirements reference even though the ownership moved to MeshKit.
 
 This architecture note lives alongside `docs/architecture/omnirelay-rpc-mesh.md` and expands on the discovery and peering requirements outlined there.
 
@@ -171,7 +172,7 @@ Each subsection outlines the feature, why the mesh needs it, and objective succe
 - `MeshGossipHost` (`src/OmniRelay/Core/Gossip/`) now runs inside every OmniRelay host via `AddMeshGossipAgent`. It uses HTTP/3 + mTLS, reloads the same bootstrap certificates as the transports, and auto-starts/stops with the dispatcher lifecycle. Fanout, suspicion timers, retransmit budgets, metadata refresh, and port/adverts are all configurable through `mesh:gossip:*` settings (see table below). Configuration can be supplied via `appsettings` or environment variables such as `MESH_GOSSIP__ROLE=gateway`.
 - Prometheus/OpenTelemetry instrumentation exposes `mesh_gossip_members`, `mesh_gossip_rtt_ms`, and `mesh_gossip_messages_total` meters. `AddOmniRelayDispatcher` registers the `OmniRelay.Core.Gossip` meter so dashboards can chart membership counts, RTT, and failure rates next to RPC metrics.
 - Structured logs now describe gossip events once per transition: peer joins, recovers, becomes suspect, or leaves. Logs include `peerId`, `role`, `clusterId`, `region`, `meshVersion`, and whether HTTP/3 was negotiated.
-- `/control/peers` (and its legacy alias `/omnirelay/control/peers`) is available on every HTTP inbound whenever gossip is enabled. It returns the gossip snapshot (status, lastSeen, RTT, metadata) even before the persistent registry ships, fulfilling the diagnostics requirement from DISC-001.
+- `/control/peers` (and its legacy alias `/omnirelay/control/peers`) is available on every HTTP inbound whenever gossip is enabled. It returns the gossip snapshot (status, lastSeen, RTT, metadata) even before the persistent registry ships, fulfilling the diagnostics requirement first defined in the discovery backlog (now owned by MeshKit.Gossip).
 - Peer health diagnostics reuse gossip metadata by pushing labels (`mesh.role`, `mesh.cluster`, etc.) into `PeerLeaseHealthTracker`, so `/omnirelay/control/lease-health` stays consistent with `/control/peers`.
 - Sample configurations:
   - `samples/ResourceLease.MeshDemo/appsettings.Development.json` – single-node dev defaults that enable gossip with a self-signed cert and loopback seeds.
@@ -203,7 +204,7 @@ Env overrides follow standard ASP.NET Core conventions (for example `MESH_GOSSIP
 | `mesh_gossip_rtt_ms` | Histogram for gossip round-trip time per peer. | Alert if P95 > gossip interval × 2. |
 | `mesh_gossip_messages_total{mesh.direction,mesh.outcome}` | Outbound/inbound success/failure counters. | Alert on sustained `mesh.outcome="failure"` growth. |
 
-Grafana/Prometheus rules from DISC-001 now have concrete signals to target, and the sample dashboards already include the new meters.
+Grafana/Prometheus rules that originated from the legacy gossip story now have concrete signals to target, and the sample dashboards already include the new meters.
 
 ### Leadership service (v1)
 
@@ -221,7 +222,7 @@ Grafana/Prometheus rules from DISC-001 now have concrete signals to target, and 
   - Versioned shard tables persisted in the registry with diff history for auditing.
   - Watch semantics that notify SDKs/agents when shards move or are paused.
 - **Implementation notes (2024-10)**:
-  - `OmniRelay.ShardStore.Relational` persists the shard contract described above, issuing optimistic concurrency checks on every mutation and mirroring history into `shard_history`. The schema lives in `eng/migrations/20241014-disc-003-shards.sql`, with provider wrappers (`OmniRelay.ShardStore.Postgres`, `OmniRelay.ShardStore.Sqlite`, `OmniRelay.ShardStore.ObjectStorage`) for the common backends.
+- `OmniRelay.ShardStore.Relational` persists the shard contract described above, issuing optimistic concurrency checks on every mutation and mirroring history into `shard_history`. The schema lives in the legacy-named migration `eng/migrations/20241014-disc-003-shards.sql`, with provider wrappers (`OmniRelay.ShardStore.Postgres`, `OmniRelay.ShardStore.Sqlite`, `OmniRelay.ShardStore.ObjectStorage`) for the common backends.
   - The hashing library (`ShardHashStrategyRegistry`) now ships ring, rendezvous, and locality-aware plans that are bound from configuration via `ShardingConfiguration`. Namespaces may specify preferred nodes + locality hints and materialize plans directly from config.
   - Hyperscale validations (`ShardSchemaHyperscaleFeatureTests`) ingest thousands of shards, roll node membership, and hammer the repository with concurrent governance edits to ensure determinism and auditing survive production-grade load.
 - **Interfaces & data contracts**:

@@ -2,7 +2,7 @@
 
 OmniRelay targets cloud-native, hyperscale environments where footprint, cold-start, and determinism are key. Native AOT (ahead-of-time compilation) is therefore the default delivery model for every runtime component, control-plane service, and CLI/tool.
 
-This document captures the baseline expectations introduced by `REFDISC-034`:
+This document captures the baseline expectations introduced by `WORK-002`:
 
 1. **Native builds must succeed** – Every shipping project must publish with `dotnet publish /p:PublishAot=true` (see scripts below) with zero trimming warnings or suppressed diagnostics.
 2. **Trimming-safe code** – Source generators, explicit `DynamicallyAccessedMembers` annotations, or strongly typed registries must replace reflection-heavy patterns, `Activator.CreateInstance`, or runtime code generation whenever possible.
@@ -61,8 +61,8 @@ The script currently targets:
 
 ## Next Steps
 
-- `REFDISC-035` extends these rules to every shared control-plane library.
-- `REFDISC-036` delivers native AOT tooling packages.
-- `REFDISC-037` wires these checks into CI so PRs cannot regress the baseline.
+- `WORK-003` extends these rules to every shared control-plane library.
+- `WORK-004` delivers native AOT tooling packages.
+- `WORK-005` wires these checks into CI so PRs cannot regress the baseline.
 
 Refer to this document whenever you add dependencies, introduce new runtime features, or review a PR for AOT-readiness.

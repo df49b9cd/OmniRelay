@@ -1,4 +1,4 @@
--- DISC-003 shard ownership store schema (Postgres)
+-- WORK-010 shard ownership store schema (Postgres) — legacy migration kept for compatibility
 CREATE TABLE IF NOT EXISTS shard_records (
     namespace              text                     NOT NULL,
     shard_id               text                     NOT NULL,

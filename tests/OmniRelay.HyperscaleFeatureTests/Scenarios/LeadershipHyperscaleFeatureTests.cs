@@ -31,7 +31,7 @@ public sealed class LeadershipHyperscaleFeatureTests : IAsyncLifetime
             ElectionBackoff = TimeSpan.FromMilliseconds(250),
             MaxElectionWindow = TimeSpan.FromSeconds(5),
             ClusterId = "hyperscale-validation",
-            MeshVersion = "disc-002-feature-tests"
+            MeshVersion = "mesh-leadership-feature-tests"
         };
 
         _cluster = new HyperscaleLeadershipCluster(_store, _options, _loggerFactory);
