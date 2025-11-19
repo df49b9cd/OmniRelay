@@ -29,8 +29,6 @@ public static class PeerLeaseHealthDiagnosticsExtensions
                 sp.GetService<IAlertPublisher>());
             return tracker;
         });
-
-        services.TryAddSingleton<IEnumerable<IPeerHealthSnapshotProvider>>(sp => sp.GetServices<IPeerHealthSnapshotProvider>());
         return services;
     }
 }

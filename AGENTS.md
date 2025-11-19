@@ -38,21 +38,49 @@ Use this template when starting a new Codex session to load context and follow t
 ```
 You are Codex working in /Users/smolesen/Dev/OmniRelay on macOS (Darwin) with zsh.
 Approval policy: never; sandbox: danger-full-access; network: enabled.
-Before coding: read memories project_structure, style_conventions, suggested_commands, done_when_finished, ci_cd, working_protocol, available_tools; query server-memory graph for components/tests/workflows relevant to the task.
 Use sequential-thinking MCP for any non-trivial task to outline steps/risks.
-Follow working_protocol.md for plan → implement → validate → wrap-up.
+Follow plan → implement → validate → wrap-up.
 Use repo commands from suggested_commands; adhere to style_conventions.
 Respond with file:line refs for changes; note tests/commands run.
 ```
 
 ## Desktop Commander Workflow
-- Prefer Desktop Commander tooling over ad-hoc `bash` even though the sandbox allows it. Whenever you need to read a file, call `mcp__desktop-commander__read_file` (or `read_multiple_files`). For edits, rely on `mcp__desktop-commander__apply_patch` / `edit_block` / chunked `write_file` rather than shell redirection. Launch long-running commands or REPLs through `mcp__desktop-commander__start_process`, then drive them via `interact_with_process` / `read_process_output`. This keeps all filesystem/process access observable and consistent with the repo’s working protocol.
+- Prefer Desktop Commander tooling over ad-hoc `bash` even though the sandbox allows it. Use `mcp__desktop-commander__read_file` / `read_multiple_files` for inspection, `apply_patch` / `mcp__desktop-commander__edit_block` / chunked `write_file` for edits, and `mcp__desktop-commander__start_process` with `interact_with_process` + `read_process_output` for long-running commands to keep the activity log consistent.
+- Keep every action observable: favor Desktop Commander commands even for simple listings, record truncated outputs in your notes, and only fall back to direct shell utilities when a provided tool cannot fulfill the need.
+- When searching the repo, favor `mcp__desktop-commander__start_search` with `get_more_search_results` / `stop_search` (and `list_searches` when tracking sessions) instead of raw `rg`/`find` so queries remain auditable.
+- For onboarding or canonical flows, call `mcp__desktop-commander__get_prompts` to pull the standardized prompt packages rather than crafting ad-hoc instructions.
 
-## Tool Output Truncation
-- Tool responses currently use a naïve line-based truncation introduced in commit `957d449` (August 2025, `v0.24.0`): 256-line or 10 KiB hard limit, surfaced as the first 128 lines plus the last 128 lines.
-- The limit correlates poorly with actual token usage (256 short lines may be ~2k tokens, while 100 long lines can exceed 10k), so it does not reflect real context-window pressure and hides mid-stream errors; this became worse once MCP tools inherited the truncation in `v0.56`.
-- Codex CLI mitigation strategies:
-  1. Always chunk `read_file` access: request at most 128 lines (or <10 KiB) per call using `offset`/`length`, and immediately follow with the next chunk until the entire file or log is captured—never rely on a single call for large files.
-  2. When inspecting a specific region, read overlapping 128-line windows before and after the target block to preserve surrounding context without breaching the limit.
+### Desktop Commander Tool Reference
+- `mcp__desktop-commander__create_directory` — create or ensure directories exist before writing files.
+- `mcp__desktop-commander__edit_block` — surgically replace targeted snippets inside a file.
+- `mcp__desktop-commander__force_terminate` — stop runaway Desktop Commander-managed processes.
+- `mcp__desktop-commander__get_config` — inspect the CLI’s sandbox configuration and limits.
+- `mcp__desktop-commander__get_file_info` — retrieve metadata (size, timestamps, permissions) for a given path.
+- `mcp__desktop-commander__get_more_search_results` — page through outstanding search sessions started via `start_search`.
+- `mcp__desktop-commander__get_prompts` — load Codex onboarding prompts (e.g., organize downloads, explain repo).
+- `mcp__desktop-commander__get_recent_tool_calls` — review prior tool invocations for context continuity.
+- `mcp__desktop-commander__get_usage_stats` — capture aggregated CLI usage metrics for debugging.
+- `mcp__desktop-commander__give_feedback_to_desktop_commander` — open the feedback form for the Desktop Commander team.
+- `mcp__desktop-commander__interact_with_process` — send commands to an existing REPL/process launched via `start_process`.
+- `mcp__desktop-commander__kill_process` — terminate a background REPL/process by PID when `force_terminate` is insufficient.
+- `mcp__desktop-commander__list_directory` — enumerate files/folders with depth controls (preferred over `ls`).
+- `mcp__desktop-commander__list_processes` — view currently running Desktop Commander-managed processes.
+- `mcp__desktop-commander__list_searches` — inspect active file/content searches.
+- `mcp__desktop-commander__list_sessions` — see interactive session states (blocked, running, finished).
+- `mcp__desktop-commander__move_file` — move/rename files and directories atomically.
+- `mcp__desktop-commander__read_file` — read file slices with optional offsets/lengths (cap at ~200 lines per call).
+- `mcp__desktop-commander__read_multiple_files` — fetch several files simultaneously when comparing artifacts.
+- `mcp__desktop-commander__read_process_output` — capture buffered output from a running process without sending input.
+- `mcp__desktop-commander__set_config_value` — update Desktop Commander configuration keys when absolutely required.
+- `mcp__desktop-commander__start_process` — launch REPLs or long-lived commands (Python, bash, dotnet, etc.).
+- `mcp__desktop-commander__start_search` — run indexed file/content searches with regex/literal support.
+- `mcp__desktop-commander__stop_search` — halt an in-flight search to conserve resources.
+- `mcp__desktop-commander__write_file` — write/append content in ≤30-line chunks per call.
+- `apply_patch` — freeform multi-line patch tool for complex edits not suited to `edit_block`.
+
+## Codex CLI Tools
+- Codex CLI mcp tool strategies:
+  1. Always chunk `read_file` access: request at most 200 lines (or <10 KiB) per call using `offset`/`length`, and immediately follow with the next chunk until the entire file or log is captured—never rely on a single call for large files.
+  2. When inspecting a specific region, read overlapping 200-line windows before and after the target block to preserve surrounding context without breaching the limit.
   3. For long-running tool output (tests, builds), prefer commands that support incremental filters (`grep`, `dotnet test --filter`, etc.) or paging so the returned text stays under the cap while still covering the needed failures.
   4. Document any truncated segments in the final response so subsequent turns know which portions were intentionally skipped and can re-read targeted chunks.
