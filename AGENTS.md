@@ -47,3 +47,12 @@ Respond with file:line refs for changes; note tests/commands run.
 
 ## Desktop Commander Workflow
 - Prefer Desktop Commander tooling over ad-hoc `bash` even though the sandbox allows it. Whenever you need to read a file, call `mcp__desktop-commander__read_file` (or `read_multiple_files`). For edits, rely on `mcp__desktop-commander__apply_patch` / `edit_block` / chunked `write_file` rather than shell redirection. Launch long-running commands or REPLs through `mcp__desktop-commander__start_process`, then drive them via `interact_with_process` / `read_process_output`. This keeps all filesystem/process access observable and consistent with the repo’s working protocol.
+
+## Tool Output Truncation
+- Tool responses currently use a naïve line-based truncation introduced in commit `957d449` (August 2025, `v0.24.0`): 256-line or 10 KiB hard limit, surfaced as the first 128 lines plus the last 128 lines.
+- The limit correlates poorly with actual token usage (256 short lines may be ~2k tokens, while 100 long lines can exceed 10k), so it does not reflect real context-window pressure and hides mid-stream errors; this became worse once MCP tools inherited the truncation in `v0.56`.
+- Codex CLI mitigation strategies:
+  1. Always chunk `read_file` access: request at most 128 lines (or <10 KiB) per call using `offset`/`length`, and immediately follow with the next chunk until the entire file or log is captured—never rely on a single call for large files.
+  2. When inspecting a specific region, read overlapping 128-line windows before and after the target block to preserve surrounding context without breaching the limit.
+  3. For long-running tool output (tests, builds), prefer commands that support incremental filters (`grep`, `dotnet test --filter`, etc.) or paging so the returned text stays under the cap while still covering the needed failures.
+  4. Document any truncated segments in the final response so subsequent turns know which portions were intentionally skipped and can re-read targeted chunks.
