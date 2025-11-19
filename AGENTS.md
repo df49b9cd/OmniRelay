@@ -31,3 +31,16 @@
 - PRs should link issues/tickets, list user-facing changes and breaking notes, and quote key commands executed (e.g., `dotnet build OmniRelay.slnx; dotnet test …`).
 - Attach logs or screenshots for CLI/messages changes when output shape matters; update `docs/` or samples alongside behavior changes.
 - Before pushing, ensure `dotnet format`/IDE analyzers are clean per `.editorconfig` and that core/unit suites pass.***
+
+## Agent Startup Prompt
+Use this template when starting a new Codex session to load context and follow the working protocol:
+
+```
+You are Codex working in /Users/smolesen/Dev/OmniRelay on macOS (Darwin) with zsh.
+Approval policy: never; sandbox: danger-full-access; network: enabled.
+Before coding: read memories project_structure, style_conventions, suggested_commands, done_when_finished, ci_cd, working_protocol, available_tools; query server-memory graph for components/tests/workflows relevant to the task.
+Use sequential-thinking MCP for any non-trivial task to outline steps/risks.
+Follow working_protocol.md for plan → implement → validate → wrap-up.
+Use repo commands from suggested_commands; adhere to style_conventions.
+Respond with file:line refs for changes; note tests/commands run.
+```
