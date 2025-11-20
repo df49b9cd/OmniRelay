@@ -1063,7 +1063,7 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
 
             const int chunkSize = 81920;
             long total = 0;
-            using var memory = new MemoryStream();
+            var writer = new ArrayBufferWriter<byte>(chunkSize);
             var rented = ArrayPool<byte>.Shared.Rent(chunkSize);
             try
             {
@@ -1093,10 +1093,10 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
                             transport: transport));
                     }
 
-                    memory.Write(rented, 0, read);
+                    writer.Write(rented.AsSpan(0, read));
                 }
 
-                return Ok((ReadOnlyMemory<byte>)memory.ToArray());
+                return Ok(writer.WrittenMemory);
             }
             finally
             {
@@ -1403,12 +1403,9 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
                         {
                             var frame = await HttpDuplexProtocol.ReceiveFrameAsync(webSocket, tempBuffer, frameLimit, token).ConfigureAwait(false);
 
-                            HttpDuplexProtocol.Frame frameToWrite = frame;
-                            if (!frame.Payload.IsEmpty)
-                            {
-                                var payloadCopy = frame.Payload.ToArray();
-                                frameToWrite = new HttpDuplexProtocol.Frame(frame.MessageType, frame.Type, payloadCopy);
-                            }
+                            HttpDuplexProtocol.Frame frameToWrite = frame.Payload.IsEmpty
+                                ? frame
+                                : new HttpDuplexProtocol.Frame(frame.MessageType, frame.Type, frame.Payload.ToArray());
 
                             await frameChannel.Writer.WriteAsync(frameToWrite, token).ConfigureAwait(false);
 
@@ -1443,7 +1440,7 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
                         switch (frame.Type)
                         {
                             case HttpDuplexProtocol.FrameType.RequestData:
-                                await streamCall.RequestWriter.WriteAsync(frame.Payload.ToArray(), cancellationToken).ConfigureAwait(false);
+                                await streamCall.RequestWriter.WriteAsync(frame.Payload, cancellationToken).ConfigureAwait(false);
                                 break;
 
                             case HttpDuplexProtocol.FrameType.RequestComplete:

@@ -3,6 +3,7 @@ using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Net;
 using System.Security.Cryptography.X509Certificates;
+using System.Runtime.InteropServices;
 using System.Threading.Channels;
 using Grpc.Core;
 using Grpc.Core.Interceptors;
@@ -305,7 +306,7 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
             async (context, token) =>
             {
                 var method = _unaryMethods.GetOrAdd(procedure, CreateUnaryMethod);
-                var payload = request.Body.ToArray();
+                var payload = GetCachedArray(request.Body);
                 var callOptions = CreateCallOptions(request.Meta, token);
 
                 var operation = new Func<CallInvoker, CallOptions, CancellationToken, ValueTask<Response<ReadOnlyMemory<byte>>>>(
@@ -353,7 +354,7 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
             async (context, token) =>
             {
                 var method = _unaryMethods.GetOrAdd(procedure, CreateUnaryMethod);
-                var payload = request.Body.ToArray();
+                var payload = GetCachedArray(request.Body);
                 var callOptions = CreateCallOptions(request.Meta, token);
 
                 var operation = new Func<CallInvoker, CallOptions, CancellationToken, ValueTask<OnewayAck>>(
@@ -417,7 +418,7 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
             async (context, token) =>
             {
                 var method = _serverStreamMethods.GetOrAdd(procedure, CreateServerStreamingMethod);
-                var payload = request.Body.ToArray();
+                var payload = GetCachedArray(request.Body);
                 var callOptions = CreateCallOptions(request.Meta, token);
 
                 var operation = new Func<CallInvoker, CallOptions, CancellationToken, ValueTask<IStreamCall>>(
@@ -1628,6 +1629,19 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
 
         options.HttpHandler = new HttpVersionHandler(handler, HttpVersion.Version20, HttpVersionPolicy.RequestVersionExact);
         return options;
+    }
+
+    private static byte[] GetCachedArray(ReadOnlyMemory<byte> payload)
+    {
+        if (MemoryMarshal.TryGetArray(payload, out var segment) &&
+            segment.Array is { } array &&
+            segment.Offset == 0 &&
+            segment.Count == array.Length)
+        {
+            return array;
+        }
+
+        return payload.ToArray();
     }
 
     private static bool ShouldPenalizePeer(Error error)

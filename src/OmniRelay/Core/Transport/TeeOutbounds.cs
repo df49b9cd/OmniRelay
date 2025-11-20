@@ -172,7 +172,7 @@ public sealed class TeeUnaryOutbound : IUnaryOutbound, IOutboundDiagnostic, IDis
     private void ScheduleUnaryShadow(IRequest<ReadOnlyMemory<byte>> request)
     {
         var teeMeta = PrepareShadowMeta(request.Meta);
-        var payloadCopy = request.Body.ToArray();
+        var payloadCopy = request.Body;
         var teeRequest = new Request<ReadOnlyMemory<byte>>(teeMeta, payloadCopy);
 
         _shadowWork.Go(async token =>
@@ -415,7 +415,7 @@ public sealed class TeeOnewayOutbound : IOnewayOutbound, IOutboundDiagnostic, ID
     private void ScheduleOnewayShadow(IRequest<ReadOnlyMemory<byte>> request)
     {
         var teeMeta = PrepareShadowMeta(request.Meta);
-        var payloadCopy = request.Body.ToArray();
+        var payloadCopy = request.Body;
         var teeRequest = new Request<ReadOnlyMemory<byte>>(teeMeta, payloadCopy);
 
         _shadowWork.Go(async token =>
