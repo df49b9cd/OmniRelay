@@ -354,20 +354,36 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
 
         var snapshot = _membership.Snapshot();
         var members = _membership.PickFanout(_options.Fanout);
-        var targets = members
-            .Select(member => ParseEndpoint(member.Metadata.Endpoint))
-            .OfType<MeshGossipPeerEndpoint>()
-            .ToList();
 
-        if (targets.Count == 0 && _seedPeers.Count > 0)
+        // Start with members selected from the fanout list.
+        var targetSet = new HashSet<MeshGossipPeerEndpoint>();
+        foreach (var endpoint in members
+                     .Select(member => ParseEndpoint(member.Metadata.Endpoint))
+                     .OfType<MeshGossipPeerEndpoint>())
         {
-            targets.AddRange(_seedPeers.Take(_options.Fanout));
+            targetSet.Add(endpoint);
         }
 
-        if (targets.Count == 0)
+        // Prioritize seed peers not yet targeted to avoid starvation when some peers are missing.
+        if (_seedPeers.Count > 0 && targetSet.Count < _options.Fanout)
+        {
+            foreach (var seed in _seedPeers)
+            {
+                if (targetSet.Count >= _options.Fanout)
+                {
+                    break;
+                }
+
+                targetSet.Add(seed);
+            }
+        }
+
+        if (targetSet.Count == 0)
         {
             return;
         }
+
+        var targets = targetSet.ToList();
 
         foreach (var target in targets)
         {
