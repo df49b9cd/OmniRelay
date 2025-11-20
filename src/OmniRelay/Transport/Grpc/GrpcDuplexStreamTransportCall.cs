@@ -214,7 +214,7 @@ internal sealed class GrpcDuplexStreamTransportCall : IDuplexStreamCall
                 return;
             }
 
-            await _inner.CompleteResponsesAsync(error, cancellationToken).ConfigureAwait(false);
+            await _inner.CompleteResponsesAsync(error, CancellationToken.None).ConfigureAwait(false);
             RecordCompletion(requestStatus);
         }
     }
@@ -246,7 +246,7 @@ internal sealed class GrpcDuplexStreamTransportCall : IDuplexStreamCall
 
         if (pumpResult.IsFailure && pumpResult.Error is { } error)
         {
-            await _inner.CompleteResponsesAsync(error, cancellationToken).ConfigureAwait(false);
+            await _inner.CompleteResponsesAsync(error, CancellationToken.None).ConfigureAwait(false);
             RecordCompletion(responseStatus);
         }
     }
