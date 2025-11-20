@@ -28,7 +28,11 @@ public static class ProtobufCliRegistrationEmitter
         foreach (var (protoName, typeInfo) in typeLookup)
         {
             var serializerType = $"global::{typeInfo.Namespace}.{typeInfo.CsharpName}OmniRelaySerializer";
-            sb.AppendLine($"        registry.Register(\"{protoName}\", static json => {serializerType}.Serialize(json));");
+            sb.Append("        registry.Register(\"")
+              .Append(protoName)
+              .Append("\", static json => ")
+              .Append(serializerType)
+              .AppendLine(".Serialize(json));");
         }
         sb.AppendLine("    }");
         sb.AppendLine("}");

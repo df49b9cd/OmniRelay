@@ -1,16 +1,14 @@
 using System.Buffers;
 using System.CommandLine;
-using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
-using Hugo;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using OmniRelay.Cli.Modules;
 using OmniRelay.Cli.Core;
+using OmniRelay.Cli.Modules;
 using OmniRelay.Configuration;
 using OmniRelay.Configuration.Internal.TransportPolicy;
 using OmniRelay.Configuration.Models;
@@ -19,8 +17,6 @@ using OmniRelay.ControlPlane.Clients;
 using OmniRelay.ControlPlane.Upgrade;
 using OmniRelay.Core;
 using OmniRelay.Core.Transport;
-using ShardControl = OmniRelay.Core.Shards.ControlPlane;
-using DomainShardStatus = OmniRelay.Core.Shards.ShardStatus;
 using OmniRelay.Dispatcher;
 using OmniRelay.Errors;
 using OmniRelay.Mesh.Control.V1;
@@ -38,10 +34,6 @@ public static partial class Program
 
     internal const string DefaultConfigSection = "omnirelay";
     internal const string DefaultIntrospectionUrl = "http://127.0.0.1:8080/omnirelay/introspect";
-    private static readonly JsonSerializerOptions PrettyJsonOptions = new(JsonSerializerDefaults.Web)
-    {
-        WriteIndented = true
-    };
 
     public static async Task<int> Main(string[] args)
     {
