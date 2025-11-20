@@ -21,9 +21,9 @@ internal static class CliModules
         };
 }
 
-internal sealed class ServeModule : ICliModule { public Command Build() => Program.CreateServeCommand(); }
-internal sealed class IntrospectModule : ICliModule { public Command Build() => Program.CreateIntrospectCommand(); }
-internal sealed class ScriptModule : ICliModule { public Command Build() => Program.CreateScriptCommand(); }
-internal sealed class MeshModule : ICliModule { public Command Build() => Program.CreateMeshCommand(); }
+internal sealed class ServeModule : ICliModule { public Command Build() => ProgramServeModule.CreateServeCommand(); }
+internal sealed class IntrospectModule : ICliModule { public Command Build() => ProgramIntrospectModule.CreateIntrospectCommand(); }
+internal sealed class ScriptModule : ICliModule { public Command Build() => ProgramScriptModule.CreateScriptCommand(); }
+internal sealed class MeshModule : ICliModule { public Command Build() => ProgramMeshModule.CreateMeshCommand(); }
 internal sealed class RequestModule : ICliModule { public Command Build() => Program.CreateRequestCommand(); }
 internal sealed class BenchmarkModule : ICliModule { public Command Build() => Program.CreateBenchmarkCommand(); }

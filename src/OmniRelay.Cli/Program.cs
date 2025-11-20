@@ -42,7 +42,7 @@ namespace OmniRelay.Cli;
 
 [RequiresUnreferencedCode("OmniRelay CLI uses reflection-heavy utilities and is not trimming safe.")]
 [RequiresDynamicCode("OmniRelay CLI uses reflection-heavy utilities and is not AOT safe.")]
-public static class Program
+public static partial class Program
 {
     internal const string DefaultConfigSection = "omnirelay";
     private static readonly JsonWriterOptions PrettyWriterOptions = new() { Indented = true };
@@ -113,59 +113,13 @@ public static class Program
         return root;
     }
 
-    internal static Command CreateServeCommand()
-    {
-        var command = new Command("serve", "Run an OmniRelay dispatcher using configuration files.");
-
-        var configOption = new Option<string[]>("--config")
-        {
-            Description = "Configuration file(s) to load.",
-            AllowMultipleArgumentsPerToken = true,
-            Required = true,
-            Arity = ArgumentArity.OneOrMore
-        };
-
-        var sectionOption = new Option<string>("--section")
-        {
-            Description = "Root configuration section name.",
-            DefaultValueFactory = _ => DefaultConfigSection
-        };
-
-        var setOption = new Option<string[]>("--set")
-        {
-            Description = "Override configuration values (KEY=VALUE).",
-            AllowMultipleArgumentsPerToken = true,
-            DefaultValueFactory = _ => []
-        };
-
-        var readyFileOption = new Option<string?>("--ready-file")
-        {
-            Description = "Touch the specified file once the dispatcher starts."
-        };
-
-        var shutdownAfterOption = new Option<string?>("--shutdown-after")
-        {
-            Description = "Automatically shut down after the specified duration (e.g. 30s)."
-        };
-
-        command.Add(configOption);
-        command.Add(sectionOption);
-        command.Add(setOption);
-        command.Add(readyFileOption);
-        command.Add(shutdownAfterOption);
-
-        command.SetAction(parseResult =>
-        {
-            var configs = parseResult.GetValue(configOption) ?? [];
-            var section = parseResult.GetValue(sectionOption) ?? DefaultConfigSection;
-            var overrides = parseResult.GetValue(setOption) ?? [];
-            var readyFile = parseResult.GetValue(readyFileOption);
-            var shutdownAfter = parseResult.GetValue(shutdownAfterOption);
-            return RunServeAsync(configs, section, overrides, readyFile, shutdownAfter).GetAwaiter().GetResult();
-        });
-
-        return command;
-    }
+    // Temporary forwarders while handlers migrate into modules
+    internal static Task<int> RunServeAsync(string[] configPaths, string section, string[] setOverrides, string? readyFile, string? shutdownAfterOption) =>
+        ProgramServeModule.RunServeAsync(configPaths, section, setOverrides, readyFile, shutdownAfterOption);
+    internal static Task<int> RunAutomationAsync(string scriptPath, bool dryRun, bool continueOnError) =>
+        ProgramScriptModule.RunAutomationAsync(scriptPath, dryRun, continueOnError);
+    internal static Task<int> RunIntrospectAsync(string url, string format, string? timeoutOption) =>
+        ProgramIntrospectModule.RunIntrospectAsync(url, format, timeoutOption);
 
     internal static Command CreateScriptCommand()
     {
@@ -747,7 +701,7 @@ public static class Program
             var url = parseResult.GetValue(urlOption) ?? DefaultIntrospectionUrl;
             var format = parseResult.GetValue(formatOption) ?? "text";
             var timeout = parseResult.GetValue(timeoutOption);
-            return RunIntrospectAsync(url, format, timeout).GetAwaiter().GetResult();
+            return ProgramIntrospectModule.RunIntrospectAsync(url, format, timeout).GetAwaiter().GetResult();
         });
 
         return command;
@@ -1380,187 +1334,7 @@ public static class Program
         }
     }
 
-    internal static async Task<int> RunServeAsync(string[] configPaths, string section, string[] setOverrides, string? readyFile, string? shutdownAfterOption)
-    {
-        if (!TryBuildConfiguration(configPaths, setOverrides, out var configuration, out var errorMessage))
-        {
-            await Console.Error.WriteLineAsync(errorMessage ?? "Failed to load configuration.").ConfigureAwait(false);
-            return 1;
-        }
-
-        TimeSpan? shutdownAfter = null;
-        if (!string.IsNullOrWhiteSpace(shutdownAfterOption))
-        {
-            if (!TryParseDuration(shutdownAfterOption!, out var parsed))
-            {
-                await Console.Error.WriteLineAsync($"Could not parse --shutdown-after value '{shutdownAfterOption}'.").ConfigureAwait(false);
-                return 1;
-            }
-
-            if (parsed <= TimeSpan.Zero)
-            {
-                await Console.Error.WriteLineAsync("--shutdown-after duration must be greater than zero.").ConfigureAwait(false);
-                return 1;
-            }
-
-            shutdownAfter = parsed;
-        }
-
-        var resolvedSection = string.IsNullOrWhiteSpace(section) ? DefaultConfigSection : section;
-        IServeHost host;
-        try
-        {
-            host = CliRuntime.ServeHostFactory.CreateHost(configuration, resolvedSection);
-        }
-        catch (Exception ex)
-        {
-            await Console.Error.WriteLineAsync($"Failed to configure dispatcher: {ex.Message}").ConfigureAwait(false);
-            return 1;
-        }
-
-        await using (host.ConfigureAwait(false))
-        {
-            var shutdownSignal = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-            ConsoleCancelEventHandler? cancelHandler = null;
-
-            void RequestShutdown()
-            {
-                shutdownSignal.TrySetResult(true);
-            }
-
-            cancelHandler = (_, eventArgs) =>
-            {
-                eventArgs.Cancel = true;
-                RequestShutdown();
-            };
-
-            Console.CancelKeyPress += cancelHandler;
-
-            if (shutdownAfter.HasValue)
-            {
-                _ = Task.Run(async () =>
-                {
-                    try
-                    {
-                        await Task.Delay(shutdownAfter.Value).ConfigureAwait(false);
-                        RequestShutdown();
-                    }
-                    catch
-                    {
-                        RequestShutdown();
-                    }
-                });
-            }
-
-            try
-            {
-                await host.StartAsync(CancellationToken.None).ConfigureAwait(false);
-                var dispatcher = host.Dispatcher;
-                var serviceName = dispatcher?.ServiceName ?? resolvedSection;
-                Console.WriteLine($"OmniRelay dispatcher '{serviceName}' started.");
-
-                if (!string.IsNullOrWhiteSpace(readyFile))
-                {
-                    TryWriteReadyFile(readyFile!);
-                }
-
-                Console.WriteLine(shutdownAfter.HasValue
-                    ? $"Shutting down automatically after {shutdownAfter.Value:c}."
-                    : "Press Ctrl+C to stop.");
-
-                await shutdownSignal.Task.ConfigureAwait(false);
-                await host.StopAsync(CancellationToken.None).ConfigureAwait(false);
-                return 0;
-            }
-            catch (Exception ex)
-            {
-                await Console.Error.WriteLineAsync($"Failed to run dispatcher: {ex.Message}").ConfigureAwait(false);
-                return 1;
-            }
-            finally
-            {
-                Console.CancelKeyPress -= cancelHandler;
-            }
-        }
-    }
-
     [RequiresDynamicCode("Calls System.Text.Json.Serialization.JsonStringEnumConverter.JsonStringEnumConverter(JsonNamingPolicy, Boolean)")]
-    [RequiresUnreferencedCode("Calls System.Text.Json.JsonSerializer.DeserializeAsync<TValue>(Stream, JsonSerializerOptions, CancellationToken)")]
-    internal static async Task<int> RunIntrospectAsync(string url, string format, string? timeoutOption)
-    {
-        var normalizedFormat = string.IsNullOrWhiteSpace(format) ? "text" : format.ToLowerInvariant();
-        var timeout = TimeSpan.FromSeconds(10);
-
-        if (!string.IsNullOrWhiteSpace(timeoutOption) && !TryParseDuration(timeoutOption!, out timeout))
-        {
-            await Console.Error.WriteLineAsync($"Could not parse timeout '{timeoutOption}'. Use standard TimeSpan formats or suffixes like 5s/1m.").ConfigureAwait(false);
-            return 1;
-        }
-
-        using var httpClient = CliRuntime.HttpClientFactory.CreateClient();
-        httpClient.Timeout = Timeout.InfiniteTimeSpan;
-
-        using var cts = new CancellationTokenSource(timeout);
-
-        try
-        {
-            using var response = await httpClient.GetAsync(url, cts.Token).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode)
-            {
-                await Console.Error.WriteLineAsync($"Introspection request failed: {(int)response.StatusCode} {response.ReasonPhrase}.").ConfigureAwait(false);
-                return 1;
-            }
-
-            await using ((await response.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false)).AsAsyncDisposable(out var stream))
-            {
-                var options = CreateJsonOptions(configure: static options =>
-                {
-                    options.PropertyNameCaseInsensitive = true;
-                });
-                options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
-
-                var snapshot = await JsonSerializer.DeserializeAsync<DispatcherIntrospection>(stream, options, cts.Token).ConfigureAwait(false);
-                if (snapshot is null)
-                {
-                    await Console.Error.WriteLineAsync("Introspection response was empty.").ConfigureAwait(false);
-                    return 1;
-                }
-
-                if (normalizedFormat is "json" or "raw")
-                {
-                    var outputOptions = CreateJsonOptions(configure: static options =>
-                    {
-                        options.WriteIndented = true;
-                    });
-                    outputOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
-                    var json = JsonSerializer.Serialize(snapshot, outputOptions);
-                    Console.WriteLine(json);
-                }
-                else if (normalizedFormat is "text" or "summary")
-                {
-                    PrintIntrospectionSummary(snapshot);
-                }
-                else
-                {
-                    await Console.Error.WriteLineAsync($"Unknown format '{format}'. Expected 'text' or 'json'.").ConfigureAwait(false);
-                    return 1;
-                }
-            }
-
-            return 0;
-        }
-        catch (TaskCanceledException)
-        {
-            await Console.Error.WriteLineAsync("Introspection request timed out.").ConfigureAwait(false);
-            return 2;
-        }
-        catch (Exception ex)
-        {
-            await Console.Error.WriteLineAsync($"Introspection failed: {ex.Message}").ConfigureAwait(false);
-            return 1;
-        }
-    }
-
     internal static bool TryBuildConfiguration(string[] configPaths, string[] setOverrides, out IConfigurationRoot configuration, out string? errorMessage)
     {
         configuration = null!;
@@ -2122,204 +1896,6 @@ public static class Program
         }
     }
 
-    [RequiresUnreferencedCode("Calls System.Text.Json.JsonSerializer.DeserializeAsync<TValue>(Stream, JsonSerializerOptions, CancellationToken)")]
-    internal static async Task<int> RunAutomationAsync(string scriptPath, bool dryRun, bool continueOnError)
-    {
-        if (string.IsNullOrWhiteSpace(scriptPath))
-        {
-            await Console.Error.WriteLineAsync("Script path was empty.").ConfigureAwait(false);
-            return 1;
-        }
-
-        if (!File.Exists(scriptPath))
-        {
-            await Console.Error.WriteLineAsync($"Script file '{scriptPath}' does not exist.").ConfigureAwait(false);
-            return 1;
-        }
-
-        AutomationScript? script;
-        try
-        {
-            await using (File.OpenRead(scriptPath).AsAsyncDisposable(out var stream))
-            {
-                var options = CreateJsonOptions(configure: static options =>
-                {
-                    options.PropertyNameCaseInsensitive = true;
-                    options.AllowTrailingCommas = true;
-                });
-                script = await JsonSerializer.DeserializeAsync<AutomationScript>(stream, options).ConfigureAwait(false);
-            }
-        }
-        catch (Exception ex)
-        {
-            await Console.Error.WriteLineAsync($"Failed to parse script '{scriptPath}': {ex.Message}").ConfigureAwait(false);
-            return 1;
-        }
-
-        if (script?.Steps is null || script.Steps.Length == 0)
-        {
-            await Console.Error.WriteLineAsync($"Script '{scriptPath}' does not contain any steps.").ConfigureAwait(false);
-            return 1;
-        }
-
-        Console.WriteLine($"Loaded script '{scriptPath}' with {script.Steps.Length} step(s).");
-        var exitCode = 0;
-
-        for (var index = 0; index < script.Steps.Length; index++)
-        {
-            var step = script.Steps[index];
-            var typeLabel = string.IsNullOrWhiteSpace(step.Type) ? "(unspecified)" : step.Type;
-            var description = string.IsNullOrWhiteSpace(step.Description) ? string.Empty : $" - {step.Description}";
-            Console.WriteLine($"[{index + 1}/{script.Steps.Length}] {typeLabel}{description}");
-
-            var normalizedType = step.Type?.Trim().ToLowerInvariant() ?? string.Empty;
-            switch (normalizedType)
-            {
-                case "request":
-                    if (string.IsNullOrWhiteSpace(step.Service) || string.IsNullOrWhiteSpace(step.Procedure))
-                    {
-                        await Console.Error.WriteLineAsync("  Request step is missing 'service' or 'procedure'.").ConfigureAwait(false);
-                        exitCode = exitCode == 0 ? 1 : exitCode;
-                        if (!continueOnError)
-                        {
-                            return exitCode;
-                        }
-                        continue;
-                    }
-
-                    var headerPairs = step.Headers?.Select(static kvp => $"{kvp.Key}={kvp.Value}").ToArray() ?? [];
-                    var profiles = step.Profiles ?? [];
-                    var addresses = step.Addresses?.Where(static address => !string.IsNullOrWhiteSpace(address)).ToArray() ?? [];
-                    if (addresses.Length == 0 && !string.IsNullOrWhiteSpace(step.Address))
-                    {
-                        addresses = [step.Address];
-                    }
-
-                    var targetSummary = !string.IsNullOrWhiteSpace(step.Url)
-                        ? step.Url
-                        : (addresses.Length > 0 ? string.Join(", ", addresses) : "(default transport settings)");
-                    Console.WriteLine($"  -> {step.Transport ?? "http"} {step.Service}/{step.Procedure} @ {targetSummary}");
-
-                    if (dryRun)
-                    {
-                        Console.WriteLine("  dry-run: skipping request execution.");
-                        continue;
-                    }
-
-                    var requestResult = await RunRequestAsync(
-                        step.Transport ?? "http",
-                        step.Service,
-                        step.Procedure,
-                        step.Caller,
-                        step.Encoding,
-                        headerPairs,
-                        profiles,
-                        step.ShardKey,
-                        step.RoutingKey,
-                        step.RoutingDelegate,
-                        step.ProtoFiles ?? [],
-                        step.ProtoMessage,
-                        step.Ttl,
-                        step.Deadline,
-                        step.Timeout,
-                        step.Body,
-                        step.BodyFile,
-                        step.BodyBase64,
-                        step.Url,
-                        addresses,
-                        enableHttp3: false,
-                        enableGrpcHttp3: false).ConfigureAwait(false);
-
-                    if (requestResult != 0)
-                    {
-                        exitCode = exitCode == 0 ? requestResult : exitCode;
-                        if (!continueOnError)
-                        {
-                            return exitCode;
-                        }
-                    }
-                    break;
-
-                case "introspect":
-                    var targetUrl = string.IsNullOrWhiteSpace(step.Url) ? DefaultIntrospectionUrl : step.Url!;
-                    Console.WriteLine($"  -> GET {targetUrl} (format={step.Format ?? "text"})");
-
-                    if (dryRun)
-                    {
-                        Console.WriteLine("  dry-run: skipping introspection call.");
-                        continue;
-                    }
-
-                    var introspectResult = await RunIntrospectAsync(targetUrl, step.Format ?? "text", step.Timeout).ConfigureAwait(false);
-                    if (introspectResult != 0)
-                    {
-                        exitCode = exitCode == 0 ? introspectResult : exitCode;
-                        if (!continueOnError)
-                        {
-                            return exitCode;
-                        }
-                    }
-                    break;
-
-                case "delay":
-                case "sleep":
-                case "wait":
-                    var delayValue = step.Duration ?? step.Delay;
-                    if (string.IsNullOrWhiteSpace(delayValue))
-                    {
-                        await Console.Error.WriteLineAsync("  Delay step requires a 'duration' or 'delay' value.").ConfigureAwait(false);
-                        exitCode = exitCode == 0 ? 1 : exitCode;
-                        if (!continueOnError)
-                        {
-                            return exitCode;
-                        }
-                        continue;
-                    }
-
-                    if (!TryParseDuration(delayValue!, out var delay))
-                    {
-                        await Console.Error.WriteLineAsync($"  Could not parse delay '{delayValue}'.").ConfigureAwait(false);
-                        exitCode = exitCode == 0 ? 1 : exitCode;
-                        if (!continueOnError)
-                        {
-                            return exitCode;
-                        }
-                        continue;
-                    }
-
-                    Console.WriteLine($"  ... waiting for {delay}");
-                    if (!dryRun)
-                    {
-                        try
-                        {
-                            await Task.Delay(delay).ConfigureAwait(false);
-                        }
-                        catch (Exception ex)
-                        {
-                            await Console.Error.WriteLineAsync($"  Delay interrupted: {ex.Message}").ConfigureAwait(false);
-                            exitCode = exitCode == 0 ? 1 : exitCode;
-                            if (!continueOnError)
-                            {
-                                return exitCode;
-                            }
-                        }
-                    }
-                    break;
-
-                default:
-                    await Console.Error.WriteLineAsync($"  Unknown script step type '{step.Type}'.").ConfigureAwait(false);
-                    exitCode = exitCode == 0 ? 1 : exitCode;
-                    if (!continueOnError)
-                    {
-                        return exitCode;
-                    }
-                    break;
-            }
-        }
-
-        return exitCode;
-    }
-
     private static void PrintBenchmarkSummary(
         RequestInvocation invocation,
         BenchmarkRunner.BenchmarkExecutionOptions options,
@@ -2439,53 +2015,6 @@ public static class Program
         {
             Console.Error.WriteLine($"Inner exception: {inner.GetType().Name}: {inner.Message}");
         }
-    }
-
-    private static void PrintIntrospectionSummary(DispatcherIntrospection snapshot)
-    {
-        Console.WriteLine($"Service: {snapshot.Service}");
-        Console.WriteLine($"Status: {snapshot.Status}");
-        Console.WriteLine();
-
-        Console.WriteLine("Procedures:");
-        PrintProcedureGroup("Unary", snapshot.Procedures.Unary.Select(static p => p.Name));
-        PrintProcedureGroup("Oneway", snapshot.Procedures.Oneway.Select(static p => p.Name));
-        PrintProcedureGroup("Stream", snapshot.Procedures.Stream.Select(static p => p.Name));
-        PrintProcedureGroup("ClientStream", snapshot.Procedures.ClientStream.Select(static p => p.Name));
-        PrintProcedureGroup("Duplex", snapshot.Procedures.Duplex.Select(static p => p.Name));
-        Console.WriteLine();
-
-        if (snapshot.Components.Length > 0)
-        {
-            Console.WriteLine("Lifecycle components:");
-            foreach (var component in snapshot.Components)
-            {
-                Console.WriteLine($"  - {component.Name} ({component.ComponentType})");
-            }
-            Console.WriteLine();
-        }
-
-        if (snapshot.Outbounds.Length > 0)
-        {
-            Console.WriteLine("Outbounds:");
-            foreach (var outbound in snapshot.Outbounds)
-            {
-                Console.WriteLine($"  • {outbound.Service}");
-                PrintOutboundGroup("    Unary", outbound.Unary);
-                PrintOutboundGroup("    Oneway", outbound.Oneway);
-                PrintOutboundGroup("    Stream", outbound.Stream);
-                PrintOutboundGroup("    ClientStream", outbound.ClientStream);
-                PrintOutboundGroup("    Duplex", outbound.Duplex);
-            }
-            Console.WriteLine();
-        }
-
-        Console.WriteLine("Middleware (Inbound → Outbound):");
-        PrintMiddlewareLine("Unary", snapshot.Middleware.InboundUnary, snapshot.Middleware.OutboundUnary);
-        PrintMiddlewareLine("Oneway", snapshot.Middleware.InboundOneway, snapshot.Middleware.OutboundOneway);
-        PrintMiddlewareLine("Stream", snapshot.Middleware.InboundStream, snapshot.Middleware.OutboundStream);
-        PrintMiddlewareLine("ClientStream", snapshot.Middleware.InboundClientStream, snapshot.Middleware.OutboundClientStream);
-        PrintMiddlewareLine("Duplex", snapshot.Middleware.InboundDuplex, snapshot.Middleware.OutboundDuplex);
     }
 
     internal static async Task<int> RunMeshLeadersStatusAsync(string baseUrl, string? scope, bool watch, string? timeoutOption, string? grpcUrlOption)
@@ -3660,7 +3189,7 @@ public static class Program
         Console.WriteLine($"[{leadershipEvent.OccurredAt:HH:mm:ss}] {leadershipEvent.EventKind.ToString().ToUpperInvariant(),-10} scope={scope} leader={leader} term={term} fence={fence} expires={expires} reason={reason}");
     }
 
-    private static void PrintProcedureGroup(string label, IEnumerable<string> names)
+    internal static void PrintProcedureGroup(string label, IEnumerable<string> names)
     {
         var nameList = names.ToList();
         Console.WriteLine($"  {label}: {nameList.Count}");
@@ -3673,7 +3202,7 @@ public static class Program
         Console.WriteLine($"    {string.Join(", ", preview)}{(nameList.Count > preview.Count ? $" (+{nameList.Count - preview.Count} more)" : string.Empty)}");
     }
 
-    private static void PrintOutboundGroup(string label, IReadOnlyList<OutboundBindingDescriptor> bindings)
+    internal static void PrintOutboundGroup(string label, IReadOnlyList<OutboundBindingDescriptor> bindings)
     {
         if (bindings.Count == 0)
         {
@@ -3687,7 +3216,7 @@ public static class Program
         }
     }
 
-    private static void PrintMiddlewareLine(string label, IReadOnlyList<string> inbound, IReadOnlyList<string> outbound) => Console.WriteLine($"  {label}: inbound[{inbound.Count}] outbound[{outbound.Count}]");
+    internal static void PrintMiddlewareLine(string label, IReadOnlyList<string> inbound, IReadOnlyList<string> outbound) => Console.WriteLine($"  {label}: inbound[{inbound.Count}] outbound[{outbound.Count}]");
 
     private static bool TryParseHeaders(IEnumerable<string> values, out List<KeyValuePair<string, string>> headers, out string? error)
     {
@@ -4940,7 +4469,7 @@ public static class Program
         return true;
     }
 
-    private static JsonSerializerOptions CreateJsonOptions(
+    internal static JsonSerializerOptions CreateJsonOptions(
         JsonSerializerDefaults defaults = JsonSerializerDefaults.Web,
         Action<JsonSerializerOptions>? configure = null)
     {
