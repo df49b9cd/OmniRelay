@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Threading.Channels;
 using Grpc.Core;
 using Hugo;
@@ -109,7 +110,7 @@ internal sealed class GrpcClientStreamTransportCall : IClientStreamTransportCall
             throw;
         }
 
-        var buffer = payload.ToArray();
+        var buffer = GetCachedArray(payload);
 
         try
         {
@@ -332,6 +333,19 @@ internal sealed class GrpcClientStreamTransportCall : IClientStreamTransportCall
             ? rpcException.Status.StatusCode.ToString()
             : rpcException.Status.Detail;
         return OmniRelayErrorAdapter.FromStatus(status, message, transport: GrpcTransportConstants.TransportName);
+    }
+
+    private static byte[] GetCachedArray(ReadOnlyMemory<byte> payload)
+    {
+        if (MemoryMarshal.TryGetArray(payload, out var segment) &&
+            segment.Array is { } array &&
+            segment.Offset == 0 &&
+            segment.Count == array.Length)
+        {
+            return array;
+        }
+
+        return payload.ToArray();
     }
 
     private static Error MapInternalError(Exception exception, string fallbackMessage) =>

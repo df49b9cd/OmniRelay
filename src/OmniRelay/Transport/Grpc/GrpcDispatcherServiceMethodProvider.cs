@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.ExceptionServices;
+using System.Runtime.InteropServices;
 using Grpc.AspNetCore.Server.Model;
 using Grpc.Core;
 using Hugo;
@@ -77,7 +78,7 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                 }
 
                 GrpcTransportDiagnostics.SetStatus(activity, StatusCode.OK);
-                return response.Body.ToArray();
+                return GetCachedArray(response.Body);
             }
 
             context.AddUnaryMethod(method, [], handler);
@@ -436,7 +437,7 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
 
                     RecordServerClientStreamMetrics(StatusCode.OK);
                     GrpcTransportDiagnostics.SetStatus(activity, StatusCode.OK);
-                    return response.Body.ToArray();
+                    return GetCachedArray(response.Body);
                 }
 
             }
@@ -759,7 +760,7 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
         TimeSpan? timeout,
         CancellationToken cancellationToken)
     {
-        var buffer = payload.ToArray();
+        var buffer = GetCachedArray(payload);
 
         if (timeout is null)
         {
@@ -778,6 +779,19 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
         {
             throw new TimeoutException("The write operation timed out.");
         }
+    }
+
+    private static byte[] GetCachedArray(ReadOnlyMemory<byte> payload)
+    {
+        if (MemoryMarshal.TryGetArray(payload, out var segment) &&
+            segment.Array is { } array &&
+            segment.Offset == 0 &&
+            segment.Count == array.Length)
+        {
+            return array;
+        }
+
+        return payload.ToArray();
     }
 #pragma warning restore CA2016
 
