@@ -69,6 +69,24 @@ public class GrpcMetadataAdapterTests
     }
 
     [Fact]
+    public void BuildRequestMeta_AllowsDuplicateHeaders_LastWins()
+    {
+        var metadata = new Metadata
+        {
+            { "custom-header", "first" },
+            { "custom-header", "second" }
+        };
+
+        var meta = GrpcMetadataAdapter.BuildRequestMeta(
+            service: "svc",
+            procedure: "proc",
+            metadata: metadata,
+            encoding: null);
+
+        meta.Headers["custom-header"].ShouldBe("second");
+    }
+
+    [Fact]
     public void CreateResponseMeta_UsesTrailerEncodingWhenHeaderMissing()
     {
         var trailers = new Metadata

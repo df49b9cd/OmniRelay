@@ -32,7 +32,7 @@ internal static class GrpcMetadataAdapter
         TimeSpan? ttl = null;
         DateTimeOffset? deadline = null;
 
-        var headers = ImmutableDictionary.CreateBuilder<string, string>(StringComparer.OrdinalIgnoreCase);
+        ImmutableDictionary<string, string>.Builder? headers = null;
 
         for (var i = 0; i < metadata.Count; i++)
         {
@@ -41,6 +41,8 @@ internal static class GrpcMetadataAdapter
             {
                 continue;
             }
+
+            headers ??= ImmutableDictionary.CreateBuilder<string, string>(StringComparer.OrdinalIgnoreCase);
 
             var key = entry.Key;
             var value = entry.Value;
@@ -72,12 +74,13 @@ internal static class GrpcMetadataAdapter
                 deadline = parsedDeadline;
             }
 
-            headers.Add(key, value);
+            headers[key] = value;
         }
 
         if (!string.IsNullOrWhiteSpace(protocol))
         {
-            headers.Add("rpc.protocol", protocol!);
+            headers ??= ImmutableDictionary.CreateBuilder<string, string>(StringComparer.OrdinalIgnoreCase);
+            headers["rpc.protocol"] = protocol!;
         }
 
         return new RequestMeta
@@ -92,7 +95,9 @@ internal static class GrpcMetadataAdapter
             RoutingDelegate = routingDelegate,
             TimeToLive = ttl,
             Deadline = deadline,
-            Headers = headers.ToImmutable()
+            Headers = headers?.Count > 0
+                ? headers.ToImmutable()
+                : RequestMeta.EmptyHeadersInstance
         };
     }
 
@@ -196,30 +201,39 @@ internal static class GrpcMetadataAdapter
         Metadata? trailers,
         string transport = GrpcTransportConstants.TransportName)
     {
-        var headerBuilder = ImmutableDictionary.CreateBuilder<string, string>(StringComparer.OrdinalIgnoreCase);
+        ImmutableDictionary<string, string>.Builder? headerBuilder = null;
         string? encoding = null;
 
         if (headers is not null)
         {
-            AddMetadata(headers, headerBuilder, ref encoding);
+            AddMetadata(headers, ref headerBuilder, ref encoding);
         }
 
         if (trailers is not null)
         {
-            AddMetadata(trailers, headerBuilder, ref encoding);
+            AddMetadata(trailers, ref headerBuilder, ref encoding);
         }
 
         return new ResponseMeta(
             encoding: encoding,
             transport: transport,
-            headers: headerBuilder.ToImmutable());
+            headers: headerBuilder?.Count > 0
+                ? headerBuilder.ToImmutable()
+                : ResponseMeta.EmptyHeadersInstance);
     }
 
     private static void AddMetadata(
         Metadata source,
-        ImmutableDictionary<string, string>.Builder headerBuilder,
+        ref ImmutableDictionary<string, string>.Builder? headerBuilder,
         ref string? encoding)
     {
+        if (source.Count == 0)
+        {
+            return;
+        }
+
+        headerBuilder ??= ImmutableDictionary.CreateBuilder<string, string>(StringComparer.OrdinalIgnoreCase);
+
         for (var i = 0; i < source.Count; i++)
         {
             var entry = source[i];
@@ -234,7 +248,7 @@ internal static class GrpcMetadataAdapter
                 encoding = entry.Value;
             }
 
-            headerBuilder.Add(entry.Key, entry.Value);
+            headerBuilder[entry.Key] = entry.Value;
         }
     }
 

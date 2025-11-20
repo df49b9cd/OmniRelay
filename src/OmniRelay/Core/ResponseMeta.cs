@@ -10,6 +10,8 @@ public sealed record ResponseMeta
     private static readonly ImmutableDictionary<string, string> EmptyHeaders =
         ImmutableDictionary.Create<string, string>(StringComparer.OrdinalIgnoreCase);
 
+    internal static ImmutableDictionary<string, string> EmptyHeadersInstance => EmptyHeaders;
+
     public string? Encoding { get; init; }
     public string? Transport { get; init; }
     public TimeSpan? Ttl { get; init; }

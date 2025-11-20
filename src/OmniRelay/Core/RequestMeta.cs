@@ -10,6 +10,8 @@ public sealed record RequestMeta
     private static readonly ImmutableDictionary<string, string> EmptyHeaders =
         ImmutableDictionary.Create<string, string>(StringComparer.OrdinalIgnoreCase);
 
+    internal static ImmutableDictionary<string, string> EmptyHeadersInstance => EmptyHeaders;
+
     public string Service { get; init; } = string.Empty;
 
     public string? Procedure { get; init; }
