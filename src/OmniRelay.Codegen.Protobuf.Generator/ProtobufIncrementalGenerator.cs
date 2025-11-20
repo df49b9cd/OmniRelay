@@ -68,6 +68,10 @@ public sealed class ProtobufIncrementalGenerator : IIncrementalGenerator
                 var hintName = CreateHintName(result.Path, file.Name);
                 spc.AddSource(hintName, file.Content);
             }
+
+            // Emit CLI payload registry wiring for generated messages.
+            var registration = ProtobufCliRegistrationEmitter.Emit(result.DescriptorSet, result.Path);
+            spc.AddSource(registration.HintName, registration.Source);
         });
     }
 

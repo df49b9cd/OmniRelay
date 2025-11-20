@@ -223,7 +223,7 @@ public static partial class Program
 
         var protoFileOption = new Option<string[]>("--proto-file")
         {
-            Description = "Path(s) to FileDescriptorSet binaries used for protobuf encoding.",
+            Description = "(Deprecated) Path(s) to FileDescriptorSet binaries. Ignored unless using binary payloads.",
             AllowMultipleArgumentsPerToken = true,
             DefaultValueFactory = _ => []
         };
@@ -424,7 +424,7 @@ public static partial class Program
             Description = "Routing delegate metadata."
         };
 
-        var protoFileOption = new Option<string[]>("--proto-file")
+        var protoFileOption = new Option<string[]>("--proto-file (deprecated; binary-only when provided)")
         {
             Description = "Path(s) to FileDescriptorSet binaries used for protobuf encoding.",
             AllowMultipleArgumentsPerToken = true,
@@ -1409,9 +1409,9 @@ public static partial class Program
                         return false;
                     }
 
-                    // In AOT mode we rely on compiled encoders; descriptor files are only accepted when the payload is already binary.
+                    // In AOT mode we rely on compiled encoders; descriptor files are only valid when supplying raw binary payloads.
                     state.ProtoMessageName = messageName.Trim();
-                    state.ProvidedDescriptorFiles = protoFiles;
+                    state.HasExternalDescriptors = protoFiles?.Length > 0;
                     encoding ??= transport == "grpc" ? "application/grpc" : "application/x-protobuf";
 
                     if (transport == "http")
@@ -1447,6 +1447,12 @@ public static partial class Program
 
         if (state.ProtoMessageName is not null)
         {
+            if (state.HasExternalDescriptors && payloadSource is not PayloadSource.Base64 and not PayloadSource.File)
+            {
+                error = "Runtime .proto descriptor loading isn't supported in NativeAOT. Provide a binary payload via --body-base64/--body-file or rely on generated encoders.";
+                return false;
+            }
+
             // If caller supplied raw binary (base64 or file), accept as-is.
             if (payloadSource is PayloadSource.Base64 || (payloadSource is PayloadSource.File && !payload.IsEmpty))
             {
@@ -1645,7 +1651,7 @@ public static partial class Program
     {
         public bool PrettyPrintJson { get; set; }
         public string? ProtoMessageName { get; set; }
-        public string[] ProvidedDescriptorFiles { get; set; } = Array.Empty<string>();
+        public bool HasExternalDescriptors { get; set; }
     }
 
     private enum PayloadSource
