@@ -64,6 +64,7 @@ public sealed partial class LifecycleOrchestrator : ILifecycleOrchestrator
             if (layerResult.IsFailure)
             {
                 await RollbackAsync(started, cancellationToken).ConfigureAwait(false);
+                await StopActiveComponentsAsync(cancellationToken).ConfigureAwait(false);
                 MoveToState(LifecycleOrchestratorStatus.Stopped);
                 return layerResult;
             }
@@ -131,6 +132,59 @@ public sealed partial class LifecycleOrchestrator : ILifecycleOrchestrator
                 runtime.Status = LifecycleComponentStatus.Faulted;
                 runtime.LastError = Error.FromException(ex).WithMetadata("component", component.Name);
                 Log.RollbackFailed(_logger, component.Name, ex);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Stops any components that are still marked as running or starting. This acts as a safety net
+    /// when failures or cancellations prevented a component from being recorded in the rollback stack
+    /// but the runtime state reached Running/Starting.
+    /// </summary>
+    private async ValueTask StopActiveComponentsAsync(CancellationToken cancellationToken)
+    {
+        foreach (var layer in _stopLayers)
+        {
+            using var group = new ErrGroup(cancellationToken);
+            var scheduled = false;
+
+            foreach (var component in layer)
+            {
+                var runtime = _runtimeState[component.Name];
+                if (runtime.Status is not (LifecycleComponentStatus.Running or LifecycleComponentStatus.Starting))
+                {
+                    continue;
+                }
+
+                runtime.Status = LifecycleComponentStatus.Stopping;
+                Log.ComponentStopping(_logger, component.Name);
+                scheduled = true;
+
+                var policy = component.StopPolicy == ResultExecutionPolicy.None ? _defaultStopPolicy : component.StopPolicy;
+
+                group.Go(async (_, _) =>
+                {
+                    var result = await ExecuteLifecycleAsync(component.Name, component.Lifecycle.StopAsync, policy, cancellationToken).ConfigureAwait(false);
+                    if (result.IsSuccess)
+                    {
+                        runtime.Status = LifecycleComponentStatus.Stopped;
+                        runtime.LastError = null;
+                        Log.ComponentStopped(_logger, component.Name);
+                    }
+                    else
+                    {
+                        runtime.Status = LifecycleComponentStatus.Faulted;
+                        runtime.LastError = result.Error;
+                    }
+
+                    return result;
+                });
+            }
+
+            if (scheduled)
+            {
+                // Deliberately ignore cancellation for the wait to ensure we finish stop attempts.
+                _ = await group.WaitAsync(CancellationToken.None).ConfigureAwait(false);
             }
         }
     }
