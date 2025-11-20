@@ -20,6 +20,7 @@
     <PackageIcon>omnirelay-icon.png</PackageIcon>
     <PackageReleaseNotes>Telemetry-less analyzer packaging; bundles OmniRelay runtime dependencies.</PackageReleaseNotes>
     <PublishAot>false</PublishAot>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
 
   <ItemGroup>
@@ -68,7 +69,7 @@
   <ItemGroup>
     <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
       <_Parameter1>AnalyzerDependencyPath</_Parameter1>
-      <_Parameter2>$(MSBuildProjectDirectory)bin/$(Configuration)/$(TargetFramework)/analyzers/dotnet/cs</_Parameter2>
+      <_Parameter2>$(MSBuildProjectDirectory)/bin/$(Configuration)/$(TargetFramework)/analyzers/dotnet/cs</_Parameter2>
     </AssemblyAttribute>
   </ItemGroup>
 </Project>

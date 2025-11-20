@@ -1,10 +1,9 @@
+using System.Buffers;
 using System.CommandLine;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
-using System.Text.Json.Serialization.Metadata;
 using Hugo;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -33,8 +32,6 @@ using ProtoLeadershipEventKind = OmniRelay.Mesh.Control.V1.LeadershipEventKind;
 
 namespace OmniRelay.Cli;
 
-[RequiresUnreferencedCode("OmniRelay CLI uses reflection-heavy utilities and is not trimming safe.")]
-[RequiresDynamicCode("OmniRelay CLI uses reflection-heavy utilities and is not AOT safe.")]
 public static partial class Program
 {
     static Program() => ProtobufPayloadRegistration.RegisterGenerated();
@@ -75,89 +72,6 @@ public static partial class Program
         }
 
         return root;
-    }
-
-    // Temporary forwarders while handlers migrate into modules
-    internal static Task<int> RunServeAsync(string[] configPaths, string section, string[] setOverrides, string? readyFile, string? shutdownAfterOption) =>
-        ProgramServeModule.RunServeAsync(configPaths, section, setOverrides, readyFile, shutdownAfterOption);
-    internal static Task<int> RunAutomationAsync(string scriptPath, bool dryRun, bool continueOnError) =>
-        ProgramScriptModule.RunAutomationAsync(scriptPath, dryRun, continueOnError);
-    internal static Task<int> RunIntrospectAsync(string url, string format, string? timeoutOption) =>
-        ProgramIntrospectModule.RunIntrospectAsync(url, format, timeoutOption);
-
-    internal static Command CreateScriptCommand()
-    {
-        var command = new Command("script", "Run scripted OmniRelay CLI automation.");
-
-        var runCommand = new Command("run", "Execute a sequence of actions described in a JSON script.");
-
-        var fileOption = new Option<string>("--file")
-        {
-            Description = "Path to the automation script (JSON).",
-            Required = true
-        };
-        fileOption.Aliases.Add("-f");
-
-        var dryRunOption = new Option<bool>("--dry-run")
-        {
-            Description = "Emit the planned steps without executing them."
-        };
-
-        var continueOnErrorOption = new Option<bool>("--continue-on-error")
-        {
-            Description = "Keep executing subsequent steps even if one fails."
-        };
-
-        runCommand.Add(fileOption);
-        runCommand.Add(dryRunOption);
-        runCommand.Add(continueOnErrorOption);
-
-        runCommand.SetAction(parseResult =>
-        {
-            var file = parseResult.GetValue(fileOption) ?? string.Empty;
-            var dryRun = parseResult.GetValue(dryRunOption);
-            var continueOnError = parseResult.GetValue(continueOnErrorOption);
-            return RunAutomationAsync(file, dryRun, continueOnError).GetAwaiter().GetResult();
-        });
-
-        command.Add(runCommand);
-        return command;
-    }
-
-    internal static Command CreateIntrospectCommand()
-    {
-        var command = new Command("introspect", "Fetch dispatcher introspection over HTTP.");
-
-        var urlOption = new Option<string>("--url")
-        {
-            Description = "Introspection endpoint to query.",
-            DefaultValueFactory = _ => DefaultIntrospectionUrl
-        };
-
-        var formatOption = new Option<string>("--format")
-        {
-            Description = "Output format (text|json).",
-            DefaultValueFactory = _ => "text"
-        };
-
-        var timeoutOption = new Option<string?>("--timeout")
-        {
-            Description = "Request timeout (e.g. 5s, 00:00:05)."
-        };
-
-        command.Add(urlOption);
-        command.Add(formatOption);
-        command.Add(timeoutOption);
-
-        command.SetAction(parseResult =>
-        {
-            var url = parseResult.GetValue(urlOption) ?? DefaultIntrospectionUrl;
-            var format = parseResult.GetValue(formatOption) ?? "text";
-            var timeout = parseResult.GetValue(timeoutOption);
-            return ProgramIntrospectModule.RunIntrospectAsync(url, format, timeout).GetAwaiter().GetResult();
-        });
-
-        return command;
     }
 
     internal static Command CreateRequestCommand()
@@ -611,7 +525,6 @@ public static partial class Program
         return command;
     }
 
-    [RequiresDynamicCode("Calls System.Text.Json.Serialization.JsonStringEnumConverter.JsonStringEnumConverter(JsonNamingPolicy, Boolean)")]
     internal static bool TryBuildConfiguration(string[] configPaths, string[] setOverrides, out IConfigurationRoot configuration, out string? errorMessage)
     {
         configuration = null!;
@@ -1516,7 +1429,6 @@ public static partial class Program
         EnsureHeader(headers, "Accept", "application/json");
     }
 
-    [RequiresUnreferencedCode("Calls System.Text.Json.JsonSerializer.Serialize<TValue>(TValue, JsonSerializerOptions)")]
     private static void FormatJsonPayload(
         string? inlineBody,
         string? bodyFile,
@@ -1563,8 +1475,13 @@ public static partial class Program
         try
         {
             using var document = JsonDocument.Parse(jsonText);
-            var formatted = JsonSerializer.Serialize(document.RootElement, PrettyJsonOptions);
-            payload = Encoding.UTF8.GetBytes(formatted);
+            var buffer = new ArrayBufferWriter<byte>();
+            using (var writer = new Utf8JsonWriter(buffer, new JsonWriterOptions { Indented = true }))
+            {
+                document.RootElement.WriteTo(writer);
+            }
+
+            payload = buffer.WrittenMemory;
         }
         catch (Exception ex)
         {
@@ -1718,31 +1635,4 @@ public static partial class Program
         return true;
     }
 
-    internal static JsonSerializerOptions CreateJsonOptions(
-        JsonSerializerDefaults defaults = JsonSerializerDefaults.Web,
-        Action<JsonSerializerOptions>? configure = null)
-    {
-        var options = new JsonSerializerOptions(defaults);
-        EnsureSerializerTypeInfo(options);
-        configure?.Invoke(options);
-        return options;
-    }
-
-    private static void EnsureSerializerTypeInfo(JsonSerializerOptions options)
-    {
-        var additionalResolver = JsonSerializer.IsReflectionEnabledByDefault
-            ? ReflectionBackedResolver.Value
-            : CliOnlyResolver.Value;
-
-        options.TypeInfoResolver = options.TypeInfoResolver is null
-            ? additionalResolver
-            : JsonTypeInfoResolver.Combine(options.TypeInfoResolver, additionalResolver);
-    }
-
-    private static readonly Lazy<IJsonTypeInfoResolver> CliOnlyResolver = new(static () => OmniRelayCliJsonContext.Default);
-
-    [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Reflection-based JSON fallback is only used when dynamic code is available.")]
-    [UnconditionalSuppressMessage("AOT", "IL3050", Justification = "Reflection-based JSON fallback is only used when dynamic code is available.")]
-    private static readonly Lazy<IJsonTypeInfoResolver> ReflectionBackedResolver = new(static () =>
-        JsonTypeInfoResolver.Combine(OmniRelayCliJsonContext.Default, new DefaultJsonTypeInfoResolver()));
 }

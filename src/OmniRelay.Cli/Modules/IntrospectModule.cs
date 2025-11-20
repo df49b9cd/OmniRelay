@@ -1,7 +1,7 @@
+using System.Buffers;
 using System.CommandLine;
-using System.Diagnostics.CodeAnalysis;
+using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using OmniRelay.Dispatcher;
 
 namespace OmniRelay.Cli.Modules;
@@ -47,8 +47,6 @@ internal static partial class ProgramIntrospectModule
         return command;
     }
 
-    [RequiresDynamicCode("Calls System.Text.Json.JsonSerializer.DeserializeAsync")]
-    [RequiresUnreferencedCode("Calls System.Text.Json.JsonSerializer.DeserializeAsync")]
     internal static async Task<int> RunIntrospectAsync(string url, string format, string? timeoutOption)
     {
         var normalizedFormat = string.IsNullOrWhiteSpace(format) ? "text" : format.ToLowerInvariant();
@@ -75,10 +73,7 @@ internal static partial class ProgramIntrospectModule
             }
 
             await using var stream = await response.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false);
-            var options = Program.CreateJsonOptions(configure: static o => o.PropertyNameCaseInsensitive = true);
-            options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
-
-            var snapshot = await JsonSerializer.DeserializeAsync<DispatcherIntrospection>(stream, options, cts.Token).ConfigureAwait(false);
+            var snapshot = await JsonSerializer.DeserializeAsync(stream, OmniRelayCliJsonContext.Default.DispatcherIntrospection, cts.Token).ConfigureAwait(false);
             if (snapshot is null)
             {
                 await Console.Error.WriteLineAsync("Introspection response was empty.").ConfigureAwait(false);
@@ -87,10 +82,12 @@ internal static partial class ProgramIntrospectModule
 
             if (normalizedFormat is "json" or "raw")
             {
-                var outputOptions = Program.CreateJsonOptions(configure: static o => o.WriteIndented = true);
-                outputOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
-                var json = JsonSerializer.Serialize(snapshot, outputOptions);
-                Console.WriteLine(json);
+                var buffer = new ArrayBufferWriter<byte>();
+                using (var writer = new Utf8JsonWriter(buffer, new JsonWriterOptions { Indented = true }))
+                {
+                    JsonSerializer.Serialize(writer, snapshot, OmniRelayCliJsonContext.Default.DispatcherIntrospection);
+                }
+                Console.WriteLine(Encoding.UTF8.GetString(buffer.WrittenSpan));
             }
             else if (normalizedFormat is "text" or "summary")
             {

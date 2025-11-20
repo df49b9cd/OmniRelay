@@ -4,13 +4,22 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsTrimmable>true</IsTrimmable>
+    <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\OmniRelay\OmniRelay.csproj" />
+    <ProjectReference Include="..\OmniRelay.Codegen.Protobuf.Generator\OmniRelay.Codegen.Protobuf.Generator.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Google.Protobuf" />
+  </ItemGroup>
+
+  <!-- Descriptor sets for CLI payloads -->
+  <ItemGroup>
+    <AdditionalFiles Include="Protos\**\*.pb" />
   </ItemGroup>
 </Project>

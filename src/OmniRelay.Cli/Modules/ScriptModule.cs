@@ -50,7 +50,6 @@ internal static partial class ProgramScriptModule
         return command;
     }
 
-    [RequiresUnreferencedCode("Calls System.Text.Json.JsonSerializer.DeserializeAsync")]
     internal static async Task<int> RunAutomationAsync(string scriptPath, bool dryRun, bool continueOnError)
     {
         if (string.IsNullOrWhiteSpace(scriptPath))
@@ -68,13 +67,13 @@ internal static partial class ProgramScriptModule
         AutomationScript? script;
         try
         {
-            await using var stream = File.OpenRead(scriptPath);
-            var options = Program.CreateJsonOptions(configure: static options =>
+            var bytes = await File.ReadAllBytesAsync(scriptPath).ConfigureAwait(false);
+            var reader = new Utf8JsonReader(bytes, new JsonReaderOptions
             {
-                options.PropertyNameCaseInsensitive = true;
-                options.AllowTrailingCommas = true;
+                AllowTrailingCommas = true,
+                CommentHandling = JsonCommentHandling.Skip
             });
-            script = await JsonSerializer.DeserializeAsync<AutomationScript>(stream, options).ConfigureAwait(false);
+            script = JsonSerializer.Deserialize(ref reader, OmniRelayCliJsonContext.Default.AutomationScript);
         }
         catch (Exception ex)
         {
@@ -176,7 +175,7 @@ internal static partial class ProgramScriptModule
                         continue;
                     }
 
-                    var introspectResult = await Program.RunIntrospectAsync(targetUrl, step.Format ?? "text", step.Timeout).ConfigureAwait(false);
+                    var introspectResult = await ProgramIntrospectModule.RunIntrospectAsync(targetUrl, step.Format ?? "text", step.Timeout).ConfigureAwait(false);
                     if (introspectResult != 0)
                     {
                         exitCode = exitCode == 0 ? introspectResult : exitCode;

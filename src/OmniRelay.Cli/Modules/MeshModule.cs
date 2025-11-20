@@ -44,17 +44,6 @@ internal static partial class ProgramMeshModule
     internal const string MeshOperateScope = "mesh.operate";
 
     private static readonly JsonWriterOptions PrettyWriterOptions = new() { Indented = true };
-    private static readonly JsonSerializerOptions LeadershipJsonOptions = CreateLeadershipJsonOptions();
-
-    private static JsonSerializerOptions CreateLeadershipJsonOptions()
-    {
-        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
-        {
-            PropertyNameCaseInsensitive = true
-        };
-        options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
-        return options;
-    }
 
     internal enum MeshPeersOutputFormat
     {
@@ -1327,7 +1316,7 @@ internal static partial class ProgramMeshModule
             }
 
             await using var stream = await response.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false);
-            var snapshot = await JsonSerializer.DeserializeAsync<LeadershipSnapshotResponse>(stream, LeadershipJsonOptions, cts.Token).ConfigureAwait(false);
+            var snapshot = await JsonSerializer.DeserializeAsync(stream, OmniRelayCliJsonContext.Default.LeadershipSnapshotResponse, cts.Token).ConfigureAwait(false);
             PrintLeadershipSnapshot(snapshot, scope);
             return 0;
         }
@@ -1392,7 +1381,7 @@ internal static partial class ProgramMeshModule
                     buffer.Clear();
                     try
                     {
-                        var leadershipEvent = JsonSerializer.Deserialize<LeadershipEventDto>(payload, LeadershipJsonOptions);
+                        var leadershipEvent = JsonSerializer.Deserialize(payload, OmniRelayCliJsonContext.Default.LeadershipEventDto);
                         if (leadershipEvent is not null)
                         {
                             PrintLeadershipEvent(leadershipEvent);
@@ -1852,14 +1841,14 @@ internal static partial class ProgramMeshModule
     }
 
 
-    private sealed class LeadershipSnapshotResponse
+    internal sealed class LeadershipSnapshotResponse
     {
         public DateTimeOffset GeneratedAt { get; set; }
 
         public LeadershipTokenResponse[] Tokens { get; set; } = [];
     }
 
-    private sealed class LeadershipTokenResponse
+    internal sealed class LeadershipTokenResponse
     {
         public string Scope { get; set; } = string.Empty;
 
@@ -1878,7 +1867,7 @@ internal static partial class ProgramMeshModule
         public Dictionary<string, string> Labels { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     }
 
-    private sealed class LeadershipEventDto
+    internal sealed class LeadershipEventDto
     {
         public CoreLeadershipEventKind EventKind { get; set; } = CoreLeadershipEventKind.Snapshot;
 
