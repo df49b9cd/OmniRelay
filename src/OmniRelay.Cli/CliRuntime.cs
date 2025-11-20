@@ -197,25 +197,18 @@ internal sealed class DefaultHttpClientFactory : IHttpClientFactory
 
 internal interface IGrpcInvokerFactory
 {
-    IGrpcInvoker Create(IReadOnlyList<Uri> addresses, string remoteService, GrpcClientRuntimeOptions? runtimeOptions);
-}
-
-internal interface IGrpcInvoker : IAsyncDisposable
-{
-    ValueTask StartAsync(CancellationToken cancellationToken);
-    ValueTask<Result<Response<ReadOnlyMemory<byte>>>> CallAsync(Request<ReadOnlyMemory<byte>> request, CancellationToken cancellationToken);
-    ValueTask StopAsync(CancellationToken cancellationToken);
+    OmniRelay.Cli.Core.BenchmarkRunner.IGrpcInvoker Create(IReadOnlyList<Uri> addresses, string remoteService, GrpcClientRuntimeOptions? runtimeOptions);
 }
 
 internal sealed class DefaultGrpcInvokerFactory : IGrpcInvokerFactory
 {
-    public IGrpcInvoker Create(IReadOnlyList<Uri> addresses, string remoteService, GrpcClientRuntimeOptions? runtimeOptions)
+    public OmniRelay.Cli.Core.BenchmarkRunner.IGrpcInvoker Create(IReadOnlyList<Uri> addresses, string remoteService, GrpcClientRuntimeOptions? runtimeOptions)
     {
         var outbound = new GrpcOutbound(addresses, remoteService, clientRuntimeOptions: runtimeOptions);
         return new GrpcInvoker(outbound);
     }
 
-    private sealed class GrpcInvoker(GrpcOutbound outbound) : IGrpcInvoker
+    private sealed class GrpcInvoker(GrpcOutbound outbound) : OmniRelay.Cli.Core.BenchmarkRunner.IGrpcInvoker
     {
         private readonly GrpcOutbound _outbound = outbound;
 

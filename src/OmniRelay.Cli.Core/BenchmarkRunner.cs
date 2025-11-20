@@ -7,9 +7,9 @@ using OmniRelay.Errors;
 using OmniRelay.Transport.Grpc;
 using OmniRelay.Transport.Http;
 
-namespace OmniRelay.Cli;
+namespace OmniRelay.Cli.Core;
 
-internal sealed record RequestInvocation(
+public sealed record RequestInvocation(
     string Transport,
     Request<ReadOnlyMemory<byte>> Request,
     TimeSpan? Timeout,
@@ -18,13 +18,17 @@ internal sealed record RequestInvocation(
     HttpClientRuntimeOptions? HttpClientRuntime,
     GrpcClientRuntimeOptions? GrpcClientRuntime);
 
-internal static class BenchmarkRunner
+public static class BenchmarkRunner
 {
-    internal static Func<RequestInvocation, CancellationToken, Task<IRequestInvoker>>? InvokerFactoryOverride { get; set; }
+    // Host must provide these factories; defaults throw to avoid accidental nulls.
+    public static Func<HttpClient> HttpClientFactory { get; set; } = static () => throw new InvalidOperationException("Benchmark HTTP client factory is not configured.");
+    public static Func<IReadOnlyList<Uri>, string, GrpcClientRuntimeOptions?, IGrpcInvoker> GrpcInvokerFactory { get; set; } = static (_, _, _) => throw new InvalidOperationException("Benchmark gRPC invoker factory is not configured.");
 
-    internal static void ResetForTests() => InvokerFactoryOverride = null;
+    public static Func<RequestInvocation, CancellationToken, Task<IRequestInvoker>>? InvokerFactoryOverride { get; set; }
 
-    internal sealed record BenchmarkExecutionOptions(
+    public static void ResetForTests() => InvokerFactoryOverride = null;
+
+    public sealed record BenchmarkExecutionOptions(
         int Concurrency,
         long? MaxRequests,
         TimeSpan? Duration,
@@ -32,7 +36,7 @@ internal static class BenchmarkRunner
         TimeSpan? WarmupDuration,
         TimeSpan PerRequestTimeout);
 
-    internal sealed record LatencyStatistics(
+    public sealed record LatencyStatistics(
         double Min,
         double P50,
         double P90,
@@ -41,7 +45,7 @@ internal static class BenchmarkRunner
         double Max,
         double Mean);
 
-    internal sealed record BenchmarkSummary(
+    public sealed record BenchmarkSummary(
         long Attempts,
         long Successes,
         long Failures,
@@ -141,7 +145,7 @@ internal static class BenchmarkRunner
             throw new InvalidOperationException($"Invalid HTTP url '{invocation.HttpUrl}'.");
         }
 
-        return new HttpRequestInvoker(uri, invocation.HttpClientRuntime);
+        return new HttpRequestInvoker(uri, invocation.HttpClientRuntime, HttpClientFactory);
     }
 
     private static GrpcRequestInvoker CreateGrpcInvoker(RequestInvocation invocation)
@@ -163,7 +167,11 @@ internal static class BenchmarkRunner
             uris[index] = uri;
         }
 
-        return new GrpcRequestInvoker(uris, invocation.Request.Meta.Service, invocation.GrpcClientRuntime);
+        return new GrpcRequestInvoker(
+            uris,
+            invocation.Request.Meta.Service,
+            invocation.GrpcClientRuntime,
+            GrpcInvokerFactory);
     }
 
     private static async Task<StageResult> RunStageAsync(
@@ -391,7 +399,7 @@ internal static class BenchmarkRunner
         return $"{omnirelayException.StatusCode}: {omnirelayException.Message}";
     }
 
-    internal interface IRequestInvoker : IAsyncDisposable
+    public interface IRequestInvoker : IAsyncDisposable
     {
         Task StartAsync(CancellationToken cancellationToken);
         Task<RequestCallResult> InvokeAsync(Request<ReadOnlyMemory<byte>> request, CancellationToken cancellationToken);
@@ -403,9 +411,9 @@ internal static class BenchmarkRunner
         private readonly HttpOutbound _outbound;
         private readonly IUnaryOutbound _unaryOutbound;
 
-        public HttpRequestInvoker(Uri requestUri, HttpClientRuntimeOptions? runtimeOptions)
+        public HttpRequestInvoker(Uri requestUri, HttpClientRuntimeOptions? runtimeOptions, Func<HttpClient> httpClientFactory)
         {
-            _httpClient = CliRuntime.HttpClientFactory.CreateClient();
+            _httpClient = httpClientFactory();
             _outbound = new HttpOutbound(_httpClient, requestUri, runtimeOptions: runtimeOptions);
             _unaryOutbound = _outbound;
         }
@@ -431,13 +439,21 @@ internal static class BenchmarkRunner
         }
     }
 
+    public interface IGrpcInvoker : IAsyncDisposable
+    {
+        ValueTask StartAsync(CancellationToken cancellationToken);
+        ValueTask<Result<Response<ReadOnlyMemory<byte>>>> CallAsync(Request<ReadOnlyMemory<byte>> request, CancellationToken cancellationToken);
+        ValueTask StopAsync(CancellationToken cancellationToken);
+    }
+
     private sealed class GrpcRequestInvoker(
         IReadOnlyList<Uri> addresses,
         string service,
-        GrpcClientRuntimeOptions? runtimeOptions)
+        GrpcClientRuntimeOptions? runtimeOptions,
+        Func<IReadOnlyList<Uri>, string, GrpcClientRuntimeOptions?, IGrpcInvoker> invokerFactory)
         : IRequestInvoker
     {
-        private readonly IGrpcInvoker _invoker = CliRuntime.GrpcInvokerFactory.Create(addresses, service, runtimeOptions);
+        private readonly IGrpcInvoker _invoker = invokerFactory(addresses, service, runtimeOptions);
 
         public Task StartAsync(CancellationToken cancellationToken) =>
             _invoker.StartAsync(cancellationToken).AsTask();
@@ -460,7 +476,7 @@ internal static class BenchmarkRunner
         }
     }
 
-    internal readonly record struct RequestCallResult(bool Success, string? Error)
+    public readonly record struct RequestCallResult(bool Success, string? Error)
     {
         public static RequestCallResult FromSuccess() => new(true, null);
         public static RequestCallResult FromFailure(string? error) => new(false, error);

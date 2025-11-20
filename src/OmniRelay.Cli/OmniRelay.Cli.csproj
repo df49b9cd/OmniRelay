@@ -22,11 +22,14 @@
     <PackageIcon>omnirelay-icon.png</PackageIcon>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);1591</NoWarn>
+    <PublishTrimmed>true</PublishTrimmed>
+    <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\OmniRelay.Configuration\OmniRelay.Configuration.csproj" />
     <ProjectReference Include="..\OmniRelay\OmniRelay.csproj" />
+    <ProjectReference Include="..\OmniRelay.Cli.Core\OmniRelay.Cli.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>
