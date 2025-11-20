@@ -13,6 +13,7 @@ internal static class CliModules
         {
             new ConfigCommandsModule(),
             new RequestModule(),
+            new BenchmarkModule(),
             new ServeModule(),
             new IntrospectModule(),
             new ScriptModule(),
@@ -24,3 +25,5 @@ internal sealed class ServeModule : ICliModule { public Command Build() => Progr
 internal sealed class IntrospectModule : ICliModule { public Command Build() => Program.CreateIntrospectCommand(); }
 internal sealed class ScriptModule : ICliModule { public Command Build() => Program.CreateScriptCommand(); }
 internal sealed class MeshModule : ICliModule { public Command Build() => Program.CreateMeshCommand(); }
+internal sealed class RequestModule : ICliModule { public Command Build() => Program.CreateRequestCommand(); }
+internal sealed class BenchmarkModule : ICliModule { public Command Build() => Program.CreateBenchmarkCommand(); }

@@ -2,6 +2,7 @@ using System.CommandLine;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
+using ServiceCollection = Microsoft.Extensions.DependencyInjection.ServiceCollection;
 using Microsoft.Extensions.Logging;
 using OmniRelay.Configuration;
 using OmniRelay.Configuration.Internal.TransportPolicy;
@@ -142,7 +143,7 @@ internal sealed class ConfigCommandsModule : ICliModule
             return 1;
         }
 
-        var services = new ServiceCollection();
+        var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
         services.AddLogging(static logging => logging.AddSimpleConsole(options =>
         {
             options.SingleLine = true;
