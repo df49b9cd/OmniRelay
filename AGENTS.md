@@ -1,5 +1,9 @@
 # Repository Guidelines
 
+## Important Notes
+- We must be as performant and efficient as possible due to our focus on Native AOT. Therefore read and understand the 'dotnet-performance-guidelines.md' located in docs/knowledge-base.
+- Always, keep the docs/knowledge-base documents updated and current.
+
 ## Project Structure & Module Organization
 - `src/` houses all production code; core runtime lives in `src/OmniRelay`, configuration binder in `src/OmniRelay.Configuration`, CLI in `src/OmniRelay.Cli`, and codegen in `src/OmniRelay.Codegen.*`.
 - `tests/` mirrors those areas with xUnit projects (`OmniRelay.Core.UnitTests`, `OmniRelay.Cli.UnitTests`, `OmniRelay.HyperscaleFeatureTests`, etc.). Interop and yab suites sit in `tests/OmniRelay.YabInterop`.
