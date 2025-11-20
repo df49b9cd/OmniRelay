@@ -1,5 +1,4 @@
 using System.Text;
-using System.Linq;
 using Google.Protobuf.Reflection;
 
 namespace OmniRelay.Codegen.Protobuf.Core;
