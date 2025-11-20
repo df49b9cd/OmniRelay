@@ -1,5 +1,6 @@
 using System.Globalization;
 using Grpc.Core;
+using OmniRelay.Core;
 using OmniRelay.Transport.Grpc;
 using Shouldly;
 using Xunit;
@@ -69,6 +70,19 @@ public class GrpcMetadataAdapterTests
     }
 
     [Fact]
+    public void BuildRequestMeta_NoHeaders_ReusesSharedEmpty()
+    {
+        var meta = GrpcMetadataAdapter.BuildRequestMeta(
+            service: "svc",
+            procedure: "proc",
+            metadata: new Metadata(),
+            encoding: null);
+
+        meta.Headers.ShouldBeSameAs(RequestMeta.EmptyHeadersInstance);
+        meta.Headers.Count.ShouldBe(0);
+    }
+
+    [Fact]
     public void BuildRequestMeta_AllowsDuplicateHeaders_LastWins()
     {
         var metadata = new Metadata
@@ -100,5 +114,14 @@ public class GrpcMetadataAdapterTests
         meta.Encoding.ShouldBe("protobuf");
         meta.Headers[GrpcTransportConstants.EncodingTrailer].ShouldBe("protobuf");
         meta.Headers["x-tail"].ShouldBe("value");
+    }
+
+    [Fact]
+    public void CreateResponseMeta_NoHeaders_ReusesSharedEmpty()
+    {
+        var meta = GrpcMetadataAdapter.CreateResponseMeta(headers: null, trailers: null);
+
+        meta.Headers.ShouldBeSameAs(ResponseMeta.EmptyHeadersInstance);
+        meta.Headers.Count.ShouldBe(0);
     }
 }
