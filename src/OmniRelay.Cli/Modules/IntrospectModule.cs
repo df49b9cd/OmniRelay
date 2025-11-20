@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.CommandLine;
+using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using System.Text.Json;
 using OmniRelay.Dispatcher;
@@ -47,6 +48,7 @@ internal static partial class ProgramIntrospectModule
         return command;
     }
 
+    [SuppressMessage("Reliability", "CA2007:Consider calling ConfigureAwait on the awaited task", Justification = "ConfigureAwait is applied on awaited operations; CLI does not capture context.")]
     internal static async Task<int> RunIntrospectAsync(string url, string format, string? timeoutOption)
     {
         var normalizedFormat = string.IsNullOrWhiteSpace(format) ? "text" : format.ToLowerInvariant();

@@ -1,3 +1,5 @@
+#pragma warning disable IDE0005
+using System.Buffers;
 using System.CommandLine;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
@@ -6,10 +8,11 @@ using System.Text;
 using System.Text.Json;
 using Google.Protobuf;
 using Grpc.Core;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using OmniRelay.Cli.Core;
 using OmniRelay.Core;
-using OmniRelay.Configuration;
+using OmniRelay.Configuration.Models;
 using OmniRelay.Configuration.Internal.TransportPolicy;
 using OmniRelay.ControlPlane.Bootstrap;
 using OmniRelay.ControlPlane.Clients;
@@ -1829,7 +1832,6 @@ internal static partial class ProgramMeshModule
         var scope = leadershipEvent.Scope ?? leadershipEvent.Token?.Scope ?? "*";
         Console.WriteLine($"[{leadershipEvent.OccurredAt:HH:mm:ss}] {leadershipEvent.EventKind.ToString().ToUpperInvariant(),-10} scope={scope} leader={leader} term={term} fence={fence} expires={expires} reason={reason}");
     }
-
 
     internal sealed class LeadershipSnapshotResponse
     {
