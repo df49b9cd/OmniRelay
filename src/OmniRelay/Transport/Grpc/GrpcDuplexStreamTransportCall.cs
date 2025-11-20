@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Diagnostics;
 using System.Threading.Channels;
 using System.Runtime.InteropServices;
@@ -185,7 +186,16 @@ internal sealed class GrpcDuplexStreamTransportCall : IDuplexStreamCall
                         }
                         else
                         {
-                            await _call.RequestStream.WriteAsync(payload.ToArray(), token).ConfigureAwait(false);
+                            var rented = ArrayPool<byte>.Shared.Rent(payload.Length);
+                            try
+                            {
+                                payload.Span.CopyTo(rented);
+                                await _call.RequestStream.WriteAsync(rented, token).ConfigureAwait(false);
+                            }
+                            finally
+                            {
+                                ArrayPool<byte>.Shared.Return(rented);
+                            }
                         }
                     }
 
