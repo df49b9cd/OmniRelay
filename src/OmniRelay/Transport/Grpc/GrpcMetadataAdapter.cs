@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using Grpc.Core;
@@ -24,52 +25,75 @@ internal static class GrpcMetadataAdapter
         string? encoding,
         string? protocol = null)
     {
-        var headers = metadata
-            .Where(static entry => !entry.IsBinary)
-            .Select(static entry => new KeyValuePair<string, string>(entry.Key, entry.Value));
-
-        var caller = metadata.GetValue(GrpcTransportConstants.CallerHeader);
-        var shardKey = metadata.GetValue(GrpcTransportConstants.ShardKeyHeader);
-        var routingKey = metadata.GetValue(GrpcTransportConstants.RoutingKeyHeader);
-        var routingDelegate = metadata.GetValue(GrpcTransportConstants.RoutingDelegateHeader);
-
+        string? caller = null;
+        string? shardKey = null;
+        string? routingKey = null;
+        string? routingDelegate = null;
         TimeSpan? ttl = null;
-        var ttlValue = metadata.GetValue(GrpcTransportConstants.TtlHeader);
-        if (!string.IsNullOrEmpty(ttlValue) &&
-            long.TryParse(ttlValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var ttlMs))
-        {
-            ttl = TimeSpan.FromMilliseconds(ttlMs);
-        }
-
         DateTimeOffset? deadline = null;
-        var deadlineValue = metadata.GetValue(GrpcTransportConstants.DeadlineHeader);
-        if (!string.IsNullOrEmpty(deadlineValue) &&
-            DateTimeOffset.TryParse(deadlineValue, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsedDeadline))
+
+        var headers = ImmutableDictionary.CreateBuilder<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        for (var i = 0; i < metadata.Count; i++)
         {
-            deadline = parsedDeadline;
+            var entry = metadata[i];
+            if (entry.IsBinary)
+            {
+                continue;
+            }
+
+            var key = entry.Key;
+            var value = entry.Value;
+
+            if (caller is null && string.Equals(key, GrpcTransportConstants.CallerHeader, StringComparison.OrdinalIgnoreCase))
+            {
+                caller = value;
+            }
+            else if (shardKey is null && string.Equals(key, GrpcTransportConstants.ShardKeyHeader, StringComparison.OrdinalIgnoreCase))
+            {
+                shardKey = value;
+            }
+            else if (routingKey is null && string.Equals(key, GrpcTransportConstants.RoutingKeyHeader, StringComparison.OrdinalIgnoreCase))
+            {
+                routingKey = value;
+            }
+            else if (routingDelegate is null && string.Equals(key, GrpcTransportConstants.RoutingDelegateHeader, StringComparison.OrdinalIgnoreCase))
+            {
+                routingDelegate = value;
+            }
+            else if (ttl is null && string.Equals(key, GrpcTransportConstants.TtlHeader, StringComparison.OrdinalIgnoreCase) &&
+                     long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var ttlMs))
+            {
+                ttl = TimeSpan.FromMilliseconds(ttlMs);
+            }
+            else if (deadline is null && string.Equals(key, GrpcTransportConstants.DeadlineHeader, StringComparison.OrdinalIgnoreCase) &&
+                     DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsedDeadline))
+            {
+                deadline = parsedDeadline;
+            }
+
+            headers.Add(key, value);
         }
 
-        var headerList = headers;
         if (!string.IsNullOrWhiteSpace(protocol))
         {
-            headerList = headerList.Concat(
-            [
-                new KeyValuePair<string, string>("rpc.protocol", protocol!)
-            ]);
+            headers.Add("rpc.protocol", protocol!);
         }
 
-        return new RequestMeta(
-            service,
-            procedure,
-            caller: caller,
-            encoding: encoding,
-            transport: GrpcTransportConstants.TransportName,
-            shardKey: shardKey,
-            routingKey: routingKey,
-            routingDelegate: routingDelegate,
-            timeToLive: ttl,
-            deadline: deadline,
-            headers: headerList);
+        return new RequestMeta
+        {
+            Service = service,
+            Procedure = procedure,
+            Caller = caller,
+            Encoding = encoding,
+            Transport = GrpcTransportConstants.TransportName,
+            ShardKey = shardKey,
+            RoutingKey = routingKey,
+            RoutingDelegate = routingDelegate,
+            TimeToLive = ttl,
+            Deadline = deadline,
+            Headers = headers.ToImmutable()
+        };
     }
 
     /// <summary>
@@ -172,21 +196,46 @@ internal static class GrpcMetadataAdapter
         Metadata? trailers,
         string transport = GrpcTransportConstants.TransportName)
     {
-        headers ??= [];
-        trailers ??= [];
+        var headerBuilder = ImmutableDictionary.CreateBuilder<string, string>(StringComparer.OrdinalIgnoreCase);
+        string? encoding = null;
 
-        var combined = headers
-            .Concat(trailers)
-            .Where(static entry => !entry.IsBinary)
-            .Select(static entry => new KeyValuePair<string, string>(entry.Key, entry.Value));
+        if (headers is not null)
+        {
+            AddMetadata(headers, headerBuilder, ref encoding);
+        }
 
-        var encoding = headers.GetValue(GrpcTransportConstants.EncodingTrailer)
-            ?? trailers.GetValue(GrpcTransportConstants.EncodingTrailer);
+        if (trailers is not null)
+        {
+            AddMetadata(trailers, headerBuilder, ref encoding);
+        }
 
         return new ResponseMeta(
             encoding: encoding,
             transport: transport,
-            headers: combined);
+            headers: headerBuilder.ToImmutable());
+    }
+
+    private static void AddMetadata(
+        Metadata source,
+        ImmutableDictionary<string, string>.Builder headerBuilder,
+        ref string? encoding)
+    {
+        for (var i = 0; i < source.Count; i++)
+        {
+            var entry = source[i];
+            if (entry.IsBinary)
+            {
+                continue;
+            }
+
+            if (encoding is null &&
+                string.Equals(entry.Key, GrpcTransportConstants.EncodingTrailer, StringComparison.OrdinalIgnoreCase))
+            {
+                encoding = entry.Value;
+            }
+
+            headerBuilder.Add(entry.Key, entry.Value);
+        }
     }
 
     /// <summary>

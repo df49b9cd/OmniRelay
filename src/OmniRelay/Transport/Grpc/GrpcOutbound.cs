@@ -44,6 +44,7 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
     private readonly ConcurrentDictionary<string, Method<byte[], byte[]>> _clientStreamMethods = new();
     private readonly ConcurrentDictionary<string, Method<byte[], byte[]>> _duplexMethods = new();
     private readonly HashSet<string>? _compressionAlgorithms;
+    private readonly string? _compressionHeaderValue;
     private volatile bool _started;
     private CompositeClientInterceptor? _compositeClientInterceptor;
     private string? _interceptorService;
@@ -164,6 +165,11 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
                 StringComparer.OrdinalIgnoreCase);
 
             _channelOptions.CompressionProviders = providers;
+
+            if (_compressionAlgorithms.Count > 0)
+            {
+                _compressionHeaderValue = string.Join(",", _compressionAlgorithms);
+            }
         }
 
         if (_clientTlsOptions is not null)
@@ -661,10 +667,10 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
             ? new CallOptions(metadata, deadline.Value, cancellationToken)
             : new CallOptions(metadata, cancellationToken: cancellationToken);
 
-        if (_compressionAlgorithms is { Count: > 0 } &&
+        if (_compressionHeaderValue is not null &&
             metadata.GetValue(GrpcTransportConstants.GrpcAcceptEncodingHeader) is null)
         {
-            metadata.Add(GrpcTransportConstants.GrpcAcceptEncodingHeader, string.Join(",", _compressionAlgorithms));
+            metadata.Add(GrpcTransportConstants.GrpcAcceptEncodingHeader, _compressionHeaderValue);
         }
 
         return callOptions;

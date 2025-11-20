@@ -11,6 +11,20 @@ internal static class GrpcMetadataExtensions
             return null;
         }
 
-        return metadata.FirstOrDefault(entry => !entry.IsBinary && string.Equals(entry.Key, key, StringComparison.OrdinalIgnoreCase))?.Value;
+        for (var i = 0; i < metadata.Count; i++)
+        {
+            var entry = metadata[i];
+            if (entry.IsBinary)
+            {
+                continue;
+            }
+
+            if (string.Equals(entry.Key, key, StringComparison.OrdinalIgnoreCase))
+            {
+                return entry.Value;
+            }
+        }
+
+        return null;
     }
 }
