@@ -220,7 +220,9 @@ internal sealed class HttpDuplexStreamTransportCall : IDuplexStreamCall
                         }
 
                     case HttpDuplexProtocol.FrameType.ResponseData:
-                        await _inner.ResponseWriter.WriteAsync(frame.Payload, cancellationToken).ConfigureAwait(false);
+                        // Copy because ReceiveFrameAsync reuses a shared buffer; retaining the slice would corrupt prior frames.
+                        var responseCopy = frame.Payload.ToArray();
+                        await _inner.ResponseWriter.WriteAsync(responseCopy, cancellationToken).ConfigureAwait(false);
                         break;
 
                     case HttpDuplexProtocol.FrameType.ResponseComplete:
