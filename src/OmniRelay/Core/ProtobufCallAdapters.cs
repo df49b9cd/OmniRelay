@@ -18,8 +18,8 @@ public static class ProtobufCallAdapters
     public static UnaryInboundHandler CreateUnaryHandler<TRequest, TResponse>(
         ProtobufCodec<TRequest, TResponse> codec,
         Func<Request<TRequest>, CancellationToken, ValueTask<Response<TResponse>>> handler)
-        where TRequest : class, IMessage<TRequest>
-        where TResponse : class, IMessage<TResponse>
+        where TRequest : class, IMessage<TRequest>, new()
+        where TResponse : class, IMessage<TResponse>, new()
     {
         ArgumentNullException.ThrowIfNull(codec);
         ArgumentNullException.ThrowIfNull(handler);
@@ -46,8 +46,8 @@ public static class ProtobufCallAdapters
     public static StreamInboundHandler CreateServerStreamHandler<TRequest, TResponse>(
         ProtobufCodec<TRequest, TResponse> codec,
         Func<Request<TRequest>, ProtobufServerStreamWriter<TRequest, TResponse>, CancellationToken, ValueTask> handler)
-        where TRequest : class, IMessage<TRequest>
-        where TResponse : class, IMessage<TResponse>
+        where TRequest : class, IMessage<TRequest>, new()
+        where TResponse : class, IMessage<TResponse>, new()
     {
         ArgumentNullException.ThrowIfNull(codec);
         ArgumentNullException.ThrowIfNull(handler);
@@ -61,8 +61,8 @@ public static class ProtobufCallAdapters
     public static ClientStreamInboundHandler CreateClientStreamHandler<TRequest, TResponse>(
         ProtobufCodec<TRequest, TResponse> codec,
         Func<ProtobufClientStreamContext<TRequest, TResponse>, CancellationToken, ValueTask<Response<TResponse>>> handler)
-        where TRequest : class, IMessage<TRequest>
-        where TResponse : class, IMessage<TResponse>
+        where TRequest : class, IMessage<TRequest>, new()
+        where TResponse : class, IMessage<TResponse>, new()
     {
         ArgumentNullException.ThrowIfNull(codec);
         ArgumentNullException.ThrowIfNull(handler);
@@ -83,8 +83,8 @@ public static class ProtobufCallAdapters
     public static DuplexInboundHandler CreateDuplexHandler<TRequest, TResponse>(
         ProtobufCodec<TRequest, TResponse> codec,
         Func<ProtobufDuplexStreamContext<TRequest, TResponse>, CancellationToken, ValueTask> handler)
-        where TRequest : class, IMessage<TRequest>
-        where TResponse : class, IMessage<TResponse>
+        where TRequest : class, IMessage<TRequest>, new()
+        where TResponse : class, IMessage<TResponse>, new()
     {
         ArgumentNullException.ThrowIfNull(codec);
         ArgumentNullException.ThrowIfNull(handler);
@@ -97,8 +97,8 @@ public static class ProtobufCallAdapters
         ProtobufCodec<TRequest, TResponse> codec,
         Func<Request<TRequest>, ProtobufServerStreamWriter<TRequest, TResponse>, CancellationToken, ValueTask> handler,
         CancellationToken cancellationToken)
-        where TRequest : class, IMessage<TRequest>
-        where TResponse : class, IMessage<TResponse>
+        where TRequest : class, IMessage<TRequest>, new()
+        where TResponse : class, IMessage<TResponse>, new()
     {
         return codec
             .DecodeRequest(request.Body, request.Meta)
@@ -118,8 +118,8 @@ public static class ProtobufCallAdapters
         ProtobufServerStreamWriter<TRequest, TResponse> writer,
         Func<Request<TRequest>, ProtobufServerStreamWriter<TRequest, TResponse>, CancellationToken, ValueTask> handler,
         CancellationToken cancellationToken)
-        where TRequest : class, IMessage<TRequest>
-        where TResponse : class, IMessage<TResponse>
+        where TRequest : class, IMessage<TRequest>, new()
+        where TResponse : class, IMessage<TResponse>, new()
     {
         try
         {
@@ -137,8 +137,8 @@ public static class ProtobufCallAdapters
         ProtobufCodec<TRequest, TResponse> codec,
         Func<ProtobufDuplexStreamContext<TRequest, TResponse>, CancellationToken, ValueTask> handler,
         CancellationToken cancellationToken)
-        where TRequest : class, IMessage<TRequest>
-        where TResponse : class, IMessage<TResponse>
+        where TRequest : class, IMessage<TRequest>, new()
+        where TResponse : class, IMessage<TResponse>, new()
     {
         var call = DuplexStreamCall.Create(request.Meta, new ResponseMeta(encoding: codec.Encoding));
         var context = new ProtobufDuplexStreamContext<TRequest, TResponse>(codec, call, request.Meta.Transport ?? "stream");
@@ -152,8 +152,8 @@ public static class ProtobufCallAdapters
         ProtobufDuplexStreamContext<TRequest, TResponse> context,
         Func<ProtobufDuplexStreamContext<TRequest, TResponse>, CancellationToken, ValueTask> handler,
         CancellationToken cancellationToken)
-        where TRequest : class, IMessage<TRequest>
-        where TResponse : class, IMessage<TResponse>
+        where TRequest : class, IMessage<TRequest>, new()
+        where TResponse : class, IMessage<TResponse>, new()
     {
         try
         {
@@ -169,8 +169,8 @@ public static class ProtobufCallAdapters
     private static Result<Response<ReadOnlyMemory<byte>>> EncodeResponse<TRequest, TResponse>(
         ProtobufCodec<TRequest, TResponse> codec,
         Response<TResponse> response)
-        where TRequest : class, IMessage<TRequest>
-        where TResponse : class, IMessage<TResponse>
+        where TRequest : class, IMessage<TRequest>, new()
+        where TResponse : class, IMessage<TResponse>, new()
     {
         var responseMeta = EnsureResponseMeta(response.Meta, codec.Encoding);
         return codec.EncodeResponse(response.Body, responseMeta)
@@ -208,8 +208,8 @@ public static class ProtobufCallAdapters
     /// Typed server-stream writer that encodes responses using the configured codec and updates response metadata.
     /// </summary>
     public sealed class ProtobufServerStreamWriter<TRequest, TResponse>
-        where TRequest : class, IMessage<TRequest>
-        where TResponse : class, IMessage<TResponse>
+        where TRequest : class, IMessage<TRequest>, new()
+        where TResponse : class, IMessage<TResponse>, new()
     {
         private readonly ProtobufCodec<TRequest, TResponse> _codec;
         private readonly ServerStreamCall _call;
@@ -265,8 +265,8 @@ public static class ProtobufCallAdapters
     /// Provides typed access to client-stream requests using a codec for decoding.
     /// </summary>
     public sealed class ProtobufClientStreamContext<TRequest, TResponse>
-        where TRequest : class, IMessage<TRequest>
-        where TResponse : class, IMessage<TResponse>
+        where TRequest : class, IMessage<TRequest>, new()
+        where TResponse : class, IMessage<TResponse>, new()
     {
         private readonly ProtobufCodec<TRequest, TResponse> _codec;
         private readonly ClientStreamRequestContext _context;
@@ -311,8 +311,8 @@ public static class ProtobufCallAdapters
     /// Provides typed read and write operations for duplex-streaming handlers using a codec.
     /// </summary>
     public sealed class ProtobufDuplexStreamContext<TRequest, TResponse>
-        where TRequest : class, IMessage<TRequest>
-        where TResponse : class, IMessage<TResponse>
+        where TRequest : class, IMessage<TRequest>, new()
+        where TResponse : class, IMessage<TResponse>, new()
     {
         private readonly ProtobufCodec<TRequest, TResponse> _codec;
         private readonly DuplexStreamCall _call;

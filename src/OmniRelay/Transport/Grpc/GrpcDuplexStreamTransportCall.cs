@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Threading.Channels;
+using System.Runtime.InteropServices;
 using Grpc.Core;
 using Hugo;
 using OmniRelay.Core;
@@ -175,7 +176,17 @@ internal sealed class GrpcDuplexStreamTransportCall : IDuplexStreamCall
                     {
                         Interlocked.Increment(ref _requestCount);
                         GrpcTransportMetrics.ClientDuplexRequestMessages.Add(1, _baseTags);
-                        await _call.RequestStream.WriteAsync(payload.ToArray(), token).ConfigureAwait(false);
+                        if (MemoryMarshal.TryGetArray(payload, out var segment) &&
+                            segment.Array is { } array &&
+                            segment.Offset == 0 &&
+                            segment.Count == array.Length)
+                        {
+                            await _call.RequestStream.WriteAsync(array, token).ConfigureAwait(false);
+                        }
+                        else
+                        {
+                            await _call.RequestStream.WriteAsync(payload.ToArray(), token).ConfigureAwait(false);
+                        }
                     }
 
                     await _call.RequestStream.CompleteAsync().ConfigureAwait(false);

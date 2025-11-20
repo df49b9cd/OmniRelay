@@ -19,6 +19,7 @@ using OmniRelay.ControlPlane.Upgrade;
 using OmniRelay.Core.Diagnostics;
 using OmniRelay.Core.Gossip;
 using OmniRelay.Core.Leadership;
+using OmniRelay.Dispatcher;
 using OmniRelay.Diagnostics;
 using OmniRelay.Diagnostics.Alerting;
 using OmniRelay.Core.Shards;
@@ -129,6 +130,92 @@ public static class OmniRelayServiceCollectionExtensions
             var options = provider.GetRequiredService<IOptions<OmniRelayConfigurationOptions>>().Value;
             var builder = new DispatcherBuilder(options, provider, configuration);
             return builder.Build();
+        });
+
+        services.AddSingleton(provider => provider.GetRequiredService<Dispatcher.Dispatcher>().Codecs);
+
+        services.AddSingleton<IHostedService>(provider =>
+        {
+            var dispatcher = provider.GetRequiredService<Dispatcher.Dispatcher>();
+            var logger = provider.GetService<ILogger<DispatcherHostedService>>();
+            return new DispatcherHostedService(dispatcher, logger);
+        });
+
+        return services;
+    }
+
+    /// <summary>
+    /// Adds and configures an <see cref="Dispatcher.Dispatcher"/> without runtime type resolution, suitable for Native AOT builds.
+    /// Callers supply a strongly typed dispatcher configuration delegate to avoid reflection-heavy codec/transport bootstrapping.
+    /// </summary>
+    /// <param name="services">Service collection to register into.</param>
+    /// <param name="options">Pre-bound OmniRelay configuration snapshot.</param>
+    /// <param name="configureDispatcher">Callback that populates <see cref="DispatcherOptions"/> (codecs, transports, middleware).</param>
+    /// <returns>The original service collection.</returns>
+    public static IServiceCollection AddOmniRelayDispatcherAot(
+        this IServiceCollection services,
+        OmniRelayConfigurationOptions options,
+        Action<IServiceProvider, DispatcherOptions> configureDispatcher)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(configureDispatcher);
+
+        ValidateBasicConfiguration(options);
+        TransportPolicyEvaluator.Enforce(options);
+
+        var (minimumLevel, overrides) = ParseLoggingConfiguration(options.Logging);
+
+        services.AddSingleton(Options.Create(options));
+        services.TryAddSingleton<NodeDrainCoordinator>();
+
+        var loggingOptions = new OmniRelayLoggingOptions
+        {
+            MinimumLevel = minimumLevel
+        };
+
+        foreach (var (category, level) in overrides)
+        {
+            loggingOptions.CategoryLevels[category] = level;
+        }
+
+        services.AddLogging(builder => builder.AddOmniRelayLogging(loggingOptions));
+
+        services.AddHttpClient();
+
+        services.TryAddSingleton<ShardHashStrategyRegistry>();
+        if (services.Any(descriptor => descriptor.ServiceType == typeof(IShardRepository)))
+        {
+            services.TryAddSingleton(sp =>
+            {
+                var repository = sp.GetRequiredService<IShardRepository>();
+                var strategies = sp.GetRequiredService<ShardHashStrategyRegistry>();
+                var timeProvider = sp.GetService<TimeProvider>();
+                var logger = sp.GetRequiredService<ILogger<ShardControlPlaneService>>();
+                return new ShardControlPlaneService(repository, strategies, timeProvider, logger);
+            });
+            services.TryAddSingleton(sp =>
+            {
+                var planeService = sp.GetRequiredService<ShardControlPlaneService>();
+                var logger = sp.GetRequiredService<ILogger<ShardControlGrpcService>>();
+                return new ShardControlGrpcService(planeService, logger);
+            });
+        }
+
+        ConfigureDiagnostics(services, options);
+        ConfigureSecurity(services, options);
+
+        services.AddSingleton(provider =>
+        {
+            var dispatcherOptions = new DispatcherOptions(options.Service ?? "OmniRelay");
+            configureDispatcher(provider, dispatcherOptions);
+            return dispatcherOptions;
+        });
+
+        services.AddSingleton(provider =>
+        {
+            var dispatcherOptions = provider.GetRequiredService<DispatcherOptions>();
+            return new Dispatcher.Dispatcher(dispatcherOptions);
         });
 
         services.AddSingleton(provider => provider.GetRequiredService<Dispatcher.Dispatcher>().Codecs);

@@ -1,5 +1,4 @@
 using System.Diagnostics.CodeAnalysis;
-using System.Reflection;
 using Google.Protobuf;
 using Google.Protobuf.Reflection;
 using Hugo;
@@ -23,8 +22,8 @@ TResponse>(
     string? defaultEncoding = null,
     bool allowJsonEncoding = true)
     : ICodec<TRequest, TResponse>
-    where TRequest : class, IMessage<TRequest>
-    where TResponse : class, IMessage<TResponse>
+    where TRequest : class, IMessage<TRequest>, new()
+    where TResponse : class, IMessage<TResponse>, new()
 {
     private const string EncodeRequestStage = "encode-request";
     private const string DecodeRequestStage = "decode-request";
@@ -242,57 +241,14 @@ TResponse>(
     private static MessageParser<TMessage> ResolveParser<
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor | DynamicallyAccessedMemberTypes.PublicProperties)]
     TMessage>(MessageParser<TMessage>? parser)
-        where TMessage : class, IMessage<TMessage>
-    {
-        if (parser is not null)
-        {
-            return parser;
-        }
-
-        var parserProperty = typeof(TMessage).GetProperty(
-            "Parser",
-            BindingFlags.Public |
-            BindingFlags.Static);
-
-        if (parserProperty?.GetValue(null) is MessageParser<TMessage> resolved)
-        {
-            return resolved;
-        }
-
-        if (typeof(TMessage).GetConstructor(Type.EmptyTypes) is not null)
-        {
-            return new MessageParser<TMessage>(() => Activator.CreateInstance<TMessage>()!);
-        }
-
-        throw new InvalidOperationException($"Type '{typeof(TMessage).FullName}' does not expose a parser or parameterless constructor.");
-    }
+        where TMessage : class, IMessage<TMessage>, new() =>
+        parser ?? MessageMetadata<TMessage>.Parser;
 
     private static MessageDescriptor ResolveDescriptor<
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor | DynamicallyAccessedMemberTypes.PublicProperties)]
     TMessage>()
-        where TMessage : class, IMessage<TMessage>
-    {
-        var descriptorProperty = typeof(TMessage).GetProperty(
-            "Descriptor",
-            BindingFlags.Public |
-            BindingFlags.Static);
-
-        if (descriptorProperty?.GetValue(null) is MessageDescriptor descriptor)
-        {
-            return descriptor;
-        }
-
-        if (typeof(TMessage).GetConstructor(Type.EmptyTypes) is not null)
-        {
-            var instance = Activator.CreateInstance<TMessage>();
-            if (instance is IMessage message)
-            {
-                return message.Descriptor;
-            }
-        }
-
-        throw new InvalidOperationException($"Type '{typeof(TMessage).FullName}' does not expose a descriptor.");
-    }
+        where TMessage : class, IMessage<TMessage>, new() =>
+        MessageMetadata<TMessage>.Descriptor;
 
     private static Error CreateError(
         OmniRelayStatusCode statusCode,
@@ -319,5 +275,14 @@ TResponse>(
     {
         Binary,
         Json
+    }
+
+    private static class MessageMetadata<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor | DynamicallyAccessedMemberTypes.PublicProperties)]
+    TMessage>
+        where TMessage : class, IMessage<TMessage>, new()
+    {
+        internal static readonly MessageParser<TMessage> Parser = new(static () => new TMessage());
+        internal static readonly MessageDescriptor Descriptor = new TMessage().Descriptor;
     }
 }

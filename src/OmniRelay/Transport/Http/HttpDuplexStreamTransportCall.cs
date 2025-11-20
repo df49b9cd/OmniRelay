@@ -220,7 +220,7 @@ internal sealed class HttpDuplexStreamTransportCall : IDuplexStreamCall
                         }
 
                     case HttpDuplexProtocol.FrameType.ResponseData:
-                        await _inner.ResponseWriter.WriteAsync(frame.Payload.ToArray(), cancellationToken).ConfigureAwait(false);
+                        await _inner.ResponseWriter.WriteAsync(frame.Payload, cancellationToken).ConfigureAwait(false);
                         break;
 
                     case HttpDuplexProtocol.FrameType.ResponseComplete:
@@ -255,7 +255,7 @@ internal sealed class HttpDuplexStreamTransportCall : IDuplexStreamCall
                         }
 
                     case HttpDuplexProtocol.FrameType.RequestData:
-                        await _inner.RequestWriter.WriteAsync(frame.Payload.ToArray(), cancellationToken).ConfigureAwait(false);
+                        await _inner.RequestWriter.WriteAsync(frame.Payload, cancellationToken).ConfigureAwait(false);
                         break;
                 }
             }

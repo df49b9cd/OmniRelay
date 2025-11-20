@@ -109,7 +109,7 @@ public sealed class HttpOutbound : IUnaryOutbound, IOnewayOutbound, IOutboundDia
     private HttpRequestMessage BuildHttpRequest(IRequest<ReadOnlyMemory<byte>> request)
     {
         var httpRequest = new HttpRequestMessage(HttpMethod.Post, _requestUri);
-        var content = new ByteArrayContent(request.Body.ToArray());
+        var content = new ReadOnlyMemoryContent(request.Body);
 
         ApplyHttpClientRuntimeOptions(httpRequest);
 
