@@ -8,18 +8,16 @@ namespace OmniRelay.Configuration.UnitTests.Configuration;
 public sealed class TransportPolicyEvaluatorTests
 {
     [Fact(Timeout = TestTimeouts.Default)]
-    public void Enforce_WithHttpDiagnosticsDowngrade_Throws()
+    public void Enforce_WithHttpDiagnosticsDowngrade_PassesWhenAllowed()
     {
         var options = CreateBaseOptions();
         options.Diagnostics.ControlPlane.HttpRuntime.EnableHttp3 = false;
 
-        var exception = Should.Throw<OmniRelayConfigurationException>(() => TransportPolicyEvaluator.Enforce(options));
-        exception.Message.ShouldContain("diagnostics:http", Case.Insensitive);
-        exception.Message.ShouldContain("http2", Case.Insensitive);
+        Should.NotThrow(() => TransportPolicyEvaluator.Enforce(options));
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
-    public void Enforce_WithException_AllowsDowngrade()
+    public void Enforce_WithException_AllowsDowngrade_ButIsCompliantByDefault()
     {
         var options = CreateBaseOptions();
         options.Diagnostics.ControlPlane.HttpRuntime.EnableHttp3 = false;
@@ -36,8 +34,8 @@ public sealed class TransportPolicyEvaluatorTests
 
         var result = TransportPolicyEvaluator.Evaluate(options);
         result.HasViolations.ShouldBeFalse();
-        result.HasExceptions.ShouldBeTrue();
-        result.Findings.ShouldContain(finding => finding.Status == TransportPolicyFindingStatus.Excepted);
+        result.HasExceptions.ShouldBeFalse();
+        result.Findings.ShouldAllBe(finding => finding.Status == TransportPolicyFindingStatus.Compliant);
         Should.NotThrow(() => TransportPolicyEvaluator.Enforce(options));
     }
 
@@ -50,8 +48,8 @@ public sealed class TransportPolicyEvaluatorTests
         var evaluation = TransportPolicyEvaluator.Evaluate(options);
 
         evaluation.Summary.Total.ShouldBe(2);
-        evaluation.Summary.Violations.ShouldBe(1);
-        evaluation.Summary.Compliant.ShouldBe(1);
+        evaluation.Summary.Violations.ShouldBe(0);
+        evaluation.Summary.Compliant.ShouldBe(2);
         evaluation.Summary.Excepted.ShouldBe(0);
 
         var httpFinding = evaluation.Findings.First(finding => finding.Endpoint == TransportPolicyEndpoints.DiagnosticsHttp);

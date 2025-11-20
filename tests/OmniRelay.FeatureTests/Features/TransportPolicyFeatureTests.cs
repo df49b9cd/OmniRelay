@@ -28,27 +28,22 @@ public sealed class TransportPolicyFeatureTests : IAsyncLifetime
     }
 
     [Fact(Timeout = 120_000)]
-    public async Task MeshConfigValidate_WithJsonFormat_ReportsViolations()
+    public async Task MeshConfigValidate_WithJsonFormat_AllowsHttp2Diagnostics()
     {
         var result = await CliCommandRunner.RunAsync(
             $"mesh config validate --config {_configPath} --format json",
             TestContext.Current.CancellationToken);
 
-        result.ExitCode.ShouldBe(1);
+        result.ExitCode.ShouldBe(0);
         result.Stdout.ShouldNotBeNullOrWhiteSpace();
         using var document = JsonDocument.Parse(result.Stdout);
-        document.RootElement.GetProperty("hasViolations").GetBoolean().ShouldBeTrue();
+        document.RootElement.GetProperty("hasViolations").GetBoolean().ShouldBeFalse();
         var summary = document.RootElement.GetProperty("summary");
         summary.GetProperty("total").GetInt32().ShouldBeGreaterThan(0);
-        summary.GetProperty("violations").GetInt32().ShouldBeGreaterThan(0);
-        summary.GetProperty("violationRatio").GetDouble().ShouldBeGreaterThan(0);
+        summary.GetProperty("violations").GetInt32().ShouldBe(0);
+        summary.GetProperty("violationRatio").GetDouble().ShouldBe(0);
         document.RootElement.GetProperty("findings").EnumerateArray()
-            .ShouldContain(element => element.GetProperty("status").GetString() == "violatespolicy");
-        var firstFinding = document.RootElement.GetProperty("findings").EnumerateArray().First();
-        firstFinding.GetProperty("http3Enabled").GetBoolean().ShouldBeFalse();
-        var hint = firstFinding.GetProperty("hint").GetString();
-        hint.ShouldNotBeNull();
-        hint!.ShouldContain("enableHttp3", Case.Insensitive);
+            .ShouldAllBe(element => element.GetProperty("status").GetString() == "compliant");
     }
 
     [Fact(Timeout = 120_000)]

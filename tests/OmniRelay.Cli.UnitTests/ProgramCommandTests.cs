@@ -649,8 +649,9 @@ public sealed class ProgramCommandTests : CliTestBase
         {
             var harness = new CommandTestHarness(Program.BuildRootCommand());
             var result = await harness.InvokeAsync("mesh", "config", "validate", "--config", configPath);
-            result.ExitCode.ShouldBe(1);
-            result.StdErr.ShouldContain("policy violations", Case.Insensitive);
+            result.ExitCode.ShouldBe(0);
+            result.StdErr.ShouldBeNullOrEmpty();
+            result.StdOut.ShouldContain("Transport policy satisfied", Case.Insensitive);
         }
         finally
         {

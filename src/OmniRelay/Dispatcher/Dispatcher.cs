@@ -457,6 +457,9 @@ public sealed class Dispatcher
                     _status = DispatcherStatus.Stopped;
                 }
 
+                // Ensure any components that started before the failure are stopped.
+                await _lifecycleOrchestrator.StopAsync(cancellationToken).ConfigureAwait(false);
+
                 return startResult;
             }
 

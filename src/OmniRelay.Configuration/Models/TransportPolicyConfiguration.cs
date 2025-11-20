@@ -64,7 +64,8 @@ public sealed class TransportPolicyCategoryConfiguration
         Category = TransportPolicyCategories.Diagnostics,
         AllowedTransports =
         {
-            TransportPolicyTransports.Http3
+            TransportPolicyTransports.Http3,
+            TransportPolicyTransports.Http2
         },
         AllowedEncodings =
         {
@@ -73,7 +74,7 @@ public sealed class TransportPolicyCategoryConfiguration
         },
         PreferredTransport = TransportPolicyTransports.Http3,
         PreferredEncoding = TransportPolicyEncodings.Json,
-        RequirePreferredTransport = true,
+        RequirePreferredTransport = false,
         RequirePreferredEncoding = false,
         Description = "Diagnostics endpoints must expose HTTP/3 first-class responses with JSON defaults."
     };

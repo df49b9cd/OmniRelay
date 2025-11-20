@@ -20,6 +20,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Primitives;
+using OmniRelay.Core.Diagnostics;
+using OmniRelay.Core.Gossip;
 using OmniRelay.ControlPlane.Upgrade;
 using OmniRelay.Core;
 using OmniRelay.Core.Transport;
@@ -1224,13 +1226,14 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
         var provider = context.RequestServices.GetService<IPeerDiagnosticsProvider>();
         if (provider is null)
         {
-            context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
-            await context.Response.WriteAsync("peer diagnostics unavailable.", context.RequestAborted).ConfigureAwait(false);
-            return;
+            var agent = context.RequestServices.GetService<IMeshGossipAgent>();
+            provider = agent is null
+                ? NullPeerDiagnosticsProvider.Instance
+                : new MeshPeerDiagnosticsProvider(agent);
         }
 
         var snapshot = provider.CreateSnapshot();
-        var result = TypedResults.Json(snapshot, DiagnosticsJsonContext.Default.PeerDiagnosticsResponse);
+        var result = TypedResults.Json(snapshot, Diagnostics.DiagnosticsJsonContext.Default.PeerDiagnosticsResponse);
         await result.ExecuteAsync(context).ConfigureAwait(false);
     }
 
