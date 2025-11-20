@@ -140,7 +140,7 @@ internal sealed class ConfigCommandsModule : ICliModule
                     Directory.CreateDirectory(directory);
                 }
 
-                await using var stream = File.Open(outputPath, FileMode.Create, FileAccess.Write, FileShare.None);
+                using var stream = File.Open(outputPath, FileMode.Create, FileAccess.Write, FileShare.None);
                 WriteScaffold(stream, scaffoldOptions);
                 CliRuntime.Console.WriteLine($"Wrote configuration scaffold to '{outputPath}'.");
                 return 0;

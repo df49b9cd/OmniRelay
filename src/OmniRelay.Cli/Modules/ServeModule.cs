@@ -1,14 +1,27 @@
 using System.CommandLine;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 
 namespace OmniRelay.Cli.Modules;
 
 /// <summary>Serve command wiring kept explicit for NativeAOT friendliness.</summary>
 internal static partial class ProgramServeModule
 {
+    [UnconditionalSuppressMessage("AOT", "IL3050", Justification = "Returns an AOT-safe fallback command when dynamic code is unavailable.")]
+    [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Returns an AOT-safe fallback command when trimming removes reflective binding support.")]
+    internal static Command CreateServeCommand()
+    {
+        if (!RuntimeFeature.IsDynamicCodeSupported)
+        {
+            return CreateServeCommandUnavailable();
+        }
+
+        return CreateServeCommandDynamic();
+    }
+
     [RequiresUnreferencedCode("OmniRelay dispatcher bootstrapping uses reflection and dynamic configuration; it is not trimming/AOT safe.")]
     [RequiresDynamicCode("OmniRelay dispatcher bootstrapping uses reflection and dynamic configuration; it is not trimming/AOT safe.")]
-    internal static Command CreateServeCommand()
+    private static Command CreateServeCommandDynamic()
     {
         var command = new Command("serve", "Run an OmniRelay dispatcher using configuration files.");
 
@@ -75,58 +88,78 @@ internal static partial class ProgramServeModule
                 return 1;
             }
 
-            await using var host = CliRuntime.ServeHostFactory.CreateHost(configuration, section);
-            try
-            {
-                await host.StartAsync(CancellationToken.None).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                CliRuntime.Console.WriteError($"Failed to start dispatcher: {ex.Message}");
-                return 1;
-            }
-
-            if (!string.IsNullOrWhiteSpace(readyFile))
-            {
-                Program.TryWriteReadyFile(readyFile!);
-            }
-
-            using var shutdownCts = new CancellationTokenSource();
-            ConsoleCancelEventHandler? handler = null;
-            handler = (_, args) =>
-            {
-                shutdownCts.Cancel();
-                args.Cancel = true;
-            };
-            Console.CancelKeyPress += handler;
-
+            var host = CliRuntime.ServeHostFactory.CreateHost(configuration, section);
             try
             {
                 try
                 {
-                    await WaitForShutdownAsync(shutdownAfter, shutdownCts.Token).ConfigureAwait(false);
+                    await host.StartAsync(CancellationToken.None).ConfigureAwait(false);
                 }
-                catch (OperationCanceledException)
+                catch (Exception ex)
                 {
-                    // Graceful shutdown triggered by Ctrl+C or cancellation token.
+                    CliRuntime.Console.WriteError($"Failed to start dispatcher: {ex.Message}");
+                    return 1;
                 }
+
+                if (!string.IsNullOrWhiteSpace(readyFile))
+                {
+                    Program.TryWriteReadyFile(readyFile!);
+                }
+
+                using var shutdownCts = new CancellationTokenSource();
+                ConsoleCancelEventHandler? handler = null;
+                handler = (_, args) =>
+                {
+                    shutdownCts.Cancel();
+                    args.Cancel = true;
+                };
+                Console.CancelKeyPress += handler;
+
+                try
+                {
+                    try
+                    {
+                        await WaitForShutdownAsync(shutdownAfter, shutdownCts.Token).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // Graceful shutdown triggered by Ctrl+C or cancellation token.
+                    }
+                }
+                finally
+                {
+                    Console.CancelKeyPress -= handler;
+                }
+
+                try
+                {
+                    await host.StopAsync(CancellationToken.None).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    CliRuntime.Console.WriteError($"Failed to stop dispatcher: {ex.Message}");
+                    return 1;
+                }
+
+                return 0;
             }
             finally
             {
-                Console.CancelKeyPress -= handler;
+                await host.DisposeAsync().ConfigureAwait(false);
             }
+        });
 
-            try
-            {
-                await host.StopAsync(CancellationToken.None).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                CliRuntime.Console.WriteError($"Failed to stop dispatcher: {ex.Message}");
-                return 1;
-            }
+        return command;
+    }
 
-            return 0;
+    private static Command CreateServeCommandUnavailable()
+    {
+        var command = new Command("serve", "Run an OmniRelay dispatcher using configuration files.");
+
+        command.SetAction(_ =>
+        {
+            CliRuntime.Console.WriteError("The serve command is disabled in Native AOT builds because dispatcher bootstrapping relies on reflection-heavy configuration binding.");
+            return 1;
         });
 
         return command;

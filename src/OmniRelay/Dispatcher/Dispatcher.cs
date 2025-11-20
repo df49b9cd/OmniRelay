@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using Hugo;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -38,6 +39,12 @@ public sealed class Dispatcher
     private readonly GrpcClientInterceptorRegistry? _grpcClientInterceptorRegistry;
     private readonly GrpcServerInterceptorRegistry? _grpcServerInterceptorRegistry;
     private readonly LifecycleOrchestrator _lifecycleOrchestrator;
+    // Cache composed inbound pipelines so per-request dispatch stays allocation-free.
+    private readonly ConcurrentDictionary<UnaryProcedureSpec, UnaryInboundHandler> _unaryPipelines = new(ReferenceEqualityComparer.Instance);
+    private readonly ConcurrentDictionary<OnewayProcedureSpec, OnewayInboundHandler> _onewayPipelines = new(ReferenceEqualityComparer.Instance);
+    private readonly ConcurrentDictionary<StreamProcedureSpec, StreamInboundHandler> _streamPipelines = new(ReferenceEqualityComparer.Instance);
+    private readonly ConcurrentDictionary<ClientStreamProcedureSpec, ClientStreamInboundHandler> _clientStreamPipelines = new(ReferenceEqualityComparer.Instance);
+    private readonly ConcurrentDictionary<DuplexProcedureSpec, DuplexInboundHandler> _duplexPipelines = new(ReferenceEqualityComparer.Instance);
 
     /// <summary>
     /// Creates a dispatcher for a specific service using the provided options.
@@ -274,9 +281,7 @@ public sealed class Dispatcher
                 procedure,
                 ProcedureKind.Unary,
                 transport)
-            .Map(spec => MiddlewareComposer.ComposeUnaryInbound(
-                CombineMiddleware(_inboundUnaryMiddleware, spec.Middleware),
-                spec.Handler))
+            .Map(GetUnaryPipeline)
             .ThenValueTaskAsync((pipeline, token) => pipeline(request, token), cancellationToken);
     }
 
@@ -294,9 +299,7 @@ public sealed class Dispatcher
                 procedure,
                 ProcedureKind.Oneway,
                 transport)
-            .Map(spec => MiddlewareComposer.ComposeOnewayInbound(
-                CombineMiddleware(_inboundOnewayMiddleware, spec.Middleware),
-                spec.Handler))
+            .Map(GetOnewayPipeline)
             .ThenValueTaskAsync((pipeline, token) => pipeline(request, token), cancellationToken);
     }
 
@@ -364,9 +367,7 @@ public sealed class Dispatcher
                 ProcedureKind.Stream,
                 transport,
                 $"Stream procedure '{procedure}' is not registered for service '{ServiceName}'.")
-            .Map(spec => MiddlewareComposer.ComposeStreamInbound(
-                CombineMiddleware(_inboundStreamMiddleware, spec.Middleware),
-                spec.Handler))
+            .Map(GetStreamPipeline)
             .ThenValueTaskAsync((pipeline, token) => pipeline(request, options, token), cancellationToken);
     }
 
@@ -392,9 +393,7 @@ public sealed class Dispatcher
                 ProcedureKind.Duplex,
                 transport,
                 $"Duplex stream procedure '{procedure}' is not registered for service '{ServiceName}'.")
-            .Map(spec => MiddlewareComposer.ComposeDuplexInbound(
-                CombineMiddleware(_inboundDuplexMiddleware, spec.Middleware),
-                spec.Handler))
+            .Map(GetDuplexPipeline)
             .ThenValueTaskAsync((pipeline, token) => pipeline(request, token), cancellationToken);
     }
 
@@ -426,8 +425,7 @@ public sealed class Dispatcher
             {
                 var call = ClientStreamCall.Create(requestMeta);
                 var context = new ClientStreamRequestContext(call.RequestMeta, call.Reader);
-                var middleware = CombineMiddleware(_inboundClientStreamMiddleware, spec.Middleware);
-                var pipeline = MiddlewareComposer.ComposeClientStreamInbound(middleware, spec.Handler);
+                var pipeline = GetClientStreamPipeline(spec);
 
                 _ = ProcessClientStreamAsync(call, context, pipeline, cancellationToken);
                 return call;
@@ -845,6 +843,41 @@ public sealed class Dispatcher
             }
         }
     }
+
+    private UnaryInboundHandler GetUnaryPipeline(UnaryProcedureSpec spec) =>
+        _unaryPipelines.GetOrAdd(spec, static (procedure, dispatcher) =>
+        {
+            var middleware = CombineMiddleware(dispatcher._inboundUnaryMiddleware, procedure.Middleware);
+            return MiddlewareComposer.ComposeUnaryInbound(middleware, procedure.Handler);
+        }, this);
+
+    private OnewayInboundHandler GetOnewayPipeline(OnewayProcedureSpec spec) =>
+        _onewayPipelines.GetOrAdd(spec, static (procedure, dispatcher) =>
+        {
+            var middleware = CombineMiddleware(dispatcher._inboundOnewayMiddleware, procedure.Middleware);
+            return MiddlewareComposer.ComposeOnewayInbound(middleware, procedure.Handler);
+        }, this);
+
+    private StreamInboundHandler GetStreamPipeline(StreamProcedureSpec spec) =>
+        _streamPipelines.GetOrAdd(spec, static (procedure, dispatcher) =>
+        {
+            var middleware = CombineMiddleware(dispatcher._inboundStreamMiddleware, procedure.Middleware);
+            return MiddlewareComposer.ComposeStreamInbound(middleware, procedure.Handler);
+        }, this);
+
+    private ClientStreamInboundHandler GetClientStreamPipeline(ClientStreamProcedureSpec spec) =>
+        _clientStreamPipelines.GetOrAdd(spec, static (procedure, dispatcher) =>
+        {
+            var middleware = CombineMiddleware(dispatcher._inboundClientStreamMiddleware, procedure.Middleware);
+            return MiddlewareComposer.ComposeClientStreamInbound(middleware, procedure.Handler);
+        }, this);
+
+    private DuplexInboundHandler GetDuplexPipeline(DuplexProcedureSpec spec) =>
+        _duplexPipelines.GetOrAdd(spec, static (procedure, dispatcher) =>
+        {
+            var middleware = CombineMiddleware(dispatcher._inboundDuplexMiddleware, procedure.Middleware);
+            return MiddlewareComposer.ComposeDuplexInbound(middleware, procedure.Handler);
+        }, this);
 
     private static IReadOnlyList<TMiddleware> CombineMiddleware<TMiddleware>(
         ImmutableArray<TMiddleware> global,

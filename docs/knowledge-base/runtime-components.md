@@ -4,6 +4,7 @@
 - **Transports**: `Transport.Http` and `Transport.Grpc` expose unary, oneway, and streaming RPC shapes. HTTP inbound also serves `/omnirelay/introspect`, `/healthz`, `/readyz`.
 - **Codecs**: JSON (`JsonCodec`), Protobuf, and raw codecs plug into dispatcher registrations; custom codecs implement encode/decode helpers returning `Result<T>`.
 - **Middleware**: Logging, tracing (`RpcTracingMiddleware`), metrics, retry/deadline enforcement, panic recovery, rate limiting, chaos toggles, and peer circuit breakers all live under `Core/Middleware` and can be applied globally or per procedure.
+- **Hot-path dispatch**: Inbound pipelines are now composed and cached per procedure at registration time to keep per-request dispatch allocation-free and Native AOT friendly (aligns with `dotnet-performance-guidelines.md` R14).
 - **Peer & routing**: Choosers (round-robin, fewest-pending, two-random-choice), peer list watchers, and sharding helpers (resource lease components, hashing strategies) sit under `Core/Peers` and `Core/Shards`.
 - **ResourceLease mesh**: `ResourceLease*` contracts plus replicators (gRPC, SQLite, object storage) coordinate SafeTaskQueue workflows, failure drills, and deterministic recovery.
 
@@ -17,3 +18,4 @@
 
 ## CLI helpers
 - `OmniRelay.Cli` hosts config validation (`omnirelay config validate`), dispatcher introspection, benchmarking, scripting, node upgrade/drain flows, and the new `mesh shards *` commands feeding into shard diagnostics.
+- `omnirelay serve` now checks `RuntimeFeature.IsDynamicCodeSupported` and emits a clear error in Native AOT builds instead of invoking reflection-heavy bootstrap paths.

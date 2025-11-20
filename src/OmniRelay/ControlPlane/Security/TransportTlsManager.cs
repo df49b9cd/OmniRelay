@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using System.Runtime.InteropServices;
 using Hugo;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Primitives;
@@ -303,6 +304,14 @@ public sealed class TransportTlsManager : IDisposable
         if (memory.IsEmpty)
         {
             throw new InvalidOperationException("transport TLS certificate secret had no payload.");
+        }
+
+        if (MemoryMarshal.TryGetArray(memory, out var segment) &&
+            segment.Array is { } array &&
+            segment.Offset == 0 &&
+            segment.Count == array.Length)
+        {
+            return array;
         }
 
         return memory.ToArray();

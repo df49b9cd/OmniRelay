@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -109,8 +110,19 @@ public sealed partial class FileSystemDeterministicStateStore : IDeterministicSt
     {
         public DeterministicRecord ToRecord() => new(Kind, Version, Payload, RecordedAt);
 
-        public static RecordModel FromRecord(DeterministicRecord record) =>
-            new(record.Kind, record.Version, record.RecordedAt, record.Payload.ToArray());
+        public static RecordModel FromRecord(DeterministicRecord record)
+        {
+            var payload = record.Payload;
+            if (MemoryMarshal.TryGetArray(payload, out var segment) &&
+                segment.Array is { } array &&
+                segment.Offset == 0 &&
+                segment.Count == array.Length)
+            {
+                return new RecordModel(record.Kind, record.Version, record.RecordedAt, array);
+            }
+
+            return new RecordModel(record.Kind, record.Version, record.RecordedAt, payload.ToArray());
+        }
     }
 
     [JsonSourceGenerationOptions(JsonSerializerDefaults.Web)]
