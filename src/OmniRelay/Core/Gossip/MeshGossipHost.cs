@@ -43,6 +43,7 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
     private CancellationTokenSource? _cts;
     private Task? _gossipLoop;
     private Task? _sweepLoop;
+    private Task? _shuffleLoop;
     private long _sequence;
     private bool _disposed;
     private static readonly Action<ILogger, string, int, int, Exception?> GossipListeningLog =
@@ -121,6 +122,7 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
         _serverTask = _app.RunAsync(token);
         _gossipLoop = RunGossipLoopAsync(token);
         _sweepLoop = RunSweepLoopAsync(token);
+        _shuffleLoop = RunShuffleLoopAsync(token);
 
         GossipListeningLog(_logger, _options.BindAddress, _options.Port, _options.Fanout, null);
     }
@@ -151,6 +153,17 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
             if (_sweepLoop is not null)
             {
                 await _sweepLoop.ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException) when (_cts.IsCancellationRequested)
+        {
+            // Expected when CTS is cancelled during shutdown
+        }
+        try
+        {
+            if (_shuffleLoop is not null)
+            {
+                await _shuffleLoop.ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (_cts.IsCancellationRequested)
@@ -258,6 +271,33 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
                 return;
             }
 
+            if (context.Request.Path == "/mesh/gossip/v1/shuffle" && HttpMethods.IsPost(context.Request.Method))
+            {
+                var request = await context.Request.ReadFromJsonAsync(
+                        MeshGossipJsonSerializerContext.Default.MeshGossipShuffleEnvelope,
+                        context.RequestAborted)
+                    .ConfigureAwait(false);
+
+                if (request is null)
+                {
+                    context.Response.StatusCode = StatusCodes.Status400BadRequest;
+                    await context.Response.WriteAsync("{\"error\":\"Request body required.\"}", context.RequestAborted)
+                        .ConfigureAwait(false);
+                    return;
+                }
+
+                var response = HandleShuffle(request);
+
+                context.Response.ContentType = "application/json";
+                await JsonSerializer.SerializeAsync(
+                        context.Response.Body,
+                        response,
+                        MeshGossipJsonSerializerContext.Default.MeshGossipShuffleEnvelope,
+                        context.RequestAborted)
+                    .ConfigureAwait(false);
+                return;
+            }
+
             await next().ConfigureAwait(false);
         });
 
@@ -355,11 +395,13 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
 
         var snapshot = _membership.Snapshot();
         var alivePeers = snapshot.Members
-            .Where(static member => member.Status == MeshGossipMemberStatus.Alive)
+            .Where(member => member.Status == MeshGossipMemberStatus.Alive && !string.Equals(member.NodeId, snapshot.LocalNodeId, StringComparison.Ordinal))
             .Select(member => ParseEndpoint(member.Metadata.Endpoint))
             .OfType<MeshGossipPeerEndpoint>();
 
         _peerView.Update(alivePeers, _seedPeers, _options.ActiveViewSize, _options.PassiveViewSize);
+        var viewSizes = _peerView.SnapshotCounts();
+        MeshGossipMetrics.RecordViewSizes(viewSizes.Active, viewSizes.Passive);
 
         var dynamicFanout = ComputeFanout(snapshot, _options);
         var targets = _peerView.SelectTargets(dynamicFanout, _options.MaxOutboundPerRound);
@@ -368,6 +410,10 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
         {
             return;
         }
+
+        var distinctTargets = targets.Distinct().Count();
+        var duplicates = targets.Count - distinctTargets;
+        MeshGossipMetrics.RecordFanout(dynamicFanout, targets.Count, duplicates);
 
         foreach (var target in targets)
         {
@@ -452,6 +498,56 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
                 MeshGossipHostLog.GossipSweepFailed(_logger, ex);
             }
 #pragma warning restore CA1031
+        }
+    }
+
+    private async Task RunShuffleLoopAsync(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(_options.ShuffleInterval, cancellationToken).ConfigureAwait(false);
+
+                var target = _peerView.SelectShuffleTarget();
+                if (target is null || _httpClient is null)
+                {
+                    continue;
+                }
+
+                var payload = _peerView.Sample(_options.ShuffleSampleSize);
+                if (payload.Count == 0)
+                {
+                    continue;
+                }
+
+                var envelope = new MeshGossipShuffleEnvelope(GetLocalEndpoint(), payload.Select(static p => p.ToString()).ToArray());
+                using var request = new HttpRequestMessage(HttpMethod.Post, target.Value.BuildShuffleUri());
+                request.Content = JsonContent.Create(envelope, MeshGossipJsonSerializerContext.Default.MeshGossipShuffleEnvelope);
+                var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+                response.EnsureSuccessStatusCode();
+
+                var responseEnvelope = await response.Content.ReadFromJsonAsync(
+                    MeshGossipJsonSerializerContext.Default.MeshGossipShuffleEnvelope,
+                    cancellationToken).ConfigureAwait(false);
+
+                if (responseEnvelope is not null)
+                {
+                    var inbound = responseEnvelope.Endpoints
+                        .Select(endpoint => MeshGossipPeerEndpoint.TryParse(endpoint, out var parsed) ? parsed : (MeshGossipPeerEndpoint?)null)
+                        .Where(static endpoint => endpoint is not null)
+                        .Select(static endpoint => endpoint!.Value);
+                    _peerView.MergeShuffle(inbound, _options.PassiveViewSize);
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception)
+            {
+                // Shuffle is best-effort; continue on errors.
+            }
         }
     }
 
@@ -628,6 +724,21 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
         return metadata with { Endpoint = $"{host}:{port}" };
     }
 
+    private MeshGossipShuffleEnvelope HandleShuffle(MeshGossipShuffleEnvelope request)
+    {
+        var inbound = request.Endpoints
+            .Select(endpoint => MeshGossipPeerEndpoint.TryParse(endpoint, out var parsed) ? parsed : (MeshGossipPeerEndpoint?)null)
+            .Where(static endpoint => endpoint is not null)
+            .Select(static endpoint => endpoint!.Value);
+
+        _peerView.MergeShuffle(inbound, _options.PassiveViewSize);
+
+        var sample = _peerView.Sample(_options.ShuffleSampleSize);
+        var responder = GetLocalEndpoint();
+
+        return new MeshGossipShuffleEnvelope(responder, sample.Select(static p => p.ToString()).ToArray());
+    }
+
     private static int ComputeFanout(MeshGossipClusterView snapshot, MeshGossipOptions options)
     {
         if (!options.AdaptiveFanout)
@@ -676,6 +787,16 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
         if (options.MaxOutboundPerRound <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(options), "mesh:gossip:maxOutboundPerRound must be greater than zero.");
+        }
+
+        if (options.ShuffleInterval <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(options), "mesh:gossip:shuffleInterval must be positive.");
+        }
+
+        if (options.ShuffleSampleSize <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(options), "mesh:gossip:shuffleSampleSize must be greater than zero.");
         }
     }
 
@@ -744,6 +865,67 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
             }
         }
 
+        public MeshGossipPeerEndpoint? SelectShuffleTarget()
+        {
+            lock (_lock)
+            {
+                if (_active.Count == 0 && _passive.Count == 0)
+                {
+                    return null;
+                }
+
+                if (_active.Count == 0)
+                {
+                    Shuffle(_passive);
+                    return _passive[0];
+                }
+
+                Shuffle(_active);
+                return _active[0];
+            }
+        }
+
+        public List<MeshGossipPeerEndpoint> Sample(int count)
+        {
+            lock (_lock)
+            {
+                var sample = new List<MeshGossipPeerEndpoint>(Math.Min(count, _active.Count + _passive.Count));
+                AddRandom(_active, sample, count);
+                if (sample.Count < count)
+                {
+                    AddRandom(_passive, sample, count - sample.Count);
+                }
+
+                return sample;
+            }
+        }
+
+        public void MergeShuffle(IEnumerable<MeshGossipPeerEndpoint> inbound, int passiveSize)
+        {
+            lock (_lock)
+            {
+                foreach (var endpoint in inbound)
+                {
+                    if (_active.Contains(endpoint) || _passive.Contains(endpoint))
+                    {
+                        continue;
+                    }
+
+                    _passive.Add(endpoint);
+                }
+
+                TrimRandom(_passive, passiveSize);
+            }
+        }
+
+        public (int Active, int Passive) SnapshotCounts()
+        {
+            lock (_lock)
+            {
+                return (_active.Count, _passive.Count);
+            }
+        }
+
         private void PromotePassiveToActive(int activeSize)
         {
             var needed = Math.Max(0, activeSize - _active.Count);
@@ -802,6 +984,19 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
         return MeshGossipPeerEndpoint.TryParse(endpoint ?? string.Empty, out var parsed)
             ? parsed
             : null;
+    }
+
+    private string GetLocalEndpoint()
+    {
+        var local = _membership.LocalMetadata.Endpoint;
+        if (!string.IsNullOrWhiteSpace(local))
+        {
+            return local!;
+        }
+
+        var host = string.IsNullOrWhiteSpace(_options.AdvertiseHost) ? Dns.GetHostName() : _options.AdvertiseHost!;
+        var port = _options.AdvertisePort ?? _options.Port;
+        return $"{host}:{port}";
     }
 
     private void PublishMembershipEvent(string reason, MeshGossipMemberSnapshot? changedMember = null)

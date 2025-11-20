@@ -76,6 +76,12 @@ public sealed class MeshGossipOptions
     /// <summary>Passive partial view size (standby neighbors used for healing).</summary>
     public int PassiveViewSize { get; set; } = 48;
 
+    /// <summary>How often to perform passive-view shuffles.</summary>
+    public TimeSpan ShuffleInterval { get; set; } = TimeSpan.FromSeconds(10);
+
+    /// <summary>Number of peers exchanged during a shuffle.</summary>
+    public int ShuffleSampleSize { get; set; } = 6;
+
     /// <summary>Duration without heartbeats before a peer becomes suspect.</summary>
     public TimeSpan SuspicionInterval { get; set; } = TimeSpan.FromSeconds(5);
 

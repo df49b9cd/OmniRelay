@@ -28,6 +28,10 @@ public readonly record struct MeshGossipPeerEndpoint(string Host, int Port)
     public Uri BuildRequestUri() =>
         new UriBuilder(Uri.UriSchemeHttps, Host, Port, "/mesh/gossip/v1/messages").Uri;
 
+    /// <summary>Builds the HTTPS URI used for shuffle exchanges.</summary>
+    public Uri BuildShuffleUri() =>
+        new UriBuilder(Uri.UriSchemeHttps, Host, Port, "/mesh/gossip/v1/shuffle").Uri;
+
     public override string ToString() => $"{Host}:{Port}";
 
     private static bool TryParseAbsoluteUri(string value, out MeshGossipPeerEndpoint endpoint)

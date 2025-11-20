@@ -82,6 +82,8 @@ public static class MeshGossipServiceCollectionExtensions
         options.MaxOutboundPerRound = ReadInt(configuration, nameof(MeshGossipOptions.MaxOutboundPerRound)) ?? options.MaxOutboundPerRound;
         options.ActiveViewSize = ReadInt(configuration, nameof(MeshGossipOptions.ActiveViewSize)) ?? options.ActiveViewSize;
         options.PassiveViewSize = ReadInt(configuration, nameof(MeshGossipOptions.PassiveViewSize)) ?? options.PassiveViewSize;
+        options.ShuffleInterval = ReadTimeSpan(configuration, nameof(MeshGossipOptions.ShuffleInterval)) ?? options.ShuffleInterval;
+        options.ShuffleSampleSize = ReadInt(configuration, nameof(MeshGossipOptions.ShuffleSampleSize)) ?? options.ShuffleSampleSize;
         options.SuspicionInterval = ReadTimeSpan(configuration, nameof(MeshGossipOptions.SuspicionInterval)) ?? options.SuspicionInterval;
         options.PingTimeout = ReadTimeSpan(configuration, nameof(MeshGossipOptions.PingTimeout)) ?? options.PingTimeout;
         options.RetransmitLimit = ReadInt(configuration, nameof(MeshGossipOptions.RetransmitLimit)) ?? options.RetransmitLimit;
