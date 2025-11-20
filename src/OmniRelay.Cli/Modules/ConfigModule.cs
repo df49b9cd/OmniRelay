@@ -1,6 +1,7 @@
 #pragma warning disable IDE0005
 using System.CommandLine;
 using System.Text.Json;
+using Microsoft.Extensions.Configuration;
 using OmniRelay.Cli.Core;
 
 namespace OmniRelay.Cli.Modules;
@@ -57,13 +58,23 @@ internal sealed class ConfigCommandsModule : ICliModule
                 return 1;
             }
 
-            if (configuration.GetSection(section) is null)
+            var sectionRoot = configuration.GetSection(section);
+            if (!sectionRoot.Exists())
             {
                 CliRuntime.Console.WriteError($"Section '{section}' not found in configuration.");
                 return 1;
             }
 
-            CliRuntime.Console.WriteLine("Configuration is valid.");
+            var serviceName = sectionRoot.GetValue<string>("service");
+            if (string.IsNullOrWhiteSpace(serviceName))
+            {
+                CliRuntime.Console.WriteLine($"Configuration valid for section '{section}'.");
+            }
+            else
+            {
+                CliRuntime.Console.WriteLine($"Configuration valid for service '{serviceName}' in section '{section}'.");
+            }
+
             return 0;
         });
 
