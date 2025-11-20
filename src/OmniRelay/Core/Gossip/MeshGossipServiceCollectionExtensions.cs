@@ -75,6 +75,13 @@ public static class MeshGossipServiceCollectionExtensions
         options.AdvertisePort = ReadInt(configuration, nameof(MeshGossipOptions.AdvertisePort)) ?? options.AdvertisePort;
         options.Interval = ReadTimeSpan(configuration, nameof(MeshGossipOptions.Interval)) ?? options.Interval;
         options.Fanout = ReadInt(configuration, nameof(MeshGossipOptions.Fanout)) ?? options.Fanout;
+        options.FanoutCeiling = ReadInt(configuration, nameof(MeshGossipOptions.FanoutCeiling)) ?? options.FanoutCeiling;
+        options.FanoutFloor = ReadInt(configuration, nameof(MeshGossipOptions.FanoutFloor)) ?? options.FanoutFloor;
+        options.FanoutCoefficient = ReadDouble(configuration, nameof(MeshGossipOptions.FanoutCoefficient)) ?? options.FanoutCoefficient;
+        options.AdaptiveFanout = ReadBool(configuration, nameof(MeshGossipOptions.AdaptiveFanout)) ?? options.AdaptiveFanout;
+        options.MaxOutboundPerRound = ReadInt(configuration, nameof(MeshGossipOptions.MaxOutboundPerRound)) ?? options.MaxOutboundPerRound;
+        options.ActiveViewSize = ReadInt(configuration, nameof(MeshGossipOptions.ActiveViewSize)) ?? options.ActiveViewSize;
+        options.PassiveViewSize = ReadInt(configuration, nameof(MeshGossipOptions.PassiveViewSize)) ?? options.PassiveViewSize;
         options.SuspicionInterval = ReadTimeSpan(configuration, nameof(MeshGossipOptions.SuspicionInterval)) ?? options.SuspicionInterval;
         options.PingTimeout = ReadTimeSpan(configuration, nameof(MeshGossipOptions.PingTimeout)) ?? options.PingTimeout;
         options.RetransmitLimit = ReadInt(configuration, nameof(MeshGossipOptions.RetransmitLimit)) ?? options.RetransmitLimit;
@@ -134,6 +141,12 @@ public static class MeshGossipServiceCollectionExtensions
     {
         var value = configuration[key];
         return int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) ? parsed : null;
+    }
+
+    private static double? ReadDouble(IConfiguration configuration, string key)
+    {
+        var value = configuration[key];
+        return double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) ? parsed : null;
     }
 
     private static TimeSpan? ReadTimeSpan(IConfiguration configuration, string key)

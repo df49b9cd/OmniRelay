@@ -35,6 +35,7 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
     private readonly TransportTlsManager _tlsManager;
     private readonly List<MeshGossipPeerEndpoint> _seedPeers;
     private readonly PeerLeaseHealthTracker? _leaseHealthTracker;
+    private readonly MeshGossipPeerView _peerView = new();
     private readonly ConcurrentDictionary<string, MeshGossipMemberStatus> _peerStatuses = new(StringComparer.Ordinal);
     private HttpClient? _httpClient;
     private WebApplication? _app;
@@ -353,37 +354,20 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
         var membershipChanged = false;
 
         var snapshot = _membership.Snapshot();
-        var members = _membership.PickFanout(_options.Fanout);
+        var alivePeers = snapshot.Members
+            .Where(static member => member.Status == MeshGossipMemberStatus.Alive)
+            .Select(member => ParseEndpoint(member.Metadata.Endpoint))
+            .OfType<MeshGossipPeerEndpoint>();
 
-        // Start with members selected from the fanout list.
-        var targetSet = new HashSet<MeshGossipPeerEndpoint>();
-        foreach (var endpoint in members
-                     .Select(member => ParseEndpoint(member.Metadata.Endpoint))
-                     .OfType<MeshGossipPeerEndpoint>())
-        {
-            targetSet.Add(endpoint);
-        }
+        _peerView.Update(alivePeers, _seedPeers, _options.ActiveViewSize, _options.PassiveViewSize);
 
-        // Prioritize seed peers not yet targeted to avoid starvation when some peers are missing.
-        if (_seedPeers.Count > 0 && targetSet.Count < _options.Fanout)
-        {
-            foreach (var seed in _seedPeers)
-            {
-                if (targetSet.Count >= _options.Fanout)
-                {
-                    break;
-                }
+        var dynamicFanout = ComputeFanout(snapshot, _options);
+        var targets = _peerView.SelectTargets(dynamicFanout, _options.MaxOutboundPerRound);
 
-                targetSet.Add(seed);
-            }
-        }
-
-        if (targetSet.Count == 0)
+        if (targets.Count == 0)
         {
             return;
         }
-
-        var targets = targetSet.ToList();
 
         foreach (var target in targets)
         {
@@ -644,6 +628,29 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
         return metadata with { Endpoint = $"{host}:{port}" };
     }
 
+    private static int ComputeFanout(MeshGossipClusterView snapshot, MeshGossipOptions options)
+    {
+        if (!options.AdaptiveFanout)
+        {
+            return Math.Max(1, options.Fanout);
+        }
+
+        var size = Math.Max(2, snapshot.Members.Length);
+        var baseFanout = (int)Math.Ceiling(options.FanoutCoefficient * Math.Log(size, 2));
+        baseFanout = Math.Clamp(baseFanout, Math.Max(1, options.FanoutFloor), Math.Max(options.FanoutFloor, options.FanoutCeiling));
+
+        var suspect = snapshot.Members.Count(m => m.Status == MeshGossipMemberStatus.Suspect);
+        var left = snapshot.Members.Count(m => m.Status == MeshGossipMemberStatus.Left);
+        var total = Math.Max(1, snapshot.Members.Length);
+        var failureRate = (double)(suspect + left) / total;
+
+        var boosted = (int)Math.Ceiling(baseFanout * (1.0 + failureRate));
+        boosted = Math.Min(boosted, options.FanoutCeiling);
+        boosted = Math.Min(boosted, options.ActiveViewSize);
+
+        return Math.Max(1, boosted);
+    }
+
     private static void ValidateOptions(MeshGossipOptions options)
     {
         if (options.Port <= 0 || options.Port > IPEndPoint.MaxPort)
@@ -659,6 +666,134 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
         if (options.Interval <= TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(nameof(options), "mesh:gossip:interval must be positive.");
+        }
+
+        if (options.ActiveViewSize <= 0 || options.PassiveViewSize <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(options), "mesh:gossip:view sizes must be greater than zero.");
+        }
+
+        if (options.MaxOutboundPerRound <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(options), "mesh:gossip:maxOutboundPerRound must be greater than zero.");
+        }
+    }
+
+    private sealed class MeshGossipPeerView
+    {
+        private readonly object _lock = new();
+        private readonly List<MeshGossipPeerEndpoint> _active = new();
+        private readonly List<MeshGossipPeerEndpoint> _passive = new();
+
+        public void Update(IEnumerable<MeshGossipPeerEndpoint> alive, IReadOnlyList<MeshGossipPeerEndpoint> seeds, int activeSize, int passiveSize)
+        {
+            lock (_lock)
+            {
+                var aliveSet = new HashSet<MeshGossipPeerEndpoint>(alive);
+
+                // Drop peers that disappeared
+                _active.RemoveAll(endpoint => !aliveSet.Contains(endpoint));
+                _passive.RemoveAll(endpoint => !aliveSet.Contains(endpoint) && !seeds.Contains(endpoint));
+
+                // Add new peers into passive view first
+                foreach (var endpoint in aliveSet)
+                {
+                    if (!_active.Contains(endpoint) && !_passive.Contains(endpoint))
+                    {
+                        _passive.Add(endpoint);
+                    }
+                }
+
+                // Ensure seeds are present at least in passive
+                foreach (var seed in seeds)
+                {
+                    if (!_active.Contains(seed) && !_passive.Contains(seed))
+                    {
+                        _passive.Add(seed);
+                    }
+                }
+
+                // Move random peers from passive into active until target size reached
+                PromotePassiveToActive(activeSize);
+
+                // Trim active/passive to configured limits
+                TrimRandom(_active, activeSize);
+                TrimRandom(_passive, passiveSize);
+            }
+        }
+
+        public List<MeshGossipPeerEndpoint> SelectTargets(int fanout, int maxOutbound)
+        {
+            var limit = Math.Max(1, Math.Min(fanout, maxOutbound > 0 ? maxOutbound : fanout));
+
+            lock (_lock)
+            {
+                if (_active.Count == 0 && _passive.Count > 0)
+                {
+                    PromotePassiveToActive(limit);
+                }
+
+                var targets = new List<MeshGossipPeerEndpoint>(Math.Min(limit, _active.Count + _passive.Count));
+                AddRandom(_active, targets, limit);
+                if (targets.Count < limit)
+                {
+                    AddRandom(_passive, targets, limit - targets.Count);
+                }
+
+                return targets;
+            }
+        }
+
+        private void PromotePassiveToActive(int activeSize)
+        {
+            var needed = Math.Max(0, activeSize - _active.Count);
+            if (needed == 0 || _passive.Count == 0)
+            {
+                return;
+            }
+
+            AddRandom(_passive, _active, needed, removeFromSource: true);
+        }
+
+        private static void TrimRandom(List<MeshGossipPeerEndpoint> list, int maxSize)
+        {
+            if (list.Count <= maxSize)
+            {
+                return;
+            }
+
+            // Shuffle subset then trim tail for fairness
+            Shuffle(list);
+            list.RemoveRange(maxSize, list.Count - maxSize);
+        }
+
+        private static void AddRandom(List<MeshGossipPeerEndpoint> source, List<MeshGossipPeerEndpoint> destination, int count, bool removeFromSource = false)
+        {
+            if (count <= 0 || source.Count == 0)
+            {
+                return;
+            }
+
+            Shuffle(source);
+            var take = Math.Min(count, source.Count);
+            for (var i = 0; i < take; i++)
+            {
+                destination.Add(source[i]);
+            }
+
+            if (removeFromSource)
+            {
+                source.RemoveRange(0, take);
+            }
+        }
+
+        private static void Shuffle(List<MeshGossipPeerEndpoint> list)
+        {
+            for (var i = list.Count - 1; i > 0; i--)
+            {
+                var j = Random.Shared.Next(i + 1);
+                (list[i], list[j]) = (list[j], list[i]);
+            }
         }
     }
 
