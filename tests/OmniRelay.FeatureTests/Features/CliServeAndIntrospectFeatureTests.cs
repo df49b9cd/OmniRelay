@@ -1,4 +1,12 @@
+using System.Collections.Immutable;
+using System.Globalization;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using OmniRelay.FeatureTests.Fixtures;
+using OmniRelay.Dispatcher;
 using OmniRelay.Tests;
 using Xunit;
 
@@ -22,17 +30,16 @@ public sealed class CliServeAndIntrospectFeatureTests
         var configPath = Path.Combine(Path.GetTempPath(), $"feature-serve-{Guid.NewGuid():N}.json");
         var readyFile = Path.Combine(Path.GetTempPath(), $"feature-serve-ready-{Guid.NewGuid():N}.txt");
 
-        var config = $$"""
-        {
-          "omnirelay": {
-            "service": "feature-serve",
-            "inbounds": {
-              "http": [ { "urls": [ "http://127.0.0.1:{httpPort}/" ] } ],
-              "grpc": [ { "urls": [ "http://127.0.0.1:{grpcPort}" ] } ]
-            }
-          }
-        }
-        """;
+        var config = string.Format(CultureInfo.InvariantCulture,
+@"{{
+  ""omnirelay"": {{
+    ""service"": ""feature-serve"",
+    ""inbounds"": {{
+      ""http"": [ {{ ""urls"": [ ""http://127.0.0.1:{0}/"" ] }} ],
+      ""grpc"": [ {{ ""urls"": [ ""http://127.0.0.1:{1}"" ] }} ]
+    }}
+  }}
+}}", httpPort, grpcPort);
         await File.WriteAllTextAsync(configPath, config, TestContext.Current.CancellationToken);
 
         try
@@ -60,12 +67,55 @@ public sealed class CliServeAndIntrospectFeatureTests
     [Fact(Timeout = 120_000)]
     public async ValueTask IntrospectCommand_HitsRunningDispatcher()
     {
-        var url = $"http://127.0.0.1:{_application.HttpInboundPort}/omnirelay/introspect";
-        var result = await CliCommandRunner.RunAsync(
-            $"introspect --url {url} --format json",
-            TestContext.Current.CancellationToken);
+        var port = TestPortAllocator.GetRandomPort();
+        var builder = WebApplication.CreateSlimBuilder();
+        builder.WebHost.ConfigureKestrel(options => options.Listen(System.Net.IPAddress.Loopback, port));
+        var app = builder.Build();
 
-        result.ExitCode.ShouldBe(0, result.Stdout + result.Stderr);
-        result.Stdout.ShouldContain("feature-tests-relay", Case.Insensitive);
+        const string payload = """
+        {
+          "service": "feature-tests-relay",
+          "status": "Running",
+          "procedures": {
+            "unary": [],
+            "oneway": [],
+            "stream": [],
+            "clientStream": [],
+            "duplex": []
+          },
+          "components": [],
+          "outbounds": [],
+          "middleware": {
+            "inboundUnary": [],
+            "inboundOneway": [],
+            "inboundStream": [],
+            "inboundClientStream": [],
+            "inboundDuplex": [],
+            "outboundUnary": [],
+            "outboundOneway": [],
+            "outboundStream": [],
+            "outboundClientStream": [],
+            "outboundDuplex": []
+          }
+        }
+        """;
+
+        app.MapGet("/omnirelay/introspect", () => Results.Content(payload, "application/json"));
+
+        await app.StartAsync(TestContext.Current.CancellationToken);
+        try
+        {
+            var url = $"http://127.0.0.1:{port}/omnirelay/introspect";
+            var result = await CliCommandRunner.RunAsync(
+                $"introspect --url {url} --format json",
+                TestContext.Current.CancellationToken);
+
+            result.ExitCode.ShouldBe(0, result.Stdout + result.Stderr);
+            result.Stdout.ShouldContain("feature-tests-relay", Case.Insensitive);
+        }
+        finally
+        {
+            await app.DisposeAsync();
+        }
     }
 }
