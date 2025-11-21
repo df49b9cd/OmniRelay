@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 
@@ -128,19 +129,6 @@ internal sealed class MeshGossipMembershipTable
         }
     }
 
-    /// <summary>Returns a snapshot of the cluster.</summary>
-    public MeshGossipClusterView Snapshot()
-    {
-        var now = _timeProvider.GetUtcNow();
-        var members = _members.Values
-            .Select(state => state.ToSnapshot())
-            .OrderByDescending(snapshot => snapshot.NodeId == _localNodeId)
-            .ThenBy(static snapshot => snapshot.NodeId, StringComparer.Ordinal)
-            .ToImmutableArray();
-
-        return new MeshGossipClusterView(now, members, _localNodeId, MeshGossipOptions.CurrentSchemaVersion);
-    }
-
     /// <summary>Picks candidate peers for a gossip round.</summary>
     public IReadOnlyList<MeshGossipMemberSnapshot> PickFanout(int fanout)
     {
@@ -149,19 +137,58 @@ internal sealed class MeshGossipMembershipTable
             return [];
         }
 
-        var candidates = _members.Values
-            .Where(state => state.NodeId != _localNodeId && state.Status != MeshGossipMemberStatus.Left)
-            .Select(state => state.ToSnapshot())
-            .ToArray();
+        var pool = ArrayPool<MeshGossipMemberState>.Shared;
+        var reservoir = pool.Rent(fanout);
+        var seen = 0;
+        var selected = 0;
 
-        if (candidates.Length <= fanout)
+        try
         {
-            return candidates;
-        }
+            foreach (var state in _members.Values)
+            {
+                if (state.NodeId == _localNodeId || state.Status == MeshGossipMemberStatus.Left)
+                {
+                    continue;
+                }
 
-        var span = candidates.AsSpan();
-        Shuffle(span);
-        return span[..fanout].ToArray();
+                if (selected < fanout)
+                {
+                    reservoir[selected++] = state;
+                }
+                else
+                {
+                    var replaceIndex = Random.Shared.Next(seen + 1);
+                    if (replaceIndex < fanout)
+                    {
+                        reservoir[replaceIndex] = state;
+                    }
+                }
+
+                seen++;
+            }
+
+            if (selected == 0)
+            {
+                return Array.Empty<MeshGossipMemberSnapshot>();
+            }
+
+            var take = Math.Min(fanout, selected);
+            var span = reservoir.AsSpan(0, take);
+            Shuffle(span);
+
+            var result = new MeshGossipMemberSnapshot[take];
+            for (var i = 0; i < take; i++)
+            {
+                result[i] = span[i].ToSnapshot();
+            }
+
+            return result;
+        }
+        finally
+        {
+            reservoir.AsSpan(0, Math.Min(selected, reservoir.Length)).Clear();
+            pool.Return(reservoir);
+        }
     }
 
     private static void Shuffle<T>(Span<T> values)
@@ -170,6 +197,43 @@ internal sealed class MeshGossipMembershipTable
         {
             var j = Random.Shared.Next(i + 1);
             (values[i], values[j]) = (values[j], values[i]);
+        }
+    }
+
+    /// <summary>Returns a snapshot of the cluster.</summary>
+    public MeshGossipClusterView Snapshot()
+    {
+        var now = _timeProvider.GetUtcNow();
+        var pool = ArrayPool<MeshGossipMemberSnapshot>.Shared;
+        var buffer = pool.Rent(Math.Max(4, _members.Count));
+        var count = 0;
+
+        try
+        {
+            foreach (var state in _members.Values)
+            {
+                if (count == buffer.Length)
+                {
+                    var expanded = pool.Rent(buffer.Length * 2);
+                    buffer.AsSpan(0, count).CopyTo(expanded);
+                    pool.Return(buffer, clearArray: true);
+                    buffer = expanded;
+                }
+
+                buffer[count++] = state.ToSnapshot();
+            }
+
+            Array.Sort(buffer, 0, count, new LocalFirstComparer(_localNodeId));
+
+            var builder = ImmutableArray.CreateBuilder<MeshGossipMemberSnapshot>(count);
+            builder.AddRange(buffer.AsSpan(0, count));
+
+            return new MeshGossipClusterView(now, builder.MoveToImmutable(), _localNodeId, MeshGossipOptions.CurrentSchemaVersion);
+        }
+        finally
+        {
+            buffer.AsSpan(0, count).Clear();
+            pool.Return(buffer);
         }
     }
 
@@ -215,5 +279,41 @@ internal sealed class MeshGossipMembershipTable
                 RoundTripTimeMs = RoundTripTimeMs,
                 Metadata = Metadata
             };
+    }
+
+    private sealed class LocalFirstComparer(string localNodeId) : IComparer<MeshGossipMemberSnapshot>
+    {
+        public int Compare(MeshGossipMemberSnapshot? x, MeshGossipMemberSnapshot? y)
+        {
+            if (ReferenceEquals(x, y))
+            {
+                return 0;
+            }
+
+            if (x is null)
+            {
+                return -1;
+            }
+
+            if (y is null)
+            {
+                return 1;
+            }
+
+            var xIsLocal = string.Equals(x.NodeId, localNodeId, StringComparison.Ordinal);
+            var yIsLocal = string.Equals(y.NodeId, localNodeId, StringComparison.Ordinal);
+
+            if (xIsLocal && !yIsLocal)
+            {
+                return -1;
+            }
+
+            if (yIsLocal && !xIsLocal)
+            {
+                return 1;
+            }
+
+            return string.CompareOrdinal(x.NodeId, y.NodeId);
+        }
     }
 }

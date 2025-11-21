@@ -876,12 +876,12 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
 
                 if (_active.Count == 0)
                 {
-                    Shuffle(_passive);
-                    return _passive[0];
+                    var idx = Random.Shared.Next(_passive.Count);
+                    return _passive[idx];
                 }
 
-                Shuffle(_active);
-                return _active[0];
+                var selected = Random.Shared.Next(_active.Count);
+                return _active[selected];
             }
         }
 
@@ -944,9 +944,16 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
                 return;
             }
 
-            // Shuffle subset then trim tail for fairness
-            Shuffle(list);
-            list.RemoveRange(maxSize, list.Count - maxSize);
+            var keep = Math.Max(0, maxSize);
+            var count = list.Count;
+
+            for (var i = 0; i < keep; i++)
+            {
+                var j = Random.Shared.Next(i, count);
+                (list[i], list[j]) = (list[j], list[i]);
+            }
+
+            list.RemoveRange(keep, count - keep);
         }
 
         private static void AddRandom(List<MeshGossipPeerEndpoint> source, List<MeshGossipPeerEndpoint> destination, int count, bool removeFromSource = false)
@@ -956,25 +963,17 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
                 return;
             }
 
-            Shuffle(source);
             var take = Math.Min(count, source.Count);
             for (var i = 0; i < take; i++)
             {
+                var j = Random.Shared.Next(i, source.Count);
+                (source[i], source[j]) = (source[j], source[i]);
                 destination.Add(source[i]);
             }
 
             if (removeFromSource)
             {
                 source.RemoveRange(0, take);
-            }
-        }
-
-        private static void Shuffle(List<MeshGossipPeerEndpoint> list)
-        {
-            for (var i = list.Count - 1; i > 0; i--)
-            {
-                var j = Random.Shared.Next(i + 1);
-                (list[i], list[j]) = (list[j], list[i]);
             }
         }
     }

@@ -169,6 +169,126 @@ public sealed class MeshGossipMembershipTableTests
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
+    public void PickFanout_SkipsLocalAndLeftAndAvoidsDuplicates()
+    {
+        var time = new TestTimeProvider(DateTimeOffset.UtcNow);
+        var localMetadata = new MeshGossipMemberMetadata
+        {
+            NodeId = "local",
+            Role = "dispatcher",
+            ClusterId = "cluster-a",
+            Region = "local",
+            MeshVersion = "dev",
+            MetadataVersion = 1
+        };
+
+        var table = new MeshGossipMembershipTable(localMetadata.NodeId, localMetadata, time);
+
+        for (int i = 0; i < 20; i++)
+        {
+            var metadata = new MeshGossipMemberMetadata
+            {
+                NodeId = $"peer-{i:D2}",
+                Role = "worker",
+                ClusterId = "cluster-a",
+                Region = "region-a",
+                MeshVersion = "1.0.0",
+                MetadataVersion = 1
+            };
+
+            table.MarkObserved(new MeshGossipMemberSnapshot
+            {
+                NodeId = metadata.NodeId,
+                Status = MeshGossipMemberStatus.Alive,
+                LastSeen = time.GetUtcNow(),
+                Metadata = metadata
+            });
+        }
+
+        table.MarkObserved(new MeshGossipMemberSnapshot
+        {
+            NodeId = "peer-left",
+            Status = MeshGossipMemberStatus.Left,
+            LastSeen = time.GetUtcNow(),
+            Metadata = new MeshGossipMemberMetadata
+            {
+                NodeId = "peer-left",
+                Role = "worker",
+                ClusterId = "cluster-a",
+                Region = "region-a",
+                MeshVersion = "1.0.0",
+                MetadataVersion = 1
+            }
+        });
+
+        var fanout = table.PickFanout(12);
+
+        fanout.ShouldNotContain(member => member.NodeId == localMetadata.NodeId);
+        fanout.ShouldNotContain(member => member.Status == MeshGossipMemberStatus.Left);
+        fanout.Select(member => member.NodeId)
+            .Distinct(StringComparer.Ordinal)
+            .Count()
+            .ShouldBe(fanout.Count);
+    }
+
+    [Fact(Timeout = TestTimeouts.Default)]
+    public void PickFanout_AllocationsScaleWithFanout()
+    {
+        var time = new TestTimeProvider(DateTimeOffset.UtcNow);
+        var localMetadata = new MeshGossipMemberMetadata
+        {
+            NodeId = "local",
+            Role = "dispatcher",
+            ClusterId = "cluster-a",
+            Region = "local",
+            MeshVersion = "dev",
+            MetadataVersion = 1
+        };
+
+        var table = new MeshGossipMembershipTable(localMetadata.NodeId, localMetadata, time);
+
+        for (int i = 0; i < 256; i++)
+        {
+            var metadata = new MeshGossipMemberMetadata
+            {
+                NodeId = $"peer-{i:D3}",
+                Role = "worker",
+                ClusterId = "cluster-a",
+                Region = "region-a",
+                MeshVersion = "1.0.0",
+                MetadataVersion = 1
+            };
+
+            table.MarkObserved(new MeshGossipMemberSnapshot
+            {
+                NodeId = metadata.NodeId,
+                Status = MeshGossipMemberStatus.Alive,
+                LastSeen = time.GetUtcNow(),
+                Metadata = metadata
+            });
+        }
+
+        // Warmup to avoid JIT noise.
+        _ = table.PickFanout(8);
+
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 0; i < 8; i++)
+        {
+            var slice = table.PickFanout(8);
+            slice.Count.ShouldBe(8);
+        }
+
+        var after = GC.GetAllocatedBytesForCurrentThread();
+        var average = (after - before) / 8d;
+
+        average.ShouldBeLessThanOrEqualTo(8_000d);
+    }
+
+    [Fact(Timeout = TestTimeouts.Default)]
     public void Snapshot_IncludesLocalMember()
     {
         var time = new TestTimeProvider(DateTimeOffset.UtcNow);
@@ -189,6 +309,44 @@ public sealed class MeshGossipMembershipTableTests
         var localMember = snapshot.Members.FirstOrDefault(m => m.NodeId == "local");
         localMember.ShouldNotBeNull();
         localMember!.Status.ShouldBe(MeshGossipMemberStatus.Alive);
+    }
+
+    [Fact(Timeout = TestTimeouts.Default)]
+    public void Snapshot_OrdersLocalFirstThenOrdinal()
+    {
+        var time = new TestTimeProvider(DateTimeOffset.UtcNow);
+        var localMetadata = new MeshGossipMemberMetadata
+        {
+            NodeId = "node-c",
+            Role = "dispatcher",
+            ClusterId = "cluster-a",
+            Region = "local",
+            MeshVersion = "dev",
+            MetadataVersion = 1
+        };
+
+        var table = new MeshGossipMembershipTable(localMetadata.NodeId, localMetadata, time);
+
+        table.MarkObserved(new MeshGossipMemberSnapshot
+        {
+            NodeId = "node-a",
+            Status = MeshGossipMemberStatus.Alive,
+            LastSeen = time.GetUtcNow(),
+            Metadata = new MeshGossipMemberMetadata { NodeId = "node-a" }
+        });
+
+        table.MarkObserved(new MeshGossipMemberSnapshot
+        {
+            NodeId = "node-b",
+            Status = MeshGossipMemberStatus.Alive,
+            LastSeen = time.GetUtcNow(),
+            Metadata = new MeshGossipMemberMetadata { NodeId = "node-b" }
+        });
+
+        var snapshot = table.Snapshot();
+        var nodeOrder = snapshot.Members.Select(m => m.NodeId).ToArray();
+
+        nodeOrder.ShouldBe(new[] { "node-c", "node-a", "node-b" });
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
