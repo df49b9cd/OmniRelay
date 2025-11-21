@@ -74,6 +74,31 @@ internal sealed class MeshGossipMembershipTable
 
         var now = _timeProvider.GetUtcNow();
 
+        if (string.Equals(snapshot.NodeId, _localNodeId, StringComparison.Ordinal))
+        {
+            _members.AddOrUpdate(
+                snapshot.NodeId,
+                _ => MeshGossipMemberState.CreateLocal(snapshot.Metadata ?? LocalMetadata, now),
+                (_, existing) =>
+                {
+                    var metadata = existing.Metadata;
+                    var incomingMetadata = snapshot.Metadata;
+                    if (incomingMetadata is not null && incomingMetadata.MetadataVersion >= metadata.MetadataVersion)
+                    {
+                        metadata = incomingMetadata;
+                    }
+
+                    return existing with
+                    {
+                        Metadata = metadata,
+                        LastSeen = now,
+                        Status = MeshGossipMemberStatus.Alive
+                    };
+                });
+
+            return;
+        }
+
         _members.AddOrUpdate(
             snapshot.NodeId,
             _ => MeshGossipMemberState.CreateFromSnapshot(snapshot, now, rttMilliseconds),

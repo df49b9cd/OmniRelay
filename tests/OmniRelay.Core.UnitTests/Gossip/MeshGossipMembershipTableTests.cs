@@ -73,6 +73,44 @@ public sealed class MeshGossipMembershipTableTests
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
+    public void MarkObserved_DoesNotDowngradeLocalFromRemoteSnapshot()
+    {
+        var time = new TestTimeProvider(DateTimeOffset.UtcNow);
+        var localMetadata = new MeshGossipMemberMetadata
+        {
+            NodeId = "local-node",
+            Role = "dispatcher",
+            ClusterId = "cluster-a",
+            Region = "local",
+            MeshVersion = "1.0.0",
+            MetadataVersion = 1
+        };
+
+        var table = new MeshGossipMembershipTable(localMetadata.NodeId, localMetadata, time);
+
+        time.Advance(TimeSpan.FromSeconds(5));
+
+        table.MarkObserved(new MeshGossipMemberSnapshot
+        {
+            NodeId = localMetadata.NodeId,
+            Status = MeshGossipMemberStatus.Left,
+            LastSeen = time.GetUtcNow().Subtract(TimeSpan.FromMinutes(10)),
+            Metadata = localMetadata with
+            {
+                MeshVersion = "1.1.0",
+                MetadataVersion = 5
+            }
+        });
+
+        var snapshot = table.Snapshot();
+        var local = snapshot.Members.First(member => member.NodeId == localMetadata.NodeId);
+        local.Status.ShouldBe(MeshGossipMemberStatus.Alive);
+        local.LastSeen.ShouldBe(time.GetUtcNow());
+        local.Metadata.MeshVersion.ShouldBe("1.1.0");
+        local.Metadata.MetadataVersion.ShouldBe(5);
+    }
+
+    [Fact(Timeout = TestTimeouts.Default)]
     public void Sweep_MarksPeersSuspectThenLeft()
     {
         var time = new TestTimeProvider(DateTimeOffset.Parse("2024-01-01T00:00:00Z", CultureInfo.InvariantCulture));
