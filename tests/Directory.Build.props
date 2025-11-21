@@ -6,6 +6,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="AwesomeAssertions" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Compile Include="$(MSBuildThisFileDirectory)TestSupport/*.cs"
              Link="Support/%(Filename)%(Extension)" />
   </ItemGroup>

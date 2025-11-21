@@ -3,7 +3,6 @@ using System.Threading.Tasks;
 using OmniRelay.Core.Shards;
 using OmniRelay.FeatureTests.Fixtures;
 using OmniRelay.Tests.Support;
-using Shouldly;
 using Xunit;
 
 namespace OmniRelay.FeatureTests.Features;

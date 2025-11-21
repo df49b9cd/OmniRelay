@@ -11,7 +11,6 @@ using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
 using OmniRelay.Errors;
 using OmniRelay.Transport.Http;
-using Shouldly;
 using Xunit;
 using OmniRelayDispatcher = OmniRelay.Dispatcher.Dispatcher;
 

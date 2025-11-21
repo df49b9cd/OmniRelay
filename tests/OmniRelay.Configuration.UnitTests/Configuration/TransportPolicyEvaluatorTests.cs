@@ -1,6 +1,5 @@
 using OmniRelay.Configuration.Internal.TransportPolicy;
 using OmniRelay.Configuration.Models;
-using Shouldly;
 using Xunit;
 
 namespace OmniRelay.Configuration.UnitTests.Configuration;

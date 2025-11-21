@@ -2,7 +2,6 @@ using Hugo;
 using Microsoft.Extensions.Logging;
 using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
-using Shouldly;
 using Xunit;
 
 namespace OmniRelay.Configuration.UnitTests.Configuration;

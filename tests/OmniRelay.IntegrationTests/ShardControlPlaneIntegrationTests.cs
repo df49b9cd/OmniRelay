@@ -6,7 +6,6 @@ using System.Text.Json.Serialization;
 using OmniRelay.Core.Shards;
 using OmniRelay.Core.Shards.ControlPlane;
 using OmniRelay.Tests.Support;
-using Shouldly;
 using Xunit;
 
 namespace OmniRelay.IntegrationTests;

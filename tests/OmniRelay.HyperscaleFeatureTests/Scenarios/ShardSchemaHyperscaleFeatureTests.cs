@@ -6,7 +6,6 @@ using OmniRelay.Core.Shards;
 using OmniRelay.Core.Shards.Hashing;
 using OmniRelay.ShardStore.Relational;
 using OmniRelay.ShardStore.Sqlite;
-using Shouldly;
 using Xunit;
 
 namespace OmniRelay.HyperscaleFeatureTests.Scenarios;

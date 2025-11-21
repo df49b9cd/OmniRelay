@@ -2,7 +2,6 @@ using System.Globalization;
 using Grpc.Core;
 using OmniRelay.Core;
 using OmniRelay.Transport.Grpc;
-using Shouldly;
 using Xunit;
 
 namespace OmniRelay.Core.UnitTests.Transport.Grpc;

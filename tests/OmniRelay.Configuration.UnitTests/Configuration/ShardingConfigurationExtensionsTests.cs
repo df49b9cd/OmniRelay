@@ -3,7 +3,6 @@ using Microsoft.Extensions.Configuration;
 using OmniRelay.Configuration.Models;
 using OmniRelay.Configuration.Sharding;
 using OmniRelay.Core.Shards.Hashing;
-using Shouldly;
 using Xunit;
 
 namespace OmniRelay.Configuration.UnitTests.Configuration;
