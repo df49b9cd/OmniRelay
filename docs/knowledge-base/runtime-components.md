@@ -5,6 +5,7 @@
 - **Codecs**: JSON (`JsonCodec`), Protobuf, and raw codecs plug into dispatcher registrations; custom codecs implement encode/decode helpers returning `Result<T>`.
 - **Middleware**: Logging, tracing (`RpcTracingMiddleware`), metrics, retry/deadline enforcement, panic recovery, rate limiting, chaos toggles, and peer circuit breakers all live under `Core/Middleware` and can be applied globally or per procedure.
 - **Hot-path dispatch**: Inbound pipelines are now composed and cached per procedure at registration time to keep per-request dispatch allocation-free and Native AOT friendly (aligns with `dotnet-performance-guidelines.md` R14).
+- **Procedure registry**: Lookup keys are struct-based (avoids string concat) with service/kind-scoped wildcard buckets sorted by specificity, so alias resolution stays allocation-free and deterministic; keep future additions LINQ-free and span-friendly to remain AOT safe.
 - **Peer & routing**: Choosers (round-robin, fewest-pending, two-random-choice), peer list watchers, and sharding helpers (resource lease components, hashing strategies) sit under `Core/Peers` and `Core/Shards`.
 - **ResourceLease mesh**: `ResourceLease*` contracts plus replicators (gRPC, SQLite, object storage) coordinate SafeTaskQueue workflows, failure drills, and deterministic recovery.
 

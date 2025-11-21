@@ -5,9 +5,11 @@ namespace OmniRelay.Dispatcher;
 /// </summary>
 internal sealed class ProcedureRegistry
 {
-    private readonly Dictionary<string, ProcedureSpec> _procedures = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, string> _aliases = new(StringComparer.OrdinalIgnoreCase);
-    private readonly List<WildcardAlias> _wildcardAliases = [];
+    private static readonly StringComparer Comparer = StringComparer.OrdinalIgnoreCase;
+
+    private readonly Dictionary<ProcedureKey, ProcedureSpec> _procedures = new();
+    private readonly Dictionary<ProcedureKey, ProcedureKey> _aliases = new();
+    private readonly Dictionary<ServiceKindKey, List<WildcardAlias>> _wildcardBuckets = new();
     private readonly Lock _gate = new();
 
     /// <summary>
@@ -17,22 +19,22 @@ internal sealed class ProcedureRegistry
     {
         ArgumentNullException.ThrowIfNull(spec);
 
-        var key = CreateKey(spec.Service, spec.Name, spec.Kind);
-        var aliasInfos = spec.Aliases.Select(alias => new AliasInfo(alias, IsWildcard(alias))).ToArray();
+        var canonicalKey = new ProcedureKey(spec.Service, spec.Name, spec.Kind);
+        var aliasInfos = BuildAliasInfo(spec.Aliases);
 
         lock (_gate)
         {
-            if (_procedures.ContainsKey(key))
+            if (_procedures.ContainsKey(canonicalKey))
             {
                 throw new InvalidOperationException($"Procedure '{spec.Name}' ({spec.Kind}) is already registered.");
             }
 
-            if (_aliases.ContainsKey(key))
+            if (_aliases.ContainsKey(canonicalKey))
             {
                 throw new InvalidOperationException($"Procedure '{spec.Name}' ({spec.Kind}) conflicts with an existing alias.");
             }
 
-            var aliasSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var aliasSet = new HashSet<string>(Comparer);
             foreach (var alias in aliasInfos)
             {
                 if (!aliasSet.Add(alias.Value))
@@ -40,35 +42,33 @@ internal sealed class ProcedureRegistry
                     throw new InvalidOperationException($"Alias '{alias.Value}' is duplicated for procedure '{spec.Name}'.");
                 }
 
-                var aliasKey = CreateKey(spec.Service, alias.Value, spec.Kind);
+                var aliasKey = new ProcedureKey(spec.Service, alias.Value, spec.Kind);
 
                 if (_procedures.ContainsKey(aliasKey) || _aliases.ContainsKey(aliasKey))
                 {
                     throw new InvalidOperationException($"Alias '{alias.Value}' for procedure '{spec.Name}' conflicts with an existing registration.");
                 }
 
-                if (_wildcardAliases.Any(entry =>
-                        entry.Kind == spec.Kind &&
-                        string.Equals(entry.Service, spec.Service, StringComparison.OrdinalIgnoreCase) &&
-                        string.Equals(entry.Pattern, alias.Value, StringComparison.OrdinalIgnoreCase)))
+                if (TryGetWildcardBucket(spec.Service, spec.Kind, out var bucket) &&
+                    ContainsWildcardPattern(bucket, alias.Value))
                 {
                     throw new InvalidOperationException($"Alias '{alias.Value}' for procedure '{spec.Name}' conflicts with an existing wildcard registration.");
                 }
             }
 
-            _procedures.Add(key, spec);
+            _procedures.Add(canonicalKey, spec);
 
             foreach (var alias in aliasInfos)
             {
-                var aliasKey = CreateKey(spec.Service, alias.Value, spec.Kind);
+                var aliasKey = new ProcedureKey(spec.Service, alias.Value, spec.Kind);
                 if (alias.IsWildcard)
                 {
-                    var specificity = ComputeSpecificity(alias.Value);
-                    _wildcardAliases.Add(new WildcardAlias(spec.Service, alias.Value, spec.Kind, key, specificity));
+                    var bucket = GetOrCreateWildcardBucket(new ServiceKindKey(spec.Service, spec.Kind));
+                    InsertWildcardSorted(bucket, new WildcardAlias(alias.Value, canonicalKey, ComputeSpecificity(alias.Value)));
                 }
                 else
                 {
-                    _aliases.Add(aliasKey, key);
+                    _aliases.Add(aliasKey, canonicalKey);
                 }
             }
         }
@@ -79,7 +79,7 @@ internal sealed class ProcedureRegistry
     /// </summary>
     public bool TryGet(string service, string name, ProcedureKind kind, out ProcedureSpec spec)
     {
-        var key = CreateKey(service, name, kind);
+        var key = new ProcedureKey(service, name, kind);
 
         lock (_gate)
         {
@@ -94,11 +94,17 @@ internal sealed class ProcedureRegistry
                 return true;
             }
 
-            var wildcardMatch = FindWildcardMatch(service, name, kind);
-            if (wildcardMatch is not null &&
-                _procedures.TryGetValue(wildcardMatch.CanonicalKey, out spec!))
+            if (TryGetWildcardBucket(service, kind, out var bucket))
             {
-                return true;
+                for (var i = 0; i < bucket.Count; i++)
+                {
+                    var alias = bucket[i];
+                    if (WildcardMatch(alias.Pattern, name) &&
+                        _procedures.TryGetValue(alias.CanonicalKey, out spec!))
+                    {
+                        return true;
+                    }
+                }
             }
 
             spec = null!;
@@ -113,32 +119,85 @@ internal sealed class ProcedureRegistry
     {
         lock (_gate)
         {
-            return [.. _procedures.Values];
+            return _procedures.Count == 0
+                ? Array.Empty<ProcedureSpec>()
+                : [.. _procedures.Values];
         }
     }
 
-    private static string CreateKey(string service, string name, ProcedureKind kind) =>
-        $"{service}::{name}:{kind}";
-
-    private static bool IsWildcard(string alias) => alias.Contains('*') || alias.Contains('?');
-
-    private static int ComputeSpecificity(string pattern) => pattern.Count(ch => ch != '*' && ch != '?');
-
-    private WildcardAlias? FindWildcardMatch(string service, string name, ProcedureKind kind)
+    private static AliasInfo[] BuildAliasInfo(IReadOnlyList<string> aliases)
     {
-        WildcardAlias? bestMatch = null;
-
-        foreach (var alias in _wildcardAliases
-                     .Where(alias =>
-                         string.Equals(alias.Service, service, StringComparison.OrdinalIgnoreCase) &&
-                         alias.Kind == kind)
-                     .Where(alias => WildcardMatch(alias.Pattern, name))
-                     .Where(alias => bestMatch is null || alias.Specificity > bestMatch.Specificity))
+        if (aliases.Count == 0)
         {
-            bestMatch = alias;
+            return Array.Empty<AliasInfo>();
         }
 
-        return bestMatch;
+        var buffer = new AliasInfo[aliases.Count];
+        for (var i = 0; i < aliases.Count; i++)
+        {
+            var alias = aliases[i];
+            buffer[i] = new AliasInfo(alias, IsWildcard(alias));
+        }
+
+        return buffer;
+    }
+
+    private bool TryGetWildcardBucket(string service, ProcedureKind kind, out List<WildcardAlias> bucket) =>
+        _wildcardBuckets.TryGetValue(new ServiceKindKey(service, kind), out bucket!);
+
+    private List<WildcardAlias> GetOrCreateWildcardBucket(ServiceKindKey key)
+    {
+        if (_wildcardBuckets.TryGetValue(key, out var bucket))
+        {
+            return bucket;
+        }
+
+        bucket = [];
+        _wildcardBuckets[key] = bucket;
+        return bucket;
+    }
+
+    private static bool ContainsWildcardPattern(List<WildcardAlias> bucket, string alias)
+    {
+        for (var i = 0; i < bucket.Count; i++)
+        {
+            if (Comparer.Equals(bucket[i].Pattern, alias))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static void InsertWildcardSorted(List<WildcardAlias> bucket, WildcardAlias alias)
+    {
+        var index = 0;
+
+        while (index < bucket.Count && bucket[index].Specificity >= alias.Specificity)
+        {
+            index++;
+        }
+
+        bucket.Insert(index, alias);
+    }
+
+    private static bool IsWildcard(string alias) => alias.AsSpan().IndexOfAny('*', '?') >= 0;
+
+    private static int ComputeSpecificity(string pattern)
+    {
+        var count = 0;
+
+        for (var i = 0; i < pattern.Length; i++)
+        {
+            var ch = pattern[i];
+            if (ch != '*' && ch != '?')
+            {
+                count++;
+            }
+        }
+
+        return count;
     }
 
     private static bool WildcardMatch(string pattern, string value)
@@ -187,10 +246,63 @@ internal sealed class ProcedureRegistry
 
     private readonly record struct AliasInfo(string Value, bool IsWildcard);
 
-    private sealed record WildcardAlias(
-        string Service,
-        string Pattern,
-        ProcedureKind Kind,
-        string CanonicalKey,
-        int Specificity);
+    private readonly struct ServiceKindKey : IEquatable<ServiceKindKey>
+    {
+        public ServiceKindKey(string service, ProcedureKind kind)
+        {
+            Service = service ?? string.Empty;
+            Kind = kind;
+        }
+
+        public string Service { get; }
+
+        public ProcedureKind Kind { get; }
+
+        public bool Equals(ServiceKindKey other) =>
+            Comparer.Equals(Service, other.Service) && Kind == other.Kind;
+
+        public override bool Equals(object? obj) => obj is ServiceKindKey other && Equals(other);
+
+        public override int GetHashCode()
+        {
+            var hash = new HashCode();
+            hash.Add(Service, Comparer);
+            hash.Add(Kind);
+            return hash.ToHashCode();
+        }
+    }
+
+    private readonly struct ProcedureKey : IEquatable<ProcedureKey>
+    {
+        public ProcedureKey(string service, string name, ProcedureKind kind)
+        {
+            Service = service ?? string.Empty;
+            Name = name ?? string.Empty;
+            Kind = kind;
+        }
+
+        public string Service { get; }
+
+        public string Name { get; }
+
+        public ProcedureKind Kind { get; }
+
+        public bool Equals(ProcedureKey other) =>
+            Comparer.Equals(Service, other.Service) &&
+            Comparer.Equals(Name, other.Name) &&
+            Kind == other.Kind;
+
+        public override bool Equals(object? obj) => obj is ProcedureKey other && Equals(other);
+
+        public override int GetHashCode()
+        {
+            var hash = new HashCode();
+            hash.Add(Service, Comparer);
+            hash.Add(Name, Comparer);
+            hash.Add(Kind);
+            return hash.ToHashCode();
+        }
+    }
+
+    private readonly record struct WildcardAlias(string Pattern, ProcedureKey CanonicalKey, int Specificity);
 }
