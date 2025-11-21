@@ -1,7 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
-using OmniRelay.Configuration.Models;
 using OmniRelay.Dispatcher;
+using OmniRelay.Dispatcher.Config;
 using OmniRelay.FeatureTests.Fixtures;
 using Xunit;
 

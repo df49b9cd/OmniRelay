@@ -82,7 +82,7 @@ public sealed class FeatureTestApplication : IAsyncLifetime
         builder.Configuration.AddConfiguration(Configuration);
 
         builder.Services.AddLogging();
-        builder.Services.Configure<OmniRelay.Configuration.Models.OmniRelayConfigurationOptions>(Configuration.GetSection("omniRelay"));
+        builder.Services.Configure<OmniRelayConfigurationOptions>(Configuration.GetSection("omniRelay"));
         builder.Services.AddOmniRelayDispatcherFromConfiguration(Configuration.GetSection("omniRelay"));
 
         _host = builder.Build();

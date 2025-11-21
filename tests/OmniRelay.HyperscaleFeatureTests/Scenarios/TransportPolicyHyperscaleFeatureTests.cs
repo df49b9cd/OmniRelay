@@ -1,5 +1,4 @@
-using OmniRelay.Configuration.Internal.TransportPolicy;
-using OmniRelay.Configuration.Models;
+using OmniRelay.Dispatcher.Config;
 using OmniRelay.Tests.Support;
 using Xunit;
 

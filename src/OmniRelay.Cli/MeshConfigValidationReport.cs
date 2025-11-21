@@ -1,4 +1,5 @@
-using OmniRelay.Configuration.Internal.TransportPolicy;
+using System.Linq;
+using OmniRelay.Dispatcher.Config;
 
 namespace OmniRelay.Cli;
 
@@ -25,9 +26,9 @@ internal sealed record MeshConfigValidationReport(
         var findings = evaluation.Findings
             .Select(finding => new MeshConfigValidationFinding(
                 finding.Endpoint,
-                finding.Category,
-                finding.Transport,
-                finding.Encoding,
+                finding.Category.ToString(),
+                finding.Transport.ToString(),
+                finding.Encoding.ToString(),
                 finding.Http3Enabled,
                 finding.Status.ToString().ToLowerInvariant(),
                 finding.Message,
