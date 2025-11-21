@@ -47,7 +47,6 @@
   <ItemGroup>
     <Analyzer Include="../../src/OmniRelay.Codegen.Protobuf.Generator/bin/$(Configuration)/net10.0/analyzers/dotnet/cs/OmniRelay.Codegen.Generator.dll" />
     <Analyzer Include="../../src/OmniRelay.Codegen.Protobuf.Generator/bin/$(Configuration)/net10.0/analyzers/dotnet/cs/Google.Protobuf.dll" />
-    <Analyzer Include="../../src/OmniRelay.Codegen.Protobuf.Generator/bin/$(Configuration)/net10.0/analyzers/dotnet/cs/OmniRelay.Codegen.Protobuf.Core.dll" />
   </ItemGroup>
 
   <ItemGroup>
