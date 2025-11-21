@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Net.WebSockets;
 using System.Text.Json;
@@ -45,9 +44,8 @@ internal static partial class HttpDuplexProtocol
         CancellationToken cancellationToken)
     {
         var length = payload.Length + 1;
-        var pool = FrameBufferPool;
-        var usePool = length <= MaxPooledSendBytes && pool is not null;
-        var buffer = usePool
+        ArrayPool<byte>? pool = null;
+        var buffer = length <= MaxPooledSendBytes && (pool = FrameBufferPool) is not null
             ? pool.Rent(length)
             : GC.AllocateUninitializedArray<byte>(length);
 
@@ -63,10 +61,7 @@ internal static partial class HttpDuplexProtocol
         }
         finally
         {
-            if (usePool)
-            {
-                pool.Return(buffer, clearArray: false);
-            }
+            pool?.Return(buffer, clearArray: false);
         }
     }
 
