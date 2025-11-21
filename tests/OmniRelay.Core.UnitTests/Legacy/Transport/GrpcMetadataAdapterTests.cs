@@ -36,7 +36,8 @@ public class GrpcMetadataAdapterTests
         var resolved = InvokeResolveDeadline(meta);
 
         resolved.HasValue.ShouldBeTrue();
-        resolved.Value.ShouldBeInRange(deadline.AddSeconds(-1), deadline.AddSeconds(1));
+        var resolvedValue = resolved!.Value;
+        resolvedValue.ShouldBeInRange(deadline.AddSeconds(-1), deadline.AddSeconds(1));
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
@@ -51,7 +52,8 @@ public class GrpcMetadataAdapterTests
         var before = DateTime.UtcNow;
         var resolved = InvokeResolveDeadline(meta);
         resolved.HasValue.ShouldBeTrue();
-        resolved.Value.ShouldBeInRange(before.AddMilliseconds(50), before.AddMilliseconds(600));
+        var resolvedValue = resolved!.Value;
+        resolvedValue.ShouldBeInRange(before.AddMilliseconds(50), before.AddMilliseconds(600));
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
@@ -78,8 +80,8 @@ public class GrpcMetadataAdapterTests
     {
         var method = typeof(GrpcOutbound).GetMethod(
             "ResolveDeadline",
-            BindingFlags.NonPublic | BindingFlags.Static);
-        method.ShouldNotBeNull();
+            BindingFlags.NonPublic | BindingFlags.Static)
+            ?? throw new InvalidOperationException("Missing ResolveDeadline.");
         var result = method.Invoke(null, [meta]);
         return (DateTime?)result;
     }

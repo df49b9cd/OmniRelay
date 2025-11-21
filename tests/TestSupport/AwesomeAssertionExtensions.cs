@@ -96,24 +96,28 @@ public static class AwesomeAssertionExtensions
         actual.Should().BeNullOrEmpty(because);
     }
 
-    public static void ShouldBeEmpty<T>(this IEnumerable<T> actual, string? because = null)
+    public static void ShouldBeEmpty<T>(this IEnumerable<T>? actual, string? because = null)
     {
-        actual.Should().BeEmpty(because);
+        actual.Should().NotBeNull(because);
+        actual!.Should().BeEmpty(because);
     }
 
-    public static void ShouldBeEmpty(this string actual, string? because = null)
+    public static void ShouldBeEmpty(this string? actual, string? because = null)
     {
-        actual.Should().BeEmpty(because);
+        actual.Should().NotBeNull(because);
+        actual!.Should().BeEmpty(because);
     }
 
-    public static void ShouldNotBeEmpty<T>(this IEnumerable<T> actual, string? because = null)
+    public static void ShouldNotBeEmpty<T>(this IEnumerable<T>? actual, string? because = null)
     {
-        actual.Should().NotBeEmpty(because);
+        actual.Should().NotBeNull(because);
+        actual!.Should().NotBeEmpty(because);
     }
 
     public static void ShouldNotBeEmpty(this string? actual, string? because = null)
     {
-        actual.Should().NotBeNullOrEmpty(because);
+        actual.Should().NotBeNull(because);
+        actual!.Should().NotBeNullOrEmpty(because);
     }
 
     public static void ShouldBeGreaterThan<T>(this T actual, T expected, string? because = null)
@@ -145,40 +149,47 @@ public static class AwesomeAssertionExtensions
         actual.Should().StartWith(expected, because);
     }
 
-    public static void ShouldContain(this string actual, string expected, string? because = null)
+    public static void ShouldContain(this string? actual, string expected, string? because = null)
     {
-        actual.Should().Contain(expected, because);
+        actual.Should().NotBeNull(because);
+        actual!.Should().Contain(expected, because);
     }
 
-    public static void ShouldContain(this string actual, string expected, Case caseSensitivity, string? because = null)
+    public static void ShouldContain(this string? actual, string expected, Case caseSensitivity, string? because = null)
     {
+        actual.Should().NotBeNull(because);
+        var value = actual!;
         if (caseSensitivity == Case.Insensitive)
         {
-            actual.Should().ContainEquivalentOf(expected, because);
+            value.Should().ContainEquivalentOf(expected, because);
             return;
         }
 
-        actual.Should().Contain(expected, because);
+        value.Should().Contain(expected, because);
     }
 
-    public static void ShouldNotContain(this string actual, string expected, string? because = null)
+    public static void ShouldNotContain(this string? actual, string expected, string? because = null)
     {
-        actual.Should().NotContain(expected, because);
+        actual.Should().NotBeNull(because);
+        actual!.Should().NotContain(expected, because);
     }
 
-    public static void ShouldContain<T>(this IEnumerable<T> actual, T expected, string? because = null)
+    public static void ShouldContain<T>(this IEnumerable<T>? actual, T expected, string? because = null)
     {
-        actual.Should().Contain(expected, because);
+        actual.Should().NotBeNull(because);
+        actual!.Should().Contain(expected, because);
     }
 
-    public static void ShouldContain<T>(this IEnumerable<T> actual, Func<T, bool> predicate, string? because = null)
+    public static void ShouldContain<T>(this IEnumerable<T>? actual, Func<T, bool> predicate, string? because = null)
     {
-        actual.Should().Contain(item => predicate(item), because);
+        actual.Should().NotBeNull(because);
+        actual!.Should().Contain(item => predicate(item), because);
     }
 
-    public static void ShouldNotContain<T>(this IEnumerable<T> actual, Func<T, bool> predicate, string? because = null)
+    public static void ShouldNotContain<T>(this IEnumerable<T>? actual, Func<T, bool> predicate, string? because = null)
     {
-        actual.Should().NotContain(item => predicate(item), because);
+        actual.Should().NotBeNull(because);
+        actual!.Should().NotContain(item => predicate(item), because);
     }
 
     public static void ShouldAllBe<T>(this IEnumerable<T> actual, Func<T, bool> predicate, string? because = null)
@@ -207,15 +218,17 @@ public static class AwesomeAssertionExtensions
         return actual;
     }
 
-    public static T ShouldHaveSingleItem<T>(this IEnumerable<T> actual, string? because = null)
+    public static T ShouldHaveSingleItem<T>(this IEnumerable<T>? actual, string? because = null)
     {
-        var constraint = actual.Should().ContainSingle(because);
+        actual.Should().NotBeNull(because);
+        var constraint = actual!.Should().ContainSingle(because);
         return constraint.Which;
     }
 
-    public static object? ShouldHaveSingleItem(this IEnumerable actual, string? because = null)
+    public static object? ShouldHaveSingleItem(this IEnumerable? actual, string? because = null)
     {
-        var items = actual.Cast<object?>().ToList();
+        actual.Should().NotBeNull(because);
+        var items = actual!.Cast<object?>().ToList();
         items.Should().ContainSingle(because);
         return items.Single();
     }

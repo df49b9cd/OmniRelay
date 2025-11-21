@@ -62,8 +62,9 @@ public sealed class ShardControlHyperscaleFeatureTests : IAsyncLifetime
                 : $"/control/shards?namespace=mesh.hyperscale&pageSize=500&cursor={cursor}";
             var response = await client.GetFromJsonAsync(path, HyperscaleShardJsonContext.Default.ShardListResponse, TestContext.Current.CancellationToken);
             response.ShouldNotBeNull();
-            total += response.Items.Count;
-            cursor = response.NextCursor;
+            var page = response!;
+            total += page.Items.Count;
+            cursor = page.NextCursor;
         }
         while (!string.IsNullOrWhiteSpace(cursor));
 

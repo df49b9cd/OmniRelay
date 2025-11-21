@@ -118,7 +118,8 @@ public sealed class HttpTransportNegotiationTests(ITestOutputHelper output) : In
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         response.Version.Major.ShouldBe(2);
         response.Headers.TryGetValues("Alt-Svc", out var altSvcValues).ShouldBeTrue();
-        altSvcValues.ShouldContain(value => value.Contains("h3=\"", StringComparison.OrdinalIgnoreCase));
+        altSvcValues.ShouldNotBeNull();
+        altSvcValues!.ShouldContain(value => value.Contains("h3=\"", StringComparison.OrdinalIgnoreCase));
 
         var response2 = await client.PostAsync("/", new ByteArrayContent([]), ct);
         response2.StatusCode.ShouldBe(HttpStatusCode.OK);

@@ -18,9 +18,10 @@ public sealed class SecretProviderTests
         {
             var secret = await provider.GetSecretAsync("TEST_SECRET_VALUE", TestContext.Current.CancellationToken);
             secret.ShouldNotBeNull();
-            using (secret!)
+            var secretValue = secret ?? throw new InvalidOperationException("Secret was null");
+            using (secretValue)
             {
-                secret.AsString().ShouldBe("env-secret");
+                secretValue.AsString().ShouldBe("env-secret");
             }
         }
         finally
@@ -39,9 +40,10 @@ public sealed class SecretProviderTests
 
         var secret = await provider.GetSecretAsync("tls", TestContext.Current.CancellationToken);
         secret.ShouldNotBeNull();
-        using (secret!)
+        var secretValue = secret ?? throw new InvalidOperationException("Secret was null");
+        using (secretValue)
         {
-            Encoding.UTF8.GetString(secret.AsMemory().Span).ShouldBe("file-secret");
+            Encoding.UTF8.GetString(secretValue.AsMemory().Span).ShouldBe("file-secret");
         }
     }
 
@@ -58,9 +60,10 @@ public sealed class SecretProviderTests
 
         var secret = await composite.GetSecretAsync("tls", TestContext.Current.CancellationToken);
         secret.ShouldNotBeNull();
-        using (secret!)
+        var secretValue = secret ?? throw new InvalidOperationException("Secret was null");
+        using (secretValue)
         {
-            secret.AsString().ShouldBe("inline-secret");
+            secretValue.AsString().ShouldBe("inline-secret");
         }
     }
 

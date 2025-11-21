@@ -26,8 +26,9 @@ public sealed class ShardControlPlaneIntegrationTests
 
         var payload = await response.Content.ReadFromJsonAsync(ShardJsonContext.Default.ShardListResponse, TestContext.Current.CancellationToken);
         payload.ShouldNotBeNull();
-        payload.Items.ShouldNotBeEmpty();
-        payload.Items.ShouldAllBe(item => item.Namespace == "mesh.integration");
+        var list = payload!;
+        list.Items.ShouldNotBeEmpty();
+        list.Items.ShouldAllBe(item => item.Namespace == "mesh.integration");
     }
 
     [Fact(Timeout = 20_000)]
@@ -66,8 +67,9 @@ public sealed class ShardControlPlaneIntegrationTests
 
         var payload = await response.Content.ReadFromJsonAsync(ShardJsonContext.Default.ShardSimulationResponse, TestContext.Current.CancellationToken);
         payload.ShouldNotBeNull();
-        payload.Namespace.ShouldBe("mesh.integration");
-        payload.Assignments.ShouldNotBeEmpty();
+        var simulation = payload!;
+        simulation.Namespace.ShouldBe("mesh.integration");
+        simulation.Assignments.ShouldNotBeEmpty();
     }
 
     private static ShardMutationRequest CreateMutation(string ns, string shard, string owner, int version = 0)

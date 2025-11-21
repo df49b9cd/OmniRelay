@@ -35,7 +35,8 @@ public class HttpDuplexTransportTests
         RecordingHandler.LastRequest.ShouldNotBeNull();
         RecordingHandler.LastRequest!.Content?.Headers.ContentType?.MediaType.ShouldBe(MediaTypeNames.Application.Octet);
         RecordingHandler.LastRequest.Headers.TryGetValues(HttpTransportHeaders.Encoding, out var values).ShouldBeTrue();
-        values.ShouldContain(RawCodec.DefaultEncoding);
+        values.ShouldNotBeNull();
+        values!.ShouldContain(RawCodec.DefaultEncoding);
 
         await outbound.StopAsync(TestContext.Current.CancellationToken);
     }
@@ -79,7 +80,8 @@ public class HttpDuplexTransportTests
             response.IsSuccessStatusCode.ShouldBeTrue();
             response.Content.Headers.ContentType?.MediaType.ShouldBe(MediaTypeNames.Application.Octet);
             response.Headers.TryGetValues(HttpTransportHeaders.Encoding, out var responseEncoding).ShouldBeTrue();
-            responseEncoding.ShouldContain(RawCodec.DefaultEncoding);
+            responseEncoding.ShouldNotBeNull();
+            responseEncoding!.ShouldContain(RawCodec.DefaultEncoding);
             var responsePayload = await response.Content.ReadAsByteArrayAsync(ct);
             responsePayload.ShouldBe(payload);
         }

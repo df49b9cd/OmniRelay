@@ -37,11 +37,15 @@ public class GrpcMetadataAdapterTests
         meta.ShardKey.ShouldBe("shard-1");
         meta.RoutingKey.ShouldBe("route-1");
         meta.RoutingDelegate.ShouldBe("delegate-a");
-        meta.TimeToLive.ShouldBe(TimeSpan.FromMilliseconds(250));
-        meta.Deadline.ShouldBe(deadline);
-        meta.Headers["custom-header"].ShouldBe("value");
-        meta.Headers["rpc.protocol"].ShouldBe("HTTP/3");
-        meta.Headers.ContainsKey("binary-bin").ShouldBeFalse();
+        var ttl = meta.TimeToLive ?? throw new InvalidOperationException("Missing TTL");
+        ttl.ShouldBe(TimeSpan.FromMilliseconds(250));
+        var metaDeadline = meta.Deadline ?? throw new InvalidOperationException("Missing deadline");
+        metaDeadline.ShouldBe(deadline);
+        var headers = meta.Headers;
+        headers.ShouldNotBeNull();
+        headers!["custom-header"].ShouldBe("value");
+        headers["rpc.protocol"].ShouldBe("HTTP/3");
+        headers.ContainsKey("binary-bin").ShouldBeFalse();
     }
 
     [Fact]
@@ -62,10 +66,12 @@ public class GrpcMetadataAdapterTests
         var meta = GrpcMetadataAdapter.CreateResponseMeta(headers, trailers);
 
         meta.Encoding.ShouldBe("json");
-        meta.Headers["x-header"].ShouldBe("value-1");
-        meta.Headers["x-tail"].ShouldBe("value-2");
-        meta.Headers[GrpcTransportConstants.EncodingTrailer].ShouldBe("json");
-        meta.Headers.ContainsKey("ignored-bin-bin").ShouldBeFalse();
+        var responseHeaders = meta.Headers;
+        responseHeaders.ShouldNotBeNull();
+        responseHeaders!["x-header"].ShouldBe("value-1");
+        responseHeaders["x-tail"].ShouldBe("value-2");
+        responseHeaders[GrpcTransportConstants.EncodingTrailer].ShouldBe("json");
+        responseHeaders.ContainsKey("ignored-bin-bin").ShouldBeFalse();
     }
 
     [Fact]
@@ -96,7 +102,8 @@ public class GrpcMetadataAdapterTests
             metadata: metadata,
             encoding: null);
 
-        meta.Headers["custom-header"].ShouldBe("second");
+        meta.Headers.ShouldNotBeNull();
+        meta.Headers!["custom-header"].ShouldBe("second");
     }
 
     [Fact]
@@ -111,7 +118,8 @@ public class GrpcMetadataAdapterTests
         var meta = GrpcMetadataAdapter.CreateResponseMeta(headers: null, trailers: trailers);
 
         meta.Encoding.ShouldBe("protobuf");
-        meta.Headers[GrpcTransportConstants.EncodingTrailer].ShouldBe("protobuf");
+        meta.Headers.ShouldNotBeNull();
+        meta.Headers![GrpcTransportConstants.EncodingTrailer].ShouldBe("protobuf");
         meta.Headers["x-tail"].ShouldBe("value");
     }
 

@@ -38,8 +38,7 @@ public sealed class ShardingConfigurationExtensionsTests
 
         using var jsonStream = new MemoryStream(Encoding.UTF8.GetBytes(json));
         var configuration = new ConfigurationBuilder().AddJsonStream(jsonStream).Build();
-        var options = configuration.Get<OmniRelayConfigurationOptions>();
-        options.ShouldNotBeNull();
+        var options = configuration.Get<OmniRelayConfigurationOptions>() ?? throw new InvalidOperationException("Failed to bind OmniRelay configuration.");
         options.Sharding.Namespaces.Count.ShouldBe(1);
 
         var @namespace = options.Sharding.Namespaces[0];

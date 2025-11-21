@@ -94,8 +94,8 @@ public sealed class GrpcTransportDiagnosticsTests
     {
         var parseMethod = typeof(GrpcTransportDiagnostics).GetMethod(
             "ParseHttpProtocol",
-            BindingFlags.NonPublic | BindingFlags.Static);
-        parseMethod.ShouldNotBeNull();
+            BindingFlags.NonPublic | BindingFlags.Static)
+            ?? throw new InvalidOperationException("Missing ParseHttpProtocol.");
 
         var http3 = InvokeParse(parseMethod, "HTTP/3.0");
         http3.ShouldBe(("http", "3.0"));
@@ -115,8 +115,8 @@ public sealed class GrpcTransportDiagnosticsTests
     {
         var extract = typeof(GrpcTransportDiagnostics).GetMethod(
             "ExtractParentContext",
-            BindingFlags.NonPublic | BindingFlags.Static);
-        extract.ShouldNotBeNull();
+            BindingFlags.NonPublic | BindingFlags.Static)
+            ?? throw new InvalidOperationException("Missing ExtractParentContext.");
 
         var metadata = new Metadata { { "traceparent", "not-a-valid-trace" } };
         var context = (ActivityContext?)extract!.Invoke(null, [metadata]);
@@ -128,8 +128,8 @@ public sealed class GrpcTransportDiagnosticsTests
     {
         var extract = typeof(GrpcTransportDiagnostics).GetMethod(
             "ExtractParentContext",
-            BindingFlags.NonPublic | BindingFlags.Static);
-        extract.ShouldNotBeNull();
+            BindingFlags.NonPublic | BindingFlags.Static)
+            ?? throw new InvalidOperationException("Missing ExtractParentContext.");
 
         var traceId = ActivityTraceId.CreateRandom();
         var spanId = ActivitySpanId.CreateRandom();
@@ -141,9 +141,10 @@ public sealed class GrpcTransportDiagnosticsTests
 
         var context = (ActivityContext?)extract!.Invoke(null, [metadata]);
         context.HasValue.ShouldBeTrue();
-        context.Value.TraceId.ShouldBe(traceId);
-        context.Value.SpanId.ShouldBe(spanId);
-        context.Value.TraceState.ShouldBe("congo=t61rcWkgMzE");
+        var contextValue = context!.Value;
+        contextValue.TraceId.ShouldBe(traceId);
+        contextValue.SpanId.ShouldBe(spanId);
+        contextValue.TraceState.ShouldBe("congo=t61rcWkgMzE");
     }
 
     private static (string? Name, string? Version) InvokeParse(MethodInfo parseMethod, string? protocol)
