@@ -5,7 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using OmniRelay.Configuration;
+using OmniRelay.Dispatcher.Config;
 using OmniRelay.ControlPlane.Clients;
 using OmniRelay.Core;
 using OmniRelay.Transport.Grpc;
@@ -137,8 +137,6 @@ internal interface IServeHost : IAsyncDisposable
 
 internal sealed class DefaultServeHostFactory : IServeHostFactory
 {
-    [RequiresUnreferencedCode("OmniRelay dispatcher bootstrapping uses reflection and dynamic configuration; it is not trimming/AOT safe.")]
-    [RequiresDynamicCode("OmniRelay dispatcher bootstrapping uses reflection and dynamic configuration; it is not trimming/AOT safe.")]
     public IServeHost CreateHost(IConfigurationRoot configuration, string section)
     {
         ArgumentNullException.ThrowIfNull(configuration);
@@ -156,7 +154,7 @@ internal sealed class DefaultServeHostFactory : IServeHostFactory
             options.SingleLine = true;
             options.TimestampFormat = "HH:mm:ss ";
         }));
-        builder.Services.AddOmniRelayDispatcher(builder.Configuration.GetSection(section));
+        builder.Services.AddOmniRelayDispatcherFromConfiguration(builder.Configuration.GetSection(section));
         var host = builder.Build();
         return new DefaultServeHost(host);
     }

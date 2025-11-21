@@ -6,8 +6,8 @@ using Grpc.Net.Client;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using OmniRelay.Configuration;
 using OmniRelay.Core;
+using OmniRelay.Dispatcher.Config;
 using OmniRelay.Dispatcher;
 using Xunit;
 using static Hugo.Go;
@@ -34,7 +34,7 @@ public class GrpcDispatcherHostIntegrationTests
         });
 
         builder.Services.AddLogging();
-        builder.Services.AddOmniRelayDispatcher(builder.Configuration.GetSection("omnirelay"));
+        builder.Services.AddOmniRelayDispatcherFromConfiguration(builder.Configuration.GetSection("omnirelay"));
 
         using var host = builder.Build();
         var dispatcher = host.Services.GetRequiredService<Dispatcher.Dispatcher>();

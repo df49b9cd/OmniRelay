@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -8,20 +9,65 @@ namespace OmniRelay.Dispatcher.Generator;
 public sealed class DispatcherGenerator : IIncrementalGenerator
 {
     private const string AttributeName = "OmniRelay.Dispatcher.CodeGen.DispatcherDefinitionAttribute";
+    private const string ConfigMetadataKey = "build_metadata.additionalfiles.OmniRelayDispatcherConfig";
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-#pragma warning disable IDE0200 // Lambda expression can be removed (style); keep for clarity.
-        var candidates = context.SyntaxProvider
+#pragma warning disable IDE0200
+        var dispatcherClasses = context.SyntaxProvider
             .CreateSyntaxProvider<ClassDeclarationSyntax?>(IsCandidate, GetSemanticTarget)
             .Where(static model => model is not null)!;
 #pragma warning restore IDE0200
 
-        var compilationAndClasses = context.CompilationProvider.Combine(candidates.Collect());
+        var dispatcherConfigs = context.AdditionalTextsProvider
+            .Combine(context.AnalyzerConfigOptionsProvider)
+            .Select(static (pair, _) =>
+            {
+                var (text, opts) = pair;
+                var meta = opts.GetOptions(text);
+                meta.TryGetValue(ConfigMetadataKey, out var flag);
+                return string.Equals(flag, "true", StringComparison.OrdinalIgnoreCase) ? text : null;
+            })
+            .Where(static t => t is not null)!;
 
-        context.RegisterSourceOutput(compilationAndClasses, static (spc, pair) =>
+        var pipeline = context.CompilationProvider
+            .Combine(dispatcherClasses.Collect())
+            .Combine(dispatcherConfigs.Collect());
+
+        context.RegisterSourceOutput(pipeline, static (spc, triple) =>
         {
-            var (compilation, classes) = pair;
+            var ((compilation, classes), configs) = triple;
+            if (compilation.GetTypeByMetadataName(AttributeName) is null)
+            {
+                spc.ReportDiagnostic(Diagnostic.Create(
+                    new DiagnosticDescriptor(
+                        id: "ORGEN001",
+                        title: "DispatcherDefinitionAttribute missing",
+                        messageFormat: "DispatcherDefinitionAttribute was not found in compilation; dispatcher generation skipped.",
+                        category: "Usage",
+                        DiagnosticSeverity.Warning,
+                        isEnabledByDefault: true),
+                    Location.None));
+                return;
+            }
+
+            var configArray = configs.IsDefault
+                ? ImmutableArray<AdditionalText>.Empty
+                : configs.Where(static c => c is not null)!.Select(static c => c!).ToImmutableArray();
+
+            if (configArray.Length == 0)
+            {
+                spc.ReportDiagnostic(Diagnostic.Create(
+                    new DiagnosticDescriptor(
+                        id: "ORGEN002",
+                        title: "Dispatcher config not provided",
+                        messageFormat: "No AdditionalFiles were marked with OmniRelayDispatcherConfig; generated dispatcher will default to the path provided at call site.",
+                        category: "Usage",
+                        DiagnosticSeverity.Info,
+                        isEnabledByDefault: true),
+                    Location.None));
+            }
+
             foreach (var cls in classes)
             {
                 if (cls is null)
@@ -29,22 +75,7 @@ public sealed class DispatcherGenerator : IIncrementalGenerator
                     continue;
                 }
 
-                if (compilation.GetTypeByMetadataName(AttributeName) is null)
-                {
-                    // Attribute not referenced; skip with a diagnostic message.
-                    spc.ReportDiagnostic(Diagnostic.Create(
-                        new DiagnosticDescriptor(
-                            id: "ORGEN001",
-                            title: "DispatcherDefinitionAttribute missing",
-                            messageFormat: "DispatcherDefinitionAttribute was not found in compilation; dispatcher generation skipped.",
-                            category: "Usage",
-                            DiagnosticSeverity.Warning,
-                            isEnabledByDefault: true),
-                        Location.None));
-                    return;
-                }
-
-                GenerateDispatcher(spc, cls);
+                GenerateDispatcher(spc, cls, configArray);
             }
         });
     }
@@ -75,7 +106,7 @@ public sealed class DispatcherGenerator : IIncrementalGenerator
         return null;
     }
 
-    private static void GenerateDispatcher(SourceProductionContext context, ClassDeclarationSyntax cls)
+    private static void GenerateDispatcher(SourceProductionContext context, ClassDeclarationSyntax cls, ImmutableArray<AdditionalText> configs)
     {
         var ns = GetNamespace(cls);
         var className = cls.Identifier.Text;
@@ -100,6 +131,8 @@ public sealed class DispatcherGenerator : IIncrementalGenerator
             serviceName = className;
         }
 
+        var configPath = configs.FirstOrDefault()?.Path ?? "appsettings.dispatcher.json";
+
         var source = $$"""
 // <auto-generated/>
 using System;
@@ -109,14 +142,14 @@ namespace {{ns}}
 {
     partial class {{className}}
     {
-        public static Dispatcher CreateDispatcher(IServiceProvider services)
+        public static Dispatcher CreateDispatcher(IServiceProvider services, string? configPath = null)
         {
             var options = new DispatcherOptions("{{serviceName}}");
-            Configure(services, options);
+            Configure(services, options, configPath ?? "{{configPath}}");
             return new Dispatcher(options);
         }
 
-        static partial void Configure(IServiceProvider services, DispatcherOptions options);
+        static partial void Configure(IServiceProvider services, DispatcherOptions options, string configPath);
     }
 }
 """;

@@ -7,7 +7,7 @@ You are an expert C#/.NET developer. You help with .NET tasks by giving clean, w
 - Always, keep the docs/knowledge-base documents updated and current.
 
 ## Project Structure & Module Organization
-- `src/` houses all production code; core runtime lives in `src/OmniRelay`, configuration binder in `src/OmniRelay.Configuration`, CLI in `src/OmniRelay.Cli`, and codegen in `src/OmniRelay.Codegen.*`.
+- `src/` houses all production code; core runtime lives in `src/OmniRelay`, CLI in `src/OmniRelay.Cli`, and codegen in `src/OmniRelay.Codegen.*`.
 - `tests/` mirrors those areas with xUnit projects (`OmniRelay.Core.UnitTests`, `OmniRelay.Cli.UnitTests`, `OmniRelay.HyperscaleFeatureTests`, etc.). Interop and yab suites sit in `tests/OmniRelay.YabInterop`.
 - `docs/` contains architecture notes and guidance (AOT, diagnostics, samples).
 - `eng/` holds repeatable scripts (`run-ci.sh`, `run-aot-publish.sh`, `run-hyperscale-smoke.sh`). Docker recipes live in `docker/`. Runnable samples are under `samples/`.

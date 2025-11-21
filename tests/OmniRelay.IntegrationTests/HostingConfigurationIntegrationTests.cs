@@ -3,7 +3,7 @@ using Hugo;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using OmniRelay.Configuration;
+using OmniRelay.Dispatcher.Config;
 using OmniRelay.Core;
 using OmniRelay.Core.Middleware;
 using OmniRelay.Core.Transport;
@@ -60,7 +60,7 @@ public class HostingConfigurationIntegrationTests
         builder.Configuration.AddInMemoryCollection(overlay);
 
         builder.Services.AddLogging();
-        builder.Services.AddOmniRelayDispatcher(builder.Configuration.GetSection("omnirelay"));
+        builder.Services.AddOmniRelayDispatcherFromConfiguration(builder.Configuration.GetSection("omnirelay"));
 
         using var host = builder.Build();
         var dispatcher = host.Services.GetRequiredService<Dispatcher.Dispatcher>();
@@ -130,7 +130,7 @@ public class HostingConfigurationIntegrationTests
         builder.Configuration.AddCommandLine(args);
 
         builder.Services.AddLogging();
-        builder.Services.AddOmniRelayDispatcher(builder.Configuration.GetSection("omnirelay"));
+        builder.Services.AddOmniRelayDispatcherFromConfiguration(builder.Configuration.GetSection("omnirelay"));
 
         using var host = builder.Build();
         var dispatcher = host.Services.GetRequiredService<Dispatcher.Dispatcher>();
@@ -176,7 +176,7 @@ public class HostingConfigurationIntegrationTests
 
         builder.Services.AddLogging();
         builder.Services.AddSingleton<ICustomOutboundSpec>(outboundSpec);
-        builder.Services.AddOmniRelayDispatcher(builder.Configuration.GetSection("omnirelay"));
+        builder.Services.AddOmniRelayDispatcherFromConfiguration(builder.Configuration.GetSection("omnirelay"));
 
         using var host = builder.Build();
         var dispatcher = host.Services.GetRequiredService<Dispatcher.Dispatcher>();
@@ -225,7 +225,7 @@ public class HostingConfigurationIntegrationTests
         });
 
         builder.Services.AddLogging();
-        builder.Services.AddOmniRelayDispatcher(builder.Configuration.GetSection("omnirelay"));
+        builder.Services.AddOmniRelayDispatcherFromConfiguration(builder.Configuration.GetSection("omnirelay"));
 
         using var host = builder.Build();
 
@@ -281,7 +281,7 @@ public class HostingConfigurationIntegrationTests
         });
 
         builder.Services.AddLogging();
-        builder.Services.AddOmniRelayDispatcher(builder.Configuration.GetSection("omnirelay"));
+        builder.Services.AddOmniRelayDispatcherFromConfiguration(builder.Configuration.GetSection("omnirelay"));
 
         using var host = builder.Build();
         var dispatcher = host.Services.GetRequiredService<Dispatcher.Dispatcher>();
@@ -341,7 +341,7 @@ public class HostingConfigurationIntegrationTests
         });
 
         builder.Services.AddLogging();
-        builder.Services.AddOmniRelayDispatcher(builder.Configuration.GetSection("omnirelay"));
+        builder.Services.AddOmniRelayDispatcherFromConfiguration(builder.Configuration.GetSection("omnirelay"));
 
         using var host = builder.Build();
         var dispatcher = host.Services.GetRequiredService<Dispatcher.Dispatcher>();
@@ -386,7 +386,7 @@ public class HostingConfigurationIntegrationTests
 
         builder.Services.AddLogging();
         builder.Services.AddSingleton<ICustomInboundSpec>(inboundSpec);
-        builder.Services.AddOmniRelayDispatcher(builder.Configuration.GetSection("omnirelay"));
+        builder.Services.AddOmniRelayDispatcherFromConfiguration(builder.Configuration.GetSection("omnirelay"));
 
         using var host = builder.Build();
         var dispatcher = host.Services.GetRequiredService<Dispatcher.Dispatcher>();

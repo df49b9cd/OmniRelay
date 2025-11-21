@@ -40,7 +40,7 @@ Keep OmniRelay focused on transport governance by enforcing HTTP/3-first policie
 ## Status & Validation
 - Completed on November 19, 2025 with CLI summaries, JSON schema updates, and telemetry hints wired into `omnirelay mesh config validate`.
 - Validation commands:
-  - `dotnet test tests/OmniRelay.Configuration.UnitTests/OmniRelay.Configuration.UnitTests.csproj --filter TransportPolicy`
+  - `dotnet test tests/OmniRelay.Dispatcher.UnitTests/OmniRelay.Dispatcher.UnitTests.csproj --filter TransportPolicy`
   - `dotnet test tests/OmniRelay.FeatureTests/OmniRelay.FeatureTests.csproj --filter TransportPolicy`
   - `dotnet test tests/OmniRelay.IntegrationTests/OmniRelay.IntegrationTests.csproj --filter TransportPolicyIntegrationTests`
   - `dotnet test tests/OmniRelay.HyperscaleFeatureTests/OmniRelay.HyperscaleFeatureTests.csproj --filter TransportPolicyHyperscaleFeatureTests`

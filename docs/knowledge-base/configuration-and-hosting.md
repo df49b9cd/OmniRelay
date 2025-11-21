@@ -4,18 +4,18 @@
 - Use `DispatcherOptions` to register HTTP/gRPC inbounds, define unary/oneway outbounds, and attach middleware before creating a `Dispatcher` instance (see README snippet). The inbound automatically exposes `/omnirelay/introspect`, `/healthz`, `/readyz`.
 - Middleware chains are layered via `options.UnaryInboundMiddleware.Add(...)`, and codecs (`JsonCodec<TReq,TRes>`) drive request/response serialization.
 
-## Configuration Binder (`src/OmniRelay.Configuration`)
-- `AddOmniRelayDispatcher` wires an OmniRelay dispatcher into Generic Host using strongly-typed options loaded from `appsettings.json`.
-- Configuration sections cover service identity, inbound/outbound transport definitions, middleware stacks, peer choosers, and security policies.
-- Extension points (`ICustomInboundSpec`, `ICustomOutboundSpec`, `ICustomPeerChooserSpec`) let packages register custom transports or routing logic.
+## Source-generated configuration
+- Use `AddOmniRelayDispatcherFromConfig("appsettings.dispatcher.json")` to load dispatcher settings via the built-in configuration binding generator (trim/AOT safe).
+- `DispatcherConfig` is the trimmed DTO; map to `DispatcherOptions` via `DispatcherConfigMapper` without reflection or `Type.GetType`.
+- Custom middleware/interceptors/peer choosers must be registered in code (e.g., `DispatcherComponentRegistry.RegisterMiddleware<T>("logging")`) and referenced by key in config.
 
 ## Hosting Scenarios
-- **Generic Host**: `builder.Services.AddOmniRelayDispatcher(builder.Configuration);` then call `await host.RunAsync();` to co-host dispatcher + app services.
-- **Native AOT**: set `omnirelay:nativeAot:enabled: true` in configuration to use the trimming-safe bootstrapper (strict by default, only registered middleware/interceptors allowed), or use the reflection-free overload `AddOmniRelayDispatcherAot(options, (sp, dispatcher) => { /* register codecs/transports */ });`. Follow `docs/architecture/aot-guidelines.md` and run `./eng/run-aot-publish.sh [rid] [Configuration]` to produce self-contained binaries.
+- **Generic Host**: `builder.Services.AddOmniRelayDispatcherFromConfig("appsettings.dispatcher.json");` then call `await host.RunAsync();` to co-host dispatcher + app services.
+- **Native AOT**: rely on source-generated binding plus `DispatcherConfigJsonContext` to avoid reflection; publish with `./eng/run-aot-publish.sh [rid] [Configuration]`.
 - **Docker/CI**: `./eng/run-ci.sh` reproduces pipeline builds; `docker build -f docker/Dockerfile.hyperscale.ci .` runs hyperscale smoke tests inside containers.
 
 ## Security & Certificates
-- Configuration binder handles TLS via `WorkloadIdentity`/`Bootstrap` sections. Helpers load certs, SPIFEE identities, and bootstrap tokens (see `ServiceCollectionExtensions.cs`).
+- TLS/secret loading helpers now live in code-first attributes and the dispatcher config mapper; avoid runtime type lookups.
 
 ## Control-plane Hosting
 - `DiagnosticsControlPlaneHost` (within `src/OmniRelay/Core/Diagnostics`) spins up HTTP control endpoints (logging/tracing toggles, shard control, probes, chaos) using `HttpControlPlaneHostOptions`. Use configuration flags to enable/disable features per deployment.

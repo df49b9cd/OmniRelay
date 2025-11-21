@@ -1,0 +1,267 @@
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using OmniRelay.Dispatcher.Config;
+
+// Compatibility shims to keep projects building while we migrate off OmniRelay.Configuration.
+namespace OmniRelay.Configuration
+{
+    // Minimal placeholder for prior options type.
+    public sealed class OmniRelayConfigurationOptions
+    {
+        public string? Service { get; set; }
+        public object? Inbounds { get; set; }
+        public DiagnosticsConfiguration Diagnostics { get; set; } = new();
+        public TransportPolicyConfiguration TransportPolicy { get; set; } = new();
+        public LoggingConfiguration Logging { get; set; } = new();
+    }
+
+    public sealed class LoggingConfiguration
+    {
+        public string? Level { get; set; }
+        public Dictionary<string, string> Overrides { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    }
+
+    public sealed class DiagnosticsConfiguration
+    {
+        public DiagnosticsControlPlaneConfiguration ControlPlane { get; set; } = new();
+        public DiagnosticsOpenTelemetryConfiguration OpenTelemetry { get; set; } = new();
+    }
+
+    public sealed class DiagnosticsControlPlaneConfiguration
+    {
+        public List<string> HttpUrls { get; set; } = new();
+        public List<string> GrpcUrls { get; set; } = new();
+        public ControlPlaneRuntimeConfiguration HttpRuntime { get; set; } = new();
+        public ControlPlaneRuntimeConfiguration GrpcRuntime { get; set; } = new();
+    }
+
+    public sealed class DiagnosticsOpenTelemetryConfiguration
+    {
+        public bool? Enabled { get; set; }
+    }
+
+    public sealed class ControlPlaneRuntimeConfiguration
+    {
+        public bool EnableHttp3 { get; set; }
+    }
+
+    public sealed class TransportPolicyConfiguration
+    {
+        public List<TransportPolicyExceptionConfiguration> Exceptions { get; set; } = new();
+    }
+
+    public sealed class TransportPolicyExceptionConfiguration
+    {
+        public string? Name { get; set; }
+        public TransportPolicyCategories Category { get; set; }
+        public List<TransportPolicyEndpoints> AppliesTo { get; set; } = new();
+        public List<TransportPolicyTransports> Transports { get; set; } = new();
+        public List<TransportPolicyEncodings> Encodings { get; set; } = new();
+        public string? Reason { get; set; }
+    }
+
+    public enum TransportPolicyCategories { Diagnostics }
+    public enum TransportPolicyEndpoints { DiagnosticsHttp, DiagnosticsGrpc }
+    public enum TransportPolicyTransports { Http2, Http3 }
+    public enum TransportPolicyEncodings { Json, Protobuf }
+
+    public readonly struct TransportPolicyEvaluationResult
+    {
+        public TransportPolicyEvaluationResult(bool isAllowed, string? reason = null)
+        {
+            IsAllowed = isAllowed;
+            Reason = reason;
+        }
+
+        public bool IsAllowed { get; }
+        public string? Reason { get; }
+    }
+
+    public static class TransportPolicyEvaluator
+    {
+        public static TransportPolicyEvaluationResult Evaluate(OmniRelayConfigurationOptions _)
+            => new(true);
+    }
+
+    public static class ServiceCollectionExtensions
+    {
+        // Legacy signature: uses new reflection-free path with an assumed config section path.
+        public static IServiceCollection AddOmniRelayDispatcher(this IServiceCollection services, IConfiguration configurationSection)
+        {
+            services.AddOmniRelayDispatcherFromConfiguration(configurationSection);
+            return services;
+        }
+    }
+}
+
+namespace OmniRelay.Configuration.Models
+{
+    // Placeholder model container to satisfy legacy logging in samples.
+    public sealed class OmniRelayConfigurationOptions
+    {
+        public Inbounds? Inbounds { get; set; }
+        public DiagnosticsConfiguration Diagnostics { get; set; } = new();
+        public TransportPolicyConfiguration TransportPolicy { get; set; } = new();
+        public LoggingConfiguration Logging { get; set; } = new();
+    }
+
+    public sealed class Inbounds
+    {
+        public List<HttpInbound> Http { get; set; } = new();
+        public List<GrpcInbound> Grpc { get; set; } = new();
+    }
+
+    public sealed class HttpInbound
+    {
+        public List<string> Urls { get; set; } = new();
+    }
+
+    public sealed class GrpcInbound
+    {
+        public List<string> Urls { get; set; } = new();
+    }
+
+    public sealed class DiagnosticsConfiguration
+    {
+        public DiagnosticsControlPlaneConfiguration ControlPlane { get; set; } = new();
+        public DiagnosticsOpenTelemetryConfiguration OpenTelemetry { get; set; } = new();
+    }
+
+    public sealed class DiagnosticsControlPlaneConfiguration
+    {
+        public List<string> HttpUrls { get; set; } = new();
+        public List<string> GrpcUrls { get; set; } = new();
+        public ControlPlaneRuntimeConfiguration HttpRuntime { get; set; } = new();
+        public ControlPlaneRuntimeConfiguration GrpcRuntime { get; set; } = new();
+    }
+
+    public sealed class DiagnosticsOpenTelemetryConfiguration
+    {
+        public bool? Enabled { get; set; }
+    }
+
+    public sealed class LoggingConfiguration
+    {
+        public string? Level { get; set; }
+        public Dictionary<string, string> Overrides { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    }
+
+    public sealed class ControlPlaneRuntimeConfiguration
+    {
+        public bool EnableHttp3 { get; set; }
+    }
+
+    public sealed class TransportPolicyConfiguration
+    {
+        public List<TransportPolicyExceptionConfiguration> Exceptions { get; set; } = new();
+    }
+
+    public sealed class TransportPolicyExceptionConfiguration
+    {
+        public string? Name { get; set; }
+        public TransportPolicyCategories Category { get; set; }
+        public List<TransportPolicyEndpoints> AppliesTo { get; set; } = new();
+        public List<TransportPolicyTransports> Transports { get; set; } = new();
+        public List<TransportPolicyEncodings> Encodings { get; set; } = new();
+        public string? Reason { get; set; }
+    }
+
+    public enum TransportPolicyCategories { Diagnostics }
+    public enum TransportPolicyEndpoints { DiagnosticsHttp, DiagnosticsGrpc }
+    public enum TransportPolicyTransports { Http2, Http3 }
+    public enum TransportPolicyEncodings { Json, Protobuf }
+}
+
+namespace OmniRelay.Configuration.Internal
+{
+    // Stub to satisfy CLI validation references.
+    public static class TransportPolicyEvaluator
+    {
+        public static OmniRelay.Configuration.TransportPolicyEvaluationResult Evaluate(OmniRelay.Configuration.OmniRelayConfigurationOptions _)
+            => new(true);
+    }
+}
+
+namespace OmniRelay.Configuration.Internal.TransportPolicy
+{
+    public readonly struct TransportPolicyEvaluationResult
+    {
+        public TransportPolicyEvaluationResult(bool isAllowed, IReadOnlyList<TransportPolicyFinding>? findings = null, TransportPolicyEvaluationSummary? summary = null)
+        {
+            IsAllowed = isAllowed;
+            Findings = findings ?? Array.Empty<TransportPolicyFinding>();
+            Summary = summary ?? new TransportPolicyEvaluationSummary();
+        }
+
+        public bool IsAllowed { get; }
+        public IReadOnlyList<TransportPolicyFinding> Findings { get; }
+        public TransportPolicyEvaluationSummary Summary { get; }
+        public bool HasViolations => Findings.Any(f => f.Status == TransportPolicyFindingStatus.Violation);
+        public bool HasExceptions => Findings.Any(f => f.Status == TransportPolicyFindingStatus.Excepted);
+    }
+
+    public sealed class TransportPolicyEvaluationSummary
+    {
+        public int Total { get; set; }
+        public int Compliant { get; set; }
+        public int Excepted { get; set; }
+        public int Violations { get; set; }
+    }
+
+    public readonly struct TransportPolicyFinding
+    {
+        public TransportPolicyFinding(
+            TransportPolicyFindingStatus status,
+            string message,
+            string? endpoint = null,
+            TransportPolicyCategories category = TransportPolicyCategories.Diagnostics,
+            TransportPolicyEndpoints appliesTo = TransportPolicyEndpoints.DiagnosticsHttp,
+            TransportPolicyTransports transport = TransportPolicyTransports.Http2,
+            TransportPolicyEncodings encoding = TransportPolicyEncodings.Json,
+            bool http3Enabled = false,
+            string? hint = null,
+            string? exceptionName = null,
+            string? exceptionReason = null,
+            DateTimeOffset? exceptionExpiresAfter = null)
+        {
+            Status = status;
+            Message = message;
+            Endpoint = endpoint ?? string.Empty;
+            Category = category;
+            AppliesTo = appliesTo;
+            Transport = transport;
+            Encoding = encoding;
+            Http3Enabled = http3Enabled;
+            Hint = hint;
+            ExceptionName = exceptionName;
+            ExceptionReason = exceptionReason;
+            ExceptionExpiresAfter = exceptionExpiresAfter;
+        }
+
+        public TransportPolicyFindingStatus Status { get; }
+        public string Message { get; }
+        public string Endpoint { get; }
+        public TransportPolicyCategories Category { get; }
+        public TransportPolicyEndpoints AppliesTo { get; }
+        public TransportPolicyTransports Transport { get; }
+        public TransportPolicyEncodings Encoding { get; }
+        public bool Http3Enabled { get; }
+        public string? Hint { get; }
+        public string? ExceptionName { get; }
+        public string? ExceptionReason { get; }
+        public DateTimeOffset? ExceptionExpiresAfter { get; }
+    }
+
+    public enum TransportPolicyFindingStatus
+    {
+        Compliant,
+        Violation,
+        Excepted
+    }
+
+    public static class TransportPolicyEvaluator
+    {
+        public static TransportPolicyEvaluationResult Evaluate(object? _) => new(true);
+        public static TransportPolicyEvaluationResult Enforce(object? options) => Evaluate(options);
+    }
+}

@@ -5,7 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using OmniRelay.Configuration;
+using OmniRelay.Dispatcher.Config;
 using OmniRelay.Core.Gossip;
 using OmniRelay.IntegrationTests.Support;
 using OmniRelay.Tests.Support;
@@ -244,7 +244,7 @@ public sealed class GossipIntegrationTests(ITestOutputHelper output) : Integrati
 
         builder.Configuration.AddInMemoryCollection(settings);
         builder.Services.AddLogging();
-        builder.Services.AddOmniRelayDispatcher(builder.Configuration.GetSection("omnirelay"));
+        builder.Services.AddOmniRelayDispatcherFromConfiguration(builder.Configuration.GetSection("omnirelay"));
 
         var host = builder.Build();
         await host.StartAsync(cancellationToken);

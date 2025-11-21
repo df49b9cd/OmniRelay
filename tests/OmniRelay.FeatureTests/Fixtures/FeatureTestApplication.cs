@@ -2,7 +2,7 @@ using System.Globalization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using OmniRelay.Configuration;
+using OmniRelay.Dispatcher.Config;
 using OmniRelay.Tests;
 using OmniRelay.Tests.Support;
 using Xunit;
@@ -82,7 +82,8 @@ public sealed class FeatureTestApplication : IAsyncLifetime
         builder.Configuration.AddConfiguration(Configuration);
 
         builder.Services.AddLogging();
-        builder.Services.AddOmniRelayDispatcher(Configuration.GetSection("omniRelay"));
+        builder.Services.Configure<OmniRelay.Configuration.Models.OmniRelayConfigurationOptions>(Configuration.GetSection("omniRelay"));
+        builder.Services.AddOmniRelayDispatcherFromConfiguration(Configuration.GetSection("omniRelay"));
 
         _host = builder.Build();
         await _host.StartAsync().ConfigureAwait(false);

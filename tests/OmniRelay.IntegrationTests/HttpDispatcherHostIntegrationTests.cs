@@ -3,7 +3,7 @@ using System.Net.Mime;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using OmniRelay.Configuration;
+using OmniRelay.Dispatcher.Config;
 using OmniRelay.Core;
 using OmniRelay.Dispatcher;
 using OmniRelay.Transport.Http;
@@ -28,7 +28,7 @@ public class HttpDispatcherHostIntegrationTests
         });
 
         builder.Services.AddLogging();
-        builder.Services.AddOmniRelayDispatcher(builder.Configuration.GetSection("omnirelay"));
+        builder.Services.AddOmniRelayDispatcherFromConfiguration(builder.Configuration.GetSection("omnirelay"));
 
         using var host = builder.Build();
         var dispatcher = host.Services.GetRequiredService<Dispatcher.Dispatcher>();

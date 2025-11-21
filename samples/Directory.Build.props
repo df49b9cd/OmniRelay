@@ -1,7 +1,0 @@
-<Project>
-  <PropertyGroup>
-    <PublishAot>false</PublishAot>
-    <IsAotCompatible>false</IsAotCompatible>
-    <UseMicrosoftTestingPlatform>false</UseMicrosoftTestingPlatform>
-  </PropertyGroup>
-</Project>

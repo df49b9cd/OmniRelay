@@ -36,8 +36,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/OmniRelay/OmniRelay.csproj" />
-    <ProjectReference Include="../../src/OmniRelay.Configuration/OmniRelay.Configuration.csproj" />
-  </ItemGroup>
+</ItemGroup>
 
   <ItemGroup>
     <Protobuf Include="../OmniRelay.Codegen.Tests/Protos/test_service.proto" Link="Protos/test_service.proto" GrpcServices="None" />

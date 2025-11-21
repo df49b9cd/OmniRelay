@@ -32,8 +32,7 @@
   <ItemGroup>
     <ProjectReference Include="../../src/OmniRelay.Codegen.Protobuf.Core/OmniRelay.Codegen.Protobuf.Core.csproj" />
     <ProjectReference Include="../../src/OmniRelay.Codegen.Protobuf.Generator/OmniRelay.Codegen.Protobuf.Generator.csproj" />
-    <ProjectReference Include="../../src/OmniRelay.Configuration/OmniRelay.Configuration.csproj" />
-    <ProjectReference Include="../../src/OmniRelay/OmniRelay.csproj" />
+<ProjectReference Include="../../src/OmniRelay/OmniRelay.csproj" />
   </ItemGroup>
 
   <ItemGroup>

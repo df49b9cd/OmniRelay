@@ -28,8 +28,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\OmniRelay.Configuration\OmniRelay.Configuration.csproj" />
-    <ProjectReference Include="..\OmniRelay\OmniRelay.csproj" />
+<ProjectReference Include="..\OmniRelay\OmniRelay.csproj" />
     <ProjectReference Include="..\OmniRelay.Cli.Core\OmniRelay.Cli.Core.csproj" />
   </ItemGroup>
 

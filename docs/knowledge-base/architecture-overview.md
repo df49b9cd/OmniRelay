@@ -8,7 +8,7 @@ OmniRelay is the .NET 10 port of Uber's YARPC runtime layered on Hugo primitives
 
 ## Core pillars
 - **Dispatcher (src/OmniRelay)** bundles transports (HTTP, gRPC), codecs (JSON, Protobuf, raw), middleware (logging, tracing, metrics, deadlines, retries, circuit breakers, panic recovery, rate limiting), and peer choosers (round-robin, fewest-pending, two-random-choice). Resource-lease subsystems, chaos labs, and sharding helpers extend the peer/routing layer.
-- **Configuration binder (src/OmniRelay.Configuration)** exposes `AddOmniRelayDispatcher` plus typed specs (`ICustomInboundSpec`, `ICustomOutboundSpec`, `ICustomPeerChooserSpec`) to derive host builders from JSON/YAML.
+- **Dispatcher config (source-generated)** uses `DispatcherConfig` + `DispatcherConfigMapper` to bind JSON with the built-in configuration generator and produce trimming-safe `DispatcherOptions` instances. Custom middleware/peer choosers are registered in code and referenced by key in config.
 - **Diagnostics stack** spans HTTP/gRPC control planes (`/omnirelay/introspect`, `/control/*`), Prometheus/OTLP exporters, runtime toggles for logging/tracing, lease health snapshots, and mesh dashboards.
 - **Tooling (src/OmniRelay.Cli)** supplies the `omnirelay` CLI for config validation, dispatcher introspection, node drain/upgrade orchestration, shard control, and scripted smoke tests.
 - **Code generation** includes a Protobuf `protoc` plug-in (`OmniRelay.Codegen.Protobuf`) and a Roslyn incremental generator (`OmniRelay.Codegen.Protobuf.Generator`) that emit dispatcher registrations and strongly-typed RPC clients.
