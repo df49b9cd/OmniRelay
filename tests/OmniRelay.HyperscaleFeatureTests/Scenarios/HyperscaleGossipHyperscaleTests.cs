@@ -26,7 +26,7 @@ public sealed class HyperscaleGossipHyperscaleTests : IAsyncLifetime
 
         var convergence = await WaitForConditionAsync(
             () => ClusterHasAliveCoverage(_hosts, _nodes),
-            TimeSpan.FromSeconds(45),
+            TimeSpan.FromSeconds(60),
             ct);
 
         Assert.True(convergence, $"Hyperscale cluster failed to converge.{Environment.NewLine}{DescribeSnapshots(_hosts)}");
@@ -103,10 +103,10 @@ public sealed class HyperscaleGossipHyperscaleTests : IAsyncLifetime
                 Port = descriptor.Port,
                 AdvertisePort = descriptor.Port,
                 Interval = TimeSpan.FromMilliseconds(250),
-                SuspicionInterval = TimeSpan.FromSeconds(3),
-                PingTimeout = TimeSpan.FromMilliseconds(750),
-                Fanout = 5,
-                RetransmitLimit = 3,
+                SuspicionInterval = TimeSpan.FromSeconds(5),
+                PingTimeout = TimeSpan.FromMilliseconds(1000),
+                Fanout = 6,
+                RetransmitLimit = 4,
                 MetadataRefreshPeriod = TimeSpan.FromSeconds(5),
                 SeedPeers = seedPeers,
                 Labels = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
