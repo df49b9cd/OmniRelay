@@ -584,6 +584,19 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                             RecordServerDuplexMetrics(StatusCode.Cancelled);
                             pumpCts.Cancel();
                         }
+                        catch (IOException ex)
+                        {
+                            var error = OmniRelayErrorAdapter.FromStatus(
+                                OmniRelayStatusCode.Cancelled,
+                                "The client reset the request stream.",
+                                transport: GrpcTransportConstants.TransportName,
+                                inner: Error.FromException(ex));
+                            await duplexCall.CompleteRequestsAsync(error, CancellationToken.None).ConfigureAwait(false);
+                            activityHasError = true;
+                            GrpcTransportDiagnostics.RecordException(activity, ex, StatusCode.Cancelled, ex.Message);
+                            RecordServerDuplexMetrics(StatusCode.Cancelled);
+                            pumpCts.Cancel();
+                        }
                         catch (RpcException rpcEx)
                         {
                             var error = OmniRelayErrorAdapter.FromStatus(
