@@ -20,10 +20,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Primitives;
-using OmniRelay.Core.Diagnostics;
-using OmniRelay.Core.Gossip;
 using OmniRelay.ControlPlane.Upgrade;
 using OmniRelay.Core;
+using OmniRelay.Core.Diagnostics;
+using OmniRelay.Core.Gossip;
 using OmniRelay.Core.Transport;
 using OmniRelay.Diagnostics;
 using OmniRelay.Dispatcher;
@@ -788,7 +788,7 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
         finally
         {
             CompleteRequest(context);
-    }
+        }
     }
 
     private async Task HandleServerStreamAsync(HttpContext context)
@@ -935,7 +935,7 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
         finally
         {
             CompleteRequest(context);
-    }
+        }
     }
 
     private static ValueTask<Result<HttpUnaryRequestContext>> DecodeUnaryRequestAsync(

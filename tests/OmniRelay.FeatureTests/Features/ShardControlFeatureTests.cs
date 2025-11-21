@@ -2,8 +2,8 @@ using System.Linq;
 using System.Threading.Tasks;
 using OmniRelay.Core.Shards;
 using OmniRelay.FeatureTests.Fixtures;
-using Shouldly;
 using OmniRelay.Tests.Support;
+using Shouldly;
 using Xunit;
 
 namespace OmniRelay.FeatureTests.Features;

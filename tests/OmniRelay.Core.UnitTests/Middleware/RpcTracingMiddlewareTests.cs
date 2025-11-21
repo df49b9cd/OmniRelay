@@ -4,8 +4,8 @@ using Hugo;
 using NSubstitute;
 using OmniRelay.Core.Middleware;
 using OmniRelay.Core.Transport;
-using OmniRelay.Errors;
 using OmniRelay.Diagnostics;
+using OmniRelay.Errors;
 using Xunit;
 using static Hugo.Go;
 

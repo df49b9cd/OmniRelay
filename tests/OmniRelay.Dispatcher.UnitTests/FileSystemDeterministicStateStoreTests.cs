@@ -1,5 +1,5 @@
-using Hugo;
 using System.Linq;
+using Hugo;
 using Xunit;
 
 namespace OmniRelay.Dispatcher.UnitTests;

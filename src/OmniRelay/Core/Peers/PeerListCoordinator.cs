@@ -2,8 +2,8 @@ using System.Collections.Immutable;
 using Hugo;
 using OmniRelay.Diagnostics;
 using OmniRelay.Errors;
-using static Hugo.Go;
 using static Hugo.Functional;
+using static Hugo.Go;
 
 namespace OmniRelay.Core.Peers;
 

@@ -4,8 +4,8 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using OmniRelay.ControlPlane.Hosting;
 using OmniRelay.ControlPlane.Security;
-using OmniRelay.Core.Transport;
 using OmniRelay.Core.Shards.ControlPlane;
+using OmniRelay.Core.Transport;
 using OmniRelay.Transport.Grpc;
 using OmniRelay.Transport.Grpc.Interceptors;
 

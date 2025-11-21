@@ -1,8 +1,8 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics.CodeAnalysis;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
-using System.Security.Cryptography.X509Certificates;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -12,6 +12,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using OmniRelay.Configuration.Internal;
 using OmniRelay.Configuration.Internal.Security;
+using OmniRelay.Configuration.Internal.TransportPolicy;
 using OmniRelay.Configuration.Models;
 using OmniRelay.ControlPlane.Bootstrap;
 using OmniRelay.ControlPlane.Security;
@@ -19,16 +20,15 @@ using OmniRelay.ControlPlane.Upgrade;
 using OmniRelay.Core.Diagnostics;
 using OmniRelay.Core.Gossip;
 using OmniRelay.Core.Leadership;
-using OmniRelay.Dispatcher;
-using OmniRelay.Diagnostics;
-using OmniRelay.Diagnostics.Alerting;
 using OmniRelay.Core.Shards;
 using OmniRelay.Core.Shards.ControlPlane;
 using OmniRelay.Core.Shards.Hashing;
+using OmniRelay.Diagnostics;
+using OmniRelay.Diagnostics.Alerting;
+using OmniRelay.Dispatcher;
 using OmniRelay.Security.Authorization;
 using OmniRelay.Security.Secrets;
 using OmniRelay.Transport.Security;
-using OmniRelay.Configuration.Internal.TransportPolicy;
 
 namespace OmniRelay.Configuration;
 

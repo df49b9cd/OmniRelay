@@ -12,20 +12,20 @@ using Grpc.Core;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using OmniRelay.Cli.Core;
-using OmniRelay.Core;
-using OmniRelay.Configuration.Models;
 using OmniRelay.Configuration.Internal.TransportPolicy;
+using OmniRelay.Configuration.Models;
 using OmniRelay.ControlPlane.Bootstrap;
 using OmniRelay.ControlPlane.Clients;
 using OmniRelay.ControlPlane.Upgrade;
+using OmniRelay.Core;
 using OmniRelay.Mesh.Control.V1;
 using OmniRelay.Transport.Grpc;
-using ShardControl = OmniRelay.Core.Shards.ControlPlane;
-using DomainShardStatus = OmniRelay.Core.Shards.ShardStatus;
 using static OmniRelay.Cli.Program;
 using CoreLeadershipEventKind = OmniRelay.Core.Leadership.LeadershipEventKind;
+using DomainShardStatus = OmniRelay.Core.Shards.ShardStatus;
 using ProtoLeadershipEvent = OmniRelay.Mesh.Control.V1.LeadershipEvent;
 using ProtoLeadershipEventKind = OmniRelay.Mesh.Control.V1.LeadershipEventKind;
+using ShardControl = OmniRelay.Core.Shards.ControlPlane;
 
 namespace OmniRelay.Cli.Modules;
 
@@ -558,6 +558,7 @@ internal static partial class ProgramMeshModule
         return command;
     }
 
+    [RequiresDynamicCode("Calls Microsoft.Extensions.Configuration.ConfigurationBinder.Bind(Object)")]
     internal static async Task<int> RunMeshConfigValidateAsync(
         string[] configPaths,
         string section,
@@ -1594,7 +1595,7 @@ internal static partial class ProgramMeshModule
             return;
         }
 
-        Console.WriteLine($"{ "Namespace",-24} { "Shard",-18} { "Owner",-18} { "Status",-10} { "Version",8} { "Updated",-24}");
+        Console.WriteLine($"{"Namespace",-24} {"Shard",-18} {"Owner",-18} {"Status",-10} {"Version",8} {"Updated",-24}");
         foreach (var shard in response.Items
                      .OrderBy(s => s.Namespace, StringComparer.OrdinalIgnoreCase)
                      .ThenBy(s => s.ShardId, StringComparer.OrdinalIgnoreCase))
@@ -1649,7 +1650,7 @@ internal static partial class ProgramMeshModule
             return;
         }
 
-        Console.WriteLine($"{ "Shard",-18} { "Current",-18} { "Proposed",-18}");
+        Console.WriteLine($"{"Shard",-18} {"Current",-18} {"Proposed",-18}");
         foreach (var change in response.Changes
                      .OrderBy(c => c.Namespace, StringComparer.OrdinalIgnoreCase)
                      .ThenBy(c => c.ShardId, StringComparer.OrdinalIgnoreCase))

@@ -3,8 +3,8 @@ using System.CommandLine;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
-using Microsoft.Extensions.Configuration;
 using Hugo;
+using Microsoft.Extensions.Configuration;
 using OmniRelay.Cli.Core;
 using OmniRelay.Cli.Modules;
 using OmniRelay.Core;
@@ -1488,10 +1488,10 @@ public static partial class Program
             var buffer = new ArrayBufferWriter<byte>(initialCapacity);
 
             using (var document = JsonDocument.Parse(sourcePayload, new JsonDocumentOptions
-                   {
-                       AllowTrailingCommas = true,
-                       CommentHandling = JsonCommentHandling.Skip
-                   }))
+            {
+                AllowTrailingCommas = true,
+                CommentHandling = JsonCommentHandling.Skip
+            }))
             {
                 using var writer = new Utf8JsonWriter(buffer, new JsonWriterOptions { Indented = true });
                 document.RootElement.WriteTo(writer);

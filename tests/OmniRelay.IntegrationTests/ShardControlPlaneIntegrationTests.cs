@@ -5,8 +5,8 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using OmniRelay.Core.Shards;
 using OmniRelay.Core.Shards.ControlPlane;
-using Shouldly;
 using OmniRelay.Tests.Support;
+using Shouldly;
 using Xunit;
 
 namespace OmniRelay.IntegrationTests;
@@ -92,7 +92,8 @@ public sealed class ShardControlPlaneIntegrationTests
     {
         var seeds = Enumerable.Range(0, 4)
             .Select(i => CreateMutation("mesh.integration", $"shard-{i:D3}", "node-a"));
-        await host.SeedAsync(seeds);    }
+        await host.SeedAsync(seeds);
+    }
 }
 
 [JsonSourceGenerationOptions(JsonSerializerDefaults.Web)]

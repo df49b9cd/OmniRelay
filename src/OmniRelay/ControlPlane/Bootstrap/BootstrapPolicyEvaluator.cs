@@ -194,12 +194,12 @@ public sealed class BootstrapPolicyDecision
         };
 
     public static BootstrapPolicyDecision Deny(string reason) => new()
-        {
-            IsAllowed = false,
-            Reason = reason,
-            Lifetime = TimeSpan.Zero,
-            Metadata = EmptyMetadata
-        };
+    {
+        IsAllowed = false,
+        Reason = reason,
+        Lifetime = TimeSpan.Zero,
+        Metadata = EmptyMetadata
+    };
 }
 
 /// <summary>Runtime representation of a bootstrap policy document.</summary>

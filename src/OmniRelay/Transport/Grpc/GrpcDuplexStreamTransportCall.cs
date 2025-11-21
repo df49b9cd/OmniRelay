@@ -1,7 +1,7 @@
 using System.Buffers;
 using System.Diagnostics;
-using System.Threading.Channels;
 using System.Runtime.InteropServices;
+using System.Threading.Channels;
 using Grpc.Core;
 using Hugo;
 using OmniRelay.Core;

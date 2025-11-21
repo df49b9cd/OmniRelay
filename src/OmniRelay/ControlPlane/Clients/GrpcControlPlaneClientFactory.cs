@@ -2,9 +2,9 @@
 using System.Net;
 using System.Net.Security;
 using System.Security.Cryptography.X509Certificates;
-using Microsoft.Extensions.Logging;
 using Grpc.Net.Client;
 using Hugo;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OmniRelay.ControlPlane.Security;
 using static Hugo.Go;
