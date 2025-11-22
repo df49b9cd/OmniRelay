@@ -989,7 +989,7 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
         return $"{host}:{port}";
     }
 
-    private void PublishMembershipEvent(string reason, MeshGossipMemberSnapshot? changedMember = null)
+    private static void PublishMembershipEvent(string reason, MeshGossipMemberSnapshot? changedMember = null)
     {
         // Control-plane event bus publishing removed in data-plane split.
     }
