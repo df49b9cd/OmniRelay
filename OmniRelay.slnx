@@ -114,10 +114,12 @@
     <Project Path="src/OmniRelay.Diagnostics.Documentation/OmniRelay.Diagnostics.Documentation.csproj" />
     <Project Path="src/OmniRelay.Diagnostics.Probes/OmniRelay.Diagnostics.Probes.csproj" />
     <Project Path="src/OmniRelay.Cli/OmniRelay.Cli.csproj" />
+    <Project Path="src/OmniRelay.Codecs/OmniRelay.Codecs.csproj" />
     <Project Path="src/OmniRelay.Codegen.Protobuf.Core/OmniRelay.Codegen.Protobuf.Core.csproj" />
     <Project Path="src/OmniRelay.Codegen.Protobuf.Generator/OmniRelay.Codegen.Protobuf.Generator.csproj" />
     <Project Path="src/OmniRelay.Codegen.Protobuf/OmniRelay.Codegen.Protobuf.csproj" />
     <Project Path="src/OmniRelay.Dispatcher.Generator/OmniRelay.Dispatcher.Generator.csproj" />
+    <Project Path="src/OmniRelay.Protos/OmniRelay.Protos.csproj" />
     <Project Path="src/OmniRelay.ResourceLeaseReplicator.Grpc/OmniRelay.ResourceLeaseReplicator.Grpc.csproj" />
     <Project Path="src/OmniRelay.ResourceLeaseReplicator.ObjectStorage/OmniRelay.ResourceLeaseReplicator.ObjectStorage.csproj" />
     <Project Path="src/OmniRelay.ResourceLeaseReplicator.Sqlite/OmniRelay.ResourceLeaseReplicator.Sqlite.csproj" />
@@ -125,6 +127,7 @@
     <Project Path="src/OmniRelay.ShardStore.Postgres/OmniRelay.ShardStore.Postgres.csproj" />
     <Project Path="src/OmniRelay.ShardStore.Relational/OmniRelay.ShardStore.Relational.csproj" />
     <Project Path="src/OmniRelay.ShardStore.Sqlite/OmniRelay.ShardStore.Sqlite.csproj" />
+    <Project Path="src/OmniRelay.Transport/OmniRelay.Transport.csproj" />
     <Project Path="src/OmniRelay/OmniRelay.csproj" />
   </Folder>
   <Folder Name="/tests/">

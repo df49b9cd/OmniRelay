@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsTrimmable>true</IsTrimmable>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
+    <EnableSingleFileAnalyzer>true</EnableSingleFileAnalyzer>
+    <AssemblyName>OmniRelay.Protos</AssemblyName>
+    <RootNamespace>OmniRelay</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Protobuf Include="..\OmniRelay\Core\Leadership\Protos\leadership_control.proto" GrpcServices="Server" />
+    <Protobuf Include="..\OmniRelay\Core\Shards\Protos\shard_control.proto" GrpcServices="Server" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf" />
+    <PackageReference Include="Grpc.Tools" PrivateAssets="all" />
+  </ItemGroup>
+</Project>

@@ -41,8 +41,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Protobuf Include="Core/Leadership/Protos/leadership_control.proto" GrpcServices="Server" />
-    <Protobuf Include="Core/Shards/Protos/shard_control.proto" GrpcServices="Server" />
+    <Compile Remove="Core\**\*.cs" />
+    <Compile Remove="Transport\**\*.cs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -51,6 +51,9 @@
     <ProjectReference Include="..\OmniRelay.Diagnostics.Runtime\OmniRelay.Diagnostics.Runtime.csproj" />
     <ProjectReference Include="..\OmniRelay.Diagnostics.Documentation\OmniRelay.Diagnostics.Documentation.csproj" />
     <ProjectReference Include="..\OmniRelay.Diagnostics.Probes\OmniRelay.Diagnostics.Probes.csproj" />
+    <ProjectReference Include="..\OmniRelay.Codecs\OmniRelay.Codecs.csproj" />
+    <ProjectReference Include="..\OmniRelay.Transport\OmniRelay.Transport.csproj" />
+    <ProjectReference Include="..\OmniRelay.Protos\OmniRelay.Protos.csproj" />
   </ItemGroup>
 
 </Project>

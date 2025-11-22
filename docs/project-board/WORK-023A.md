@@ -13,7 +13,7 @@ Extract shared components into `src/OmniRelay.Transport`, `src/OmniRelay.Codecs`
 - No behavior change in data-plane tests.
 
 ## Status
-Open
+In progress — shared Codecs/Transport/Protos projects added and OmniRelay now references them; validation pending.
 
 ## Testing Strategy
 - Unit: Cover new logic/config parsing/helpers introduced by this item.
