@@ -10,5 +10,18 @@
     <AssemblyName>OmniRelay.ControlPlane.Abstractions</AssemblyName>
     <RootNamespace>OmniRelay.ControlPlane</RootNamespace>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IsPackable>true</IsPackable>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <PackageId>OmniRelay.ControlPlane.Abstractions</PackageId>
+    <PackageOutputPath>$(MSBuildThisFileDirectory)..\..\artifacts\packages</PackageOutputPath>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <RepositoryUrl>https://github.com/omnirelay/omnirelay</RepositoryUrl>
+    <Description>Shared control-plane contracts for OmniRelay/MeshKit (event bus, drain participants, TLS options, throttling signals, membership snapshots).</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="" />
+  </ItemGroup>
 </Project>

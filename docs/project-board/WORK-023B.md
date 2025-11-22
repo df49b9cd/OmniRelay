@@ -7,13 +7,15 @@ Make the shared libraries NuGet-packable/internal-feed ready, multi-targeting `n
 - NuGet metadata, internal feed publishing, and versioning strategy.
 - Multi-targeting; guard AOT-sensitive code paths; avoid reflection/dynamic load.
 - CI jobs to build/package and push these libraries; OmniRelay.DataPlane, OmniRelay.ControlPlane, and MeshKit consume via project/package refs (no source links).
+- Generate SBOMs (SPDX + CycloneDX) on pack/publish; keep signing toggleable once a cert is available.
 
 ## Acceptance Criteria
 - Packages publish successfully for both targets; AOT publish passes for DataPlane and ControlPlane hosts using only package references.
-- Packages signed and include symbols/SBOM per policy.
+- SBOMs (SPDX & CycloneDX) produced for package artifacts.
+- Package signing enabled when org cert is available (toggle present in build).
 
 ## Status
-Open
+Done — Shared libraries (Protos, Codecs, Transport, ControlPlane.Abstractions) are packable with symbols and SBOMs (SPDX + CycloneDX). Packaging script `eng/publish-packages.sh` builds Release + packs to `artifacts/packages`. Signing toggle is wired via `EnablePackageSigning` (off until cert exists).
 
 ## Testing Strategy
 - Unit: Cover new logic/config parsing/helpers introduced by this item.

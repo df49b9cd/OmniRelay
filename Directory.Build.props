@@ -5,6 +5,17 @@
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <WarningsAsErrors>$(WarningsAsErrors);IL2026;IL3050</WarningsAsErrors>
     <EnableConfigurationBindingGenerator>true</EnableConfigurationBindingGenerator>
+    <!-- Packaging/SBOM defaults -->
+    <EnableSbom>true</EnableSbom>
+    <GenerateSbom Condition="'$(EnableSbom)'=='true'">true</GenerateSbom>
+    <!-- Emit both SPDX and CycloneDX SBOMs when packing/publishing -->
+    <SbomPackageFormats>spdxjson;cyclonedxjson</SbomPackageFormats>
+    <!-- Deterministic builds to keep package hashes stable -->
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+    <!-- Package signing hook (off until org cert available) -->
+    <EnablePackageSigning>false</EnablePackageSigning>
+    <!-- When AOT publishing, expose NATIVE_AOT symbol for conditional code paths -->
+    <DefineConstants Condition="'$(PublishAot)'=='true'">$(DefineConstants);NATIVE_AOT</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>

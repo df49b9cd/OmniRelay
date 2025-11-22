@@ -11,11 +11,24 @@
     <RootNamespace>OmniRelay</RootNamespace>
     <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IsPackable>true</IsPackable>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <PackageId>OmniRelay.Codecs</PackageId>
+    <PackageOutputPath>$(MSBuildThisFileDirectory)..\..\artifacts\packages</PackageOutputPath>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <RepositoryUrl>https://github.com/omnirelay/omnirelay</RepositoryUrl>
+    <Description>Codec registry and implementations (encoders/decoders, content negotiation, protobuf JSON/CBOR) for OmniRelay.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
 
   <ItemGroup>
     <ProjectReference Include="..\OmniRelay.Protos\OmniRelay.Protos.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="" />
   </ItemGroup>
 
   <ItemGroup>

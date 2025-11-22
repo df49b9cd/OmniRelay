@@ -1,0 +1,12 @@
+<Project>
+  <PropertyGroup Condition="'$(EnablePackageSigning)'=='true'">
+    <!-- Hook for org code-signing certificate. Provide signing inputs via environment/MSBuild when available. -->
+    <SignPackage>true</SignPackage>
+  </PropertyGroup>
+
+  <Target Name="_EnsureSbomFormat" BeforeTargets="Pack" Condition="'$(GenerateSbom)'=='true'">
+    <PropertyGroup>
+      <SbomPackageFormats Condition="'$(SbomPackageFormats)'==''">spdxjson;cyclonedxjson</SbomPackageFormats>
+    </PropertyGroup>
+  </Target>
+</Project>
