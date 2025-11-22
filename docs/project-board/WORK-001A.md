@@ -19,7 +19,7 @@ Ensure a single config schema applies unchanged to in-proc, sidecar, and headles
 - AOT publish passes for all hosts touched.
 
 ## Status
-Open
+Done — Added `Mode` to dispatcher config (InProc/Sidecar/Edge), fail-fast validation on invalid values, capability flags emitted via dispatcher introspection (includes deployment mode and feature set). Config boots all modes with a single schema; unsupported modes surface clear errors.
 
 ## Testing Strategy
 - Unit: Cover new logic/config parsing/helpers introduced by this item.

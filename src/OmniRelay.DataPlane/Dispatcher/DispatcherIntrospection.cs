@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using OmniRelay.Core;
 
 namespace OmniRelay.Dispatcher;
 
@@ -8,6 +9,8 @@ namespace OmniRelay.Dispatcher;
 public sealed record DispatcherIntrospection(
     string Service,
     DispatcherStatus Status,
+    DeploymentMode Mode,
+    ImmutableArray<string> Capabilities,
     ProcedureGroups Procedures,
     ImmutableArray<LifecycleComponentDescriptor> Components,
     ImmutableArray<OutboundDescriptor> Outbounds,
@@ -16,6 +19,10 @@ public sealed record DispatcherIntrospection(
     public string Service { get; init; } = Service;
 
     public DispatcherStatus Status { get; init; } = Status;
+
+    public DeploymentMode Mode { get; init; } = Mode;
+
+    public ImmutableArray<string> Capabilities { get; init; } = Capabilities;
 
     public ProcedureGroups Procedures { get; init; } = Procedures;
 

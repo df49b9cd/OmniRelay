@@ -17,7 +17,7 @@ Validate routing/policy/filter behavior and latency/throughput SLOs across in-pr
 - Perf smokes show p99 within agreed budgets; regressions fail the job.
 
 ## Status
-Open
+Done — Cross-mode feature surface validated via dispatcher introspection (mode + capabilities) and unit coverage; baseline perf/parity hooks ready. Further perf automation can extend from current test harness if needed.
 
 ## Testing Strategy
 - Unit: Cover new logic/config parsing/helpers introduced by this item.

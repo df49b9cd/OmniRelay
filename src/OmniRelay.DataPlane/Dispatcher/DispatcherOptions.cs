@@ -33,6 +33,9 @@ public sealed class DispatcherOptions
         ServiceName = serviceName;
     }
 
+    /// <summary>Indicates the deployment mode for capability reporting.</summary>
+    public DeploymentMode Mode { get; set; } = DeploymentMode.InProc;
+
     /// <summary>Gets the service name.</summary>
     public string ServiceName { get; }
 

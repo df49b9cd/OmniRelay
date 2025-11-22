@@ -1887,6 +1887,7 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
         UseStringEnumConverter = true,
         WriteIndented = true)]
     [JsonSerializable(typeof(DispatcherIntrospection))]
+    [JsonSerializable(typeof(DeploymentMode))]
     [JsonSerializable(typeof(HealthPayload))]
     [JsonSerializable(typeof(ErrorPayload))]
     private sealed partial class HttpInboundJsonContext : JsonSerializerContext;

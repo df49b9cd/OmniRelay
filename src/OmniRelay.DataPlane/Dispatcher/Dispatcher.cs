@@ -76,6 +76,8 @@ public sealed class Dispatcher
         _outboundClientStreamMiddleware = [.. options.ClientStreamOutboundMiddleware];
         _outboundDuplexMiddleware = [.. options.DuplexOutboundMiddleware];
         Codecs = new CodecRegistry(ServiceName, options.CodecRegistrations);
+        Mode = options.Mode;
+        Capabilities = BuildCapabilities(options.Mode);
 
         var lifecycleRegistrations = options.UniqueComponents
             .Select(component => new LifecycleComponentRegistration(component.Name, component.Lifecycle, component.Dependencies))
@@ -107,6 +109,12 @@ public sealed class Dispatcher
             }
         }
     }
+
+    /// <summary>Gets the deployment mode for this dispatcher host.</summary>
+    public DeploymentMode Mode { get; }
+
+    /// <summary>Gets the capability flags advertised by this host.</summary>
+    public ImmutableArray<string> Capabilities { get; }
 
     /// <summary>Gets globally configured inbound unary middleware.</summary>
     public IReadOnlyList<IUnaryInboundMiddleware> UnaryInboundMiddleware => _inboundUnaryMiddleware;
@@ -591,6 +599,8 @@ public sealed class Dispatcher
         return new DispatcherIntrospection(
             ServiceName,
             Status,
+            Mode,
+            Capabilities,
             procedures,
             components,
             outbounds,
@@ -617,6 +627,17 @@ public sealed class Dispatcher
                 var implementation = outbound.GetType().FullName ?? outbound.GetType().Name;
                 return new OutboundBindingDescriptor(kvp.Key, implementation, diagnostics);
             })];
+    }
+
+    private static ImmutableArray<string> BuildCapabilities(DeploymentMode mode)
+    {
+        var builder = ImmutableArray.CreateBuilder<string>();
+        builder.Add($"deployment:{mode.ToString().ToLowerInvariant()}");
+        builder.Add("feature:http");
+        builder.Add("feature:grpc");
+        builder.Add("feature:http3:conditional"); // depends on TLS + Kestrel runtime
+        builder.Add("feature:aot-safe");
+        return builder.ToImmutable();
     }
 
     private Result<TProcedure> ResolveProcedure<TProcedure>(

@@ -6,6 +6,7 @@ namespace OmniRelay.Dispatcher.Config;
 public sealed class DispatcherConfig
 {
     public string Service { get; set; } = "omnirelay";
+    public string Mode { get; set; } = "InProc";
     public InboundsConfig Inbounds { get; set; } = new();
     public OutboundsConfig Outbounds { get; set; } = new();
     public MiddlewareConfig Middleware { get; set; } = new();

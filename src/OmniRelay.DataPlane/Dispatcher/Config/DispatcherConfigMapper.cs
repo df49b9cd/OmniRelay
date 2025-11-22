@@ -4,6 +4,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using OmniRelay.Core;
 using OmniRelay.Core.Middleware;
 using OmniRelay.Core.Peers;
 using OmniRelay.Transport.Grpc;
@@ -33,6 +34,7 @@ internal static class DispatcherConfigMapper
         ArgumentNullException.ThrowIfNull(config);
 
         var options = new DispatcherOptions(config.Service);
+        options.Mode = ParseMode(config.Mode);
 
         ApplyInbounds(config.Inbounds, options);
         ApplyOutbounds(services, config.Outbounds, options);
@@ -41,6 +43,21 @@ internal static class DispatcherConfigMapper
         configureOptions?.Invoke(services, options);
 
         return new global::OmniRelay.Dispatcher.Dispatcher(options);
+    }
+
+    private static DeploymentMode ParseMode(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return DeploymentMode.InProc;
+        }
+
+        if (Enum.TryParse<DeploymentMode>(value, ignoreCase: true, out var mode))
+        {
+            return mode;
+        }
+
+        throw new InvalidOperationException($"Unsupported deployment mode '{value}'. Valid values: InProc, Sidecar, Edge.");
     }
 
     private static void ApplyInbounds(InboundsConfig inbounds, DispatcherOptions options)

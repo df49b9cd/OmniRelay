@@ -18,7 +18,7 @@ Expose consistent admin/diagnostic surfaces (mode, epoch, filter chain, capabili
 - AOT publish green for modified hosts.
 
 ## Status
-Open
+Done — Admin/introspection now surfaces deployment mode and capability flags consistently across modes via `/omnirelay/introspect`. Payload parity maintained; differences documented via capability entries.
 
 ## Testing Strategy
 - Unit: Cover new logic/config parsing/helpers introduced by this item.
