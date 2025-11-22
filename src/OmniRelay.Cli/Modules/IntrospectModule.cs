@@ -81,6 +81,7 @@ internal static partial class ProgramIntrospectModule
                 await Console.Error.WriteLineAsync("Introspection response was empty.").ConfigureAwait(false);
                 return 1;
             }
+            snapshot = snapshot.Normalize();
 
             if (normalizedFormat is "json" or "raw")
             {

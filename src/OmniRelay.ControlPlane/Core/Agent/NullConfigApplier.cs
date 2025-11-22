@@ -15,7 +15,7 @@ public sealed class NullConfigApplier : IControlPlaneConfigApplier
 
     public Task ApplyAsync(string version, byte[] payload, CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("config applied (stub) version={Version} size={Size}", version, payload.Length);
+        AgentLog.ConfigAppliedStub(_logger, version, payload.Length);
         return Task.CompletedTask;
     }
 }

@@ -11,12 +11,12 @@ internal sealed class MeshAgentHostedService(MeshAgent agent, ILogger<MeshAgentH
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         await _agent.StartAsync(cancellationToken).ConfigureAwait(false);
-        _logger.LogInformation("mesh agent started");
+        AgentLog.MeshAgentStarted(_logger);
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
         await _agent.StopAsync(cancellationToken).ConfigureAwait(false);
-        _logger.LogInformation("mesh agent stopped");
+        AgentLog.MeshAgentStopped(_logger);
     }
 }

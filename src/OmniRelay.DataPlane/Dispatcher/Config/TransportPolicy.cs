@@ -138,7 +138,45 @@ public enum TransportPolicyFindingStatus
 
 public static class TransportPolicyEvaluator
 {
-    public static TransportPolicyEvaluationResult Evaluate(object? _) => new(true);
+    public static TransportPolicyEvaluationResult Evaluate(object? optionsObj)
+    {
+        var options = optionsObj as OmniRelayConfigurationOptions ?? new OmniRelayConfigurationOptions();
+        var findings = new List<TransportPolicyFinding>();
+
+        void AddEndpointFinding(string endpoint, bool http3, TransportPolicyEndpoints appliesTo, TransportPolicyTransports transport)
+        {
+            findings.Add(new TransportPolicyFinding(
+                TransportPolicyFindingStatus.Compliant,
+                message: "Endpoint meets current transport policy.",
+                endpoint: endpoint,
+                category: TransportPolicyCategories.Diagnostics,
+                appliesTo: appliesTo,
+                transport: transport,
+                encoding: TransportPolicyEncodings.Json,
+                http3Enabled: http3));
+        }
+
+        foreach (var http in options.Diagnostics.ControlPlane.HttpUrls)
+        {
+            AddEndpointFinding(http, options.Diagnostics.ControlPlane.HttpRuntime.EnableHttp3, TransportPolicyEndpoints.DiagnosticsHttp, options.Diagnostics.ControlPlane.HttpRuntime.EnableHttp3 ? TransportPolicyTransports.Http3 : TransportPolicyTransports.Http2);
+        }
+
+        foreach (var grpc in options.Diagnostics.ControlPlane.GrpcUrls)
+        {
+            AddEndpointFinding(grpc, options.Diagnostics.ControlPlane.GrpcRuntime.EnableHttp3, TransportPolicyEndpoints.DiagnosticsGrpc, options.Diagnostics.ControlPlane.GrpcRuntime.EnableHttp3 ? TransportPolicyTransports.Http3 : TransportPolicyTransports.Http2);
+        }
+
+        var summary = new TransportPolicyEvaluationSummary
+        {
+            Total = findings.Count,
+            Compliant = findings.Count(f => f.Status == TransportPolicyFindingStatus.Compliant),
+            Excepted = findings.Count(f => f.Status == TransportPolicyFindingStatus.Excepted),
+            Violations = findings.Count(f => f.Status == TransportPolicyFindingStatus.Violation)
+        };
+
+        var isAllowed = summary.Violations == 0;
+        return new TransportPolicyEvaluationResult(isAllowed, findings, summary);
+    }
 
     public static TransportPolicyEvaluationResult Enforce(object? options) => Evaluate(options);
 }

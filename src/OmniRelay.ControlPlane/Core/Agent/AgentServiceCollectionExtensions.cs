@@ -11,7 +11,10 @@ public static class AgentServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(clientFactory);
-        if (string.IsNullOrWhiteSpace(lkgPath)) throw new ArgumentException("LKG path required", nameof(lkgPath));
+        if (string.IsNullOrWhiteSpace(lkgPath))
+        {
+            throw new ArgumentException("LKG path required", nameof(lkgPath));
+        }
 
         services.TryAddSingleton(clientFactory);
         services.TryAddSingleton(new LkgCache(lkgPath));

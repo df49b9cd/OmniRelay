@@ -2,7 +2,10 @@ using System.Globalization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using OmniRelay.Core.Gossip;
 using OmniRelay.Dispatcher.Config;
+using OmniRelay.Dispatcher;
+using OmniRelay.FeatureTests.Support;
 using OmniRelay.Tests;
 using OmniRelay.Tests.Support;
 using Xunit;
@@ -84,15 +87,29 @@ public sealed class FeatureTestApplication : IAsyncLifetime
         builder.Services.AddLogging();
         builder.Services.Configure<OmniRelayConfigurationOptions>(Configuration.GetSection("omniRelay"));
         builder.Services.AddOmniRelayDispatcherFromConfiguration(Configuration.GetSection("omniRelay"));
+        builder.Services.AddSingleton<IMeshGossipAgent, FakeMeshGossipAgent>();
+        builder.Services.AddSingleton<IMeshMembershipSnapshotProvider>(sp => sp.GetRequiredService<IMeshGossipAgent>());
 
         _host = builder.Build();
         await _host.StartAsync().ConfigureAwait(false);
+
+        // Ensure dispatcher lifecycle is started for feature scenarios.
+        var dispatcher = _host.Services.GetService<OmniRelay.Dispatcher.Dispatcher>();
+        if (dispatcher is not null)
+        {
+            await dispatcher.StartAsync().ConfigureAwait(false);
+        }
     }
 
     public async ValueTask DisposeAsync()
     {
         if (_host is not null)
         {
+            var dispatcher = _host.Services.GetService<OmniRelay.Dispatcher.Dispatcher>();
+            if (dispatcher is not null)
+            {
+                await dispatcher.StopAsync().ConfigureAwait(false);
+            }
             await _host.StopAsync().ConfigureAwait(false);
             _host.Dispose();
         }

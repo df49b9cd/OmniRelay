@@ -14,6 +14,6 @@ public sealed class TelemetryForwarder
 
     public void RecordSnapshot(string version)
     {
-        _logger.LogInformation("agent: snapshot applied version={Version}", version);
+        AgentLog.SnapshotApplied(_logger, version);
     }
 }

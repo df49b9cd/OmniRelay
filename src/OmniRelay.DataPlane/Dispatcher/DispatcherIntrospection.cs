@@ -22,13 +22,13 @@ public sealed partial record DispatcherIntrospection(
 
     public DeploymentMode Mode { get; init; } = Mode;
 
-    public ImmutableArray<string> Capabilities { get; init; } = Capabilities;
+    public ImmutableArray<string> Capabilities { get; init; } = Capabilities.IsDefault ? ImmutableArray<string>.Empty : Capabilities;
 
     public ProcedureGroups Procedures { get; init; } = Procedures;
 
-    public ImmutableArray<LifecycleComponentDescriptor> Components { get; init; } = Components;
+    public ImmutableArray<LifecycleComponentDescriptor> Components { get; init; } = Components.IsDefault ? ImmutableArray<LifecycleComponentDescriptor>.Empty : Components;
 
-    public ImmutableArray<OutboundDescriptor> Outbounds { get; init; } = Outbounds;
+    public ImmutableArray<OutboundDescriptor> Outbounds { get; init; } = Outbounds.IsDefault ? ImmutableArray<OutboundDescriptor>.Empty : Outbounds;
 
     public MiddlewareSummary Middleware { get; init; } = Middleware;
 }
@@ -41,15 +41,22 @@ public sealed record ProcedureGroups(
     ImmutableArray<ClientStreamProcedureDescriptor> ClientStream,
     ImmutableArray<DuplexProcedureDescriptor> Duplex)
 {
-    public ImmutableArray<ProcedureDescriptor> Unary { get; init; } = Unary;
+    public static ProcedureGroups Empty { get; } = new(
+        ImmutableArray<ProcedureDescriptor>.Empty,
+        ImmutableArray<ProcedureDescriptor>.Empty,
+        ImmutableArray<StreamProcedureDescriptor>.Empty,
+        ImmutableArray<ClientStreamProcedureDescriptor>.Empty,
+        ImmutableArray<DuplexProcedureDescriptor>.Empty);
 
-    public ImmutableArray<ProcedureDescriptor> Oneway { get; init; } = Oneway;
+    public ImmutableArray<ProcedureDescriptor> Unary { get; init; } = Unary.IsDefault ? ImmutableArray<ProcedureDescriptor>.Empty : Unary;
 
-    public ImmutableArray<StreamProcedureDescriptor> Stream { get; init; } = Stream;
+    public ImmutableArray<ProcedureDescriptor> Oneway { get; init; } = Oneway.IsDefault ? ImmutableArray<ProcedureDescriptor>.Empty : Oneway;
 
-    public ImmutableArray<ClientStreamProcedureDescriptor> ClientStream { get; init; } = ClientStream;
+    public ImmutableArray<StreamProcedureDescriptor> Stream { get; init; } = Stream.IsDefault ? ImmutableArray<StreamProcedureDescriptor>.Empty : Stream;
 
-    public ImmutableArray<DuplexProcedureDescriptor> Duplex { get; init; } = Duplex;
+    public ImmutableArray<ClientStreamProcedureDescriptor> ClientStream { get; init; } = ClientStream.IsDefault ? ImmutableArray<ClientStreamProcedureDescriptor>.Empty : ClientStream;
+
+    public ImmutableArray<DuplexProcedureDescriptor> Duplex { get; init; } = Duplex.IsDefault ? ImmutableArray<DuplexProcedureDescriptor>.Empty : Duplex;
 }
 
 /// <summary>Basic procedure info including name, encoding, and aliases.</summary>
@@ -153,23 +160,47 @@ public sealed record MiddlewareSummary(
     ImmutableArray<string> OutboundClientStream,
     ImmutableArray<string> OutboundDuplex)
 {
-    public ImmutableArray<string> InboundUnary { get; init; } = InboundUnary;
+    public static MiddlewareSummary Empty { get; } = new(
+        ImmutableArray<string>.Empty,
+        ImmutableArray<string>.Empty,
+        ImmutableArray<string>.Empty,
+        ImmutableArray<string>.Empty,
+        ImmutableArray<string>.Empty,
+        ImmutableArray<string>.Empty,
+        ImmutableArray<string>.Empty,
+        ImmutableArray<string>.Empty,
+        ImmutableArray<string>.Empty,
+        ImmutableArray<string>.Empty);
+    public ImmutableArray<string> InboundUnary { get; init; } = InboundUnary.IsDefault ? ImmutableArray<string>.Empty : InboundUnary;
 
-    public ImmutableArray<string> InboundOneway { get; init; } = InboundOneway;
+    public ImmutableArray<string> InboundOneway { get; init; } = InboundOneway.IsDefault ? ImmutableArray<string>.Empty : InboundOneway;
 
-    public ImmutableArray<string> InboundStream { get; init; } = InboundStream;
+    public ImmutableArray<string> InboundStream { get; init; } = InboundStream.IsDefault ? ImmutableArray<string>.Empty : InboundStream;
 
-    public ImmutableArray<string> InboundClientStream { get; init; } = InboundClientStream;
+    public ImmutableArray<string> InboundClientStream { get; init; } = InboundClientStream.IsDefault ? ImmutableArray<string>.Empty : InboundClientStream;
 
-    public ImmutableArray<string> InboundDuplex { get; init; } = InboundDuplex;
+    public ImmutableArray<string> InboundDuplex { get; init; } = InboundDuplex.IsDefault ? ImmutableArray<string>.Empty : InboundDuplex;
 
-    public ImmutableArray<string> OutboundUnary { get; init; } = OutboundUnary;
+    public ImmutableArray<string> OutboundUnary { get; init; } = OutboundUnary.IsDefault ? ImmutableArray<string>.Empty : OutboundUnary;
 
-    public ImmutableArray<string> OutboundOneway { get; init; } = OutboundOneway;
+    public ImmutableArray<string> OutboundOneway { get; init; } = OutboundOneway.IsDefault ? ImmutableArray<string>.Empty : OutboundOneway;
 
-    public ImmutableArray<string> OutboundStream { get; init; } = OutboundStream;
+    public ImmutableArray<string> OutboundStream { get; init; } = OutboundStream.IsDefault ? ImmutableArray<string>.Empty : OutboundStream;
 
-    public ImmutableArray<string> OutboundClientStream { get; init; } = OutboundClientStream;
+    public ImmutableArray<string> OutboundClientStream { get; init; } = OutboundClientStream.IsDefault ? ImmutableArray<string>.Empty : OutboundClientStream;
 
-    public ImmutableArray<string> OutboundDuplex { get; init; } = OutboundDuplex;
+    public ImmutableArray<string> OutboundDuplex { get; init; } = OutboundDuplex.IsDefault ? ImmutableArray<string>.Empty : OutboundDuplex;
+}
+
+public sealed partial record DispatcherIntrospection
+{
+    public DispatcherIntrospection Normalize() =>
+        this with
+        {
+            Procedures = Procedures ?? ProcedureGroups.Empty,
+            Components = Components.IsDefault ? ImmutableArray<LifecycleComponentDescriptor>.Empty : Components,
+            Outbounds = Outbounds.IsDefault ? ImmutableArray<OutboundDescriptor>.Empty : Outbounds,
+            Middleware = Middleware ?? MiddlewareSummary.Empty,
+            Capabilities = Capabilities.IsDefault ? ImmutableArray<string>.Empty : Capabilities
+        };
 }

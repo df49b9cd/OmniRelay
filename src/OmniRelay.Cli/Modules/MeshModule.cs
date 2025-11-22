@@ -60,6 +60,7 @@ internal static partial class ProgramMeshModule
         return command;
     }
 
+    [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "CLI validation runs in non-trimmed host; reflection usage is acceptable.")]
     internal static Command CreateMeshConfigCommand()
     {
         var command = new Command("config", "Mesh configuration and transport policy tooling.")
@@ -70,6 +71,7 @@ internal static partial class ProgramMeshModule
         return command;
     }
 
+    [RequiresUnreferencedCode("Config validation uses ConfigurationBinder.Bind which is not trimming-safe.")]
     internal static Command CreateMeshConfigValidateCommand()
     {
         var command = new Command("validate", "Validate transports/encodings against the mesh transport policy.");

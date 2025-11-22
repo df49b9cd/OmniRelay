@@ -604,7 +604,7 @@ public sealed class Dispatcher
             outbounds,
             middleware,
             Mode,
-            Capabilities);
+            Capabilities).Normalize();
     }
 
     private static ImmutableArray<OutboundBindingDescriptor> DescribeOutbounds<TOutbound>(IReadOnlyDictionary<string, TOutbound> source)

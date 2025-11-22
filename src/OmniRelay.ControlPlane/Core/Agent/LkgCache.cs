@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace OmniRelay.ControlPlane.Agent;
 
@@ -8,7 +9,7 @@ public sealed class LkgCache
 {
     private readonly string _path;
 
-    private sealed record LkgEnvelope(string Version, byte[] Payload);
+    internal sealed record LkgEnvelope(string Version, byte[] Payload);
 
     public LkgCache(string path)
     {
@@ -19,7 +20,7 @@ public sealed class LkgCache
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
         var envelope = new LkgEnvelope(version, payload);
-        var json = JsonSerializer.Serialize(envelope);
+        var json = JsonSerializer.Serialize(envelope, LkgCacheJsonContext.Default.LkgEnvelope);
         File.WriteAllText(_path, json);
     }
 
@@ -33,7 +34,7 @@ public sealed class LkgCache
         }
 
         var json = File.ReadAllText(_path);
-        var envelope = JsonSerializer.Deserialize<LkgEnvelope>(json);
+        var envelope = JsonSerializer.Deserialize(json, LkgCacheJsonContext.Default.LkgEnvelope);
         if (envelope is null)
         {
             return false;
@@ -43,4 +44,10 @@ public sealed class LkgCache
         payload = envelope.Payload;
         return true;
     }
+}
+
+[JsonSourceGenerationOptions(WriteIndented = false)]
+[JsonSerializable(typeof(LkgCache.LkgEnvelope))]
+internal partial class LkgCacheJsonContext : JsonSerializerContext
+{
 }

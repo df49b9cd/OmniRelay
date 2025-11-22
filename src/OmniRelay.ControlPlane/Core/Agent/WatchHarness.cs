@@ -44,7 +44,7 @@ public sealed class WatchHarness
             {
                 await _applier.ApplyAsync(version, payload, cancellationToken).ConfigureAwait(false);
                 _telemetry.RecordSnapshot(version);
-                _logger.LogInformation("LKG applied version={Version}", version);
+                AgentLog.LkgApplied(_logger, version);
             }
         }
 
@@ -53,12 +53,12 @@ public sealed class WatchHarness
         {
             try
             {
-                await foreach (var update in _client.WatchAsync(request, cancellationToken))
+                await foreach (var update in _client.WatchAsync(request, cancellationToken).ConfigureAwait(false))
                 {
                     backoff = _backoffStart; // reset on success
                     if (!TryValidate(update.Payload.ToByteArray(), out var err))
                     {
-                        _logger.LogWarning("control update rejected version={Version} error={Error}", update.Version, err);
+                        AgentLog.ControlUpdateRejected(_logger, update.Version, err ?? "unknown");
                         continue;
                     }
 
@@ -66,7 +66,7 @@ public sealed class WatchHarness
                     await _applier.ApplyAsync(update.Version, payloadBytes, cancellationToken).ConfigureAwait(false);
                     _cache.Save(update.Version, payloadBytes);
                     _telemetry.RecordSnapshot(update.Version);
-                    _logger.LogInformation("control update applied version={Version}", update.Version);
+                    AgentLog.ControlUpdateApplied(_logger, update.Version);
                 }
             }
             catch (OperationCanceledException)
@@ -75,7 +75,7 @@ public sealed class WatchHarness
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "control watch failed; backing off");
+                AgentLog.ControlWatchFailed(_logger, ex);
                 await Task.Delay(backoff, cancellationToken).ConfigureAwait(false);
                 backoff = TimeSpan.FromMilliseconds(Math.Min(_backoffMax.TotalMilliseconds, backoff.TotalMilliseconds * 2));
             }
@@ -86,7 +86,7 @@ public sealed class WatchHarness
     {
         var sw = Stopwatch.StartNew();
         var ok = _validator.Validate(payload, out error);
-        _logger.LogDebug("control validation result={Result} duration_ms={Duration}", ok, sw.Elapsed.TotalMilliseconds);
+        AgentLog.ControlValidationResult(_logger, ok, sw.Elapsed.TotalMilliseconds);
         return ok;
     }
 }
