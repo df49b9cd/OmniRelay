@@ -30,4 +30,4 @@ Block merges unless all affected OmniRelay hosts and MeshKit roles build/publish
 - `docs/architecture/MeshKit.SRS.md`
 
 ## Status
-Open.
+Done — CI gate script `eng/run-ci-gate.sh` builds solution, runs fast test slices, and AOT publishes DataPlane/ControlPlane/CLI (self-contained). SBOM/signing toggles already in build; runbook `docs/runbooks/ci-gate.md` documents local/CI usage. Ready to enforce in PR/nightly pipelines.
