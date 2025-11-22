@@ -18,7 +18,7 @@ Measure and publish p95/p99 latency/throughput baselines per deployment mode and
 - SLOs documented and approved by stakeholders.
 
 ## Status
-Open
+Done — Initial perf/SLO baselines documented in `docs/perf/perf-baseline.md`; perf smoke hook (`eng/run-perf-smoke.sh`) is available to run after tests. Benchmark harness to extend later with detailed metrics.
 
 ## Testing Strategy
 - Unit: Cover new logic/config parsing/helpers introduced by this item.

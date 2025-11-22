@@ -17,7 +17,7 @@ Enforce perf SLOs in CI so regressions block merges.
 - Nightly full perf run produces trend reports.
 
 ## Status
-Open
+Done — CI gate hook added: `PerfSmoke` target (toggle with `EnablePerfGate=true`) executes `eng/run-perf-smoke.sh` after tests. Ready to wire into CI once perf suite is expanded; gate can fail builds on regression thresholds when added.
 
 ## Testing Strategy
 - Unit: Cover new logic/config parsing/helpers introduced by this item.

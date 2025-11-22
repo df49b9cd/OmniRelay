@@ -17,7 +17,7 @@ Identify and block reflection/JIT/dynamic APIs in OmniRelay hot paths with autom
 - Suppression requires justification and is documented.
 
 ## Status
-Open
+Done — Banned API list created (`eng/banned-apis.txt`) and enforced via `CheckBannedApis` target (runs before build). Guidance documented in `docs/knowledge-base/aot-banned-apis.md`; bypass only with `SkipBannedApiCheck=true` and justification.
 
 ## Testing Strategy
 - Unit: Cover new logic/config parsing/helpers introduced by this item.
