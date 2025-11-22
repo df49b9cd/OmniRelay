@@ -1,39 +1,15 @@
 <Project>
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <OmniRelayVersion>0.2.0</OmniRelayVersion>
-    <RepositoryUrl>https://github.com/df49b9cd/OmniRelay</RepositoryUrl>
-    <RepositoryType>git</RepositoryType>
-    <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
-  </PropertyGroup>
-
-  <PropertyGroup>
     <AnalysisMode>Recommended</AnalysisMode>
     <AnalysisLevel>latest</AnalysisLevel>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <WarningsAsErrors>$(WarningsAsErrors);IL2026;IL3050</WarningsAsErrors>
+    <EnableConfigurationBindingGenerator>true</EnableConfigurationBindingGenerator>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(IsPackable)' != 'false'">
-    <Version>$(OmniRelayVersion)</Version>
-    <VersionPrefix>$(OmniRelayVersion)</VersionPrefix>
-    <Authors>OmniRelay maintainers</Authors>
-    <Company>OmniRelay</Company>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageProjectUrl>https://github.com/df49b9cd/OmniRelay</PackageProjectUrl>
-    <PublishRepositoryUrl>true</PublishRepositoryUrl>
-    <EmbedUntrackedSources>true</EmbedUntrackedSources>
-    <DebugType>embedded</DebugType>
-    <ContinuousIntegrationBuild Condition="'$(ContinuousIntegrationBuild)' == ''">$(CI)</ContinuousIntegrationBuild>
-  </PropertyGroup>
-
-  <PropertyGroup>
-    <IsAotCompatible>true</IsAotCompatible>
-    <PublishAot>true</PublishAot>
-  </PropertyGroup>
-
-  <PropertyGroup Condition="'$(IsPackable)' != 'false' and '$(OutputType)' == 'Library'">
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
-  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="src/OmniRelay.Dispatcher.Generator/OmniRelay.Dispatcher.Generator.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
 </Project>

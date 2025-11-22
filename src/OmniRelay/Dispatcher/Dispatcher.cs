@@ -1,7 +1,8 @@
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using Hugo;
-using Hugo.Policies;
+using Microsoft.Extensions.Logging.Abstractions;
+using OmniRelay.ControlPlane.Hosting;
 using OmniRelay.Core;
 using OmniRelay.Core.Middleware;
 using OmniRelay.Core.Transport;
@@ -21,7 +22,6 @@ public sealed class Dispatcher
 {
     private readonly ProcedureRegistry _procedures = new();
     private readonly ImmutableArray<DispatcherOptions.DispatcherLifecycleComponent> _lifecycleDescriptors;
-    private readonly ImmutableArray<DispatcherOptions.DispatcherLifecycleComponent> _lifecycleStartOrder;
     private readonly ImmutableDictionary<string, OutboundRegistry> _outbounds;
     private readonly ImmutableArray<IUnaryInboundMiddleware> _inboundUnaryMiddleware;
     private readonly ImmutableArray<IOnewayInboundMiddleware> _inboundOnewayMiddleware;
@@ -35,11 +35,17 @@ public sealed class Dispatcher
     private readonly ImmutableArray<IDuplexOutboundMiddleware> _outboundDuplexMiddleware;
     private readonly Lock _stateLock = new();
     private DispatcherStatus _status = DispatcherStatus.Created;
+    private readonly OutboundRegistry _loopbackOutbounds;
     private readonly HttpOutboundMiddlewareRegistry? _httpOutboundMiddlewareRegistry;
     private readonly GrpcClientInterceptorRegistry? _grpcClientInterceptorRegistry;
     private readonly GrpcServerInterceptorRegistry? _grpcServerInterceptorRegistry;
-    private readonly ResultExecutionPolicy _startRetryPolicy;
-    private readonly ResultExecutionPolicy _stopRetryPolicy;
+    private readonly LifecycleOrchestrator _lifecycleOrchestrator;
+    // Cache composed inbound pipelines so per-request dispatch stays allocation-free.
+    private readonly ConcurrentDictionary<UnaryProcedureSpec, UnaryInboundHandler> _unaryPipelines = new(ReferenceEqualityComparer.Instance);
+    private readonly ConcurrentDictionary<OnewayProcedureSpec, OnewayInboundHandler> _onewayPipelines = new(ReferenceEqualityComparer.Instance);
+    private readonly ConcurrentDictionary<StreamProcedureSpec, StreamInboundHandler> _streamPipelines = new(ReferenceEqualityComparer.Instance);
+    private readonly ConcurrentDictionary<ClientStreamProcedureSpec, ClientStreamInboundHandler> _clientStreamPipelines = new(ReferenceEqualityComparer.Instance);
+    private readonly ConcurrentDictionary<DuplexProcedureSpec, DuplexInboundHandler> _duplexPipelines = new(ReferenceEqualityComparer.Instance);
 
     /// <summary>
     /// Creates a dispatcher for a specific service using the provided options.
@@ -50,8 +56,14 @@ public sealed class Dispatcher
 
         ServiceName = options.ServiceName;
         _lifecycleDescriptors = [.. options.ComponentDescriptors];
-        _lifecycleStartOrder = [.. options.UniqueComponents];
         _outbounds = BuildOutboundRegistrys(options.OutboundBuilders);
+        _loopbackOutbounds = new OutboundRegistry(
+            ServiceName,
+            ImmutableDictionary<string, IUnaryOutbound>.Empty,
+            ImmutableDictionary<string, IOnewayOutbound>.Empty,
+            ImmutableDictionary<string, IStreamOutbound>.Empty,
+            ImmutableDictionary<string, IClientStreamOutbound>.Empty,
+            ImmutableDictionary<string, IDuplexOutbound>.Empty);
 
         _inboundUnaryMiddleware = [.. options.UnaryInboundMiddleware];
         _inboundOnewayMiddleware = [.. options.OnewayInboundMiddleware];
@@ -63,9 +75,16 @@ public sealed class Dispatcher
         _outboundStreamMiddleware = [.. options.StreamOutboundMiddleware];
         _outboundClientStreamMiddleware = [.. options.ClientStreamOutboundMiddleware];
         _outboundDuplexMiddleware = [.. options.DuplexOutboundMiddleware];
-        _startRetryPolicy = options.StartRetryPolicy;
-        _stopRetryPolicy = options.StopRetryPolicy;
         Codecs = new CodecRegistry(ServiceName, options.CodecRegistrations);
+
+        var lifecycleRegistrations = options.UniqueComponents
+            .Select(component => new LifecycleComponentRegistration(component.Name, component.Lifecycle, component.Dependencies))
+            .ToImmutableArray();
+        _lifecycleOrchestrator = new LifecycleOrchestrator(
+            lifecycleRegistrations,
+            options.StartRetryPolicy,
+            options.StopRetryPolicy,
+            NullLogger<LifecycleOrchestrator>.Instance);
 
         BindDispatcherAwareComponents(_lifecycleDescriptors);
         _httpOutboundMiddlewareRegistry = options.HttpOutboundMiddleware.Build();
@@ -270,9 +289,7 @@ public sealed class Dispatcher
                 procedure,
                 ProcedureKind.Unary,
                 transport)
-            .Map(spec => MiddlewareComposer.ComposeUnaryInbound(
-                CombineMiddleware(_inboundUnaryMiddleware, spec.Middleware),
-                spec.Handler))
+            .Map(GetUnaryPipeline)
             .ThenValueTaskAsync((pipeline, token) => pipeline(request, token), cancellationToken);
     }
 
@@ -290,9 +307,7 @@ public sealed class Dispatcher
                 procedure,
                 ProcedureKind.Oneway,
                 transport)
-            .Map(spec => MiddlewareComposer.ComposeOnewayInbound(
-                CombineMiddleware(_inboundOnewayMiddleware, spec.Middleware),
-                spec.Handler))
+            .Map(GetOnewayPipeline)
             .ThenValueTaskAsync((pipeline, token) => pipeline(request, token), cancellationToken);
     }
 
@@ -312,13 +327,7 @@ public sealed class Dispatcher
         {
             if (string.Equals(service, ServiceName, StringComparison.OrdinalIgnoreCase))
             {
-                collection = new OutboundRegistry(
-                    service,
-                    [],
-                    [],
-                    [],
-                    [],
-                    []);
+                collection = _loopbackOutbounds;
             }
             else
             {
@@ -360,9 +369,7 @@ public sealed class Dispatcher
                 ProcedureKind.Stream,
                 transport,
                 $"Stream procedure '{procedure}' is not registered for service '{ServiceName}'.")
-            .Map(spec => MiddlewareComposer.ComposeStreamInbound(
-                CombineMiddleware(_inboundStreamMiddleware, spec.Middleware),
-                spec.Handler))
+            .Map(GetStreamPipeline)
             .ThenValueTaskAsync((pipeline, token) => pipeline(request, options, token), cancellationToken);
     }
 
@@ -388,9 +395,7 @@ public sealed class Dispatcher
                 ProcedureKind.Duplex,
                 transport,
                 $"Duplex stream procedure '{procedure}' is not registered for service '{ServiceName}'.")
-            .Map(spec => MiddlewareComposer.ComposeDuplexInbound(
-                CombineMiddleware(_inboundDuplexMiddleware, spec.Middleware),
-                spec.Handler))
+            .Map(GetDuplexPipeline)
             .ThenValueTaskAsync((pipeline, token) => pipeline(request, token), cancellationToken);
     }
 
@@ -422,8 +427,7 @@ public sealed class Dispatcher
             {
                 var call = ClientStreamCall.Create(requestMeta);
                 var context = new ClientStreamRequestContext(call.RequestMeta, call.Reader);
-                var middleware = CombineMiddleware(_inboundClientStreamMiddleware, spec.Middleware);
-                var pipeline = MiddlewareComposer.ComposeClientStreamInbound(middleware, spec.Handler);
+                var pipeline = GetClientStreamPipeline(spec);
 
                 _ = ProcessClientStreamAsync(call, context, pipeline, cancellationToken);
                 return call;
@@ -433,7 +437,7 @@ public sealed class Dispatcher
     }
 
     /// <summary>
-    /// Starts all dispatcher lifecycle components in parallel.
+    /// Starts all dispatcher lifecycle components using the orchestrator.
     /// </summary>
     public async ValueTask<Result<Unit>> StartAsync(CancellationToken cancellationToken = default)
     {
@@ -445,61 +449,18 @@ public sealed class Dispatcher
 
         try
         {
-            if (_lifecycleStartOrder.Length == 0)
-            {
-                CompleteStart();
-                return Ok(Unit.Value);
-            }
-
-            var startedComponents = new int[_lifecycleStartOrder.Length];
-
-            async ValueTask<Result<Unit>> FailStartAsync(Error? startError)
+            var startResult = await _lifecycleOrchestrator.StartAsync(cancellationToken).ConfigureAwait(false);
+            if (startResult.IsFailure)
             {
                 lock (_stateLock)
                 {
                     _status = DispatcherStatus.Stopped;
                 }
 
-                var rollbackResult = await RollbackStartedComponentsAsync(startedComponents).ConfigureAwait(false);
-                if (rollbackResult.IsFailure)
-                {
-                    if (startError is not null)
-                    {
-                        var aggregate = AggregateErrors(
-                            "Dispatcher start failed and rollback reported additional errors.",
-                            [startError, rollbackResult.Error!]);
-                        return Err<Unit>(aggregate);
-                    }
+                // Ensure any components that started before the failure are stopped.
+                await _lifecycleOrchestrator.StopAsync(cancellationToken).ConfigureAwait(false);
 
-                    return rollbackResult;
-                }
-
-                if (startError is not null)
-                {
-                    return Err<Unit>(startError);
-                }
-
-                return Err<Unit>(CreateDispatcherError("One or more dispatcher components failed to start.", OmniRelayStatusCode.Internal));
-            }
-
-            for (var index = 0; index < _lifecycleStartOrder.Length; index++)
-            {
-                var component = _lifecycleStartOrder[index];
-                var lifecycle = component.Lifecycle;
-
-                var startResult = await ExecuteLifecycleWithPolicyAsync(
-                    component.Name,
-                    lifecycle.StartAsync,
-                    _startRetryPolicy,
-                    cancellationToken).ConfigureAwait(false);
-
-                if (startResult.IsSuccess)
-                {
-                    Volatile.Write(ref startedComponents[index], 1);
-                    continue;
-                }
-
-                return await FailStartAsync(startResult.Error).ConfigureAwait(false);
+                return startResult;
             }
 
             CompleteStart();
@@ -517,7 +478,7 @@ public sealed class Dispatcher
     }
 
     /// <summary>
-    /// Stops all dispatcher lifecycle components in reverse start order.
+    /// Stops all dispatcher lifecycle components.
     /// </summary>
     public async ValueTask<Result<Unit>> StopAsync(CancellationToken cancellationToken = default)
     {
@@ -532,51 +493,23 @@ public sealed class Dispatcher
             return Ok(Unit.Value);
         }
 
-        var errors = new ConcurrentQueue<Error>();
-        var waitGroup = new WaitGroup();
-
-        for (var index = _lifecycleStartOrder.Length - 1; index >= 0; index--)
-        {
-            var component = _lifecycleStartOrder[index];
-            var lifecycle = component.Lifecycle;
-            waitGroup.Go(async token =>
-            {
-                var stopResult = await ExecuteLifecycleWithPolicyAsync(
-                    component.Name,
-                    lifecycle.StopAsync,
-                    _stopRetryPolicy,
-                    token).ConfigureAwait(false);
-
-                if (stopResult.IsFailure && stopResult.Error is not null)
-                {
-                    errors.Enqueue(stopResult.Error);
-                }
-            }, cancellationToken);
-        }
-
         try
         {
-            await waitGroup.WaitAsync(cancellationToken).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            // Fast shutdown requested; proceed with whatever completed.
-        }
-
-        if (!errors.IsEmpty)
-        {
-            FailStop();
-            var errorArray = errors.ToArray();
-            if (errorArray.Length == 1)
+            var stopResult = await _lifecycleOrchestrator.StopAsync(cancellationToken).ConfigureAwait(false);
+            if (stopResult.IsFailure)
             {
-                return Err<Unit>(errorArray[0]);
+                FailStop();
+                return stopResult;
             }
 
-            return Err<Unit>(AggregateErrors("One or more dispatcher components failed to stop.", errorArray));
+            CompleteStop();
+            return Ok(Unit.Value);
         }
-
-        CompleteStop();
-        return Ok(Unit.Value);
+        catch (Exception ex)
+        {
+            FailStop();
+            return OmniRelayErrors.ToResult<Unit>(ex, "dispatcher");
+        }
     }
 
     /// <summary>
@@ -627,7 +560,8 @@ public sealed class Dispatcher
             .Select(static component =>
                 new LifecycleComponentDescriptor(
                     component.Name,
-                    component.Lifecycle.GetType().FullName ?? component.Lifecycle.GetType().Name))
+                    component.Lifecycle.GetType().FullName ?? component.Lifecycle.GetType().Name,
+                    component.Dependencies))
             .ToImmutableArray();
 
         var outbounds = _outbounds.Values
@@ -705,30 +639,6 @@ public sealed class Dispatcher
             transport: transport);
 
         return Err<TProcedure>(error);
-    }
-
-    private static ValueTask<Result<Unit>> ExecuteLifecycleWithPolicyAsync(
-        string componentName,
-        Func<CancellationToken, ValueTask> lifecycleAction,
-        ResultExecutionPolicy policy,
-        CancellationToken cancellationToken)
-    {
-        return Result.RetryWithPolicyAsync<Unit>(
-            async (_, token) =>
-            {
-                try
-                {
-                    await lifecycleAction(token).ConfigureAwait(false);
-                    return Ok(Unit.Value);
-                }
-                catch (Exception ex)
-                {
-                    return OmniRelayErrors.ToResult<Unit>(ex, componentName);
-                }
-            },
-            policy,
-            TimeProvider.System,
-            cancellationToken);
     }
 
     private static async Task ProcessClientStreamAsync(
@@ -822,56 +732,6 @@ public sealed class Dispatcher
 
     private static Error CreateDispatcherError(string message, OmniRelayStatusCode status = OmniRelayStatusCode.Internal) =>
         OmniRelayErrorAdapter.FromStatus(status, message, transport: "dispatcher");
-
-    private static Error AggregateErrors(string message, IEnumerable<Error> errors)
-    {
-        var aggregate = new AggregateException(message, errors.Select(static error => new ResultException(error)));
-        return OmniRelayErrors.ToResult<Unit>(aggregate, "dispatcher").Error!;
-    }
-
-    private async Task<Result<Unit>> RollbackStartedComponentsAsync(int[] startedComponents)
-    {
-        if (_lifecycleStartOrder.Length == 0 || startedComponents.Length == 0)
-        {
-            return Ok(Unit.Value);
-        }
-
-        var rollbackErrors = new List<Error>();
-
-        for (var index = _lifecycleStartOrder.Length - 1; index >= 0; index--)
-        {
-            if (Volatile.Read(ref startedComponents[index]) == 0)
-            {
-                continue;
-            }
-
-            var component = _lifecycleStartOrder[index];
-            var lifecycle = component.Lifecycle;
-
-            var rollbackResult = await ExecuteLifecycleWithPolicyAsync(
-                component.Name,
-                lifecycle.StopAsync,
-                _stopRetryPolicy,
-                CancellationToken.None).ConfigureAwait(false);
-
-            if (rollbackResult.IsFailure && rollbackResult.Error is not null)
-            {
-                rollbackErrors.Add(rollbackResult.Error);
-            }
-        }
-
-        if (rollbackErrors.Count == 1)
-        {
-            return Err<Unit>(rollbackErrors[0]);
-        }
-
-        if (rollbackErrors.Count > 1)
-        {
-            return Err<Unit>(AggregateErrors("One or more dispatcher components failed to roll back after a start failure.", rollbackErrors));
-        }
-
-        return Ok(Unit.Value);
-    }
 
     private static ImmutableDictionary<string, OutboundRegistry> BuildOutboundRegistrys(
         IReadOnlyDictionary<string, DispatcherOptions.OutboundRegistryBuilder> builders)
@@ -985,6 +845,41 @@ public sealed class Dispatcher
             }
         }
     }
+
+    private UnaryInboundHandler GetUnaryPipeline(UnaryProcedureSpec spec) =>
+        _unaryPipelines.GetOrAdd(spec, static (procedure, dispatcher) =>
+        {
+            var middleware = CombineMiddleware(dispatcher._inboundUnaryMiddleware, procedure.Middleware);
+            return MiddlewareComposer.ComposeUnaryInbound(middleware, procedure.Handler);
+        }, this);
+
+    private OnewayInboundHandler GetOnewayPipeline(OnewayProcedureSpec spec) =>
+        _onewayPipelines.GetOrAdd(spec, static (procedure, dispatcher) =>
+        {
+            var middleware = CombineMiddleware(dispatcher._inboundOnewayMiddleware, procedure.Middleware);
+            return MiddlewareComposer.ComposeOnewayInbound(middleware, procedure.Handler);
+        }, this);
+
+    private StreamInboundHandler GetStreamPipeline(StreamProcedureSpec spec) =>
+        _streamPipelines.GetOrAdd(spec, static (procedure, dispatcher) =>
+        {
+            var middleware = CombineMiddleware(dispatcher._inboundStreamMiddleware, procedure.Middleware);
+            return MiddlewareComposer.ComposeStreamInbound(middleware, procedure.Handler);
+        }, this);
+
+    private ClientStreamInboundHandler GetClientStreamPipeline(ClientStreamProcedureSpec spec) =>
+        _clientStreamPipelines.GetOrAdd(spec, static (procedure, dispatcher) =>
+        {
+            var middleware = CombineMiddleware(dispatcher._inboundClientStreamMiddleware, procedure.Middleware);
+            return MiddlewareComposer.ComposeClientStreamInbound(middleware, procedure.Handler);
+        }, this);
+
+    private DuplexInboundHandler GetDuplexPipeline(DuplexProcedureSpec spec) =>
+        _duplexPipelines.GetOrAdd(spec, static (procedure, dispatcher) =>
+        {
+            var middleware = CombineMiddleware(dispatcher._inboundDuplexMiddleware, procedure.Middleware);
+            return MiddlewareComposer.ComposeDuplexInbound(middleware, procedure.Handler);
+        }, this);
 
     private static IReadOnlyList<TMiddleware> CombineMiddleware<TMiddleware>(
         ImmutableArray<TMiddleware> global,

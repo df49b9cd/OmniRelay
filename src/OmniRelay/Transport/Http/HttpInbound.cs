@@ -20,10 +20,16 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Primitives;
+using OmniRelay.ControlPlane.Upgrade;
 using OmniRelay.Core;
+using OmniRelay.Core.Diagnostics;
+using OmniRelay.Core.Gossip;
 using OmniRelay.Core.Transport;
+using OmniRelay.Diagnostics;
 using OmniRelay.Dispatcher;
 using OmniRelay.Errors;
+using OmniRelay.Security.Authorization;
+using OmniRelay.Transport.Security;
 using static Hugo.Go;
 
 namespace OmniRelay.Transport.Http;
@@ -32,13 +38,15 @@ namespace OmniRelay.Transport.Http;
 /// Hosts the OmniRelay HTTP inbound server exposing RPC endpoints, introspection, and health probes.
 /// Supports HTTP/1.1 and HTTP/2, and can enable HTTP/3 (QUIC) when configured with TLS 1.3.
 /// </summary>
-public sealed partial class HttpInbound : ILifecycle, IDispatcherAware
+public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDrainParticipant
 {
     private readonly string[] _urls;
     private readonly Action<IServiceCollection>? _configureServices;
     private readonly Action<WebApplication>? _configureApp;
     private readonly HttpServerTlsOptions? _serverTlsOptions;
     private readonly HttpServerRuntimeOptions? _serverRuntimeOptions;
+    private readonly TransportSecurityPolicyEvaluator? _transportSecurity;
+    private readonly MeshAuthorizationEvaluator? _authorization;
     private WebApplication? _app;
     private Dispatcher.Dispatcher? _dispatcher;
     private volatile bool _isDraining;
@@ -47,6 +55,8 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware
     private readonly object _contextLock = new();
     private readonly HashSet<HttpContext> _activeHttpContexts = [];
     private static readonly HttpInboundJsonContext JsonContext = HttpInboundJsonContext.Default;
+    private static readonly PathString ControlPeersPath = new("/control/peers");
+    private static readonly PathString ControlPeersAltPath = new("/omnirelay/control/peers");
     private const string RetryAfterHeaderValue = "1";
     private const int DefaultDuplexFrameBytes = 16 * 1024;
     private const string HttpTransportName = "http";
@@ -84,12 +94,16 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware
     /// <param name="configureApp">Optional application pipeline configuration.</param>
     /// <param name="serverRuntimeOptions">Kestrel and HTTP/3 runtime options.</param>
     /// <param name="serverTlsOptions">TLS options including certificate for HTTPS/HTTP/3.</param>
+    /// <param name="transportSecurity"></param>
+    /// <param name="authorizationEvaluator"></param>
     public HttpInbound(
         IEnumerable<string> urls,
         Action<IServiceCollection>? configureServices = null,
         Action<WebApplication>? configureApp = null,
         HttpServerRuntimeOptions? serverRuntimeOptions = null,
-        HttpServerTlsOptions? serverTlsOptions = null)
+        HttpServerTlsOptions? serverTlsOptions = null,
+        TransportSecurityPolicyEvaluator? transportSecurity = null,
+        MeshAuthorizationEvaluator? authorizationEvaluator = null)
     {
         ArgumentNullException.ThrowIfNull(urls);
 
@@ -103,6 +117,8 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware
         _configureApp = configureApp;
         _serverRuntimeOptions = serverRuntimeOptions;
         _serverTlsOptions = serverTlsOptions;
+        _transportSecurity = transportSecurity;
+        _authorization = authorizationEvaluator;
     }
 
     /// <summary>
@@ -364,6 +380,48 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware
 
         app.UseWebSockets();
 
+        if (_transportSecurity is not null)
+        {
+            app.Use(async (context, next) =>
+            {
+                var decision = _transportSecurity.Evaluate(TransportSecurityContext.FromHttpContext(HttpTransportName, context));
+                if (!decision.IsAllowed)
+                {
+                    context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                    var host = context.Request.Host.HasValue ? context.Request.Host.Value : context.Connection.RemoteIpAddress?.ToString() ?? "*";
+                    await HttpJsonWriter.WriteAsync(
+                        context.Response,
+                        decision.ToPayload(HttpTransportName, host),
+                        HttpJsonContext.Default.TransportSecurityDecisionPayload,
+                        context.RequestAborted).ConfigureAwait(false);
+                    return;
+                }
+
+                await next().ConfigureAwait(false);
+            });
+        }
+
+        if (_authorization is not null)
+        {
+            app.Use(async (context, next) =>
+            {
+                var decision = _authorization.Evaluate(HttpTransportName, context.Request.Path, context);
+                if (!decision.IsAllowed)
+                {
+                    context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                    var responsePayload = new TransportAuthorizationResponse(HttpTransportName, decision.Reason ?? "authorization failure");
+                    await HttpJsonWriter.WriteAsync(
+                        context.Response,
+                        responsePayload,
+                        HttpJsonContext.Default.TransportAuthorizationResponse,
+                        context.RequestAborted).ConfigureAwait(false);
+                    return;
+                }
+
+                await next().ConfigureAwait(false);
+            });
+        }
+
         _configureApp?.Invoke(app);
 
         app.MapGet("/omnirelay/introspect", HandleIntrospectAsync);
@@ -387,16 +445,7 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware
             return;
         }
 
-        _isDraining = true;
-
-        try
-        {
-            await _activeRequests.WaitAsync(cancellationToken).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            // fall through for fast shutdown
-        }
+        await WaitForDrainCompletionAsync(swallowCancellation: true, cancellationToken).ConfigureAwait(false);
 
         var cancellationRequested = cancellationToken.IsCancellationRequested;
         var stopToken = cancellationRequested ? CancellationToken.None : cancellationToken;
@@ -421,6 +470,15 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware
         _app = null;
         _isDraining = false;
         Interlocked.Exchange(ref _activeRequestCount, 0);
+    }
+
+    ValueTask INodeDrainParticipant.DrainAsync(CancellationToken cancellationToken) =>
+        WaitForDrainCompletionAsync(swallowCancellation: false, cancellationToken);
+
+    ValueTask INodeDrainParticipant.ResumeAsync(CancellationToken cancellationToken)
+    {
+        _isDraining = false;
+        return ValueTask.CompletedTask;
     }
 
     private static bool TrySetQuicOption(QuicTransportOptions options, string propertyName, object value)
@@ -468,6 +526,28 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware
         lock (_contextLock)
         {
             _activeHttpContexts.Remove(context);
+        }
+    }
+
+    private async ValueTask WaitForDrainCompletionAsync(bool swallowCancellation, CancellationToken cancellationToken)
+    {
+        if (_app is null)
+        {
+            return;
+        }
+
+        if (!_isDraining)
+        {
+            _isDraining = true;
+        }
+
+        try
+        {
+            await _activeRequests.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (swallowCancellation)
+        {
+            // Fast shutdown requested; ignore cancellation.
         }
     }
 
@@ -575,7 +655,7 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware
     private async Task HandleUnaryAsync(HttpContext context)
     {
         var dispatcher = _dispatcher!;
-        var transport = "http";
+        const string transport = "http";
         var startTimestamp = Stopwatch.GetTimestamp();
 
         if (!TryBeginRequest(context))
@@ -585,27 +665,35 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware
 
         try
         {
-            if (!context.Request.Headers.TryGetValue(HttpTransportHeaders.Procedure, out var procedureValues) ||
-            StringValues.IsNullOrEmpty(procedureValues))
+            var decodeResult = await DecodeUnaryRequestAsync(
+                    context,
+                    dispatcher.ServiceName,
+                    transport,
+                    _serverRuntimeOptions?.MaxInMemoryDecodeBytes,
+                    context.RequestAborted)
+                .ConfigureAwait(false);
+
+            if (decodeResult.IsFailure)
             {
-                context.Response.StatusCode = StatusCodes.Status400BadRequest;
-                await WriteErrorAsync(context, "rpc procedure header missing", OmniRelayStatusCode.InvalidArgument, transport).ConfigureAwait(false);
+                var error = decodeResult.Error!;
+                var status = OmniRelayErrorAdapter.ToStatus(error);
+                await WriteErrorAsync(context, error.Message ?? "invalid unary request", status, transport, error).ConfigureAwait(false);
                 return;
             }
 
-            var procedure = procedureValues![0];
+            var requestContext = decodeResult.Value;
+            var procedure = requestContext.Procedure;
+            var encoding = requestContext.Encoding;
 
-            var encoding = ResolveRequestEncoding(context.Request.Headers, context.Request.ContentType);
+            context.Response.Headers[HttpTransportHeaders.Transport] = transport;
+            context.Response.Headers[HttpTransportHeaders.Protocol] = context.Request.Protocol;
 
-            var meta = BuildRequestMeta(dispatcher.ServiceName, procedure!, encoding, context.Request.Headers, transport, context.Request.Protocol);
-
-            // Tracing: enrich current Activity with protocol attributes for correlation
             var activity = Activity.Current;
             if (activity is not null)
             {
                 activity.SetTag("rpc.system", "http");
                 activity.SetTag("rpc.service", dispatcher.ServiceName);
-                activity.SetTag("rpc.method", procedure!);
+                activity.SetTag("rpc.method", procedure);
                 activity.SetTag("rpc.protocol", context.Request.Protocol);
                 if (context.Request.Protocol.StartsWith("HTTP/", StringComparison.OrdinalIgnoreCase))
                 {
@@ -619,47 +707,30 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware
                 }
             }
 
-            // Metrics: request started
-            var baseTags = HttpTransportMetrics.CreateBaseTags(dispatcher.ServiceName, procedure!, context.Request.Method, context.Request.Protocol);
+            var baseTags = HttpTransportMetrics.CreateBaseTags(dispatcher.ServiceName, procedure, context.Request.Method, context.Request.Protocol);
             HttpTransportMetrics.RequestsStarted.Add(1, baseTags);
 
-            // Enforce in-memory decode threshold to prevent unbounded buffering for very large bodies.
-            if (_serverRuntimeOptions?.MaxInMemoryDecodeBytes is { } maxInMem &&
-                context.Request.ContentLength is { } contentLen &&
-                contentLen > maxInMem)
+            void RecordMetrics(string outcome)
             {
-                context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
-                await WriteErrorAsync(context, "request body exceeds in-memory decode limit", OmniRelayStatusCode.ResourceExhausted, transport).ConfigureAwait(false);
-                return;
+                var elapsedMs = Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds;
+                var tags = HttpTransportMetrics.AppendOutcome(baseTags, context.Response.StatusCode, outcome);
+                HttpTransportMetrics.RequestDuration.Record(elapsedMs, tags);
+                HttpTransportMetrics.RequestsCompleted.Add(1, tags);
             }
 
-            var (success, payload) = await TryReadRequestBodyAsync(context, transport, _serverRuntimeOptions?.MaxInMemoryDecodeBytes).ConfigureAwait(false);
-            if (!success)
+            if (dispatcher.TryGetProcedure(procedure, ProcedureKind.Oneway, out _))
             {
-                return;
-            }
-
-            var request = new Request<ReadOnlyMemory<byte>>(meta, payload);
-
-            if (dispatcher.TryGetProcedure(procedure!, ProcedureKind.Oneway, out _))
-            {
-                var onewayResult = await dispatcher.InvokeOnewayAsync(procedure!, request, context.RequestAborted).ConfigureAwait(false);
+                var onewayResult = await dispatcher.InvokeOnewayAsync(procedure, requestContext.Request, context.RequestAborted).ConfigureAwait(false);
                 if (onewayResult.IsFailure)
                 {
                     var error = onewayResult.Error!;
                     var exception = OmniRelayErrors.FromError(error, transport);
                     await WriteErrorAsync(context, exception.Message, exception.StatusCode, transport, error).ConfigureAwait(false);
-                    // Metrics: error completion for oneway
-                    var elapsedMs = Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds;
-                    var tags = HttpTransportMetrics.AppendOutcome(baseTags, context.Response.StatusCode, "error");
-                    HttpTransportMetrics.RequestDuration.Record(elapsedMs, tags);
-                    HttpTransportMetrics.RequestsCompleted.Add(1, tags);
+                    RecordMetrics("error");
                     return;
                 }
 
                 context.Response.StatusCode = StatusCodes.Status202Accepted;
-                context.Response.Headers[HttpTransportHeaders.Transport] = transport;
-                context.Response.Headers[HttpTransportHeaders.Protocol] = context.Request.Protocol;
 
                 var ackMeta = onewayResult.Value.Meta;
                 var ackEncoding = ackMeta.Encoding ?? encoding;
@@ -675,30 +746,19 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware
 
                     context.Response.Headers[header.Key] = header.Value;
                 }
-                // Metrics: success completion for oneway
-                {
-                    var elapsedMs = Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds;
-                    var tags = HttpTransportMetrics.AppendOutcome(baseTags, context.Response.StatusCode, "success");
-                    HttpTransportMetrics.RequestDuration.Record(elapsedMs, tags);
-                    HttpTransportMetrics.RequestsCompleted.Add(1, tags);
-                }
+
+                RecordMetrics("success");
                 return;
             }
 
-            var result = await dispatcher.InvokeUnaryAsync(procedure!, request, context.RequestAborted).ConfigureAwait(false);
+            var result = await dispatcher.InvokeUnaryAsync(procedure, requestContext.Request, context.RequestAborted).ConfigureAwait(false);
 
             if (result.IsFailure)
             {
                 var error = result.Error!;
                 var exception = OmniRelayErrors.FromError(error, transport);
                 await WriteErrorAsync(context, exception.Message, exception.StatusCode, transport, error).ConfigureAwait(false);
-                // Metrics: error completion for unary
-                {
-                    var elapsedMs = Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds;
-                    var tags = HttpTransportMetrics.AppendOutcome(baseTags, context.Response.StatusCode, "error");
-                    HttpTransportMetrics.RequestDuration.Record(elapsedMs, tags);
-                    HttpTransportMetrics.RequestsCompleted.Add(1, tags);
-                }
+                RecordMetrics("error");
                 return;
             }
 
@@ -706,8 +766,6 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware
             context.Response.StatusCode = StatusCodes.Status200OK;
             var responseEncoding = response.Meta.Encoding ?? encoding;
             context.Response.Headers[HttpTransportHeaders.Encoding] = responseEncoding ?? MediaTypeNames.Application.Octet;
-            context.Response.Headers[HttpTransportHeaders.Transport] = transport;
-            context.Response.Headers[HttpTransportHeaders.Protocol] = context.Request.Protocol;
             context.Response.ContentType = ResolveContentType(responseEncoding) ?? MediaTypeNames.Application.Octet;
 
             foreach (var header in response.Meta.Headers)
@@ -725,13 +783,7 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware
                 await context.Response.BodyWriter.WriteAsync(response.Body, context.RequestAborted).ConfigureAwait(false);
             }
 
-            // Metrics: success completion for unary
-            {
-                var elapsedMs = Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds;
-                var tags = HttpTransportMetrics.AppendOutcome(baseTags, context.Response.StatusCode, "success");
-                HttpTransportMetrics.RequestDuration.Record(elapsedMs, tags);
-                HttpTransportMetrics.RequestsCompleted.Add(1, tags);
-            }
+            RecordMetrics("success");
         }
         finally
         {
@@ -739,80 +791,10 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware
         }
     }
 
-    private static async ValueTask<(bool Success, ReadOnlyMemory<byte> Buffer)> TryReadRequestBodyAsync(HttpContext context, string transport, long? maxInMemory)
-    {
-        if (context.Request.ContentLength is { } contentLength)
-        {
-            if (maxInMemory is { } max && contentLength > max)
-            {
-                context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
-                await WriteErrorAsync(context, "request body exceeds in-memory decode limit", OmniRelayStatusCode.ResourceExhausted, transport).ConfigureAwait(false);
-                return (false, ReadOnlyMemory<byte>.Empty);
-            }
-
-            if (contentLength == 0)
-            {
-                return (true, ReadOnlyMemory<byte>.Empty);
-            }
-
-            if (contentLength > int.MaxValue)
-            {
-                context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
-                await WriteErrorAsync(context, "request body too large", OmniRelayStatusCode.ResourceExhausted, transport).ConfigureAwait(false);
-                return (false, ReadOnlyMemory<byte>.Empty);
-            }
-
-            var buffer = new byte[(int)contentLength];
-            await context.Request.Body.ReadExactlyAsync(buffer.AsMemory(), context.RequestAborted).ConfigureAwait(false);
-            return (true, buffer);
-        }
-
-        const int chunkSize = 81920;
-        long total = 0;
-
-        using var memory = new MemoryStream();
-        var rented = ArrayPool<byte>.Shared.Rent(chunkSize);
-        try
-        {
-            while (true)
-            {
-                var read = await context.Request.Body.ReadAsync(rented.AsMemory(0, chunkSize), context.RequestAborted).ConfigureAwait(false);
-                if (read == 0)
-                {
-                    break;
-                }
-
-                total += read;
-
-                if (maxInMemory is { } maxBytes && total > maxBytes)
-                {
-                    context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
-                    await WriteErrorAsync(context, "request body exceeds in-memory decode limit", OmniRelayStatusCode.ResourceExhausted, transport).ConfigureAwait(false);
-                    return (false, ReadOnlyMemory<byte>.Empty);
-                }
-
-                if (total > int.MaxValue)
-                {
-                    context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
-                    await WriteErrorAsync(context, "request body too large", OmniRelayStatusCode.ResourceExhausted, transport).ConfigureAwait(false);
-                    return (false, ReadOnlyMemory<byte>.Empty);
-                }
-
-                memory.Write(rented, 0, read);
-            }
-
-            return (true, memory.ToArray());
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(rented);
-        }
-    }
-
     private async Task HandleServerStreamAsync(HttpContext context)
     {
         var dispatcher = _dispatcher!;
-        var transport = "http";
+        const string transport = "http";
         var startTimestamp = Stopwatch.GetTimestamp();
 
         if (context.WebSockets.IsWebSocketRequest)
@@ -828,52 +810,38 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware
 
         try
         {
-
-            if (!HttpMethods.IsGet(context.Request.Method))
+            if (IsPeerDiagnosticsRequest(context.Request.Path))
             {
-                context.Response.StatusCode = StatusCodes.Status405MethodNotAllowed;
+                await HandlePeerDiagnosticsAsync(context).ConfigureAwait(false);
                 return;
             }
 
-            if (!context.Request.Headers.TryGetValue(HttpTransportHeaders.Procedure, out var procedureValues) ||
-                StringValues.IsNullOrEmpty(procedureValues))
-            {
-                context.Response.StatusCode = StatusCodes.Status400BadRequest;
-                await WriteErrorAsync(context, "rpc procedure header missing", OmniRelayStatusCode.InvalidArgument, transport).ConfigureAwait(false);
-                return;
-            }
-
-            var procedure = procedureValues![0];
-
-            var acceptValues = context.Request.Headers.TryGetValue("Accept", out var acceptRaw)
-                ? acceptRaw
-                : StringValues.Empty;
-
-            if (acceptValues.Count == 0 ||
-                !acceptValues.Any(static value => !string.IsNullOrEmpty(value) && value.Contains("text/event-stream", StringComparison.OrdinalIgnoreCase)))
+            if (!AcceptsServerSentEvents(context.Request.Headers))
             {
                 context.Response.StatusCode = StatusCodes.Status406NotAcceptable;
-                await WriteErrorAsync(context, "text/event-stream Accept header required for streaming", OmniRelayStatusCode.InvalidArgument, transport).ConfigureAwait(false);
+                await context.Response.WriteAsync("text/event-stream Accept header required for streaming", context.RequestAborted).ConfigureAwait(false);
                 return;
             }
 
-            var meta = BuildRequestMeta(
-                dispatcher.ServiceName,
-                procedure!,
-                encoding: ResolveRequestEncoding(context.Request.Headers, context.Request.ContentType),
-                headers: context.Request.Headers,
-                transport: transport,
-                protocol: context.Request.Protocol);
+            var decodeResult = DecodeServerStreamRequest(context, dispatcher.ServiceName, transport);
+            if (decodeResult.IsFailure)
+            {
+                var error = decodeResult.Error!;
+                var status = OmniRelayErrorAdapter.ToStatus(error);
+                await WriteErrorAsync(context, error.Message ?? "invalid stream request", status, transport, error).ConfigureAwait(false);
+                return;
+            }
 
-            var request = new Request<ReadOnlyMemory<byte>>(meta, ReadOnlyMemory<byte>.Empty);
+            var requestContext = decodeResult.Value;
+            context.Response.Headers[HttpTransportHeaders.Transport] = transport;
+            context.Response.Headers[HttpTransportHeaders.Protocol] = context.Request.Protocol;
 
-            // Tracing: enrich current Activity
             var activity = Activity.Current;
             if (activity is not null)
             {
                 activity.SetTag("rpc.system", "http");
                 activity.SetTag("rpc.service", dispatcher.ServiceName);
-                activity.SetTag("rpc.method", procedure!);
+                activity.SetTag("rpc.method", requestContext.Procedure);
                 activity.SetTag("rpc.protocol", context.Request.Protocol);
                 if (context.Request.Protocol.StartsWith("HTTP/", StringComparison.OrdinalIgnoreCase))
                 {
@@ -887,13 +855,12 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware
                 }
             }
 
-            // Metrics: request started (server-stream)
-            var baseTags = HttpTransportMetrics.CreateBaseTags(dispatcher.ServiceName, procedure!, context.Request.Method, context.Request.Protocol);
+            var baseTags = HttpTransportMetrics.CreateBaseTags(dispatcher.ServiceName, requestContext.Procedure, context.Request.Method, context.Request.Protocol);
             HttpTransportMetrics.RequestsStarted.Add(1, baseTags);
 
             var streamResult = await dispatcher.InvokeStreamAsync(
-                procedure!,
-                request,
+                requestContext.Procedure,
+                new Request<ReadOnlyMemory<byte>>(requestContext.Meta, ReadOnlyMemory<byte>.Empty),
                 new StreamCallOptions(StreamDirection.Server),
                 context.RequestAborted).ConfigureAwait(false);
 
@@ -913,8 +880,6 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware
             await using (streamResult.Value.AsAsyncDisposable(out var call))
             {
                 context.Response.StatusCode = StatusCodes.Status200OK;
-                context.Response.Headers[HttpTransportHeaders.Transport] = transport;
-                context.Response.Headers[HttpTransportHeaders.Protocol] = context.Request.Protocol;
                 context.Response.Headers.CacheControl = "no-cache";
                 context.Response.Headers.Connection = "keep-alive";
                 context.Response.Headers.ContentType = "text/event-stream";
@@ -932,47 +897,38 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware
                     context.Response.Headers[header.Key] = header.Value;
                 }
 
-                var writer = context.Response.BodyWriter;
-                var writeTimeout = _serverRuntimeOptions?.ServerStreamWriteTimeout;
-                var maxMessageSize = _serverRuntimeOptions?.ServerStreamMaxMessageBytes;
+                var pumpResult = await PumpServerStreamAsync(
+                        call,
+                        context.Response.BodyWriter,
+                        responseMeta,
+                        _serverRuntimeOptions?.ServerStreamWriteTimeout,
+                        _serverRuntimeOptions?.ServerStreamMaxMessageBytes,
+                        transport,
+                        context.RequestAborted)
+                    .ConfigureAwait(false);
 
-                try
+                var pumpError = pumpResult.Error;
+                if (pumpError is not null)
                 {
-                    await FlushPipeAsync(writer, writeTimeout, context.RequestAborted).ConfigureAwait(false);
-
-                    await foreach (var payload in call.Responses.ReadAllAsync(context.RequestAborted).ConfigureAwait(false))
-                    {
-                        if (maxMessageSize is { } maxBytes && payload.Length > maxBytes)
-                        {
-                            var error = OmniRelayErrorAdapter.FromStatus(
-                                OmniRelayStatusCode.ResourceExhausted,
-                                "The server stream payload exceeds the configured limit.",
-                                transport: transport);
-                            await call.CompleteAsync(error, CancellationToken.None).ConfigureAwait(false);
-                            context.Abort();
-                            return;
-                        }
-
-                        var frame = EncodeSseFrame(payload, responseMeta.Encoding);
-                        await WritePipeAsync(writer, frame, writeTimeout, context.RequestAborted).ConfigureAwait(false);
-                        await FlushPipeAsync(writer, writeTimeout, context.RequestAborted).ConfigureAwait(false);
-                    }
+                    var pumpStatus = OmniRelayErrorAdapter.ToStatus(pumpError);
+                    context.Response.StatusCode = HttpStatusMapper.ToStatusCode(pumpStatus);
                 }
-                catch (TimeoutException)
+
+                var outcome = pumpResult.IsSuccess
+                    ? "success"
+                    : pumpError is { Code: var code } && string.Equals(code, ErrorCodes.Canceled, StringComparison.OrdinalIgnoreCase)
+                        ? "cancelled"
+                        : "error";
+
+                var elapsed = Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds;
+                var tags = HttpTransportMetrics.AppendOutcome(baseTags, context.Response.StatusCode, outcome);
+                HttpTransportMetrics.RequestDuration.Record(elapsed, tags);
+                HttpTransportMetrics.RequestsCompleted.Add(1, tags);
+
+                if (pumpError is not null)
                 {
-                    var error = OmniRelayErrorAdapter.FromStatus(
-                        OmniRelayStatusCode.DeadlineExceeded,
-                        "The server stream write timed out.",
-                        transport: transport);
-                    await call.CompleteAsync(error, CancellationToken.None).ConfigureAwait(false);
+                    await call.CompleteAsync(pumpError, CancellationToken.None).ConfigureAwait(false);
                     context.Abort();
-                }
-                finally
-                {
-                    var elapsed = Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds;
-                    var tags = HttpTransportMetrics.AppendOutcome(baseTags, context.Response.StatusCode, "success");
-                    HttpTransportMetrics.RequestDuration.Record(elapsed, tags);
-                    HttpTransportMetrics.RequestsCompleted.Add(1, tags);
                 }
             }
         }
@@ -980,6 +936,305 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware
         {
             CompleteRequest(context);
         }
+    }
+
+    private static ValueTask<Result<HttpUnaryRequestContext>> DecodeUnaryRequestAsync(
+        HttpContext context,
+        string serviceName,
+        string transport,
+        long? maxInMemory,
+        CancellationToken cancellationToken)
+    {
+        return Go.Ok(context)
+            .Ensure(ctx => HttpMethods.IsPost(ctx.Request.Method), _ => OmniRelayErrorAdapter.FromStatus(
+                OmniRelayStatusCode.InvalidArgument,
+                "HTTP POST required for unary RPC.",
+                transport: transport))
+            .Then(ctx => ResolveProcedure(ctx, transport))
+            .Map(procedure =>
+            {
+                var encoding = ResolveRequestEncoding(context.Request.Headers, context.Request.ContentType);
+                var meta = BuildRequestMeta(serviceName, procedure, encoding, context.Request.Headers, transport, context.Request.Protocol);
+                return new HttpUnaryDecodeState(procedure, encoding, meta);
+            })
+            .ThenValueTaskAsync<HttpUnaryDecodeState, HttpUnaryRequestContext>(async (state, token) =>
+            {
+                var bodyResult = await ReadRequestBodyAsync(context, transport, maxInMemory, token).ConfigureAwait(false);
+                return bodyResult.Map(payload =>
+                    new HttpUnaryRequestContext(state.Procedure, state.Meta, new Request<ReadOnlyMemory<byte>>(state.Meta, payload), state.Encoding));
+            }, cancellationToken);
+    }
+
+    private static Result<HttpServerStreamRequestContext> DecodeServerStreamRequest(
+        HttpContext context,
+        string serviceName,
+        string transport)
+    {
+        return Go.Ok(context)
+            .Ensure(ctx => HttpMethods.IsGet(ctx.Request.Method), _ => OmniRelayErrorAdapter.FromStatus(
+                OmniRelayStatusCode.InvalidArgument,
+                "HTTP GET required for streaming requests.",
+                transport: transport))
+            .Then(ctx => ResolveProcedure(ctx, transport))
+            .Ensure(_ => AcceptsServerSentEvents(context.Request.Headers), _ => OmniRelayErrorAdapter.FromStatus(
+                OmniRelayStatusCode.InvalidArgument,
+                "text/event-stream Accept header required for streaming",
+                transport: transport))
+            .Map(procedure =>
+            {
+                var encoding = ResolveRequestEncoding(context.Request.Headers, context.Request.ContentType);
+                var meta = BuildRequestMeta(serviceName, procedure, encoding, context.Request.Headers, transport, context.Request.Protocol);
+                return new HttpServerStreamRequestContext(procedure, meta);
+            });
+    }
+
+    private static Result<string> ResolveProcedure(HttpContext context, string transport)
+    {
+        if (!context.Request.Headers.TryGetValue(HttpTransportHeaders.Procedure, out var procedureValues) ||
+            StringValues.IsNullOrEmpty(procedureValues))
+        {
+            return Err<string>(OmniRelayErrorAdapter.FromStatus(
+                OmniRelayStatusCode.InvalidArgument,
+                "rpc procedure header missing",
+                transport: transport));
+        }
+
+        var procedure = procedureValues![0];
+        return Ok(procedure ?? string.Empty);
+    }
+
+    private static bool AcceptsServerSentEvents(IHeaderDictionary headers)
+    {
+        var acceptValues = headers.TryGetValue("Accept", out var acceptRaw)
+            ? acceptRaw
+            : StringValues.Empty;
+
+        if (acceptValues.Count == 0)
+        {
+            return false;
+        }
+
+        foreach (var value in acceptValues)
+        {
+            if (!string.IsNullOrEmpty(value) && value.Contains("text/event-stream", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static async ValueTask<Result<ReadOnlyMemory<byte>>> ReadRequestBodyAsync(
+        HttpContext context,
+        string transport,
+        long? maxInMemory,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (context.Request.ContentLength is { } contentLength)
+            {
+                if (maxInMemory is { } max && contentLength > max)
+                {
+                    return Err<ReadOnlyMemory<byte>>(OmniRelayErrorAdapter.FromStatus(
+                        OmniRelayStatusCode.ResourceExhausted,
+                        "request body exceeds in-memory decode limit",
+                        transport: transport));
+                }
+
+                if (contentLength == 0)
+                {
+                    return Ok(ReadOnlyMemory<byte>.Empty);
+                }
+
+                if (contentLength > int.MaxValue)
+                {
+                    return Err<ReadOnlyMemory<byte>>(OmniRelayErrorAdapter.FromStatus(
+                        OmniRelayStatusCode.ResourceExhausted,
+                        "request body too large",
+                        transport: transport));
+                }
+
+                var buffer = new byte[(int)contentLength];
+                await context.Request.Body.ReadExactlyAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false);
+                return Ok((ReadOnlyMemory<byte>)buffer);
+            }
+
+            const int chunkSize = 81920;
+            long total = 0;
+            var writer = new ArrayBufferWriter<byte>(chunkSize);
+            var rented = ArrayPool<byte>.Shared.Rent(chunkSize);
+            try
+            {
+                while (true)
+                {
+                    var read = await context.Request.Body.ReadAsync(rented.AsMemory(0, chunkSize), cancellationToken).ConfigureAwait(false);
+                    if (read == 0)
+                    {
+                        break;
+                    }
+
+                    total += read;
+
+                    if (maxInMemory is { } maxBytes && total > maxBytes)
+                    {
+                        return Err<ReadOnlyMemory<byte>>(OmniRelayErrorAdapter.FromStatus(
+                            OmniRelayStatusCode.ResourceExhausted,
+                            "request body exceeds in-memory decode limit",
+                            transport: transport));
+                    }
+
+                    if (total > int.MaxValue)
+                    {
+                        return Err<ReadOnlyMemory<byte>>(OmniRelayErrorAdapter.FromStatus(
+                            OmniRelayStatusCode.ResourceExhausted,
+                            "request body too large",
+                            transport: transport));
+                    }
+
+                    writer.Write(rented.AsSpan(0, read));
+                }
+
+                return Ok(writer.WrittenMemory);
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(rented);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            return Err<ReadOnlyMemory<byte>>(Error.Canceled());
+        }
+        catch (Exception ex)
+        {
+            var omni = OmniRelayErrors.FromException(ex, transport);
+            return Err<ReadOnlyMemory<byte>>(omni.Error ?? Error.FromException(ex));
+        }
+    }
+
+    private static async ValueTask<Result<Unit>> PumpServerStreamAsync(
+        IStreamCall call,
+        PipeWriter writer,
+        ResponseMeta responseMeta,
+        TimeSpan? writeTimeout,
+        int? maxMessageBytes,
+        string transport,
+        CancellationToken cancellationToken)
+    {
+        var frames = Go.MakeChannel<ReadOnlyMemory<byte>>(new BoundedChannelOptions(8)
+        {
+            AllowSynchronousContinuations = false,
+            FullMode = BoundedChannelFullMode.Wait,
+            SingleReader = true,
+            SingleWriter = false
+        });
+
+        using var pumpGroup = new ErrGroup(cancellationToken);
+
+        pumpGroup.Go(async token =>
+        {
+            try
+            {
+                await foreach (var payload in call.Responses.ReadAllAsync(token).ConfigureAwait(false))
+                {
+                    if (maxMessageBytes is { } limit && payload.Length > limit)
+                    {
+                        var error = OmniRelayErrorAdapter.FromStatus(
+                            OmniRelayStatusCode.ResourceExhausted,
+                            "The server stream payload exceeds the configured limit.",
+                            transport: transport);
+                        frames.Writer.TryComplete();
+                        await call.CompleteAsync(error, CancellationToken.None).ConfigureAwait(false);
+                        return Err<Unit>(error);
+                    }
+
+                    var frame = EncodeSseFrame(payload, responseMeta.Encoding);
+                    await frames.Writer.WriteAsync(frame, token).ConfigureAwait(false);
+                }
+
+                frames.Writer.TryComplete();
+                return Ok(Unit.Value);
+            }
+            catch (OperationCanceledException)
+            {
+                frames.Writer.TryComplete();
+                return Err<Unit>(Error.Canceled());
+            }
+            catch (Exception ex)
+            {
+                frames.Writer.TryComplete(ex);
+                return Err<Unit>(OmniRelayErrors.FromException(ex, transport).Error);
+            }
+        });
+
+        pumpGroup.Go(async token =>
+        {
+            try
+            {
+                await FlushPipeAsync(writer, writeTimeout, token).ConfigureAwait(false);
+
+                await foreach (var frame in frames.Reader.ReadAllAsync(token).ConfigureAwait(false))
+                {
+                    await WritePipeAsync(writer, frame, writeTimeout, token).ConfigureAwait(false);
+                    await FlushPipeAsync(writer, writeTimeout, token).ConfigureAwait(false);
+                }
+
+                return Ok(Unit.Value);
+            }
+            catch (TimeoutException)
+            {
+                var error = OmniRelayErrorAdapter.FromStatus(
+                    OmniRelayStatusCode.DeadlineExceeded,
+                    "The server stream write timed out.",
+                    transport: transport);
+                return Err<Unit>(error);
+            }
+            catch (OperationCanceledException)
+            {
+                return Err<Unit>(Error.Canceled());
+            }
+            catch (Exception ex)
+            {
+                return Err<Unit>(OmniRelayErrors.FromException(ex, transport).Error);
+            }
+        });
+
+        var pumpResult = await pumpGroup.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        frames.Writer.TryComplete();
+        return pumpResult;
+    }
+
+    private readonly record struct HttpUnaryDecodeState(string Procedure, string? Encoding, RequestMeta Meta);
+
+    private readonly record struct HttpUnaryRequestContext(
+        string Procedure,
+        RequestMeta Meta,
+        Request<ReadOnlyMemory<byte>> Request,
+        string? Encoding);
+
+    private readonly record struct HttpServerStreamRequestContext(string Procedure, RequestMeta Meta);
+
+    private static bool IsPeerDiagnosticsRequest(PathString path) =>
+        path.HasValue &&
+        (path.Equals(ControlPeersPath, StringComparison.OrdinalIgnoreCase) ||
+         path.Equals(ControlPeersAltPath, StringComparison.OrdinalIgnoreCase));
+
+    private static async Task HandlePeerDiagnosticsAsync(HttpContext context)
+    {
+        var provider = context.RequestServices.GetService<IPeerDiagnosticsProvider>();
+        if (provider is null)
+        {
+            var agent = context.RequestServices.GetService<IMeshGossipAgent>();
+            provider = agent is null
+                ? NullPeerDiagnosticsProvider.Instance
+                : new MeshPeerDiagnosticsProvider(agent);
+        }
+
+        var snapshot = provider.CreateSnapshot();
+        var result = TypedResults.Json(snapshot, Diagnostics.DiagnosticsJsonContext.Default.PeerDiagnosticsResponse);
+        await result.ExecuteAsync(context).ConfigureAwait(false);
     }
 
     private async Task HandleDuplexAsync(HttpContext context)
@@ -997,8 +1252,8 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware
         {
             if (!context.WebSockets.IsWebSocketRequest)
             {
-                context.Response.StatusCode = StatusCodes.Status400BadRequest;
-                await WriteErrorAsync(context, "WebSocket upgrade required for duplex streaming.", OmniRelayStatusCode.InvalidArgument, transport).ConfigureAwait(false);
+                context.Response.StatusCode = StatusCodes.Status406NotAcceptable;
+                await context.Response.WriteAsync("WebSocket upgrade required for duplex streaming.", context.RequestAborted).ConfigureAwait(false);
                 return;
             }
 
@@ -1131,12 +1386,51 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware
 
             async Task PumpRequestsAsync(WebSocket webSocket, IDuplexStreamCall streamCall, byte[] tempBuffer, int frameLimit, CancellationToken cancellationToken)
             {
+                var frameChannel = Go.MakeChannel<HttpDuplexProtocol.Frame>(new BoundedChannelOptions(8)
+                {
+                    AllowSynchronousContinuations = false,
+                    SingleReader = true,
+                    SingleWriter = true,
+                    FullMode = BoundedChannelFullMode.Wait
+                });
+
+                var receivePump = new WaitGroup();
+                receivePump.Go(async token =>
+                {
+                    try
+                    {
+                        while (!token.IsCancellationRequested)
+                        {
+                            var frame = await HttpDuplexProtocol.ReceiveFrameAsync(webSocket, tempBuffer, frameLimit, token).ConfigureAwait(false);
+
+                            HttpDuplexProtocol.Frame frameToWrite = frame.Payload.IsEmpty
+                                ? frame
+                                : new HttpDuplexProtocol.Frame(frame.MessageType, frame.Type, CopyFramePayload(frame.Payload));
+
+                            await frameChannel.Writer.WriteAsync(frameToWrite, token).ConfigureAwait(false);
+
+                            if (frame.MessageType == WebSocketMessageType.Close)
+                            {
+                                break;
+                            }
+                        }
+
+                        frameChannel.Writer.TryComplete();
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        frameChannel.Writer.TryComplete();
+                    }
+                    catch (Exception ex)
+                    {
+                        frameChannel.Writer.TryComplete(ex);
+                    }
+                }, cancellationToken: cancellationToken);
+
                 try
                 {
-                    while (!cancellationToken.IsCancellationRequested)
+                    await foreach (var frame in frameChannel.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
                     {
-                        var frame = await HttpDuplexProtocol.ReceiveFrameAsync(webSocket, tempBuffer, frameLimit, cancellationToken).ConfigureAwait(false);
-
                         if (frame.MessageType == WebSocketMessageType.Close)
                         {
                             await streamCall.CompleteRequestsAsync(cancellationToken: CancellationToken.None).ConfigureAwait(false);
@@ -1146,7 +1440,7 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware
                         switch (frame.Type)
                         {
                             case HttpDuplexProtocol.FrameType.RequestData:
-                                await streamCall.RequestWriter.WriteAsync(frame.Payload.ToArray(), cancellationToken).ConfigureAwait(false);
+                                await streamCall.RequestWriter.WriteAsync(frame.Payload, cancellationToken).ConfigureAwait(false);
                                 break;
 
                             case HttpDuplexProtocol.FrameType.RequestComplete:
@@ -1205,6 +1499,10 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware
                     await streamCall.CompleteRequestsAsync(error, CancellationToken.None).ConfigureAwait(false);
                     await streamCall.CompleteResponsesAsync(error, CancellationToken.None).ConfigureAwait(false);
                     pumpCts.Cancel();
+                }
+                finally
+                {
+                    await receivePump.WaitAsync(CancellationToken.None).ConfigureAwait(false);
                 }
             }
 
@@ -1526,6 +1824,18 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware
                 JsonContext.ErrorPayload,
                 context.RequestAborted)
             .ConfigureAwait(false);
+    }
+
+    private static byte[] CopyFramePayload(ReadOnlyMemory<byte> payload)
+    {
+        if (payload.IsEmpty)
+        {
+            return Array.Empty<byte>();
+        }
+
+        var copy = GC.AllocateUninitializedArray<byte>(payload.Length);
+        payload.Span.CopyTo(copy);
+        return copy;
     }
 
     private static string FormatStatusToken(OmniRelayStatusCode status)

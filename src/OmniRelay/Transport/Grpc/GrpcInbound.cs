@@ -11,11 +11,13 @@ using Microsoft.AspNetCore.Server.Kestrel.Transport.Quic;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
-using OmniRelay.Core.Leadership;
+using OmniRelay.ControlPlane.Upgrade;
 using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
+using OmniRelay.Security.Authorization;
 using OmniRelay.Transport.Grpc.Interceptors;
 using OmniRelay.Transport.Http;
+using OmniRelay.Transport.Security;
 
 namespace OmniRelay.Transport.Grpc;
 
@@ -23,7 +25,7 @@ namespace OmniRelay.Transport.Grpc;
 /// Hosts the OmniRelay gRPC inbound service that dispatches arbitrary procedures via a single gRPC service.
 /// Supports HTTP/2 and can enable HTTP/3 (QUIC) when configured with TLS 1.3.
 /// </summary>
-public sealed partial class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcServerInterceptorSink
+public sealed partial class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcServerInterceptorSink, INodeDrainParticipant
 {
     private readonly string[] _urls;
     private readonly Action<IServiceCollection>? _configureServices;
@@ -33,6 +35,8 @@ public sealed partial class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcSer
     private readonly GrpcServerTlsOptions? _serverTlsOptions;
     private readonly GrpcCompressionOptions? _compressionOptions;
     private readonly GrpcTelemetryOptions? _telemetryOptions;
+    private readonly TransportSecurityPolicyEvaluator? _transportSecurity;
+    private readonly MeshAuthorizationEvaluator? _authorizationEvaluator;
     private GrpcServerInterceptorRegistry? _serverInterceptorRegistry;
     private int _interceptorsConfigured;
     private volatile bool _isDraining;
@@ -52,6 +56,8 @@ public sealed partial class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcSer
     /// <param name="serverRuntimeOptions">gRPC server runtime options and HTTP/3 settings.</param>
     /// <param name="compressionOptions">Optional compression providers and defaults.</param>
     /// <param name="telemetryOptions">Optional telemetry options such as logging toggles.</param>
+    /// <param name="transportSecurity"></param>
+    /// <param name="authorizationEvaluator"></param>
     public GrpcInbound(
         IEnumerable<string> urls,
         Action<IServiceCollection>? configureServices = null,
@@ -59,7 +65,9 @@ public sealed partial class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcSer
         GrpcServerTlsOptions? serverTlsOptions = null,
         GrpcServerRuntimeOptions? serverRuntimeOptions = null,
         GrpcCompressionOptions? compressionOptions = null,
-        GrpcTelemetryOptions? telemetryOptions = null)
+        GrpcTelemetryOptions? telemetryOptions = null,
+        TransportSecurityPolicyEvaluator? transportSecurity = null,
+        MeshAuthorizationEvaluator? authorizationEvaluator = null)
     {
         _urls = urls?.ToArray() ?? throw new ArgumentNullException(nameof(urls));
         if (_urls.Length == 0)
@@ -73,6 +81,8 @@ public sealed partial class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcSer
         RuntimeOptions = serverRuntimeOptions;
         _compressionOptions = compressionOptions;
         _telemetryOptions = telemetryOptions;
+        _transportSecurity = transportSecurity;
+        _authorizationEvaluator = authorizationEvaluator;
     }
 
     /// <summary>
@@ -285,6 +295,18 @@ public sealed partial class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcSer
 
         builder.Services.AddSingleton(new GrpcTransportHealthService(_dispatcher, this));
 
+        if (_authorizationEvaluator is not null)
+        {
+            builder.Services.AddSingleton(_authorizationEvaluator);
+            builder.Services.AddSingleton<MeshAuthorizationGrpcInterceptor>();
+        }
+
+        if (_transportSecurity is not null)
+        {
+            builder.Services.AddSingleton(_transportSecurity);
+            builder.Services.AddSingleton<TransportSecurityGrpcInterceptor>();
+        }
+
         builder.Services.AddGrpc(options =>
         {
             var loggingInterceptorAdded = false;
@@ -330,6 +352,16 @@ public sealed partial class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcSer
             if (_telemetryOptions?.EnableServerLogging == true && !loggingInterceptorAdded)
             {
                 options.Interceptors.Add<GrpcServerLoggingInterceptor>();
+            }
+
+            if (_transportSecurity is not null)
+            {
+                options.Interceptors.Add<TransportSecurityGrpcInterceptor>();
+            }
+
+            if (_authorizationEvaluator is not null)
+            {
+                options.Interceptors.Add<MeshAuthorizationGrpcInterceptor>();
             }
 
             if (_compressionOptions != null)
@@ -399,11 +431,6 @@ public sealed partial class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcSer
 
         app.MapGrpcService<GrpcDispatcherService>();
         app.MapGrpcService<GrpcTransportHealthService>();
-        if (app.Services.GetService<LeadershipControlGrpcService>() is not null)
-        {
-            app.MapGrpcService<LeadershipControlGrpcService>();
-        }
-
         await app.StartAsync(cancellationToken).ConfigureAwait(false);
         _app = app;
     }
@@ -485,6 +512,34 @@ public sealed partial class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcSer
         }
     }
 
+    private async ValueTask<bool> WaitForDrainAsync(bool swallowCancellation, CancellationToken cancellationToken)
+    {
+        if (_app is null)
+        {
+            return false;
+        }
+
+        if (!_isDraining)
+        {
+            _isDraining = true;
+        }
+
+        try
+        {
+            await _activeCalls.WaitAsync(cancellationToken).ConfigureAwait(false);
+            return false;
+        }
+        catch (OperationCanceledException)
+        {
+            if (swallowCancellation)
+            {
+                return true;
+            }
+
+            throw;
+        }
+    }
+
     private static bool TrySetQuicOption(QuicTransportOptions options, string propertyName, object value)
     {
         var property = typeof(QuicTransportOptions).GetProperty(propertyName);
@@ -540,18 +595,7 @@ public sealed partial class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcSer
             return;
         }
 
-        _isDraining = true;
-        var cancellationRequested = false;
-
-        try
-        {
-            await _activeCalls.WaitAsync(cancellationToken).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            // Allow fast shutdown when cancellation is requested.
-            cancellationRequested = true;
-        }
+        var cancellationRequested = await WaitForDrainAsync(swallowCancellation: true, cancellationToken).ConfigureAwait(false);
 
         cancellationRequested |= cancellationToken.IsCancellationRequested;
         var stopToken = cancellationRequested ? CancellationToken.None : cancellationToken;
@@ -573,6 +617,17 @@ public sealed partial class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcSer
         await _app.DisposeAsync().ConfigureAwait(false);
         _app = null;
         _isDraining = false;
+    }
+
+    async ValueTask INodeDrainParticipant.DrainAsync(CancellationToken cancellationToken)
+    {
+        await WaitForDrainAsync(swallowCancellation: false, cancellationToken).ConfigureAwait(false);
+    }
+
+    ValueTask INodeDrainParticipant.ResumeAsync(CancellationToken cancellationToken)
+    {
+        _isDraining = false;
+        return ValueTask.CompletedTask;
     }
 
     private static partial class GrpcInboundLog

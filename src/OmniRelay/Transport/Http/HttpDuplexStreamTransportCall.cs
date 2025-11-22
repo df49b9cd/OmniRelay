@@ -220,7 +220,9 @@ internal sealed class HttpDuplexStreamTransportCall : IDuplexStreamCall
                         }
 
                     case HttpDuplexProtocol.FrameType.ResponseData:
-                        await _inner.ResponseWriter.WriteAsync(frame.Payload.ToArray(), cancellationToken).ConfigureAwait(false);
+                        // Copy because ReceiveFrameAsync reuses a shared buffer; retaining the slice would corrupt prior frames.
+                        var responseCopy = CopyFramePayload(frame.Payload);
+                        await _inner.ResponseWriter.WriteAsync(responseCopy, cancellationToken).ConfigureAwait(false);
                         break;
 
                     case HttpDuplexProtocol.FrameType.ResponseComplete:
@@ -255,7 +257,7 @@ internal sealed class HttpDuplexStreamTransportCall : IDuplexStreamCall
                         }
 
                     case HttpDuplexProtocol.FrameType.RequestData:
-                        await _inner.RequestWriter.WriteAsync(frame.Payload.ToArray(), cancellationToken).ConfigureAwait(false);
+                        await _inner.RequestWriter.WriteAsync(frame.Payload, cancellationToken).ConfigureAwait(false);
                         break;
                 }
             }
@@ -293,6 +295,18 @@ internal sealed class HttpDuplexStreamTransportCall : IDuplexStreamCall
         }
 
         return exception;
+    }
+
+    private static byte[] CopyFramePayload(ReadOnlyMemory<byte> payload)
+    {
+        if (payload.IsEmpty)
+        {
+            return Array.Empty<byte>();
+        }
+
+        var copy = GC.AllocateUninitializedArray<byte>(payload.Length);
+        payload.Span.CopyTo(copy);
+        return copy;
     }
 
     private async ValueTask HandlePumpGroupFailureAsync(Error pumpError)

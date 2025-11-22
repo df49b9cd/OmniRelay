@@ -9,4 +9,5 @@ namespace OmniRelay.Core.Gossip;
 [JsonSerializable(typeof(MeshGossipEnvelope))]
 [JsonSerializable(typeof(MeshGossipMemberSnapshot))]
 [JsonSerializable(typeof(MeshGossipClusterView))]
+[JsonSerializable(typeof(MeshGossipShuffleEnvelope))]
 internal partial class MeshGossipJsonSerializerContext : JsonSerializerContext;
