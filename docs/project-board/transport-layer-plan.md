@@ -2,10 +2,11 @@
 
 Use with the project-board README and the OmniRelay/MeshKit BRD & SRS documents.
 
-## Phase 0 – Alignment & Governance (Week 0–1)
+## Phase 0 – Alignment & Shared Foundations (Week 0–1)
 - Socialize roles: OmniRelay = data plane (in-proc/sidecar/edge), MeshKit = control plane (central/agent/bridge).
 - Tag all WORK items with deployment modes and control-plane roles they affect.
 - Freeze new scope that mixes control-plane logic into OmniRelay.
+- **Do first:** WORK-023 (shared transport/codec/proto libraries) to avoid duplicating hot-path code before other work builds on it.
 
 ## Phase 1 – OmniRelay Core & Perf (Weeks 1–4)
 - WORK-001: Pipeline parity across modes; perf baselines per SLO; watchdog defaults.

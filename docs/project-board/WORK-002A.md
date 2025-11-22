@@ -1,0 +1,20 @@
+# WORK-002A – Ban-List Analysis & AOT Safety Guards
+
+## Goal
+Identify and block reflection/JIT/dynamic APIs in OmniRelay hot paths with automated checks.
+
+## Scope
+- Expand banned-API list per `dotnet-performance-guidelines.md` and project needs.
+- Add analyzer or Roslyn-based check; integrate into build.
+- Provide suppression workflow for rare safe cases.
+
+## Deliverables
+- Analyzer/check + CI wiring.
+- Docs in knowledge-base covering banned APIs and how to remediate.
+
+## Acceptance Criteria
+- Build/CI fails on new banned API usage in OmniRelay assemblies.
+- Suppression requires justification and is documented.
+
+## Status
+Open

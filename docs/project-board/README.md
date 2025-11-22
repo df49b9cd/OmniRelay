@@ -9,7 +9,7 @@ Use this board with:
 
 | Lane | Focus | Stories (sequence) | Notes |
 | --- | --- | --- | --- |
-| L0 | OmniRelay data-plane core & perf | WORK-001 → WORK-005 | Establish AOT/perf baseline, extension hosts, deployment modes, and CI gating. Must stay green before higher lanes move. |
+| L0 | Shared foundations & OmniRelay core | WORK-023 → WORK-001 → WORK-005 | First refactor shared transport/codec/proto libraries, then ensure mode parity, AOT/perf, extensions, packaging, and CI gating. |
 | L1 | MeshKit control-plane foundation | WORK-006 → WORK-009 | Define control protocol, identity/CA, local agent with LKG cache, and bootstrap/watch harnesses. |
 | L2 | Extensions & rollout | WORK-010 → WORK-011 | Signed extension registry plus rollout/kill-switch machinery for DSL/Wasm/native bundles. |
 | L3 | Federation & capability | WORK-012 → WORK-016 | Telemetry correlation, domain bridging, capability down-leveling, routing/failover orchestration. |
@@ -19,7 +19,7 @@ Lanes are ordered; L0 must remain healthy to advance others. L1 depends on L0; L
 
 ## Active Work Items
 
-Status legend: Open / In design / In progress / Needs re-scope / Done.
+Status legend: Open / In design / In progress / Needs re-scope / Done. Epics are WORK-xxx; iteration-sized stories are suffixed (e.g., WORK-001A).
 
 ### L0 – OmniRelay Core & Perf
 
