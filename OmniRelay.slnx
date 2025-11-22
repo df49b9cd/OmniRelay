@@ -127,7 +127,6 @@
     <Project Path="src/OmniRelay.ShardStore.Postgres/OmniRelay.ShardStore.Postgres.csproj" />
     <Project Path="src/OmniRelay.ShardStore.Relational/OmniRelay.ShardStore.Relational.csproj" />
     <Project Path="src/OmniRelay.ShardStore.Sqlite/OmniRelay.ShardStore.Sqlite.csproj" />
-    <Project Path="src/OmniRelay.Transport/OmniRelay.Transport.csproj" />
     <Project Path="src/OmniRelay/OmniRelay.csproj" />
   </Folder>
   <Folder Name="/tests/">

@@ -9,11 +9,9 @@
     <EnableSingleFileAnalyzer>true</EnableSingleFileAnalyzer>
     <AssemblyName>OmniRelay.Codecs</AssemblyName>
     <RootNamespace>OmniRelay</RootNamespace>
+    <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
   </PropertyGroup>
 
-  <ItemGroup>
-    <Compile Include="..\OmniRelay\Core\**\*.cs" Link="Core\%(RecursiveDir)%(Filename)%(Extension)" />
-  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\OmniRelay.Protos\OmniRelay.Protos.csproj" />
@@ -22,5 +20,6 @@
   <ItemGroup>
     <PackageReference Include="Hugo" />
     <PackageReference Include="Google.Protobuf" />
+    <PackageReference Include="JsonSchema.Net" />
   </ItemGroup>
 </Project>

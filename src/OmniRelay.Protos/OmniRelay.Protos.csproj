@@ -12,12 +12,14 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Protobuf Include="..\OmniRelay\Core\Leadership\Protos\leadership_control.proto" GrpcServices="Server" />
-    <Protobuf Include="..\OmniRelay\Core\Shards\Protos\shard_control.proto" GrpcServices="Server" />
+    <Protobuf Include="Protos\leadership_control.proto" GrpcServices="Server" />
+    <Protobuf Include="Protos\shard_control.proto" GrpcServices="Server" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Google.Protobuf" />
     <PackageReference Include="Grpc.Tools" PrivateAssets="all" />
+    <PackageReference Include="Grpc.Net.Client" />
+    <PackageReference Include="Grpc.AspNetCore.Server" />
   </ItemGroup>
 </Project>

@@ -41,8 +41,21 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Remove="Core\**\*.cs" />
-    <Compile Remove="Transport\**\*.cs" />
+    <Compile Remove="Core\ICodec.cs" />
+    <Compile Remove="Core\IRequest.cs" />
+    <Compile Remove="Core\IResponse.cs" />
+    <Compile Remove="Core\RequestMeta.cs" />
+    <Compile Remove="Core\ResponseMeta.cs" />
+    <Compile Remove="Core\RequestLoggingScope.cs" />
+    <Compile Remove="Core\RawCodec.cs" />
+    <Compile Remove="Core\JsonCodec.cs" />
+    <Compile Remove="Core\ProtobufEncoding.cs" />
+    <Compile Remove="Core\ProtobufCodec.cs" />
+    <Compile Remove="Core\ProtobufCallAdapters.cs" />
+    <Compile Remove="Core\Request.cs" />
+    <Compile Remove="Core\Response.cs" />
+    <Compile Remove="Errors\*.cs" />
+    <Compile Remove="Core\Transport\**\*.cs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -52,7 +65,6 @@
     <ProjectReference Include="..\OmniRelay.Diagnostics.Documentation\OmniRelay.Diagnostics.Documentation.csproj" />
     <ProjectReference Include="..\OmniRelay.Diagnostics.Probes\OmniRelay.Diagnostics.Probes.csproj" />
     <ProjectReference Include="..\OmniRelay.Codecs\OmniRelay.Codecs.csproj" />
-    <ProjectReference Include="..\OmniRelay.Transport\OmniRelay.Transport.csproj" />
     <ProjectReference Include="..\OmniRelay.Protos\OmniRelay.Protos.csproj" />
   </ItemGroup>
 
