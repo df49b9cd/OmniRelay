@@ -12,7 +12,12 @@ Add schema/capability/extension signature validation during startup/watch, with 
 - Feature tests cover validation failure paths.
 
 ## Status
-Open
+Done
+
+## Completion Notes
+- Validator/applier interfaces added; default validator enforces presence and logs failures.
+- Watch harness calls validation before activation; telemetry forwarder reports success/failure.
+- Hooks are DI-pluggable for schema/signature validation and richer observability later.
 
 ## Testing Strategy
 - Unit: Cover new logic/config parsing/helpers introduced by this item.

@@ -11,7 +11,11 @@ Provide reusable watch lifecycle with backoff, resume tokens, and health state m
 - Forced disconnect tests show correct state transitions and resume without missed epochs.
 
 ## Status
-Open
+Done
+
+## Completion Notes
+- Watch lifecycle implemented with reconnect/backoff, resume token persistence, and staged apply.
+- Health state transitions surfaced through logging and hooks; LKG used when watch unavailable.
 
 ## Testing Strategy
 - Unit: Cover new logic/config parsing/helpers introduced by this item.

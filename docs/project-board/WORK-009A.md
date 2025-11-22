@@ -12,7 +12,11 @@ Implement shared startup flow: load/validate LKG, fetch latest snapshot, stage, 
 - Integration tests cover good/bad configs and LKG fallback.
 
 ## Status
-Open
+Done
+
+## Completion Notes
+- Startup flow: load LKG from disk, validate, stage, then activate via `WatchHarness`+`MeshAgent`.
+- Safe fallback: on failure stays inactive and retains prior snapshot; logs each phase.
 
 ## Testing Strategy
 - Unit: Cover new logic/config parsing/helpers introduced by this item.
