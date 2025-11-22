@@ -10,7 +10,7 @@
 
 ## Requirements
 1. Gossip subsystem:
-   - HTTP/3 listener + client fanout similar to `src/OmniRelay/Core/Gossip/MeshGossipHost.cs`.
+   - HTTP/3 listener + client fanout similar to `src/OmniRelay.ControlPlane/Core/Gossip/MeshGossipHost.cs`.
    - Membership table (`MeshGossipMembershipTable`) with metadata versioning, status transitions, RTT tracking.
    - TLS policy options, seed peer bootstrapping, diagnostics (metrics/logs).
 2. Leadership subsystem:
@@ -41,8 +41,8 @@
 5. Documentation clearly delineates responsibilities between Hugo, MeshKit, and OmniRelay.
 
 ## References
-- `src/OmniRelay/Core/Gossip/*`
-- `src/OmniRelay/Core/Leadership/*`
+- `src/OmniRelay.ControlPlane/Core/Gossip/*`
+- `src/OmniRelay.ControlPlane/Core/Leadership/*`
 - `src/OmniRelay/Dispatcher/ResourceLeaseBackpressure*.cs`
 - `docs/reference/distributed-task-leasing.md`
 - `docs/architecture/service-discovery.md`
@@ -68,4 +68,3 @@
 - Combined OmniRelay + MeshKit deployment in containers demonstrating peer discovery, leadership, backpressure control endpoints, and CLI watch commands.
 - Disaster-recovery drills (network partitions, TLS rotation) validating MeshKit resiliency.
 - Auto-scaling automation consuming MeshKit diagnostics to trigger scale actions.
-

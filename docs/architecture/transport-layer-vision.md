@@ -30,7 +30,7 @@
 5. **Shared testing strategy**: Unit, integration, feature, hyperscale suites continue to validate OmniRelay transport behavior while MeshKit inherits control-plane harnesses via the shared testing toolkit.
 
 ## Migration Considerations
-- Carve MeshKit source from `src/OmniRelay/Core/Gossip`, `Core/Leadership`, `Core/Shards`, diagnostics control hosts, bootstrap tooling, and CLI flows that manipulate registry/control-plane state.
+- Carve MeshKit source from `src/OmniRelay.ControlPlane/Core/Gossip`, `Core/Leadership`, `Core/Shards`, diagnostics control hosts, bootstrap tooling, and CLI flows that manipulate registry/control-plane state; keep `OmniRelay.DataPlane` free of gossip/leadership/shard hosting code.
 - Maintain OmniRelay transport API compatibility by hosting MeshKit control-plane surfaces via `HttpControlPlaneHostBuilder` and `GrpcControlPlaneHostBuilder` until MeshKit provides its own packaging.
 - Update documentation + samples (WORK-017) so every workflow references the layered model (Hugo → OmniRelay → MeshKit) and relocates governance content (shards, rebalancer) under MeshKit sections.
 ## Key Interfaces to Maintain
