@@ -6,15 +6,15 @@ namespace OmniRelay.Dispatcher;
 /// <summary>
 /// Snapshot of dispatcher configuration and runtime bindings for diagnostics and introspection endpoints.
 /// </summary>
-public sealed record DispatcherIntrospection(
+public sealed partial record DispatcherIntrospection(
     string Service,
     DispatcherStatus Status,
-    DeploymentMode Mode,
-    ImmutableArray<string> Capabilities,
     ProcedureGroups Procedures,
     ImmutableArray<LifecycleComponentDescriptor> Components,
     ImmutableArray<OutboundDescriptor> Outbounds,
-    MiddlewareSummary Middleware)
+    MiddlewareSummary Middleware,
+    DeploymentMode Mode = DeploymentMode.InProc,
+    ImmutableArray<string> Capabilities = default)
 {
     public string Service { get; init; } = Service;
 

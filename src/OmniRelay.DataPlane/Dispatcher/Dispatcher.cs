@@ -599,12 +599,12 @@ public sealed class Dispatcher
         return new DispatcherIntrospection(
             ServiceName,
             Status,
-            Mode,
-            Capabilities,
             procedures,
             components,
             outbounds,
-            middleware);
+            middleware,
+            Mode,
+            Capabilities);
     }
 
     private static ImmutableArray<OutboundBindingDescriptor> DescribeOutbounds<TOutbound>(IReadOnlyDictionary<string, TOutbound> source)
@@ -637,6 +637,9 @@ public sealed class Dispatcher
         builder.Add("feature:grpc");
         builder.Add("feature:http3:conditional"); // depends on TLS + Kestrel runtime
         builder.Add("feature:aot-safe");
+        builder.Add("feature:ext-dsl");
+        builder.Add("feature:ext-wasm");
+        builder.Add("feature:ext-native");
         return builder.ToImmutable();
     }
 
