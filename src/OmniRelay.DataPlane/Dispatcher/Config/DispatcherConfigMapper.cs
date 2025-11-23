@@ -11,10 +11,13 @@ using Microsoft.Extensions.Hosting;
 using OmniRelay.Core;
 using OmniRelay.Core.Middleware;
 using OmniRelay.Core.Peers;
+using OmniRelay.Dispatcher;
 using OmniRelay.Transport.Grpc;
 using OmniRelay.Transport.Grpc.Interceptors;
 using OmniRelay.Transport.Http;
 using OmniRelay.Transport.Security;
+using static Hugo.Go;
+using Unit = Hugo.Go.Unit;
 
 namespace OmniRelay.Dispatcher.Config;
 
@@ -29,7 +32,7 @@ internal static partial class DispatcherConfigMapper
         Duplex
     }
 
-    public static global::OmniRelay.Dispatcher.Dispatcher CreateDispatcher(
+    public static Result<global::OmniRelay.Dispatcher.Dispatcher> CreateDispatcher(
         IServiceProvider services,
         DispatcherComponentRegistry registry,
         DispatcherConfig config,
@@ -39,37 +42,44 @@ internal static partial class DispatcherConfigMapper
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(config);
 
-        var options = new DispatcherOptions(config.Service);
-        options.Mode = ParseMode(config.Mode);
+        return ParseMode(config.Mode)
+            .Then(mode =>
+            {
+                var options = new DispatcherOptions(config.Service)
+                {
+                    Mode = mode
+                };
 
-        var interceptorAliases = services.GetService<IGrpcInterceptorAliasRegistry>() ?? CreateDefaultAliasRegistry();
+                var interceptorAliases = services.GetService<IGrpcInterceptorAliasRegistry>() ?? CreateDefaultAliasRegistry();
 
-        ApplyInbounds(config.Inbounds, options, interceptorAliases);
-        ApplyOutbounds(services, config.Outbounds, options);
-        ApplyMiddleware(services, registry, config.Middleware, options);
-        ApplyEncodings(config.Encodings, registry, options);
-
-        configureOptions?.Invoke(services, options);
-
-        return new global::OmniRelay.Dispatcher.Dispatcher(options);
+                return ApplyInbounds(config.Inbounds, options, interceptorAliases)
+                    .Then(_ => ApplyOutbounds(services, config.Outbounds, options))
+                    .Then(_ => ApplyMiddleware(services, registry, config.Middleware, options))
+                    .Then(_ => ApplyEncodings(config.Encodings, registry, options))
+                    .Then(_ => ConfigureOptions(configureOptions, services, options))
+                    .Map(_ => new global::OmniRelay.Dispatcher.Dispatcher(options));
+            })
+            .OnFailure(error => Err<global::OmniRelay.Dispatcher.Dispatcher>(error.WithMetadata("service", config.Service)));
     }
 
-    private static DeploymentMode ParseMode(string? value)
+    private static Result<DeploymentMode> ParseMode(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
         {
-            return DeploymentMode.InProc;
+            return Ok(DeploymentMode.InProc);
         }
 
         if (Enum.TryParse<DeploymentMode>(value, ignoreCase: true, out var mode))
         {
-            return mode;
+            return Ok(mode);
         }
 
-        throw new InvalidOperationException($"Unsupported deployment mode '{value}'. Valid values: InProc, Sidecar, Edge.");
+        return Err<DeploymentMode>(
+            Error.From($"Unsupported deployment mode '{value}'. Valid values: InProc, Sidecar, Edge.", "dispatcher.config.mode_invalid")
+                .WithMetadata("mode", value ?? string.Empty));
     }
 
-    private static void ApplyInbounds(InboundsConfig inbounds, DispatcherOptions options, IGrpcInterceptorAliasRegistry interceptorAliases)
+    private static Result<Unit> ApplyInbounds(InboundsConfig inbounds, DispatcherOptions options, IGrpcInterceptorAliasRegistry interceptorAliases)
     {
         for (var i = 0; i < inbounds.Http.Count; i++)
         {
@@ -81,20 +91,21 @@ internal static partial class DispatcherConfigMapper
 
             var name = string.IsNullOrWhiteSpace(http.Name) ? $"http-{i}" : http.Name;
             var runtime = http.Runtime ?? new HttpServerRuntimeOptions();
-            var tls = ParseHttpTls(http.Tls);
 
-            var inboundResult = HttpInbound.TryCreate(
-                http.Urls,
-                configureServices: null,
-                configureApp: null,
-                serverRuntimeOptions: runtime,
-                serverTlsOptions: tls,
-                transportSecurity: null,
-                authorizationEvaluator: null);
+            var inboundResult = Result.Try(() => ParseHttpTls(http.Tls))
+                .Then(tls => HttpInbound.TryCreate(
+                    http.Urls,
+                    configureServices: null,
+                    configureApp: null,
+                    serverRuntimeOptions: runtime,
+                    serverTlsOptions: tls,
+                    transportSecurity: null,
+                    authorizationEvaluator: null))
+                .OnFailure(error => Err<HttpInbound>(error.WithMetadata("inbound", name)));
 
             if (inboundResult.IsFailure)
             {
-                throw new InvalidOperationException($"Failed to configure HTTP inbound '{name}': {inboundResult.Error?.Message}");
+                return Err<Unit>(inboundResult.Error!);
             }
 
             var inbound = inboundResult.Value;
@@ -113,29 +124,32 @@ internal static partial class DispatcherConfigMapper
             var name = string.IsNullOrWhiteSpace(grpc.Name) ? $"grpc-{i}" : grpc.Name;
 
             var runtime = ParseGrpcRuntime(grpc.Runtime, interceptorAliases) ?? new GrpcServerRuntimeOptions { EnableDetailedErrors = grpc.EnableDetailedErrors };
-            var tls = ParseGrpcTls(grpc.Tls);
 
-            var inboundResult = GrpcInbound.TryCreate(
-                grpc.Urls,
-                configureServices: null,
-                serverRuntimeOptions: runtime,
-                serverTlsOptions: tls,
-                telemetryOptions: null,
-                transportSecurity: null,
-                authorizationEvaluator: null);
+            var inboundResult = Result.Try(() => ParseGrpcTls(grpc.Tls))
+                .Then(tls => GrpcInbound.TryCreate(
+                    grpc.Urls,
+                    configureServices: null,
+                    serverRuntimeOptions: runtime,
+                    serverTlsOptions: tls,
+                    telemetryOptions: null,
+                    transportSecurity: null,
+                    authorizationEvaluator: null))
+                .OnFailure(error => Err<GrpcInbound>(error.WithMetadata("inbound", name)));
 
             if (inboundResult.IsFailure)
             {
-                throw new InvalidOperationException($"Failed to configure gRPC inbound '{name}': {inboundResult.Error?.Message}");
+                return Err<Unit>(inboundResult.Error!);
             }
 
             var inbound = inboundResult.Value;
 
             options.AddLifecycle(name, inbound);
         }
+
+        return Ok(Unit.Value);
     }
 
-    private static void ApplyOutbounds(IServiceProvider services, OutboundsConfig outbounds, DispatcherOptions options)
+    private static Result<Unit> ApplyOutbounds(IServiceProvider services, OutboundsConfig outbounds, DispatcherOptions options)
     {
         foreach (var (service, set) in outbounds)
         {
@@ -149,19 +163,24 @@ internal static partial class DispatcherConfigMapper
                 continue;
             }
 
-            AddOutboundsForShape(service, set.Http.Unary, OutboundKind.Unary, http: true, services, options);
-            AddOutboundsForShape(service, set.Http.Oneway, OutboundKind.Oneway, http: true, services, options);
+            var result = AddOutboundsForShape(service, set.Http.Unary, OutboundKind.Unary, http: true, services, options)
+                .Then(_ => AddOutboundsForShape(service, set.Http.Oneway, OutboundKind.Oneway, http: true, services, options))
+                .Then(_ => AddOutboundsForShape(service, set.Grpc.Unary, OutboundKind.Unary, http: false, services, options))
+                .Then(_ => AddOutboundsForShape(service, set.Grpc.Oneway, OutboundKind.Oneway, http: false, services, options))
+                .Then(_ => AddOutboundsForShape(service, set.Grpc.Stream, OutboundKind.Stream, http: false, services, options))
+                .Then(_ => AddOutboundsForShape(service, set.Grpc.ClientStream, OutboundKind.ClientStream, http: false, services, options))
+                .Then(_ => AddOutboundsForShape(service, set.Grpc.Duplex, OutboundKind.Duplex, http: false, services, options));
 
-            AddOutboundsForShape(service, set.Grpc.Unary, OutboundKind.Unary, http: false, services, options);
-            AddOutboundsForShape(service, set.Grpc.Oneway, OutboundKind.Oneway, http: false, services, options);
-            AddOutboundsForShape(service, set.Grpc.Stream, OutboundKind.Stream, http: false, services, options);
-            AddOutboundsForShape(service, set.Grpc.ClientStream, OutboundKind.ClientStream, http: false, services, options);
-            AddOutboundsForShape(service, set.Grpc.Duplex, OutboundKind.Duplex, http: false, services, options);
+            if (result.IsFailure)
+            {
+                return result;
+            }
         }
 
+        return Ok(Unit.Value);
     }
 
-    private static void AddOutboundsForShape(
+    private static Result<Unit> AddOutboundsForShape(
         string service,
         IEnumerable<OutboundTarget> targets,
         OutboundKind kind,
@@ -186,7 +205,15 @@ internal static partial class DispatcherConfigMapper
                 continue;
             }
 
-            var uriAddresses = addresses.Select(a => new Uri(a, UriKind.Absolute)).ToArray();
+            var uriAddressesResult = Result.Try(() => addresses.Select(a => new Uri(a, UriKind.Absolute)).ToArray())
+                .OnFailure(error => Err<Uri[]>(error.WithMetadata("service", service).WithMetadata("outboundKind", kind.ToString())));
+
+            if (uriAddressesResult.IsFailure)
+            {
+                return Err<Unit>(uriAddressesResult.Error!);
+            }
+
+            var uriAddresses = uriAddressesResult.Value;
 
             if (http)
             {
@@ -195,9 +222,14 @@ internal static partial class DispatcherConfigMapper
                 {
                     var client = services.GetService<IHttpClientFactory>()?.CreateClient() ?? new HttpClient();
                     var outboundResult = HttpOutbound.Create(client, uriAddresses[0], disposeClient: services.GetService<IHttpClientFactory>() is null);
-                    var outbound = outboundResult.IsSuccess
-                        ? outboundResult.Value
-                        : throw new InvalidOperationException($"Failed to create HTTP outbound for service '{service}': {outboundResult.Error?.Message}");
+                    if (outboundResult.IsFailure)
+                    {
+                        return Err<Unit>((outboundResult.Error ?? Error.From("Failed to create HTTP outbound", "dispatcher.outbound.http_failed"))
+                            .WithMetadata("service", service)
+                            .WithMetadata("outboundKey", key)
+                            .WithMetadata("outboundKind", kind.ToString()));
+                    }
+                    var outbound = outboundResult.Value;
                     if (kind == OutboundKind.Unary)
                     {
                         options.AddUnaryOutbound(service, key, outbound);
@@ -222,7 +254,11 @@ internal static partial class DispatcherConfigMapper
 
                 if (outboundResult.IsFailure)
                 {
-                    throw new InvalidOperationException($"Failed to create gRPC outbound for service '{service}': {outboundResult.Error?.Message}");
+                    return Err<Unit>(
+                        outboundResult.Error!
+                            .WithMetadata("service", service)
+                            .WithMetadata("outboundKey", key)
+                            .WithMetadata("outboundKind", kind.ToString()));
                 }
 
                 var outbound = outboundResult.Value;
@@ -247,9 +283,11 @@ internal static partial class DispatcherConfigMapper
                 }
             }
         }
+
+        return Ok(Unit.Value);
     }
 
-    private static void ApplyMiddleware(
+    private static Result<Unit> ApplyMiddleware(
         IServiceProvider services,
         DispatcherComponentRegistry registry,
         MiddlewareConfig middleware,
@@ -266,9 +304,11 @@ internal static partial class DispatcherConfigMapper
         AddMiddlewareStack(services, registry, middleware.Outbound.Stream, ProcedureKind.Stream, inbound: false, options);
         AddMiddlewareStack(services, registry, middleware.Outbound.ClientStream, ProcedureKind.ClientStream, inbound: false, options);
         AddMiddlewareStack(services, registry, middleware.Outbound.Duplex, ProcedureKind.Duplex, inbound: false, options);
+
+        return Ok(Unit.Value);
     }
 
-    public static DispatcherConfig LoadConfigFromConfiguration(IConfiguration configuration)
+    public static Result<DispatcherConfig> LoadConfigFromConfiguration(IConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(configuration);
 
@@ -283,7 +323,7 @@ internal static partial class DispatcherConfigMapper
                       ?? root["omnirelay:service"]
                       ?? root["service"];
 
-        var config = new DispatcherConfig
+        return Result.Try(() => new DispatcherConfig
         {
             Service = string.IsNullOrWhiteSpace(service) ? "omnirelay" : service,
             Mode = effective["mode"] ?? "InProc",
@@ -291,9 +331,7 @@ internal static partial class DispatcherConfigMapper
             Outbounds = ParseOutbounds(effective.GetSection("outbounds")),
             Middleware = ParseMiddleware(effective.GetSection("middleware")),
             Encodings = ParseEncodings(effective.GetSection("encodings"))
-        };
-
-        return config;
+        }).OnFailure(error => Err<DispatcherConfig>(error.WithMetadata("path", (effective as IConfigurationSection)?.Path ?? "root")));
     }
 
     private static InboundsConfig ParseInbounds(IConfigurationSection section)
@@ -795,11 +833,11 @@ internal static partial class DispatcherConfigMapper
         }
     }
 
-    private static void ApplyEncodings(EncodingConfig encodings, DispatcherComponentRegistry registry, DispatcherOptions options)
+    private static Result<Unit> ApplyEncodings(EncodingConfig encodings, DispatcherComponentRegistry registry, DispatcherOptions options)
     {
         if (encodings?.Json is null)
         {
-            return;
+            return Ok(Unit.Value);
         }
 
         foreach (var outbound in encodings.Json.Outbound)
@@ -823,6 +861,8 @@ internal static partial class DispatcherConfigMapper
                 action(options, service, procedure);
             }
         }
+
+        return Ok(Unit.Value);
     }
 
     private static ProcedureKind ParseProcedureKind(string? value)
@@ -833,6 +873,18 @@ internal static partial class DispatcherConfigMapper
         }
 
         return ProcedureKind.Unary;
+    }
+
+    private static Result<Unit> ConfigureOptions(
+        Action<IServiceProvider, DispatcherOptions>? configureOptions,
+        IServiceProvider services,
+        DispatcherOptions options)
+    {
+        return Result.Try(() =>
+        {
+            configureOptions?.Invoke(services, options);
+            return Unit.Value;
+        }).OnFailure(error => Err<Unit>(error.WithMetadata("step", "configureOptions")));
     }
 
 }
@@ -849,13 +901,15 @@ public static class DispatcherConfigServiceCollectionExtensions
 
         services.TryAddSingleton<IGrpcInterceptorAliasRegistry>(_ => DispatcherConfigMapper.CreateDefaultAliasRegistry());
         services.AddDispatcherComponentRegistry(registry => registerComponents?.Invoke(registry));
-        services.AddSingleton(sp =>
+
+        services.AddSingleton(typeof(Result<global::OmniRelay.Dispatcher.Dispatcher>), sp =>
         {
             var registry = sp.GetRequiredService<DispatcherComponentRegistry>();
-            var dispatcherConfig = DispatcherConfigMapper.LoadConfigFromConfiguration(configuration);
-            return DispatcherConfigMapper.CreateDispatcher(sp, registry, dispatcherConfig, configureOptions);
+            var dispatcherConfigResult = DispatcherConfigMapper.LoadConfigFromConfiguration(configuration);
+            return dispatcherConfigResult.Then(cfg => DispatcherConfigMapper.CreateDispatcher(sp, registry, cfg, configureOptions));
         });
 
+        services.AddSingleton(sp => ((Result<global::OmniRelay.Dispatcher.Dispatcher>)sp.GetRequiredService(typeof(Result<global::OmniRelay.Dispatcher.Dispatcher>))).ValueOrThrow());
         services.AddSingleton(sp => sp.GetRequiredService<global::OmniRelay.Dispatcher.Dispatcher>().Codecs);
         services.AddSingleton<IHostedService, DispatcherHostedService>();
 
@@ -878,18 +932,14 @@ public static class DispatcherConfigServiceCollectionExtensions
             registerComponents?.Invoke(registry);
         });
 
-        services.AddSingleton(sp =>
+        services.AddSingleton(typeof(Result<global::OmniRelay.Dispatcher.Dispatcher>), sp =>
         {
             var registry = sp.GetRequiredService<DispatcherComponentRegistry>();
             var loadResult = LoadDispatcherConfig(configPath);
-            if (loadResult.IsFailure)
-            {
-                throw OmniRelay.Errors.OmniRelayErrors.FromError(loadResult.Error!, "dispatcher-config");
-            }
-
-            return DispatcherConfigMapper.CreateDispatcher(sp, registry, loadResult.Value, configureOptions);
+            return loadResult.Then(cfg => DispatcherConfigMapper.CreateDispatcher(sp, registry, cfg, configureOptions));
         });
 
+        services.AddSingleton(sp => ((Result<global::OmniRelay.Dispatcher.Dispatcher>)sp.GetRequiredService(typeof(Result<global::OmniRelay.Dispatcher.Dispatcher>))).ValueOrThrow());
         services.AddSingleton(sp => sp.GetRequiredService<global::OmniRelay.Dispatcher.Dispatcher>().Codecs);
         services.AddSingleton<IHostedService, DispatcherHostedService>();
 
