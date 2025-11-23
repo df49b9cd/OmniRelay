@@ -44,7 +44,10 @@ public sealed class HttpOutbound : IUnaryOutbound, IOnewayOutbound, IOutboundDia
 
         if (_runtimeOptions?.EnableHttp3 == true && !_requestUri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
         {
-            throw new InvalidOperationException("HTTP/3 requests require HTTPS endpoints. Update the request URI or disable HTTP/3 for this outbound.");
+            throw new ResultException(OmniRelayErrorAdapter.FromStatus(
+                OmniRelayStatusCode.InvalidArgument,
+                "HTTP/3 requests require HTTPS endpoints. Update the request URI or disable HTTP/3 for this outbound.",
+                transport: HttpTransportHeaders.Transport));
         }
     }
 
