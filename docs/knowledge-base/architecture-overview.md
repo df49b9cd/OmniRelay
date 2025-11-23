@@ -13,6 +13,7 @@ OmniRelay is the .NET 10 port of Uber's YARPC runtime layered on Hugo primitives
 - **Diagnostics stack** spans HTTP/gRPC control planes (`/omnirelay/introspect`, `/control/*`), Prometheus/OTLP exporters, runtime toggles for logging/tracing, lease health snapshots, and mesh dashboards.
 - **Tooling (src/OmniRelay.Cli)** supplies the `omnirelay` CLI for config validation, dispatcher introspection, node drain/upgrade orchestration, shard control, and scripted smoke tests.
 - **Code generation** includes a Protobuf `protoc` plug-in (`OmniRelay.Codegen.Protobuf`) and a Roslyn incremental generator (`OmniRelay.Codegen.Protobuf.Generator`) that emit dispatcher registrations and strongly-typed RPC clients.
+- **Lifecycle helpers** (for transports, dispatcher start/stop spikes, drains) now run on Hugo result pipelines rather than exception flow. Components should return `Result<Unit>`/`ValueTask<Result<Unit>>` internally and convert to host-facing exceptions only at the process boundary.
 
 ## Supporting areas
 - **MeshKit modules** (shards, rebalancer, registry, failover) live in the WORK-010..WORK-016 stories and consume OmniRelay transports; operator surfaces (dashboards/CLI/probes/chaos) are tracked under WORK-017..WORK-022.
