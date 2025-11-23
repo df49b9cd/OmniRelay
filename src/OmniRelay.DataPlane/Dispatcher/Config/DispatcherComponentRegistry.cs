@@ -1,10 +1,10 @@
+using System.Diagnostics.CodeAnalysis;
+using System.Text.Json.Serialization;
 using Grpc.Core.Interceptors;
 using Microsoft.Extensions.DependencyInjection;
-using System.Diagnostics.CodeAnalysis;
+using OmniRelay.Core;
 using OmniRelay.Core.Middleware;
 using OmniRelay.Transport.Http.Middleware;
-using System.Text.Json.Serialization;
-using OmniRelay.Core;
 
 namespace OmniRelay.Dispatcher.Config;
 

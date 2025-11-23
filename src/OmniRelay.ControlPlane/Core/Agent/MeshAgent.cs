@@ -1,5 +1,5 @@
-using OmniRelay.Protos.Control;
 using OmniRelay.Core.Transport;
+using OmniRelay.Protos.Control;
 
 namespace OmniRelay.ControlPlane.Agent;
 

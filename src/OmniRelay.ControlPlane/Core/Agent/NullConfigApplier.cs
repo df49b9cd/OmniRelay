@@ -1,5 +1,5 @@
-using OmniRelay.ControlPlane.ControlProtocol;
 using Microsoft.Extensions.Logging;
+using OmniRelay.ControlPlane.ControlProtocol;
 
 namespace OmniRelay.ControlPlane.Agent;
 

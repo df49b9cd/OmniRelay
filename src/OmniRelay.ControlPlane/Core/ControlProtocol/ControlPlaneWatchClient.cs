@@ -1,6 +1,6 @@
+using System.Runtime.CompilerServices;
 using Grpc.Net.Client;
 using OmniRelay.Protos.Control;
-using System.Runtime.CompilerServices;
 
 namespace OmniRelay.ControlPlane.ControlProtocol;
 

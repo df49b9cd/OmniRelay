@@ -1,7 +1,7 @@
+using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using OmniRelay.ControlPlane.ControlProtocol;
 using OmniRelay.Protos.Control;
-using System.Diagnostics;
 
 namespace OmniRelay.ControlPlane.Agent;
 

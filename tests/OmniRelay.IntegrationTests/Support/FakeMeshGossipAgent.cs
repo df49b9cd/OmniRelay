@@ -1,5 +1,5 @@
-using System.Collections.Immutable;
 using System.Collections.Concurrent;
+using System.Collections.Immutable;
 using OmniRelay.Core.Gossip;
 using OmniRelay.Core.Transport;
 
