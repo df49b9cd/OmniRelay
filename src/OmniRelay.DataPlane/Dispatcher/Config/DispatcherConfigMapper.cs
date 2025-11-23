@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
-using System.Text.Json;
 using System.Security.Cryptography.X509Certificates;
+using System.Text.Json;
+using System.Security.Cryptography;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -436,8 +437,8 @@ internal static partial class DispatcherConfigMapper
 
         var certPassword = section["certificatePassword"];
         var certificate = string.IsNullOrWhiteSpace(certPassword)
-            ? new X509Certificate2(certPath)
-            : new X509Certificate2(certPath, certPassword);
+            ? X509CertificateLoader.LoadPkcs12FromFile(certPath, password: (ReadOnlySpan<char>)default)
+            : X509CertificateLoader.LoadPkcs12FromFile(certPath, certPassword.AsSpan());
 
         var checkRevocation = bool.TryParse(section["checkCertificateRevocation"], out var rev) ? rev : (bool?)null;
 
@@ -488,7 +489,7 @@ internal static partial class DispatcherConfigMapper
             Interceptors = section.GetSection("interceptors").GetChildren()
                 .Select(c => c.Value)
                 .Where(v => !string.IsNullOrWhiteSpace(v))
-                .Select(Type.GetType)
+                .Select(ResolveType)
                 .Where(t => t is not null)
                 .ToArray()!
         };
@@ -509,8 +510,8 @@ internal static partial class DispatcherConfigMapper
 
         var certPassword = section["certificatePassword"];
         var certificate = string.IsNullOrWhiteSpace(certPassword)
-            ? new X509Certificate2(certPath)
-            : new X509Certificate2(certPath, certPassword);
+            ? X509CertificateLoader.LoadPkcs12FromFile(certPath, password: (ReadOnlySpan<char>)default)
+            : X509CertificateLoader.LoadPkcs12FromFile(certPath, certPassword.AsSpan());
 
         var checkRevocation = bool.TryParse(section["checkCertificateRevocation"], out var rev) ? rev : (bool?)null;
 
@@ -530,7 +531,18 @@ internal static partial class DispatcherConfigMapper
     private static long? TryParseLong(string? value) =>
         long.TryParse(value, out var parsed) ? parsed : (long?)null;
 
-    private static TimeSpan? TryParseTimeSpan(string? value) =>
+    
+    private static Type? ResolveType(string? typeName)
+    {
+        if (string.IsNullOrWhiteSpace(typeName))
+        {
+            return null;
+        }
+
+        return Type.GetType(typeName, throwOnError: false, ignoreCase: false);
+    }
+
+private static TimeSpan? TryParseTimeSpan(string? value) =>
         TimeSpan.TryParse(value, out var parsed) ? parsed : (TimeSpan?)null;
 
     private static JsonEncodingConfig ParseJsonEncodings(IConfigurationSection section)
