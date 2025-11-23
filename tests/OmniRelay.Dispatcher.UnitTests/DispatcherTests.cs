@@ -43,7 +43,7 @@ public class DispatcherTests
                 return Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty));
             });
             builder.Use(new RecordingUnaryMiddleware("local", invocations));
-        }).ThrowIfFailure();
+        }).ValueOrChecked();
 
         var ct = TestContext.Current.CancellationToken;
         var result = await dispatcher.InvokeUnaryAsync("echo", TestHelpers.CreateRequest(), ct);
@@ -67,7 +67,7 @@ public class DispatcherTests
     public void ClientConfig_WithLocalService_ReturnsEmptyConfiguration()
     {
         var dispatcher = new Dispatcher(new DispatcherOptions("svc"));
-        var config = dispatcher.ClientConfigOrThrow("svc");
+        var config = dispatcher.ClientConfigChecked("svc");
 
         Assert.Equal("svc", config.Service);
         Assert.Empty(config.Unary);
@@ -82,7 +82,7 @@ public class DispatcherTests
         {
             builder.Handle((_, _) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty))));
             builder.AddAlias("alias");
-        }).ThrowIfFailure();
+        }).ValueOrChecked();
 
         Assert.True(dispatcher.TryGetProcedure("alias", ProcedureKind.Unary, out var spec));
         Assert.Equal("primary", spec.Name);
@@ -100,10 +100,10 @@ public class DispatcherTests
         Assert.Contains("bind", lifecycle.Events);
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await dispatcher.StartAsyncChecked(ct);
         Assert.Equal(DispatcherStatus.Running, dispatcher.Status);
 
-        await dispatcher.StopOrThrowAsync(ct);
+        await dispatcher.StopAsyncChecked(ct);
         Assert.Equal(DispatcherStatus.Stopped, dispatcher.Status);
         Assert.Contains("start", lifecycle.Events);
         Assert.Contains("stop", lifecycle.Events);
@@ -117,7 +117,7 @@ public class DispatcherTests
         options.UnaryInboundMiddleware.Add(new RecordingUnaryMiddleware("global", []));
 
         var dispatcher = new Dispatcher(options);
-        dispatcher.RegisterUnary("echo", builder => builder.Handle((_, _) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty))))).ThrowIfFailure();
+        dispatcher.RegisterUnary("echo", builder => builder.Handle((_, _) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty))))).ValueOrChecked();
 
         var snapshot = dispatcher.Introspect();
 
@@ -154,7 +154,7 @@ public class DispatcherTests
 
                 return Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty));
             });
-        }).ThrowIfFailure();
+        }).ValueOrChecked();
 
         var ct = TestContext.Current.CancellationToken;
         var result = await dispatcher.InvokeClientStreamAsync("collect", new RequestMeta(), ct);

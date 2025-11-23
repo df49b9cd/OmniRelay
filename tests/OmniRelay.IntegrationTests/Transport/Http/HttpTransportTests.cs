@@ -458,16 +458,16 @@ public sealed class HttpTransportTests(ITestOutputHelper output) : TransportInte
             transport: "http");
 
         var sessionResult = await client.StartAsync(requestMeta, ct);
-        await using var session = sessionResult.ValueOrThrow();
+        await using var session = sessionResult.ValueOrChecked();
 
-        (await session.WriteAsync(new ChatMessage("hello"), ct)).ThrowIfFailure();
-        (await session.WriteAsync(new ChatMessage("world"), ct)).ThrowIfFailure();
+        (await session.WriteAsync(new ChatMessage("hello"), ct)).ValueOrChecked();
+        (await session.WriteAsync(new ChatMessage("world"), ct)).ValueOrChecked();
         await session.CompleteRequestsAsync(cancellationToken: ct);
 
         var messages = new List<string>();
         await foreach (var response in session.ReadResponsesAsync(ct))
         {
-            messages.Add(response.ValueOrThrow().Body.Message);
+            messages.Add(response.ValueOrChecked().Body.Message);
         }
 
         Assert.Equal(new[] { "hello", "world" }, messages);
@@ -520,7 +520,7 @@ public sealed class HttpTransportTests(ITestOutputHelper output) : TransportInte
             transport: "http");
 
         var sessionResult = await client.StartAsync(requestMeta, ct);
-        await using var session = sessionResult.ValueOrThrow();
+        await using var session = sessionResult.ValueOrChecked();
 
         await using var enumerator = session.ReadResponsesAsync(ct).GetAsyncEnumerator(ct);
         Assert.True(await enumerator.MoveNextAsync());

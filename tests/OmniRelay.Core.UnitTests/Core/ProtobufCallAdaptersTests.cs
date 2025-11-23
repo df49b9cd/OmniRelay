@@ -98,7 +98,7 @@ public class ProtobufCallAdaptersTests
                 typedRequest.Body.Value.ShouldBe("hello");
                 writer.ResponseMeta = new ResponseMeta(transport: "custom");
                 var writeResult = await writer.WriteAsync(new StringValue { Value = "world" }, ct);
-                writeResult.ThrowIfFailure();
+                writeResult.ValueOrChecked();
             });
 
         var result = await handler(request, options, TestContext.Current.CancellationToken);
@@ -184,7 +184,7 @@ public class ProtobufCallAdaptersTests
         var messages = new List<string>();
         await foreach (var messageResult in typedContext.ReadAllAsync(ct))
         {
-            messages.Add(messageResult.ValueOrThrow().Value);
+            messages.Add(messageResult.ValueOrChecked().Value);
         }
 
         messages.ShouldBe(new[] { "one", "two" });
@@ -229,7 +229,7 @@ public class ProtobufCallAdaptersTests
                 var values = new List<string>();
                 await foreach (var itemResult in ctx.ReadAllAsync(ct))
                 {
-                    values.Add(itemResult.ValueOrThrow().Value);
+                    values.Add(itemResult.ValueOrChecked().Value);
                 }
 
                 return Response<StringValue>.Create(
@@ -284,9 +284,9 @@ public class ProtobufCallAdaptersTests
                 ctx.ResponseMeta = new ResponseMeta(transport: "duplex");
                 await foreach (var messageResult in ctx.ReadAllAsync(ct))
                 {
-                    var message = messageResult.ValueOrThrow();
+                    var message = messageResult.ValueOrChecked();
                     var writeResult = await ctx.WriteAsync(new StringValue { Value = message.Value.ToUpperInvariant() }, ct);
-                    writeResult.ThrowIfFailure();
+                    writeResult.ValueOrChecked();
                 }
             });
 

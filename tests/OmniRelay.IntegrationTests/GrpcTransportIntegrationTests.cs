@@ -76,8 +76,8 @@ public class GrpcTransportIntegrationTests
         var clientDispatcher = new Dispatcher.Dispatcher(clientOptions);
 
         var ct = TestContext.Current.CancellationToken;
-        await serverDispatcher.StartOrThrowAsync(ct);
-        await clientDispatcher.StartOrThrowAsync(ct);
+        await serverDispatcher.StartAsyncChecked(ct);
+        await clientDispatcher.StartAsyncChecked(ct);
         await WaitForGrpcReadyAsync(address, ct);
 
         try
@@ -87,8 +87,8 @@ public class GrpcTransportIntegrationTests
         }
         finally
         {
-            await clientDispatcher.StopOrThrowAsync(CancellationToken.None);
-            await serverDispatcher.StopOrThrowAsync(CancellationToken.None);
+            await clientDispatcher.StopAsyncChecked(CancellationToken.None);
+            await serverDispatcher.StopAsyncChecked(CancellationToken.None);
         }
 
         AssertLogContains(clientLog, "client-global");
@@ -169,8 +169,8 @@ public class GrpcTransportIntegrationTests
         var clientDispatcher = new Dispatcher.Dispatcher(clientOptions);
 
         var ct = TestContext.Current.CancellationToken;
-        await serverDispatcher.StartOrThrowAsync(ct);
-        await clientDispatcher.StartOrThrowAsync(ct);
+        await serverDispatcher.StartAsyncChecked(ct);
+        await clientDispatcher.StartAsyncChecked(ct);
         await WaitForGrpcReadyAsync(address, ct);
 
         try
@@ -184,8 +184,8 @@ public class GrpcTransportIntegrationTests
         }
         finally
         {
-            await clientDispatcher.StopOrThrowAsync(CancellationToken.None);
-            await serverDispatcher.StopOrThrowAsync(CancellationToken.None);
+            await clientDispatcher.StopAsyncChecked(CancellationToken.None);
+            await serverDispatcher.StopAsyncChecked(CancellationToken.None);
         }
 
         // Guardrail: Grpc.Net.Client currently downgrades to HTTP/2 even with RequestVersionExact.
@@ -235,7 +235,7 @@ public class GrpcTransportIntegrationTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await dispatcher.StartAsyncChecked(ct);
         await WaitForGrpcReadyAsync(address, ct);
 
         using var insecureHandler = new SocketsHttpHandler();
@@ -290,7 +290,7 @@ public class GrpcTransportIntegrationTests
         }
         finally
         {
-            await dispatcher.StopOrThrowAsync(CancellationToken.None);
+            await dispatcher.StopAsyncChecked(CancellationToken.None);
         }
     }
 
@@ -333,9 +333,9 @@ public class GrpcTransportIntegrationTests
         var dispatcher = new Dispatcher.Dispatcher(options);
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await dispatcher.StartAsyncChecked(ct);
         await WaitForGrpcReadyAsync(address, ct);
-        await dispatcher.StopOrThrowAsync(CancellationToken.None);
+        await dispatcher.StopAsyncChecked(CancellationToken.None);
 
         AssertLogContains(observed, "gRPC HTTP/3 enabled on");
     }
@@ -364,7 +364,7 @@ public class GrpcTransportIntegrationTests
         var responses = new List<string>();
         await foreach (var response in client.ServerStreamAsync(new StreamRequest { Value = "data" }, serverStreamMeta, cancellationToken))
         {
-            responses.Add(response.ValueOrThrow().Body.Value);
+            responses.Add(response.ValueOrChecked().Body.Value);
         }
         Assert.Equal(new[] { "data#0", "data#1", "data#2" }, responses);
         var capturedServerMeta = await impl.ServerStreamMeta.Task.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken);
@@ -372,12 +372,12 @@ public class GrpcTransportIntegrationTests
 
         var clientStreamMeta = meta with { Procedure = "ClientStream" };
         var clientStreamResult = await client.ClientStreamAsync(clientStreamMeta, cancellationToken);
-        await using (var session = clientStreamResult.ValueOrThrow())
+        await using (var session = clientStreamResult.ValueOrChecked())
         {
-            (await session.WriteAsync(new StreamRequest { Value = "2" }, cancellationToken)).ThrowIfFailure();
-            (await session.WriteAsync(new StreamRequest { Value = "5" }, cancellationToken)).ThrowIfFailure();
+            (await session.WriteAsync(new StreamRequest { Value = "2" }, cancellationToken)).ValueOrChecked();
+            (await session.WriteAsync(new StreamRequest { Value = "5" }, cancellationToken)).ValueOrChecked();
             await session.CompleteAsync(cancellationToken);
-            var aggregate = (await session.Response).ValueOrThrow();
+            var aggregate = (await session.Response).ValueOrChecked();
             Assert.Equal("sum:7", aggregate.Body.Message);
         }
 
@@ -386,16 +386,16 @@ public class GrpcTransportIntegrationTests
 
         var duplexMeta = meta with { Procedure = "DuplexStream" };
         var duplexResult = await client.DuplexStreamAsync(duplexMeta, cancellationToken);
-        await using (var session = duplexResult.ValueOrThrow())
+        await using (var session = duplexResult.ValueOrChecked())
         {
-            (await session.WriteAsync(new StreamRequest { Value = "alpha" }, cancellationToken)).ThrowIfFailure();
-            (await session.WriteAsync(new StreamRequest { Value = "beta" }, cancellationToken)).ThrowIfFailure();
+            (await session.WriteAsync(new StreamRequest { Value = "alpha" }, cancellationToken)).ValueOrChecked();
+            (await session.WriteAsync(new StreamRequest { Value = "beta" }, cancellationToken)).ValueOrChecked();
             await session.CompleteRequestsAsync(cancellationToken: cancellationToken);
 
             var duplexResponses = new List<string>();
             await foreach (var response in session.ReadResponsesAsync(cancellationToken))
             {
-                duplexResponses.Add(response.ValueOrThrow().Body.Value);
+                duplexResponses.Add(response.ValueOrChecked().Body.Value);
             }
 
             Assert.Equal(new[] { "ready", "echo:alpha", "echo:beta" }, duplexResponses);

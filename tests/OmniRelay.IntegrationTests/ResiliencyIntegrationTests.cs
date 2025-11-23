@@ -58,7 +58,7 @@ public class ResiliencyIntegrationTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await dispatcher.StartAsyncChecked(ct);
         await WaitForHttpReadyAsync(httpBase, ct);
 
         using var httpClient = new HttpClient { BaseAddress = httpBase };
@@ -67,7 +67,7 @@ public class ResiliencyIntegrationTests
 
         await startedSignal.Task.WaitAsync(ct);
 
-        var stopTask = dispatcher.StopOrThrowAsync(ct);
+        var stopTask = dispatcher.StopAsyncChecked(ct);
 
         await Task.Delay(100, ct);
 
@@ -117,7 +117,7 @@ public class ResiliencyIntegrationTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await dispatcher.StartAsyncChecked(ct);
         await WaitForGrpcReadyAsync(grpcAddress, ct);
 
         using var channel = GrpcChannel.ForAddress(grpcAddress);
@@ -133,7 +133,7 @@ public class ResiliencyIntegrationTests
 
         await startedSignal.Task.WaitAsync(ct);
 
-        var stopTask = dispatcher.StopOrThrowAsync(ct);
+        var stopTask = dispatcher.StopAsyncChecked(ct);
         await Task.Delay(100, ct);
 
         var rejectedCall = invoker.AsyncUnaryCall(method, null, new CallOptions(), []);
@@ -179,7 +179,7 @@ public class ResiliencyIntegrationTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await backendDispatcher.StartOrThrowAsync(ct);
+        await backendDispatcher.StartAsyncChecked(ct);
         await WaitForGrpcReadyAsync(backendAddress, ct);
 
         var outbound = new GrpcOutbound(
@@ -213,7 +213,7 @@ public class ResiliencyIntegrationTests
         finally
         {
             await outbound.StopAsync(CancellationToken.None);
-            await backendDispatcher.StopOrThrowAsync(CancellationToken.None);
+            await backendDispatcher.StopAsyncChecked(CancellationToken.None);
         }
     }
 
@@ -273,7 +273,7 @@ public class ResiliencyIntegrationTests
         var client = new UnaryClient<byte[], byte[]>(outbound, codec, []);
 
         var ct = TestContext.Current.CancellationToken;
-        await backendDispatcher.StartOrThrowAsync(ct);
+        await backendDispatcher.StartAsyncChecked(ct);
         await outbound.StartAsync(ct);
         await WaitForGrpcReadyAsync(address, ct);
 
@@ -292,7 +292,7 @@ public class ResiliencyIntegrationTests
         finally
         {
             await outbound.StopAsync(CancellationToken.None);
-            await backendDispatcher.StopOrThrowAsync(CancellationToken.None);
+            await backendDispatcher.StopAsyncChecked(CancellationToken.None);
         }
     }
 
@@ -347,8 +347,8 @@ public class ResiliencyIntegrationTests
         });
 
         var ct = TestContext.Current.CancellationToken;
-        await timeoutDispatcher.StartOrThrowAsync(ct);
-        await cancelDispatcher.StartOrThrowAsync(ct);
+        await timeoutDispatcher.StartAsyncChecked(ct);
+        await cancelDispatcher.StartAsyncChecked(ct);
         await WaitForHttpReadyAsync(timeoutBase, ct);
         await WaitForGrpcReadyAsync(cancelAddress, ct);
 
@@ -391,8 +391,8 @@ public class ResiliencyIntegrationTests
         }
         finally
         {
-            await cancelDispatcher.StopOrThrowAsync(CancellationToken.None);
-            await timeoutDispatcher.StopOrThrowAsync(CancellationToken.None);
+            await cancelDispatcher.StopAsyncChecked(CancellationToken.None);
+            await timeoutDispatcher.StopAsyncChecked(CancellationToken.None);
         }
     }
 
@@ -465,8 +465,8 @@ public class ResiliencyIntegrationTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await backendDispatcher.StartOrThrowAsync(ct);
-        await proxyDispatcher.StartOrThrowAsync(ct);
+        await backendDispatcher.StartAsyncChecked(ct);
+        await proxyDispatcher.StartAsyncChecked(ct);
         await WaitForGrpcReadyAsync(backendAddress, ct);
         await WaitForHttpReadyAsync(httpBase, ct);
 
@@ -492,8 +492,8 @@ public class ResiliencyIntegrationTests
         }
         finally
         {
-            await proxyDispatcher.StopOrThrowAsync(CancellationToken.None);
-            await backendDispatcher.StopOrThrowAsync(CancellationToken.None);
+            await proxyDispatcher.StopAsyncChecked(CancellationToken.None);
+            await backendDispatcher.StopAsyncChecked(CancellationToken.None);
         }
     }
 

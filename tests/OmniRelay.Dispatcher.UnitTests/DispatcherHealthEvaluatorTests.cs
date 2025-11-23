@@ -51,14 +51,14 @@ public class DispatcherHealthEvaluatorTests
         ((IOutboundDiagnostic)outbound).GetOutboundDiagnostics().Returns(snapshot);
         options.AddUnaryOutbound("remote", null, outbound);
         var dispatcher = new Dispatcher(options);
-        await dispatcher.StartOrThrowAsync();
+        await dispatcher.StartAsyncChecked();
         try
         {
             return DispatcherHealthEvaluator.Evaluate(dispatcher);
         }
         finally
         {
-            await dispatcher.StopOrThrowAsync();
+            await dispatcher.StopAsyncChecked();
         }
     }
 

@@ -593,7 +593,7 @@ public class GrpcHttp3NegotiationTests(ITestOutputHelper output) : TransportInte
             var inFlightCall = invoker.AsyncUnaryCall(method, null, new CallOptions(headers: metadata), []);
             await requestStarted.Task.WaitAsync(ct);
 
-            stopTask = dispatcher.StopOrThrowAsync(ct);
+            stopTask = dispatcher.StopAsyncChecked(ct);
             await Task.Delay(100, ct);
 
             var rejectedCall = invoker.AsyncUnaryCall(method, null, new CallOptions(headers: metadata), []);
@@ -615,7 +615,7 @@ public class GrpcHttp3NegotiationTests(ITestOutputHelper output) : TransportInte
             }
             else
             {
-                await dispatcher.StopOrThrowAsync(ct);
+                await dispatcher.StopAsyncChecked(ct);
             }
         }
 

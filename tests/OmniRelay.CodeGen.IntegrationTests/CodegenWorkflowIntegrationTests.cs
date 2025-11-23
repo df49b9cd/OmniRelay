@@ -287,31 +287,31 @@ public class CodegenWorkflowIntegrationTests
             var streamValues = new List<string>();
             await foreach (var message in client.ServerStreamAsync(new StreamRequest { Value = "flow" }, cancellationToken: ct))
             {
-                streamValues.Add(message.ValueOrThrow().Body.Value);
+                streamValues.Add(message.ValueOrChecked().Body.Value);
             }
             Assert.Equal(new[] { "flow#0", "flow#1", "flow#2" }, streamValues);
 
             var sessionResult = await client.ClientStreamAsync(cancellationToken: ct);
-            await using (var session = sessionResult.ValueOrThrow())
+            await using (var session = sessionResult.ValueOrChecked())
             {
-                (await session.WriteAsync(new StreamRequest { Value = "4" }, ct)).ThrowIfFailure();
-                (await session.WriteAsync(new StreamRequest { Value = "6" }, ct)).ThrowIfFailure();
+                (await session.WriteAsync(new StreamRequest { Value = "4" }, ct)).ValueOrChecked();
+                (await session.WriteAsync(new StreamRequest { Value = "6" }, ct)).ValueOrChecked();
                 await session.CompleteAsync(ct);
-                var aggregate = (await session.Response).ValueOrThrow();
+                var aggregate = (await session.Response).ValueOrChecked();
                 Assert.Equal("sum:10", aggregate.Body.Message);
             }
 
             var duplexResult = await client.DuplexStreamAsync(cancellationToken: ct);
-            await using (var duplex = duplexResult.ValueOrThrow())
+            await using (var duplex = duplexResult.ValueOrChecked())
             {
-                (await duplex.WriteAsync(new StreamRequest { Value = "alpha" }, ct)).ThrowIfFailure();
-                (await duplex.WriteAsync(new StreamRequest { Value = "beta" }, ct)).ThrowIfFailure();
+                (await duplex.WriteAsync(new StreamRequest { Value = "alpha" }, ct)).ValueOrChecked();
+                (await duplex.WriteAsync(new StreamRequest { Value = "beta" }, ct)).ValueOrChecked();
                 await duplex.CompleteRequestsAsync(cancellationToken: ct);
 
                 var duplexValues = new List<string>();
                 await foreach (var response in duplex.ReadResponsesAsync(ct))
                 {
-                    duplexValues.Add(response.ValueOrThrow().Body.Value);
+                    duplexValues.Add(response.ValueOrChecked().Body.Value);
                 }
 
                 Assert.Equal(new[] { "ready", "echo:alpha", "echo:beta" }, duplexValues);
@@ -488,7 +488,7 @@ public class CodegenWorkflowIntegrationTests
             for (var index = 0; index < 3; index++)
             {
                 var writeResult = await stream.WriteAsync(new StreamResponse { Value = $"{request.Body.Value}#{index}" }, cancellationToken).ConfigureAwait(false);
-                writeResult.ThrowIfFailure();
+                writeResult.ValueOrChecked();
             }
         }
 
@@ -498,7 +498,7 @@ public class CodegenWorkflowIntegrationTests
             var sum = 0;
             await foreach (var chunkResult in context.ReadAllAsync(cancellationToken).ConfigureAwait(false))
             {
-                var chunk = chunkResult.ValueOrThrow();
+                var chunk = chunkResult.ValueOrChecked();
                 _ = int.TryParse(chunk.Value, out var value);
                 sum += value;
             }
@@ -511,12 +511,12 @@ public class CodegenWorkflowIntegrationTests
         {
             DuplexStreamMetas.Enqueue(context.RequestMeta);
             var initialWrite = await context.WriteAsync(new StreamResponse { Value = "ready" }, cancellationToken).ConfigureAwait(false);
-            initialWrite.ThrowIfFailure();
+            initialWrite.ValueOrChecked();
             await foreach (var chunkResult in context.ReadAllAsync(cancellationToken).ConfigureAwait(false))
             {
-                var chunk = chunkResult.ValueOrThrow();
+                var chunk = chunkResult.ValueOrChecked();
                 var writeResult = await context.WriteAsync(new StreamResponse { Value = $"echo:{chunk.Value}" }, cancellationToken).ConfigureAwait(false);
-                writeResult.ThrowIfFailure();
+                writeResult.ValueOrChecked();
             }
         }
     }

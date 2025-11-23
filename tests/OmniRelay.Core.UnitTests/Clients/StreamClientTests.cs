@@ -43,7 +43,7 @@ public class StreamClientTests
             var coll = new List<Response<Res>>();
             await foreach (var res in client.CallAsync(new Request<Req>(meta, new Req { V = 1 }), options, TestContext.Current.CancellationToken))
             {
-                coll.Add(res.ValueOrThrow());
+                coll.Add(res.ValueOrChecked());
             }
             return coll;
         }, TestContext.Current.CancellationToken);

@@ -57,7 +57,7 @@ public class HttpTransportHeaderIntegrationTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await dispatcher.StartAsyncChecked(ct);
 
         try
         {
@@ -142,7 +142,7 @@ public class HttpTransportHeaderIntegrationTests
         }
         finally
         {
-            await dispatcher.StopOrThrowAsync(CancellationToken.None);
+            await dispatcher.StopAsyncChecked(CancellationToken.None);
         }
     }
 
@@ -170,7 +170,7 @@ public class HttpTransportHeaderIntegrationTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await dispatcher.StartAsyncChecked(ct);
 
         try
         {
@@ -201,7 +201,7 @@ public class HttpTransportHeaderIntegrationTests
         }
         finally
         {
-            await dispatcher.StopOrThrowAsync(CancellationToken.None);
+            await dispatcher.StopAsyncChecked(CancellationToken.None);
         }
     }
 }

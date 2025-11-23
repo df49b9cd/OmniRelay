@@ -64,7 +64,7 @@ public sealed class GrpcOutboundResilienceTests(ITestOutputHelper output) : Tran
             await outbound.StartAsync(ct);
 
             var codec = new RawCodec();
-            var client = new UnaryClient<byte[], byte[]>(outbound, codec, dispatcher.ClientConfigOrThrow("grpc-resilience-h2").UnaryMiddleware);
+            var client = new UnaryClient<byte[], byte[]>(outbound, codec, dispatcher.ClientConfigChecked("grpc-resilience-h2").UnaryMiddleware);
             var request = new Request<byte[]>(new RequestMeta("grpc-resilience-h2", "grpc-resilience-h2::ping"), []);
 
             // Issue several attempts to exceed breaker threshold
@@ -84,7 +84,7 @@ public sealed class GrpcOutboundResilienceTests(ITestOutputHelper output) : Tran
         finally
         {
             await outbound.StopAsync(ct);
-            await dispatcher.StopOrThrowAsync(ct);
+            await dispatcher.StopAsyncChecked(ct);
         }
     }
 

@@ -24,13 +24,13 @@ public class DispatcherTests
 
         var ct = TestContext.Current.CancellationToken;
 
-        await dispatcher.StartOrThrowAsync(ct);
+        await dispatcher.StartAsyncChecked(ct);
 
         Assert.Equal(DispatcherStatus.Running, dispatcher.Status);
         Assert.Equal(1, lifecycle.StartCalls);
         Assert.Equal(0, lifecycle.StopCalls);
 
-        await dispatcher.StopOrThrowAsync(ct);
+        await dispatcher.StopAsyncChecked(ct);
 
         Assert.Equal(DispatcherStatus.Stopped, dispatcher.Status);
         Assert.Equal(1, lifecycle.StopCalls);
@@ -44,7 +44,7 @@ public class DispatcherTests
 
         var spec = CreateUnaryProcedure("payments", "charge");
 
-        dispatcher.Register(spec).ThrowIfFailure();
+        dispatcher.Register(spec).ValueOrChecked();
 
         var duplicate = dispatcher.Register(spec);
 
@@ -84,7 +84,7 @@ public class DispatcherTests
             },
             aliases: ["v1::user::*", "users::get"]);
 
-        dispatcher.Register(spec).ThrowIfFailure();
+        dispatcher.Register(spec).ValueOrChecked();
 
         var meta = new RequestMeta(service: "keyvalue", procedure: "v1::user::get", transport: "test");
         var request = new Request<ReadOnlyMemory<byte>>(meta, ReadOnlyMemory<byte>.Empty);
@@ -133,7 +133,7 @@ public class DispatcherTests
                 .WithEncoding("json")
                 .AddAlias("users::get")
                 .Use(middleware1)
-                .Use(middleware2)).ThrowIfFailure();
+                .Use(middleware2)).ValueOrChecked();
 
         var meta = new RequestMeta(service: "keyvalue", procedure: "user::get", transport: "test");
         var request = new Request<ReadOnlyMemory<byte>>(meta, ReadOnlyMemory<byte>.Empty);
@@ -167,7 +167,7 @@ public class DispatcherTests
                 wildcardInvocations++;
                 return ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty)));
             },
-            builder => builder.AddAlias("catalog::*")).ThrowIfFailure();
+            builder => builder.AddAlias("catalog::*")).ValueOrChecked();
 
         dispatcher.RegisterUnary(
             "catalog::exact",
@@ -175,7 +175,7 @@ public class DispatcherTests
             {
                 directInvocations++;
                 return ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty)));
-            }).ThrowIfFailure();
+            }).ValueOrChecked();
 
         var wildcardRequest = new Request<ReadOnlyMemory<byte>>(
             new RequestMeta(service: "catalog", procedure: "catalog::listing", transport: "test"),
@@ -211,7 +211,7 @@ public class DispatcherTests
                 generalCount++;
                 return ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty)));
             },
-            builder => builder.AddAlias("inventory::*")).ThrowIfFailure();
+            builder => builder.AddAlias("inventory::*")).ValueOrChecked();
 
         dispatcher.RegisterUnary(
             "inventory::v2::handler",
@@ -220,7 +220,7 @@ public class DispatcherTests
                 versionCount++;
                 return ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty)));
             },
-            builder => builder.AddAlias("inventory::v2::*")).ThrowIfFailure();
+            builder => builder.AddAlias("inventory::v2::*")).ValueOrChecked();
 
         var request = new Request<ReadOnlyMemory<byte>>(
             new RequestMeta(service: "inventory", procedure: "inventory::v2::list", transport: "test"),
@@ -241,7 +241,7 @@ public class DispatcherTests
         dispatcher.RegisterUnary(
             "billing::primary",
             (request, _) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty))),
-            builder => builder.AddAlias("billing::*")).ThrowIfFailure();
+            builder => builder.AddAlias("billing::*")).ValueOrChecked();
 
         var conflict = dispatcher.RegisterUnary(
             "billing::secondary",
@@ -281,7 +281,7 @@ public class DispatcherTests
     {
         var dispatcher = new OmniRelay.Dispatcher.Dispatcher(new DispatcherOptions("svc"));
 
-        dispatcher.RegisterUnary(" svc::call  ", (request, _) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty)))).ThrowIfFailure();
+        dispatcher.RegisterUnary(" svc::call  ", (request, _) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty)))).ValueOrChecked();
 
         Assert.True(dispatcher.TryGetProcedure("svc::call", ProcedureKind.Unary, out _));
     }
@@ -300,7 +300,7 @@ public class DispatcherTests
             builder => builder
                 .WithEncoding("json")
                 .AddAliases(["events::watch"])
-                .WithMetadata(metadata)).ThrowIfFailure();
+                .WithMetadata(metadata)).ValueOrChecked();
 
         Assert.True(dispatcher.TryGetProcedure("events::subscribe", ProcedureKind.Stream, out var spec));
         var streamSpec = Assert.IsType<StreamProcedureSpec>(spec);
@@ -367,7 +367,7 @@ public class DispatcherTests
                 var responseMeta = new ResponseMeta(encoding: "application/octet-stream");
                 var response = Response<ReadOnlyMemory<byte>>.Create(BitConverter.GetBytes(totalBytes), responseMeta);
                 return Ok(response);
-            })).ThrowIfFailure();
+            })).ValueOrChecked();
 
         var requestMeta = new RequestMeta(service: "keyvalue", procedure: "aggregate", transport: "test");
         var ct = TestContext.Current.CancellationToken;
@@ -414,7 +414,7 @@ public class DispatcherTests
         options.UnaryOutboundMiddleware.Add(unaryOutbound);
 
         var dispatcher = new OmniRelay.Dispatcher.Dispatcher(options);
-        dispatcher.Register(CreateUnaryProcedure("keyvalue", "get")).ThrowIfFailure();
+        dispatcher.Register(CreateUnaryProcedure("keyvalue", "get")).ValueOrChecked();
 
         var beforeStart = dispatcher.Introspect();
         Assert.Equal(DispatcherStatus.Created, beforeStart.Status);
@@ -426,7 +426,7 @@ public class DispatcherTests
         Assert.Empty(beforeStart.Middleware.OutboundDuplex);
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await dispatcher.StartAsyncChecked(ct);
 
         var snapshot = dispatcher.Introspect();
 
@@ -440,7 +440,7 @@ public class DispatcherTests
         Assert.Empty(snapshot.Middleware.InboundDuplex);
         Assert.Empty(snapshot.Middleware.OutboundDuplex);
 
-        await dispatcher.StopOrThrowAsync(ct);
+        await dispatcher.StopAsyncChecked(ct);
 
         var afterStop = dispatcher.Introspect();
         Assert.Equal(DispatcherStatus.Stopped, afterStop.Status);

@@ -61,7 +61,7 @@ public sealed class CompatibilityInteropIntegrationTests
                 return ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(responseBytes, meta)));
             });
 
-        await dispatcher.StartOrThrowAsync(ct);
+        await dispatcher.StartAsyncChecked(ct);
 
         try
         {
@@ -99,7 +99,7 @@ public sealed class CompatibilityInteropIntegrationTests
         }
         finally
         {
-            await dispatcher.StopOrThrowAsync(CancellationToken.None);
+            await dispatcher.StopAsyncChecked(CancellationToken.None);
         }
     }
 
@@ -136,7 +136,7 @@ public sealed class CompatibilityInteropIntegrationTests
                 return ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(response.ToByteArray(), meta)));
             }));
 
-        await dispatcher.StartOrThrowAsync(ct);
+        await dispatcher.StartAsyncChecked(ct);
         await WaitForTcpEndpointAsync(address, ct);
 
         try
@@ -169,7 +169,7 @@ public sealed class CompatibilityInteropIntegrationTests
         }
         finally
         {
-            await dispatcher.StopOrThrowAsync(CancellationToken.None);
+            await dispatcher.StopAsyncChecked(CancellationToken.None);
         }
     }
 
@@ -202,7 +202,7 @@ public sealed class CompatibilityInteropIntegrationTests
             new HttpServerRuntimeOptions { EnableHttp3 = true },
             new HttpServerTlsOptions { Certificate = certificate });
 
-        await dispatcher.StartOrThrowAsync(ct);
+        await dispatcher.StartAsyncChecked(ct);
 
         try
         {
@@ -237,7 +237,7 @@ public sealed class CompatibilityInteropIntegrationTests
         }
         finally
         {
-            await dispatcher.StopOrThrowAsync(CancellationToken.None);
+            await dispatcher.StopAsyncChecked(CancellationToken.None);
         }
     }
 
@@ -268,7 +268,7 @@ public sealed class CompatibilityInteropIntegrationTests
                 return ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(body, meta)));
             });
 
-        await backendDispatcher.StartOrThrowAsync(ct);
+        await backendDispatcher.StartAsyncChecked(ct);
 
         var proxyPort = TestPortAllocator.GetRandomPort();
         var routes = new[]
@@ -340,7 +340,7 @@ public sealed class CompatibilityInteropIntegrationTests
         finally
         {
             await proxyApp.StopAsync(ct);
-            await backendDispatcher.StopOrThrowAsync(CancellationToken.None);
+            await backendDispatcher.StopAsyncChecked(CancellationToken.None);
         }
     }
 
@@ -376,7 +376,7 @@ public sealed class CompatibilityInteropIntegrationTests
                 return ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(body, meta)));
             });
 
-        await backendDispatcher.StartOrThrowAsync(ct);
+        await backendDispatcher.StartAsyncChecked(ct);
 
         using var configDir = new TempDirectory();
         var configPath = TempDirectory.Resolve("envoy.yaml");
@@ -429,7 +429,7 @@ public sealed class CompatibilityInteropIntegrationTests
         {
             TryKill(dockerProcess);
             dockerProcess.Dispose();
-            await backendDispatcher.StopOrThrowAsync(CancellationToken.None);
+            await backendDispatcher.StopAsyncChecked(CancellationToken.None);
         }
     }
 
@@ -498,7 +498,7 @@ public sealed class CompatibilityInteropIntegrationTests
                 builder.SerializerContext = CompatibilityInteropJsonContext.Default;
             });
 
-        await frontDispatcher.StartOrThrowAsync(ct);
+        await frontDispatcher.StartAsyncChecked(ct);
 
         try
         {
@@ -527,7 +527,7 @@ public sealed class CompatibilityInteropIntegrationTests
         }
         finally
         {
-            await frontDispatcher.StopOrThrowAsync(CancellationToken.None);
+            await frontDispatcher.StopAsyncChecked(CancellationToken.None);
         }
     }
 

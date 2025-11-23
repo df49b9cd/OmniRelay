@@ -63,7 +63,7 @@ public class HttpDuplexTransportTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await dispatcher.StartAsyncChecked(ct);
 
         try
         {
@@ -87,7 +87,7 @@ public class HttpDuplexTransportTests
         }
         finally
         {
-            await dispatcher.StopOrThrowAsync(ct);
+            await dispatcher.StopAsyncChecked(ct);
         }
     }
 

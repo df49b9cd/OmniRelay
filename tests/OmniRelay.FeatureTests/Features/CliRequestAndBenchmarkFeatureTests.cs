@@ -37,14 +37,14 @@ public sealed class CliRequestAndBenchmarkFeatureTests : IAsyncLifetime
                 return ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(payload, meta)));
             }));
 
-        await _dispatcher.StartOrThrowAsync(TestContext.Current.CancellationToken);
+        await _dispatcher.StartAsyncChecked(TestContext.Current.CancellationToken);
     }
 
     public async ValueTask DisposeAsync()
     {
         if (_dispatcher is not null)
         {
-            await _dispatcher.StopOrThrowAsync(CancellationToken.None);
+            await _dispatcher.StopAsyncChecked(CancellationToken.None);
         }
     }
 

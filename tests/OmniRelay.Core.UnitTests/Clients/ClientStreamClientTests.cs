@@ -67,12 +67,12 @@ public class ClientStreamClientTests
 
         var client = new ClientStreamClient<Req, Res>(outbound, codec, []);
         var sessionResult = await client.StartAsync(meta, TestContext.Current.CancellationToken);
-        await using var session = sessionResult.ValueOrThrow();
+        await using var session = sessionResult.ValueOrChecked();
 
         var firstWrite = await session.WriteAsync(new Req { V = 10 }, TestContext.Current.CancellationToken);
-        firstWrite.ThrowIfFailure();
+        firstWrite.ValueOrChecked();
         var secondWrite = await session.WriteAsync(new Req { V = 20 }, TestContext.Current.CancellationToken);
-        secondWrite.ThrowIfFailure();
+        secondWrite.ValueOrChecked();
         await session.CompleteAsync(TestContext.Current.CancellationToken);
 
         var responseBytes = new byte[] { 99 };
@@ -80,7 +80,7 @@ public class ClientStreamClientTests
         transportCall.CompleteWith(Ok(Response<ReadOnlyMemory<byte>>.Create(responseBytes, finalMeta)));
 
         var responseResult = await session.Response;
-        var response = responseResult.ValueOrThrow();
+        var response = responseResult.ValueOrChecked();
         response.Body.S.ShouldBe(Convert.ToBase64String(responseBytes));
     }
 
@@ -113,7 +113,7 @@ public class ClientStreamClientTests
 
         var client = new ClientStreamClient<Req, Res>(outbound, codec, []);
         var sessionResult = await client.StartAsync(meta, TestContext.Current.CancellationToken);
-        await using var session = sessionResult.ValueOrThrow();
+        await using var session = sessionResult.ValueOrChecked();
 
         var writeResult = await session.WriteAsync(new Req { V = 1 }, TestContext.Current.CancellationToken);
         writeResult.IsFailure.ShouldBeTrue();
@@ -136,7 +136,7 @@ public class ClientStreamClientTests
 
         var client = new ClientStreamClient<Req, Res>(outbound, codec, []);
         var sessionResult = await client.StartAsync(meta, TestContext.Current.CancellationToken);
-        await using var session = sessionResult.ValueOrThrow();
+        await using var session = sessionResult.ValueOrChecked();
 
         transportCall.CompleteWith(Err<Response<ReadOnlyMemory<byte>>>(OmniRelayErrorAdapter.FromStatus(OmniRelayStatusCode.Internal, "fail", transport: "client")));
 
@@ -161,7 +161,7 @@ public class ClientStreamClientTests
 
         var client = new ClientStreamClient<Req, Res>(outbound, codec, []);
         var sessionResult = await client.StartAsync(meta, TestContext.Current.CancellationToken);
-        await using var session = sessionResult.ValueOrThrow();
+        await using var session = sessionResult.ValueOrChecked();
 
         transportCall.CompleteWith(Ok(Response<ReadOnlyMemory<byte>>.Create(new byte[] { 2 }, new ResponseMeta())));
 
@@ -193,12 +193,12 @@ public class ClientStreamClientTests
 
         var client = new ClientStreamClient<Req, Res>(outbound, codec, []);
         var sessionResult = await client.StartAsync(meta, TestContext.Current.CancellationToken);
-        await using var session = sessionResult.ValueOrThrow();
+        await using var session = sessionResult.ValueOrChecked();
         var writeResult = await session.WriteAsync(new Req { V = 5 }, TestContext.Current.CancellationToken);
-        writeResult.ThrowIfFailure();
+        writeResult.ValueOrChecked();
         transportCall.CompleteWith(Ok(Response<ReadOnlyMemory<byte>>.Create(new byte[] { 5 }, new ResponseMeta())));
         var responseResult = await session.Response;
-        responseResult.ValueOrThrow();
+        responseResult.ValueOrChecked();
 
         capturedMeta.ShouldNotBeNull();
         capturedMeta!.Encoding.ShouldBe("proto");

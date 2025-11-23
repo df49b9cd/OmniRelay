@@ -80,7 +80,7 @@ public class HostingConfigurationIntegrationTests
         Assert.Equal("primary", unaryOutbound.Key);
         Assert.Contains("HttpOutbound", unaryOutbound.ImplementationType, StringComparison.Ordinal);
 
-        var clientConfig = dispatcher.ClientConfigOrThrow("ledger");
+        var clientConfig = dispatcher.ClientConfigChecked("ledger");
         Assert.True(clientConfig.TryGetUnary("primary", out var outboundInstance));
         Assert.IsAssignableFrom<HttpOutbound>(outboundInstance);
 
@@ -143,7 +143,7 @@ public class HostingConfigurationIntegrationTests
         var unaryBinding = Assert.Single(paymentsOutbound.Unary);
         Assert.Contains("HttpOutbound", unaryBinding.ImplementationType, StringComparison.Ordinal);
 
-        var clientConfig = dispatcher.ClientConfigOrThrow("payments");
+        var clientConfig = dispatcher.ClientConfigChecked("payments");
         Assert.True(clientConfig.TryGetUnary("primary", out var outboundInstance));
         Assert.IsAssignableFrom<HttpOutbound>(outboundInstance);
     }
@@ -230,7 +230,7 @@ public class HostingConfigurationIntegrationTests
         await host.StartAsync(ct);
         await host.StopAsync(CancellationToken.None);
 
-        var clientConfig = dispatcher.ClientConfigOrThrow("workflow");
+        var clientConfig = dispatcher.ClientConfigChecked("workflow");
         Assert.IsType<HttpOutbound>(clientConfig.Unary["http-unary"]);
         Assert.IsType<HttpOutbound>(clientConfig.Oneway["http-oneway"]);
         Assert.IsType<GrpcOutbound>(clientConfig.Stream["grpc-stream"]);

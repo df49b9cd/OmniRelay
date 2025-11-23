@@ -116,12 +116,12 @@ public sealed class ResourceLeaseIntegrationTests
             headers: headers);
 
         var codec = new JsonCodec<TRequest, TResponse>();
-        var payload = codec.EncodeRequest(request, meta).ValueOrThrow();
+        var payload = codec.EncodeRequest(request, meta).ValueOrChecked();
         var rawRequest = new Request<ReadOnlyMemory<byte>>(meta, payload);
 
         var responseResult = await dispatcher.InvokeUnaryAsync(procedure, rawRequest, cancellationToken).ConfigureAwait(false);
-        var rawResponse = responseResult.ValueOrThrow();
-        return codec.DecodeResponse(rawResponse.Body, rawResponse.Meta).ValueOrThrow();
+        var rawResponse = responseResult.ValueOrChecked();
+        return codec.DecodeResponse(rawResponse.Body, rawResponse.Meta).ValueOrChecked();
     }
 
     private sealed class RecordingReplicationSink : IResourceLeaseReplicationSink

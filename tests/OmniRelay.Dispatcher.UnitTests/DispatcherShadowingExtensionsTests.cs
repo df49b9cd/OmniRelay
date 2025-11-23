@@ -13,7 +13,7 @@ public class DispatcherShadowingExtensionsTests
         options.AddTeeUnaryOutbound("downstream", null, Substitute.For<IUnaryOutbound>(), Substitute.For<IUnaryOutbound>());
 
         var dispatcher = new Dispatcher(options);
-        var outbound = dispatcher.ClientConfigOrThrow("downstream").ResolveUnary();
+        var outbound = dispatcher.ClientConfigChecked("downstream").ResolveUnary();
 
         Assert.IsType<TeeUnaryOutbound>(outbound);
     }
@@ -25,7 +25,7 @@ public class DispatcherShadowingExtensionsTests
         options.AddTeeOnewayOutbound("downstream", "shadow", Substitute.For<IOnewayOutbound>(), Substitute.For<IOnewayOutbound>());
 
         var dispatcher = new Dispatcher(options);
-        var outbound = dispatcher.ClientConfigOrThrow("downstream").ResolveOneway("shadow");
+        var outbound = dispatcher.ClientConfigChecked("downstream").ResolveOneway("shadow");
 
         Assert.IsType<TeeOnewayOutbound>(outbound);
     }

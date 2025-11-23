@@ -42,7 +42,7 @@ public class HttpOutboundVersionPolicyTests
             (request, _) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty, new ResponseMeta())))));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await dispatcher.StartAsyncChecked(ct);
         await WaitForHttpReadyAsync(address, ct);
 
         using var handler = CreateHttp3SocketsHandler();
@@ -68,7 +68,7 @@ public class HttpOutboundVersionPolicyTests
         finally
         {
             await outbound.StopAsync(ct);
-            await dispatcher.StopOrThrowAsync(ct);
+            await dispatcher.StopAsyncChecked(ct);
         }
     }
 
@@ -94,7 +94,7 @@ public class HttpOutboundVersionPolicyTests
             (request, _) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty, new ResponseMeta())))));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await dispatcher.StartAsyncChecked(ct);
         await WaitForHttpReadyAsync(address, ct);
 
         using var handler = CreateHttp3SocketsHandler();
@@ -120,7 +120,7 @@ public class HttpOutboundVersionPolicyTests
         finally
         {
             await outbound.StopAsync(ct);
-            await dispatcher.StopOrThrowAsync(ct);
+            await dispatcher.StopAsyncChecked(ct);
         }
     }
 
@@ -146,7 +146,7 @@ public class HttpOutboundVersionPolicyTests
             (request, _) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty, new ResponseMeta())))));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await dispatcher.StartAsyncChecked(ct);
         await WaitForHttpReadyAsync(address, ct);
 
         using var handler = CreateHttp3SocketsHandler();
@@ -169,7 +169,7 @@ public class HttpOutboundVersionPolicyTests
         finally
         {
             await outbound.StopAsync(ct);
-            await dispatcher.StopOrThrowAsync(ct);
+            await dispatcher.StopAsyncChecked(ct);
         }
     }
 

@@ -27,7 +27,7 @@ public class GrpcCodegenIntegrationTests
         dispatcher.RegisterTestService(new GeneratedTestService());
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await dispatcher.StartAsyncChecked(ct);
         await WaitForGrpcReadyAsync(address, ct);
 
         try
@@ -52,7 +52,7 @@ public class GrpcCodegenIntegrationTests
         }
         finally
         {
-            await dispatcher.StopOrThrowAsync(CancellationToken.None);
+            await dispatcher.StopAsyncChecked(CancellationToken.None);
         }
     }
 

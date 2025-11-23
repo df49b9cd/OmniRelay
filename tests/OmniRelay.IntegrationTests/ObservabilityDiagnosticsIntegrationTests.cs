@@ -37,7 +37,7 @@ public class ObservabilityDiagnosticsIntegrationTests
         RegisterPingProcedure(healthyDispatcher);
 
         var ct = TestContext.Current.CancellationToken;
-        await healthyDispatcher.StartOrThrowAsync(ct);
+        await healthyDispatcher.StartAsyncChecked(ct);
         await WaitForHttpReadyAsync(healthyBase, ct);
 
         try
@@ -73,7 +73,7 @@ public class ObservabilityDiagnosticsIntegrationTests
         }
         finally
         {
-            await healthyDispatcher.StopOrThrowAsync(CancellationToken.None);
+            await healthyDispatcher.StopAsyncChecked(CancellationToken.None);
         }
 
         var degradedPort = TestPortAllocator.GetRandomPort();
@@ -150,7 +150,7 @@ public class ObservabilityDiagnosticsIntegrationTests
         });
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await dispatcher.StartAsyncChecked(ct);
         await WaitForHttpReadyAsync(baseAddress, ct);
 
         try
@@ -213,7 +213,7 @@ public class ObservabilityDiagnosticsIntegrationTests
         }
         finally
         {
-            await dispatcher.StopOrThrowAsync(CancellationToken.None);
+            await dispatcher.StopAsyncChecked(CancellationToken.None);
         }
 
         var inboundLog = logProvider.Entries.FirstOrDefault(entry => entry.Message.StartsWith("rpc inbound unary completed", StringComparison.OrdinalIgnoreCase));
@@ -268,8 +268,8 @@ public class ObservabilityDiagnosticsIntegrationTests
         var client = TestServiceOmniRelay.CreateTestServiceClient(clientDispatcher, serviceName);
 
         var ct = TestContext.Current.CancellationToken;
-        await serverDispatcher.StartOrThrowAsync(ct);
-        await clientDispatcher.StartOrThrowAsync(ct);
+        await serverDispatcher.StartAsyncChecked(ct);
+        await clientDispatcher.StartAsyncChecked(ct);
         await WaitForGrpcReadyAsync(address, ct);
 
         try
@@ -277,15 +277,15 @@ public class ObservabilityDiagnosticsIntegrationTests
             var payloads = new List<string>();
             await foreach (var response in client.ServerStreamAsync(new StreamRequest { Value = "probe" }, cancellationToken: ct).WithCancellation(ct))
             {
-                payloads.Add(response.ValueOrThrow().Body.Value);
+                payloads.Add(response.ValueOrChecked().Body.Value);
             }
 
             Assert.Equal(new[] { "probe-0", "probe-1", "probe-2" }, payloads);
         }
         finally
         {
-            await clientDispatcher.StopOrThrowAsync(CancellationToken.None);
-            await serverDispatcher.StopOrThrowAsync(CancellationToken.None);
+            await clientDispatcher.StopAsyncChecked(CancellationToken.None);
+            await serverDispatcher.StopAsyncChecked(CancellationToken.None);
         }
 
         var serverSpan = activities.FirstOrDefault(activity =>
@@ -585,7 +585,7 @@ public class ObservabilityDiagnosticsIntegrationTests
             {
                 var payload = new StreamResponse { Value = $"{request.Body.Value}-{index}" };
                 var writeResult = await stream.WriteAsync(payload, cancellationToken);
-                writeResult.ThrowIfFailure();
+                writeResult.ValueOrChecked();
                 await Task.Delay(TimeSpan.FromMilliseconds(20), cancellationToken);
             }
         }

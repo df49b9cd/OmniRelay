@@ -23,8 +23,8 @@ public class DispatcherOptionsTests
 
         var dispatcher = new Dispatcher(options);
 
-        await dispatcher.StartOrThrowAsync(CancellationToken.None);
-        await dispatcher.StopOrThrowAsync(CancellationToken.None);
+        await dispatcher.StartAsyncChecked(CancellationToken.None);
+        await dispatcher.StopAsyncChecked(CancellationToken.None);
 
         Assert.Equal(1, lifecycle.StartCalls);
         Assert.Equal(1, lifecycle.StopCalls);
@@ -65,7 +65,7 @@ public class DispatcherOptionsTests
         options.AddUnaryOutbound("remote", "  primary  ", outbound);
 
         var dispatcher = new Dispatcher(options);
-        var config = dispatcher.ClientConfigOrThrow("remote");
+        var config = dispatcher.ClientConfigChecked("remote");
 
         Assert.True(config.TryGetUnary("primary", out var resolved));
         Assert.Same(outbound, resolved);

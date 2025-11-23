@@ -189,7 +189,7 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
         var responses = new List<string>();
         await foreach (var response in client.CallAsync(request, new StreamCallOptions(StreamDirection.Server), ct))
         {
-            responses.Add(response.ValueOrThrow().Body.Message);
+            responses.Add(response.ValueOrChecked().Body.Message);
         }
 
         Assert.Equal(new[] { "event-0", "event-1", "event-2" }, responses);
@@ -285,7 +285,7 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
         var inFlightCall = invoker.AsyncUnaryCall(method, null, new CallOptions(), []);
         await requestStarted.Task.WaitAsync(ct);
 
-        var stopTask = dispatcher.StopOrThrowAsync(ct);
+        var stopTask = dispatcher.StopAsyncChecked(ct);
 
         await Task.Delay(100, ct);
 
@@ -339,7 +339,7 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
         await requestStarted.Task.WaitAsync(ct);
 
         using var stopCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
-        var stopTask = dispatcher.StopOrThrowAsync(stopCts.Token);
+        var stopTask = dispatcher.StopAsyncChecked(stopCts.Token);
 
         await stopTask;
         Assert.False(releaseRequest.Task.IsCompleted);
@@ -446,7 +446,7 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
 
         await requestStarted.Task.WaitAsync(ct);
 
-        var stopTask = dispatcher.StopOrThrowAsync(ct);
+        var stopTask = dispatcher.StopAsyncChecked(ct);
 
         var draining = await healthClient.CheckAsync(new HealthCheckRequest(), cancellationToken: ct).ResponseAsync.WaitAsync(ct);
         Assert.Equal(HealthCheckResponse.Types.ServingStatus.NotServing, draining.Status);
@@ -539,7 +539,7 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
             .GetAsyncEnumerator(ct);
 
         Assert.True(await enumerator.MoveNextAsync());
-        Assert.Equal("first", enumerator.Current.ValueOrThrow().Body.Message);
+        Assert.Equal("first", enumerator.Current.ValueOrChecked().Body.Message);
 
         var exception = await Assert.ThrowsAsync<OmniRelayException>(async () =>
         {
@@ -866,16 +866,16 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
             transport: "grpc");
 
         var streamResult = await client.StartAsync(requestMeta, ct);
-        await using var stream = streamResult.ValueOrThrow();
+        await using var stream = streamResult.ValueOrChecked();
 
         var firstWrite = await stream.WriteAsync(new AggregateChunk(Amount: 2), ct);
-        firstWrite.ThrowIfFailure();
+        firstWrite.ValueOrChecked();
         var secondWrite = await stream.WriteAsync(new AggregateChunk(Amount: 5), ct);
-        secondWrite.ThrowIfFailure();
+        secondWrite.ValueOrChecked();
         await stream.CompleteAsync(ct);
 
         var responseResult = await stream.Response;
-        var response = responseResult.ValueOrThrow();
+        var response = responseResult.ValueOrChecked();
 
         Assert.Equal(7, response.Body.TotalAmount);
         Assert.Equal(codec.Encoding, stream.ResponseMeta.Encoding);
@@ -920,7 +920,7 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
         var requestMeta = new RequestMeta(service: "stream", procedure: "stream::aggregate", encoding: codec.Encoding, transport: "grpc");
 
         var streamResult = await client.StartAsync(requestMeta, ct);
-        await using var stream = streamResult.ValueOrThrow();
+        await using var stream = streamResult.ValueOrChecked();
 
         await cts.CancelAsync();
 
@@ -974,7 +974,7 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
             deadline: DateTimeOffset.UtcNow.AddMilliseconds(200));
 
         var streamResult = await client.StartAsync(requestMeta, ct);
-        await using var stream = streamResult.ValueOrThrow();
+        await using var stream = streamResult.ValueOrChecked();
         await stream.CompleteAsync(ct);
 
         var responseResult = await stream.Response;
@@ -1034,19 +1034,19 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
         var requestMeta = new RequestMeta(service: "stream", procedure: "stream::huge", encoding: codec.Encoding, transport: "grpc");
 
         var streamResult = await client.StartAsync(requestMeta, ct);
-        await using var stream = streamResult.ValueOrThrow();
+        await using var stream = streamResult.ValueOrChecked();
 
         const int chunkCount = 1_000;
         for (var i = 0; i < chunkCount; i++)
         {
             var writeResult = await stream.WriteAsync(new AggregateChunk(1), ct);
-            writeResult.ThrowIfFailure();
+            writeResult.ValueOrChecked();
         }
 
         await stream.CompleteAsync(ct);
 
         var responseResult = await stream.Response;
-        var response = responseResult.ValueOrThrow();
+        var response = responseResult.ValueOrChecked();
         Assert.Equal(chunkCount, response.Body.TotalAmount);
     }
 
@@ -1108,10 +1108,10 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
             transport: "grpc");
 
         var streamResult = await client.StartAsync(requestMeta, ct);
-        await using var stream = streamResult.ValueOrThrow();
+        await using var stream = streamResult.ValueOrChecked();
 
         var writeResult = await stream.WriteAsync(new AggregateChunk(Amount: 1), ct);
-        writeResult.ThrowIfFailure();
+        writeResult.ValueOrChecked();
         await stream.CompleteAsync(ct);
 
         var responseResult = await stream.Response;
@@ -1442,18 +1442,18 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
             transport: "grpc");
 
         var sessionResult = await client.StartAsync(requestMeta, ct);
-        await using var session = sessionResult.ValueOrThrow();
+        await using var session = sessionResult.ValueOrChecked();
 
         var firstWrite = await session.WriteAsync(new ChatMessage("hello"), ct);
-        firstWrite.ThrowIfFailure();
+        firstWrite.ValueOrChecked();
         var secondWrite = await session.WriteAsync(new ChatMessage("world"), ct);
-        secondWrite.ThrowIfFailure();
+        secondWrite.ValueOrChecked();
         await session.CompleteRequestsAsync(cancellationToken: ct);
 
         var responses = new List<string>();
         await foreach (var response in session.ReadResponsesAsync(ct))
         {
-            responses.Add(response.ValueOrThrow().Body.Message);
+            responses.Add(response.ValueOrChecked().Body.Message);
         }
 
         Assert.Equal(new[] { "ready", "echo:hello", "echo:world" }, responses);
@@ -1512,7 +1512,7 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
             transport: TransportName);
 
         var callResult = await client.StartAsync(requestMeta, ct);
-        await using var call = callResult.ValueOrThrow();
+        await using var call = callResult.ValueOrChecked();
 
         await using var enumerator = call.ReadResponsesAsync(ct).GetAsyncEnumerator(ct);
         Assert.True(await enumerator.MoveNextAsync());
@@ -1601,17 +1601,17 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
             transport: "grpc");
 
         var sessionResult = await client.StartAsync(requestMeta, ct);
-        await using var session = sessionResult.ValueOrThrow();
+        await using var session = sessionResult.ValueOrChecked();
         var writeResult = await session.WriteAsync(new ChatMessage("first"), ct);
-        writeResult.ThrowIfFailure();
+        writeResult.ValueOrChecked();
         await session.CompleteRequestsAsync(cancellationToken: ct);
 
         var enumerator = session.ReadResponsesAsync(ct).GetAsyncEnumerator(ct);
         Assert.True(await enumerator.MoveNextAsync());
-        Assert.Equal("ready", enumerator.Current.ValueOrThrow().Body.Message);
+        Assert.Equal("ready", enumerator.Current.ValueOrChecked().Body.Message);
 
         Assert.True(await enumerator.MoveNextAsync());
-        Assert.Equal("ack:first", enumerator.Current.ValueOrThrow().Body.Message);
+        Assert.Equal("ack:first", enumerator.Current.ValueOrChecked().Body.Message);
 
         Assert.True(await enumerator.MoveNextAsync());
         Assert.True(enumerator.Current.IsFailure);
@@ -1725,9 +1725,9 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
         using var callCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
 
         var sessionResult = await client.StartAsync(requestMeta, callCts.Token);
-        await using var session = sessionResult.ValueOrThrow();
+        await using var session = sessionResult.ValueOrChecked();
         var writeResult = await session.WriteAsync(new ChatMessage("hello"), ct);
-        writeResult.ThrowIfFailure();
+        writeResult.ValueOrChecked();
 
         await callCts.CancelAsync();
         // Ensure the server observed the cancellation before asserting on the outcome to avoid racey reads.
@@ -1840,13 +1840,13 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
                 transport: "grpc");
 
             var sessionResult = await client.StartAsync(requestMeta, ct);
-            await using var session = sessionResult.ValueOrThrow();
+            await using var session = sessionResult.ValueOrChecked();
 
             const int messageCount = 10;
             for (var i = 0; i < messageCount; i++)
             {
                 var writeResult = await session.WriteAsync(new ChatMessage($"msg-{i}"), ct);
-                writeResult.ThrowIfFailure();
+                writeResult.ValueOrChecked();
             }
 
             await session.CompleteRequestsAsync(cancellationToken: ct);
@@ -1854,7 +1854,7 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
             var responses = new List<string>();
             await foreach (var response in session.ReadResponsesAsync(ct))
             {
-                responses.Add(response.ValueOrThrow().Body.Message);
+                responses.Add(response.ValueOrChecked().Body.Message);
             }
 
             Assert.Equal(messageCount + 1, responses.Count);
@@ -2046,7 +2046,7 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
             var responses = new List<Response<EchoResponse>>();
             await foreach (var response in client.CallAsync(request, new StreamCallOptions(StreamDirection.Server), ct))
             {
-                responses.Add(response.ValueOrThrow());
+                responses.Add(response.ValueOrChecked());
             }
 
             Assert.Equal(2, responses.Count);

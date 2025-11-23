@@ -54,7 +54,7 @@ public sealed class HttpInboundLifecycleTests(ITestOutputHelper output) : Transp
 
         await requestStarted.Task.WaitAsync(ct);
 
-        var stopTask = dispatcher.StopOrThrowAsync(ct);
+        var stopTask = dispatcher.StopAsyncChecked(ct);
 
         await Task.Delay(100, ct);
 
@@ -115,7 +115,7 @@ public sealed class HttpInboundLifecycleTests(ITestOutputHelper output) : Transp
         var inFlightTask = httpClient.PostAsync("/", new ByteArrayContent([]), ct);
         await requestStarted.Task.WaitAsync(ct);
 
-        var stopTask = dispatcher.StopOrThrowAsync(ct);
+        var stopTask = dispatcher.StopAsyncChecked(ct);
         Assert.False(stopTask.IsCompleted);
 
         releaseRequest.TrySetResult();
@@ -127,7 +127,7 @@ public sealed class HttpInboundLifecycleTests(ITestOutputHelper output) : Transp
 
         await stopTask;
 
-        await dispatcher.StartOrThrowAsync(ct);
+        await dispatcher.StartAsyncChecked(ct);
         await WaitForHttpReadyAsync(baseAddress, ct);
 
         using (var secondResponse = await httpClient.PostAsync("/", new ByteArrayContent([]), ct))
@@ -137,7 +137,7 @@ public sealed class HttpInboundLifecycleTests(ITestOutputHelper output) : Transp
 
         Assert.Equal(2, Volatile.Read(ref requestCount));
 
-        await dispatcher.StopOrThrowAsync(ct);
+        await dispatcher.StopAsyncChecked(ct);
     }
 
     [Http3Fact(Timeout = 45_000)]
@@ -190,7 +190,7 @@ public sealed class HttpInboundLifecycleTests(ITestOutputHelper output) : Transp
 
         await requestStarted.Task.WaitAsync(ct);
 
-        var stopTask = dispatcher.StopOrThrowAsync(ct);
+        var stopTask = dispatcher.StopAsyncChecked(ct);
         await Task.Delay(100, ct);
 
         using var rejectedResponse = await httpClient.PostAsync("/", new ByteArrayContent([]), ct);
@@ -260,7 +260,7 @@ public sealed class HttpInboundLifecycleTests(ITestOutputHelper output) : Transp
 
         await requestStarted.Task.WaitAsync(ct);
 
-        var stopTask = dispatcher.StopOrThrowAsync(ct);
+        var stopTask = dispatcher.StopAsyncChecked(ct);
         await Task.Delay(100, ct);
 
         using var rejectedResponse = await httpClient.PostAsync("/", new ByteArrayContent([]), ct);
@@ -448,7 +448,7 @@ public sealed class HttpInboundLifecycleTests(ITestOutputHelper output) : Transp
 
         await slowStarted.Task.WaitAsync(ct);
 
-        var stopTask = dispatcher.StopOrThrowAsync(ct);
+        var stopTask = dispatcher.StopAsyncChecked(ct);
 
         using var drainingReadiness = await httpClient.GetAsync("/readyz", ct);
         Assert.Equal(HttpStatusCode.ServiceUnavailable, drainingReadiness.StatusCode);

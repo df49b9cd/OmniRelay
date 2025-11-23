@@ -40,7 +40,7 @@ public sealed class BootstrapServerTests
         var token = tokenService.CreateToken(new BootstrapTokenDescriptor { ClusterId = "cluster-1", Role = "worker" });
         var result = await server.JoinAsync(new BootstrapJoinRequest { Token = token }, CancellationToken.None);
         result.IsSuccess.ShouldBeTrue(result.Error?.Message);
-        var response = result.ValueOrThrow();
+        var response = result.ValueOrChecked();
 
         response.ClusterId.ShouldBe("cluster-1");
         response.Role.ShouldBe("worker");

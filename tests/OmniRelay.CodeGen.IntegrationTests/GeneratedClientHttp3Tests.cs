@@ -57,7 +57,7 @@ public class GeneratedClientHttp3Tests
         TestServiceOmniRelay.RegisterTestService(dispatcher, new Impl());
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await dispatcher.StartAsyncChecked(ct);
         await WaitForGrpcReadyAsync(address, ct);
 
         // Outbound with HTTP/3 enabled
@@ -90,7 +90,7 @@ public class GeneratedClientHttp3Tests
         finally
         {
             await outbound.StopAsync(ct);
-            await dispatcher.StopOrThrowAsync(ct);
+            await dispatcher.StopAsyncChecked(ct);
         }
 
         Assert.True(TryDequeueWithWait(observed, out var protocol), "No protocol captured.");
@@ -142,7 +142,7 @@ public class GeneratedClientHttp3Tests
         TestServiceOmniRelay.RegisterTestService(dispatcher, new Impl());
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await dispatcher.StartAsyncChecked(ct);
         await WaitForGrpcReadyAsync(address, ct);
 
         // Outbound desires HTTP/3 but should fall back
@@ -179,7 +179,7 @@ public class GeneratedClientHttp3Tests
         finally
         {
             await outbound.StopAsync(ct);
-            await dispatcher.StopOrThrowAsync(ct);
+            await dispatcher.StopAsyncChecked(ct);
         }
 
         Assert.True(TryDequeueWithWait(observed, out var protocol), "No protocol captured.");
@@ -204,7 +204,7 @@ public class GeneratedClientHttp3Tests
         {
             var writeResult =
                 await stream.WriteAsync(new StreamResponse { Value = request.Body.Value }, cancellationToken);
-            writeResult.ThrowIfFailure();
+            writeResult.ValueOrChecked();
         }
 
         public ValueTask<Response<UnaryResponse>> ClientStreamAsync(
