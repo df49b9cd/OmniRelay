@@ -20,6 +20,16 @@ internal static class HttpTransportMetrics
     public static readonly Histogram<double> RequestDuration =
         Meter.CreateHistogram<double>("omnirelay.http.request.duration", unit: "ms", description: "HTTP request duration in milliseconds measured at OmniRelay inbound.");
 
+    // Per-message telemetry
+    public static readonly Counter<long> ServerStreamResponseMessages =
+        Meter.CreateCounter<long>("omnirelay.http.server_stream.response_messages", description: "Response messages emitted by HTTP server-stream handlers.");
+
+    public static readonly Counter<long> DuplexRequestMessages =
+        Meter.CreateCounter<long>("omnirelay.http.duplex.request_messages", description: "Request messages received by HTTP duplex handlers.");
+
+    public static readonly Counter<long> DuplexResponseMessages =
+        Meter.CreateCounter<long>("omnirelay.http.duplex.response_messages", description: "Response messages emitted by HTTP duplex handlers.");
+
     // Client-side: count when HTTP/3 was desired but a lower protocol was used
     public static readonly Counter<long> ClientProtocolFallbacks =
         Meter.CreateCounter<long>("omnirelay.http.client.fallbacks", description: "HTTP client fallbacks when HTTP/3 was desired but a lower protocol was used.");

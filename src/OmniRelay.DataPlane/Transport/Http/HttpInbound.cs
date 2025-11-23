@@ -906,15 +906,16 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
                     context.Response.Headers[header.Key] = header.Value;
                 }
 
-                var pumpResult = await PumpServerStreamAsync(
-                        call,
-                        context.Response.BodyWriter,
-                        responseMeta,
-                        _serverRuntimeOptions?.ServerStreamWriteTimeout,
-                        _serverRuntimeOptions?.ServerStreamMaxMessageBytes,
-                        transport,
-                        context.RequestAborted)
-                    .ConfigureAwait(false);
+            var pumpResult = await PumpServerStreamAsync(
+                    call,
+                    context.Response.BodyWriter,
+                    responseMeta,
+                    _serverRuntimeOptions?.ServerStreamWriteTimeout,
+                    _serverRuntimeOptions?.ServerStreamMaxMessageBytes,
+                    transport,
+                    baseTags,
+                    context.RequestAborted)
+                .ConfigureAwait(false);
 
                 var pumpError = pumpResult.Error;
                 if (pumpError is not null)
@@ -1129,89 +1130,44 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
         TimeSpan? writeTimeout,
         int? maxMessageBytes,
         string transport,
+        KeyValuePair<string, object?>[] metricTags,
         CancellationToken cancellationToken)
     {
-        var frames = Go.MakeChannel<ReadOnlyMemory<byte>>(new BoundedChannelOptions(8)
-        {
-            AllowSynchronousContinuations = false,
-            FullMode = BoundedChannelFullMode.Wait,
-            SingleReader = true,
-            SingleWriter = false
-        });
-
-        using var pumpGroup = new ErrGroup(cancellationToken);
-
-        pumpGroup.Go(async token =>
-        {
-            try
+        var stream = Result.MapStreamAsync(
+            call.Responses.ReadAllAsync(cancellationToken),
+            (payload, token) =>
             {
-                await foreach (var payload in call.Responses.ReadAllAsync(token).ConfigureAwait(false))
+                if (maxMessageBytes is { } limit && payload.Length > limit)
                 {
-                    if (maxMessageBytes is { } limit && payload.Length > limit)
-                    {
-                        var error = OmniRelayErrorAdapter.FromStatus(
-                            OmniRelayStatusCode.ResourceExhausted,
-                            "The server stream payload exceeds the configured limit.",
-                            transport: transport);
-                        frames.Writer.TryComplete();
-                        await call.CompleteAsync(error, CancellationToken.None).ConfigureAwait(false);
-                        return Err<Unit>(error);
-                    }
-
-                    var frame = EncodeSseFrame(payload, responseMeta.Encoding);
-                    await frames.Writer.WriteAsync(frame, token).ConfigureAwait(false);
+                    var error = OmniRelayErrorAdapter.FromStatus(
+                        OmniRelayStatusCode.ResourceExhausted,
+                        "The server stream payload exceeds the configured limit.",
+                        transport: transport);
+                    return new ValueTask<Result<ReadOnlyMemory<byte>>>(Err<ReadOnlyMemory<byte>>(error));
                 }
 
-                frames.Writer.TryComplete();
-                return Ok(Unit.Value);
-            }
-            catch (OperationCanceledException)
-            {
-                frames.Writer.TryComplete();
-                return Err<Unit>(Error.Canceled());
-            }
-            catch (Exception ex)
-            {
-                frames.Writer.TryComplete(ex);
-                return Err<Unit>(OmniRelayErrors.FromException(ex, transport).Error);
-            }
-        });
+                return new ValueTask<Result<ReadOnlyMemory<byte>>>(Ok(payload));
+            },
+            cancellationToken);
 
-        pumpGroup.Go(async token =>
-        {
-            try
+        var pumpResult = await stream
+            .TapSuccessEachAsync(async (payload, token) =>
             {
+                var frame = EncodeSseFrame(payload, responseMeta.Encoding);
+                await WritePipeAsync(writer, frame, writeTimeout, token).ConfigureAwait(false);
                 await FlushPipeAsync(writer, writeTimeout, token).ConfigureAwait(false);
+                HttpTransportMetrics.ServerStreamResponseMessages.Add(1, metricTags);
+            }, cancellationToken)
+            .ConfigureAwait(false);
 
-                await foreach (var frame in frames.Reader.ReadAllAsync(token).ConfigureAwait(false))
-                {
-                    await WritePipeAsync(writer, frame, writeTimeout, token).ConfigureAwait(false);
-                    await FlushPipeAsync(writer, writeTimeout, token).ConfigureAwait(false);
-                }
+        if (pumpResult.IsFailure && pumpResult.Error is { } error)
+        {
+            await call.CompleteAsync(error, CancellationToken.None).ConfigureAwait(false);
+        }
 
-                return Ok(Unit.Value);
-            }
-            catch (TimeoutException)
-            {
-                var error = OmniRelayErrorAdapter.FromStatus(
-                    OmniRelayStatusCode.DeadlineExceeded,
-                    "The server stream write timed out.",
-                    transport: transport);
-                return Err<Unit>(error);
-            }
-            catch (OperationCanceledException)
-            {
-                return Err<Unit>(Error.Canceled());
-            }
-            catch (Exception ex)
-            {
-                return Err<Unit>(OmniRelayErrors.FromException(ex, transport).Error);
-            }
-        });
-
-        var pumpResult = await pumpGroup.WaitAsync(CancellationToken.None).ConfigureAwait(false);
-        frames.Writer.TryComplete();
-        return pumpResult;
+        return pumpResult.IsFailure && pumpResult.Error is null
+            ? Err<Unit>(Error.Canceled())
+            : pumpResult;
     }
 
     private readonly record struct HttpUnaryDecodeState(string Procedure, string? Encoding, RequestMeta Meta);
@@ -1359,13 +1315,13 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
 
                 pumpGroup.Go(async token =>
                 {
-                    await PumpRequestsAsync(socket, call, requestBuffer, duplexFrameLimit, token).ConfigureAwait(false);
+                    await PumpRequestsAsync(socket, call, requestBuffer, duplexFrameLimit, baseTags, token).ConfigureAwait(false);
                     return Ok(Unit.Value);
                 });
 
                 pumpGroup.Go(async token =>
                 {
-                    await PumpResponsesAsync(socket, call, duplexFrameLimit, duplexWriteTimeout, token).ConfigureAwait(false);
+                    await PumpResponsesAsync(socket, call, duplexFrameLimit, duplexWriteTimeout, baseTags, token).ConfigureAwait(false);
                     return Ok(Unit.Value);
                 });
 
@@ -1409,7 +1365,7 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
                 HttpTransportMetrics.RequestsCompleted.Add(1, tags);
             }
 
-            async ValueTask PumpRequestsAsync(WebSocket webSocket, IDuplexStreamCall streamCall, byte[] tempBuffer, int frameLimit, CancellationToken cancellationToken)
+            async ValueTask PumpRequestsAsync(WebSocket webSocket, IDuplexStreamCall streamCall, byte[] tempBuffer, int frameLimit, KeyValuePair<string, object?>[] metricTags, CancellationToken cancellationToken)
             {
                 var frameChannel = Go.MakeChannel<HttpDuplexProtocol.Frame>(new BoundedChannelOptions(8)
                 {
@@ -1466,6 +1422,7 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
                         {
                             case HttpDuplexProtocol.FrameType.RequestData:
                                 await streamCall.RequestWriter.WriteAsync(frame.Payload, cancellationToken).ConfigureAwait(false);
+                                HttpTransportMetrics.DuplexRequestMessages.Add(1, metricTags);
                                 break;
 
                             case HttpDuplexProtocol.FrameType.RequestComplete:
@@ -1531,42 +1488,42 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
                 }
             }
 
-            async ValueTask PumpResponsesAsync(WebSocket webSocket, IDuplexStreamCall streamCall, int frameLimit, TimeSpan? writeTimeout, CancellationToken cancellationToken)
+            async ValueTask PumpResponsesAsync(WebSocket webSocket, IDuplexStreamCall streamCall, int frameLimit, TimeSpan? writeTimeout, KeyValuePair<string, object?>[] metricTags, CancellationToken cancellationToken)
             {
                 try
                 {
                     var responseStream = Result.MapStreamAsync(
                         streamCall.ResponseReader.ReadAllAsync(cancellationToken),
-                        payload => new ValueTask<Result<ReadOnlyMemory<byte>>>(Ok(payload)),
+                        (payload, token) =>
+                        {
+                            if (frameLimit > 0 && payload.Length > frameLimit)
+                            {
+                                var error = OmniRelayErrorAdapter.FromStatus(
+                                    OmniRelayStatusCode.ResourceExhausted,
+                                    "The duplex response payload exceeds the configured limit.",
+                                    transport: transport);
+                                return new ValueTask<Result<ReadOnlyMemory<byte>>>(Err<ReadOnlyMemory<byte>>(error));
+                            }
+
+                            return new ValueTask<Result<ReadOnlyMemory<byte>>>(Ok(payload));
+                        },
                         cancellationToken);
 
-                    await foreach (var response in responseStream.ConfigureAwait(false))
+                    var pumpResult = await responseStream
+                        .TapSuccessEachAsync(async (payload, token) =>
+                        {
+                            await SendWebSocketFrameAsync(webSocket, HttpDuplexProtocol.FrameType.ResponseData, payload, writeTimeout, token).ConfigureAwait(false);
+                            HttpTransportMetrics.DuplexResponseMessages.Add(1, metricTags);
+                        }, cancellationToken)
+                        .ConfigureAwait(false);
+
+                    if (pumpResult.IsFailure && pumpResult.Error is { } responseError)
                     {
-                        if (response.IsFailure)
-                        {
-                            var error = response.Error!;
-                            await HttpDuplexProtocol.SendFrameAsync(webSocket, HttpDuplexProtocol.FrameType.ResponseError, HttpDuplexProtocol.CreateErrorPayload(error), CancellationToken.None).ConfigureAwait(false);
-                            await streamCall.CompleteResponsesAsync(error, CancellationToken.None).ConfigureAwait(false);
-                            await streamCall.CompleteRequestsAsync(error, CancellationToken.None).ConfigureAwait(false);
-                            pumpCts.Cancel();
-                            return;
-                        }
-
-                        var payload = response.Value;
-                        if (frameLimit > 0 && payload.Length > frameLimit)
-                        {
-                            var error = OmniRelayErrorAdapter.FromStatus(
-                                OmniRelayStatusCode.ResourceExhausted,
-                                "The duplex response payload exceeds the configured limit.",
-                                transport: transport);
-                            await HttpDuplexProtocol.SendFrameAsync(webSocket, HttpDuplexProtocol.FrameType.ResponseError, HttpDuplexProtocol.CreateErrorPayload(error), CancellationToken.None).ConfigureAwait(false);
-                            await streamCall.CompleteResponsesAsync(error, CancellationToken.None).ConfigureAwait(false);
-                            await streamCall.CompleteRequestsAsync(error, CancellationToken.None).ConfigureAwait(false);
-                            pumpCts.Cancel();
-                            return;
-                        }
-
-                        await SendWebSocketFrameAsync(webSocket, HttpDuplexProtocol.FrameType.ResponseData, payload, writeTimeout, cancellationToken).ConfigureAwait(false);
+                        await HttpDuplexProtocol.SendFrameAsync(webSocket, HttpDuplexProtocol.FrameType.ResponseError, HttpDuplexProtocol.CreateErrorPayload(responseError), CancellationToken.None).ConfigureAwait(false);
+                        await streamCall.CompleteResponsesAsync(responseError, CancellationToken.None).ConfigureAwait(false);
+                        await streamCall.CompleteRequestsAsync(responseError, CancellationToken.None).ConfigureAwait(false);
+                        pumpCts.Cancel();
+                        return;
                     }
 
                     var finalMeta = NormalizeResponseMeta(streamCall.ResponseMeta, transport);

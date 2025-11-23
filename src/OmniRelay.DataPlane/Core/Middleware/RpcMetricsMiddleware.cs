@@ -537,7 +537,7 @@ public sealed class RpcMetricsMiddleware :
             _tags = tags ?? throw new ArgumentNullException(nameof(tags));
             _startTimestamp = startTimestamp;
             _owner = owner;
-            _response = new Lazy<Task<Result<Response<ReadOnlyMemory<byte>>>>>(ObserveResponseAsync);
+            _response = new Lazy<Task<Result<Response<ReadOnlyMemory<byte>>>>>(() => ObserveResponseAsync().AsTask());
         }
 
         public RequestMeta RequestMeta => _inner.RequestMeta;

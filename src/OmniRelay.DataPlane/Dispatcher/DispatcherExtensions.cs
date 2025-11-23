@@ -4,6 +4,7 @@ namespace OmniRelay.Dispatcher;
 
 public static class DispatcherExtensions
 {
+    [Obsolete("Prefer awaiting Dispatcher.StartAsync and handling the Result instead of throwing.")]
     public static async Task StartOrThrowAsync(this Dispatcher dispatcher, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(dispatcher);
@@ -15,6 +16,7 @@ public static class DispatcherExtensions
         }
     }
 
+    [Obsolete("Prefer awaiting Dispatcher.StopAsync and handling the Result instead of throwing.")]
     public static async Task StopOrThrowAsync(this Dispatcher dispatcher, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(dispatcher);
@@ -26,6 +28,7 @@ public static class DispatcherExtensions
         }
     }
 
+    [Obsolete("Prefer Dispatcher.ClientConfig which returns Result<ClientConfiguration> instead of throwing.")]
     public static ClientConfiguration ClientConfigOrThrow(this Dispatcher dispatcher, string service)
     {
         ArgumentNullException.ThrowIfNull(dispatcher);
