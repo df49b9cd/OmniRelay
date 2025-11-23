@@ -206,8 +206,12 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                     var maxMessageBytes = runtime?.ServerStreamMaxMessageBytes;
                     var writeTimeout = runtime?.ServerStreamWriteTimeout;
                     var headersSent = false;
+                    var metricTags = GrpcTransportMetrics.CreateBaseTags(requestMeta);
+                    var startTimestamp = Stopwatch.GetTimestamp();
+                    long responseCount = 0;
+                    int metricsRecorded = 0;
 
-                    async Task EnsureHeadersAsync()
+                    async ValueTask EnsureHeadersAsync()
                     {
                         if (headersSent)
                         {
@@ -223,6 +227,19 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                         headersSent = true;
                     }
 
+                    void RecordServerStreamMetrics(StatusCode statusCode)
+                    {
+                        if (Interlocked.Exchange(ref metricsRecorded, 1) == 1)
+                        {
+                            return;
+                        }
+
+                        var elapsed = Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds;
+                        var tagsWithStatus = GrpcTransportMetrics.AppendStatus(metricTags, statusCode);
+                        GrpcTransportMetrics.ServerServerStreamDuration.Record(elapsed, tagsWithStatus);
+                        GrpcTransportMetrics.ServerServerStreamResponseCount.Record(responseCount, tagsWithStatus);
+                    }
+
                     static RpcException CreateRpcException(Error error)
                     {
                         var status = GrpcStatusMapper.ToStatus(
@@ -236,28 +253,39 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
 
                     try
                     {
-                        pumpResult = Ok(Unit.Value);
-
-                        await foreach (var payload in streamCall.Responses.ReadAllAsync(cancellationToken).ConfigureAwait(false))
-                        {
-                            if (maxMessageBytes is { } maxBytes && payload.Length > maxBytes)
+                        var responseStreamPipeline = Result.MapStreamAsync(
+                            streamCall.Responses.ReadAllAsync(cancellationToken),
+                            (payload, token) =>
                             {
-                                pumpResult = Err<Unit>(OmniRelayErrorAdapter.FromStatus(
-                                    OmniRelayStatusCode.ResourceExhausted,
-                                    "The server stream payload exceeds the configured limit.",
-                                    transport: GrpcTransportConstants.TransportName));
-                                break;
-                            }
+                                if (maxMessageBytes is { } maxBytes && payload.Length > maxBytes)
+                                {
+                                    var error = OmniRelayErrorAdapter.FromStatus(
+                                        OmniRelayStatusCode.ResourceExhausted,
+                                        "The server stream payload exceeds the configured limit.",
+                                        transport: GrpcTransportConstants.TransportName);
+                                    return new ValueTask<Result<ReadOnlyMemory<byte>>>(Err<ReadOnlyMemory<byte>>(error));
+                                }
 
-                            await EnsureHeadersAsync().ConfigureAwait(false);
-                            cancellationToken.ThrowIfCancellationRequested();
-                            await WriteGrpcMessageAsync(responseStream, payload, writeTimeout, cancellationToken).ConfigureAwait(false);
-                        }
+                                return new ValueTask<Result<ReadOnlyMemory<byte>>>(Ok(payload));
+                            },
+                            cancellationToken);
+
+                        pumpResult = await responseStreamPipeline
+                            .TapSuccessEachAsync(async (payload, token) =>
+                            {
+                                await EnsureHeadersAsync().ConfigureAwait(false);
+                                token.ThrowIfCancellationRequested();
+                                await WriteGrpcMessageAsync(responseStream, payload, writeTimeout, token).ConfigureAwait(false);
+                                Interlocked.Increment(ref responseCount);
+                                GrpcTransportMetrics.ServerServerStreamResponseMessages.Add(1, metricTags);
+                            }, cancellationToken)
+                            .ConfigureAwait(false);
 
                         if (pumpResult.IsSuccess)
                         {
                             await EnsureHeadersAsync().ConfigureAwait(false);
                             ApplySuccessTrailers(callContext, streamCall.ResponseMeta);
+                            RecordServerStreamMetrics(StatusCode.OK);
                         }
                     }
                     catch (Exception ex)
@@ -270,6 +298,7 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
                         await streamCall.CompleteAsync(pumpError, CancellationToken.None).ConfigureAwait(false);
                         var rpcException = CreateRpcException(pumpError);
                         GrpcTransportDiagnostics.RecordException(activity, rpcException, rpcException.StatusCode, rpcException.Status.Detail);
+                        RecordServerStreamMetrics(rpcException.StatusCode);
                         throw rpcException;
                     }
                 }

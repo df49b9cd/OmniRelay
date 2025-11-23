@@ -554,7 +554,7 @@ public sealed class RpcMetricsMiddleware :
         public ValueTask DisposeAsync() =>
             _inner.DisposeAsync();
 
-        private async Task<Result<Response<ReadOnlyMemory<byte>>>> ObserveResponseAsync()
+        private async ValueTask<Result<Response<ReadOnlyMemory<byte>>>> ObserveResponseAsync()
         {
             try
             {

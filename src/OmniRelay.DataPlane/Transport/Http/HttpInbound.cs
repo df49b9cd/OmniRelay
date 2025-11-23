@@ -1535,8 +1535,24 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
             {
                 try
                 {
-                    await foreach (var payload in streamCall.ResponseReader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+                    var responseStream = Result.MapStreamAsync(
+                        streamCall.ResponseReader.ReadAllAsync(cancellationToken),
+                        payload => new ValueTask<Result<ReadOnlyMemory<byte>>>(Ok(payload)),
+                        cancellationToken);
+
+                    await foreach (var response in responseStream.ConfigureAwait(false))
                     {
+                        if (response.IsFailure)
+                        {
+                            var error = response.Error!;
+                            await HttpDuplexProtocol.SendFrameAsync(webSocket, HttpDuplexProtocol.FrameType.ResponseError, HttpDuplexProtocol.CreateErrorPayload(error), CancellationToken.None).ConfigureAwait(false);
+                            await streamCall.CompleteResponsesAsync(error, CancellationToken.None).ConfigureAwait(false);
+                            await streamCall.CompleteRequestsAsync(error, CancellationToken.None).ConfigureAwait(false);
+                            pumpCts.Cancel();
+                            return;
+                        }
+
+                        var payload = response.Value;
                         if (frameLimit > 0 && payload.Length > frameLimit)
                         {
                             var error = OmniRelayErrorAdapter.FromStatus(
