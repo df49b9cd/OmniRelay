@@ -459,7 +459,7 @@ public sealed class CompatibilityInteropIntegrationTests
         frontOptions.AddTeeUnaryOutbound("rolling-upgrade", null, primaryOutbound, shadowOutbound, teeOptions);
 
         var frontDispatcher = new OmniRelay.Dispatcher.Dispatcher(frontOptions);
-        var upstreamClient = frontDispatcher.CreateJsonClient<ShadowPingRequest, ShadowPingResponse>(
+        var upstreamClientResult = frontDispatcher.CreateJsonClient<ShadowPingRequest, ShadowPingResponse>(
             "rolling-upgrade",
             "shadow::check",
             builder =>
@@ -467,6 +467,9 @@ public sealed class CompatibilityInteropIntegrationTests
                 builder.Encoding = MediaTypeNames.Application.Json;
                 builder.SerializerContext = CompatibilityInteropJsonContext.Default;
             });
+
+        upstreamClientResult.IsSuccess.ShouldBeTrue(upstreamClientResult.Error?.Message);
+        var upstreamClient = upstreamClientResult.Value;
 
         frontDispatcher.RegisterJsonUnary<ShadowPingRequest, ShadowPingResponse>(
             "rolling::ping",

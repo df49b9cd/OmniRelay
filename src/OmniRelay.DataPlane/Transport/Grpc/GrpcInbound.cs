@@ -254,7 +254,7 @@ public sealed partial class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcSer
                             throw new InvalidOperationException(endpointCheck.Error?.Message ?? "Invalid HTTP/3 endpoint configuration.");
                         }
 
-                        Http3RuntimeGuards.EnsureServerSupport(url, _serverTlsOptions?.Certificate);
+                        Http3RuntimeGuards.EnsureServerSupport(uri.ToString(), _serverTlsOptions?.Certificate);
 
                         var enableAltSvc = http3RuntimeOptions?.EnableAltSvc;
                         listenOptions.DisableAltSvcHeader = enableAltSvc switch
@@ -264,7 +264,7 @@ public sealed partial class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcSer
                             _ => false
                         };
 
-                        http3Endpoints?.Add(url);
+                        http3Endpoints?.Add(uri.ToString());
                     }
                     else
                     {
@@ -276,7 +276,7 @@ public sealed partial class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcSer
                         var enabledProtocols = _serverTlsOptions.EnabledProtocols;
                         if (enableHttp3 && enabledProtocols is { } specifiedProtocols && (specifiedProtocols & SslProtocols.Tls13) == 0)
                         {
-                            throw new InvalidOperationException($"HTTP/3 requires TLS 1.3 but the configured protocol set for '{url}' excludes it.");
+                            throw new InvalidOperationException($"HTTP/3 requires TLS 1.3 but the configured protocol set for '{uri}' excludes it.");
                         }
 
                         var httpsOptions = new HttpsConnectionAdapterOptions
@@ -309,7 +309,7 @@ public sealed partial class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcSer
                     }
                     else if (enableHttp3)
                     {
-                        throw new InvalidOperationException($"HTTP/3 requires HTTPS. Configure TLS for '{url}' or disable HTTP/3 for this listener.");
+                        throw new InvalidOperationException($"HTTP/3 requires HTTPS. Configure TLS for '{uri}' or disable HTTP/3 for this listener.");
                     }
                 });
             }

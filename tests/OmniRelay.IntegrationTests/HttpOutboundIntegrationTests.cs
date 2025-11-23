@@ -68,7 +68,9 @@ public sealed class HttpOutboundIntegrationTests(ITestOutputHelper output) : Int
 
         var clientDispatcher = new OmniRelay.Dispatcher.Dispatcher(clientOptions);
         var codec = new JsonCodec<PingRequest, PingResponse>(new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-        var client = clientDispatcher.CreateUnaryClient<PingRequest, PingResponse>("runtime-remote", codec);
+        var clientResult = clientDispatcher.CreateUnaryClient<PingRequest, PingResponse>("runtime-remote", codec);
+        clientResult.IsSuccess.ShouldBeTrue(clientResult.Error?.Message);
+        var client = clientResult.Value;
 
         await using var clientHost = await DispatcherHost.StartAsync("runtime-client", clientDispatcher, LoggerFactory, ct);
 
@@ -143,7 +145,9 @@ public sealed class HttpOutboundIntegrationTests(ITestOutputHelper output) : Int
 
         var dispatcher = new OmniRelay.Dispatcher.Dispatcher(clientOptions);
         var codec = new JsonCodec<PingRequest, PingResponse>(new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-        var client = dispatcher.CreateUnaryClient<PingRequest, PingResponse>("failover-remote", codec);
+        var clientResult = dispatcher.CreateUnaryClient<PingRequest, PingResponse>("failover-remote", codec);
+        clientResult.IsSuccess.ShouldBeTrue(clientResult.Error?.Message);
+        var client = clientResult.Value;
 
         await using var clientHost = await DispatcherHost.StartAsync("failover-client", dispatcher, LoggerFactory, ct);
 

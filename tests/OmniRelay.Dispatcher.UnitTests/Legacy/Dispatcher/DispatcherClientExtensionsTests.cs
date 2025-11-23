@@ -10,12 +10,15 @@ namespace OmniRelay.Tests.Dispatcher;
 public class DispatcherClientExtensionsTests
 {
     [Fact(Timeout = TestTimeouts.Default)]
-    public void CreateUnaryClient_WithCodecAndMissingOutbound_Throws()
+    public void CreateUnaryClient_WithCodecAndMissingOutbound_ReturnsFailure()
     {
         var dispatcher = new OmniRelay.Dispatcher.Dispatcher(new DispatcherOptions("local"));
         var codec = new PassthroughCodec();
 
-        Assert.Throws<ResultException>(() => dispatcher.CreateUnaryClient("remote", codec));
+        var result = dispatcher.CreateUnaryClient("remote", codec);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("dispatcher.outbound.not_found", result.Error?.Code);
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
@@ -29,18 +32,24 @@ public class DispatcherClientExtensionsTests
         var codec = new PassthroughCodec();
         dispatcher.Codecs.RegisterOutbound("remote-service", "math::add", ProcedureKind.Unary, codec);
 
-        var client = dispatcher.CreateUnaryClient<int, int>("remote-service", "math::add");
+        var clientResult = dispatcher.CreateUnaryClient<int, int>("remote-service", "math::add");
+
+        Assert.True(clientResult.IsSuccess);
+        var client = clientResult.Value;
 
         Assert.NotNull(client);
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
-    public void CreateStreamClient_MissingOutboundThrows()
+    public void CreateStreamClient_MissingOutboundReturnsFailure()
     {
         var dispatcher = new OmniRelay.Dispatcher.Dispatcher(new DispatcherOptions("svc"));
         var codec = new PassthroughCodec();
 
-        Assert.Throws<ResultException>(() => dispatcher.CreateStreamClient("remote", codec));
+        var result = dispatcher.CreateStreamClient("remote", codec);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("dispatcher.outbound.not_found", result.Error?.Code);
     }
 
     private sealed class PassthroughCodec : ICodec<int, int>

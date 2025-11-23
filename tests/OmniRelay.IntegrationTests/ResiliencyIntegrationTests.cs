@@ -449,7 +449,16 @@ public class ResiliencyIntegrationTests
             "resiliency::proxy",
             async (request, token) =>
             {
-                backendClient ??= proxyDispatcher.CreateUnaryClient("resiliency-peers-backend", rawCodec);
+                if (backendClient is null)
+                {
+                    var createResult = proxyDispatcher.CreateUnaryClient("resiliency-peers-backend", rawCodec);
+                    if (createResult.IsFailure)
+                    {
+                        return Err<Response<ReadOnlyMemory<byte>>>(createResult.Error!);
+                    }
+
+                    backendClient = createResult.Value;
+                }
                 var outboundRequest = new Request<byte[]>(
                     new RequestMeta("resiliency-peers-backend", "resiliency-backend::echo", encoding: rawCodec.Encoding, transport: GrpcTransport),
                     request.Body.ToArray());

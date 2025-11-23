@@ -204,11 +204,8 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
             throw new InvalidOperationException("Dispatcher must be bound before starting the HTTP inbound.");
         }
 
-        var requiresHttps = _urls.Any(static url =>
-        {
-            var uri = new Uri(url, UriKind.Absolute);
-            return uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase);
-        });
+        var requiresHttps = _urls.Any(static uri =>
+            uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase));
 
         var missingCertificate = _serverTlsOptions?.Certificate is null;
 
@@ -336,7 +333,7 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
                             throw new InvalidOperationException($"HTTP/3 requires HTTPS. Update inbound URL '{uri}' to use https:// or disable HTTP/3 for this listener.");
                         }
 
-                        Http3RuntimeGuards.EnsureServerSupport(url, _serverTlsOptions?.Certificate);
+                        Http3RuntimeGuards.EnsureServerSupport(uri.ToString(), _serverTlsOptions?.Certificate);
 
                         listenOptions.Protocols = HttpProtocols.Http1AndHttp2AndHttp3;
                         var enableAltSvc = http3RuntimeOptions?.EnableAltSvc;
@@ -347,7 +344,7 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
                             _ => false
                         };
 
-                        http3Endpoints?.Add(url);
+                        http3Endpoints?.Add(uri.ToString());
                     }
                     else
                     {
@@ -358,7 +355,7 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
                     {
                         if (_serverTlsOptions?.Certificate is null)
                         {
-                            throw new InvalidOperationException($"HTTPS binding requested for '{url}' but no HTTP server TLS certificate was configured.");
+                            throw new InvalidOperationException($"HTTPS binding requested for '{uri}' but no HTTP server TLS certificate was configured.");
                         }
 
                         var httpsOptions = new HttpsConnectionAdapterOptions

@@ -138,28 +138,44 @@ The `DuplexStreamCallContext` (reachable via `call.Context`) records request and
 
 ## Calling Streaming Procedures
 
-Clients are created from a running dispatcher through extension helpers:
+Clients are created from a running dispatcher through extension helpers. Each helper returns a Hugo `Result<TClient>` so failures (missing codec/outbound) stay in the functional pipeline instead of throwing:
 
 ```csharp
-var streamClient = dispatcher.CreateStreamClient<TickerRequest, TickerUpdate>("telemetry", codec);
-await foreach (var update in streamClient.CallAsync(request, new StreamCallOptions(StreamDirection.Server), ct))
+var streamClientResult = dispatcher.CreateStreamClient<TickerRequest, TickerUpdate>("telemetry", codec);
+if (streamClientResult.IsFailure)
 {
-    Console.WriteLine(update.Body.Symbol);
+    return streamClientResult; // propagate or log
 }
 
-var clientStream = dispatcher.CreateClientStreamClient<MetricSample, Aggregate>("analytics", codec);
-await using var session = await clientStream.StartAsync(request.Meta, ct);
+var streamClient = streamClientResult.Value;
+await foreach (var update in streamClient.CallAsync(request, new StreamCallOptions(StreamDirection.Server), ct))
+{
+    Console.WriteLine(update.ValueOrChecked().Body.Symbol);
+}
+
+var clientStreamResult = dispatcher.CreateClientStreamClient<MetricSample, Aggregate>("analytics", codec);
+if (clientStreamResult.IsFailure)
+{
+    return clientStreamResult;
+}
+
+await using var session = await clientStreamResult.Value.StartAsync(request.Meta, ct);
 await session.WriteAsync(sample1, ct);
 await session.WriteAsync(sample2, ct);
 await session.CompleteAsync(ct);
 var result = await session.Response;
 
-var duplexClient = dispatcher.CreateDuplexStreamClient<ChatMessage, ChatEvent>("chat", codec);
-await using var chat = await duplexClient.StartAsync(request.Meta, ct);
+var duplexResult = dispatcher.CreateDuplexStreamClient<ChatMessage, ChatEvent>("chat", codec);
+if (duplexResult.IsFailure)
+{
+    return duplexResult;
+}
+
+await using var chat = await duplexResult.Value.StartAsync(request.Meta, ct);
 await chat.WriteAsync(new ChatMessage("hello"), ct);
 await foreach (var evt in chat.ReadResponsesAsync(ct))
 {
-    Console.WriteLine(evt.Body.Text);
+    Console.WriteLine(evt.ValueOrChecked().Body.Text);
 }
 ```
 

@@ -84,7 +84,7 @@ internal static partial class DispatcherConfigMapper
             var tls = ParseHttpTls(http.Tls);
 
             var inboundResult = HttpInbound.TryCreate(
-                http.Urls.Select(url => new Uri(url, UriKind.Absolute)),
+                http.Urls,
                 configureServices: null,
                 configureApp: null,
                 serverRuntimeOptions: runtime,
@@ -116,7 +116,7 @@ internal static partial class DispatcherConfigMapper
             var tls = ParseGrpcTls(grpc.Tls);
 
             var inboundResult = GrpcInbound.TryCreate(
-                grpc.Urls.Select(url => new Uri(url, UriKind.Absolute)),
+                grpc.Urls,
                 configureServices: null,
                 serverRuntimeOptions: runtime,
                 serverTlsOptions: tls,

@@ -14,7 +14,10 @@ public class DispatcherClientExtensionsTests
         var dispatcher = CreateDispatcher(out var unaryOutbound);
         var codec = new TestHelpers.TestCodec<string, string>();
 
-        var client = dispatcher.CreateUnaryClient("downstream", codec);
+        var clientResult = dispatcher.CreateUnaryClient("downstream", codec);
+
+        Assert.True(clientResult.IsSuccess);
+        var client = clientResult.Value;
 
         Assert.IsType<UnaryClient<string, string>>(client);
         Assert.False(unaryOutbound.ReceivedCalls().Any());
@@ -27,18 +30,23 @@ public class DispatcherClientExtensionsTests
         var codec = new TestHelpers.TestCodec<string, string>();
         dispatcher.Codecs.RegisterOutbound("downstream", "echo", ProcedureKind.Unary, codec);
 
-        var client = dispatcher.CreateUnaryClient<string, string>("downstream", "echo");
+        var clientResult = dispatcher.CreateUnaryClient<string, string>("downstream", "echo");
+
+        Assert.True(clientResult.IsSuccess);
+        var client = clientResult.Value;
 
         Assert.IsType<UnaryClient<string, string>>(client);
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
-    public void CreateDuplexClient_WhenOutboundMissing_Throws()
+    public void CreateDuplexClient_WhenOutboundMissing_ReturnsFailure()
     {
         var dispatcher = new Dispatcher(new DispatcherOptions("svc"));
 
-        Assert.Throws<ResultException>(() =>
-            dispatcher.CreateDuplexStreamClient<string, string>("remote", new TestHelpers.TestCodec<string, string>()));
+        var result = dispatcher.CreateDuplexStreamClient<string, string>("remote", new TestHelpers.TestCodec<string, string>());
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("dispatcher.outbound.not_found", result.Error?.Code);
     }
 
     private static Dispatcher CreateDispatcher(out IUnaryOutbound unaryOutbound)

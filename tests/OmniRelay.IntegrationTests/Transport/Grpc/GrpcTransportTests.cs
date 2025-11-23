@@ -178,7 +178,7 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
         await using var dispatcherHost = await StartDispatcherAsync(nameof(ServerStreaming_OverGrpcTransport), dispatcher, ct);
         await WaitForGrpcReadyAsync(address, ct);
 
-        var client = dispatcher.CreateStreamClient("stream", codec);
+        var client = RequireClient(dispatcher.CreateStreamClient("stream", codec));
         var requestMeta = new RequestMeta(
             service: "stream",
             procedure: "stream::events",
@@ -526,7 +526,7 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
         await using var dispatcherHost = await StartDispatcherAsync(nameof(ServerStreaming_ErrorMidStream_PropagatesToClient), dispatcher, ct);
         await WaitForGrpcReadyAsync(address, ct);
 
-        var client = dispatcher.CreateStreamClient("stream", codec);
+        var client = RequireClient(dispatcher.CreateStreamClient("stream", codec));
         var requestMeta = new RequestMeta(
             service: "stream",
             procedure: "stream::fails",
@@ -786,7 +786,7 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
         await WaitForGrpcReadyAsync(address, ct);
 
         var rawCodec = new RawCodec();
-        var client = dispatcher.CreateStreamClient<byte[], byte[]>("stream-limit", rawCodec);
+        var client = RequireClient(dispatcher.CreateStreamClient<byte[], byte[]>("stream-limit", rawCodec));
         var requestMeta = new RequestMeta(
             service: "stream-limit",
             procedure: "stream::oversized",
@@ -857,7 +857,7 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
         await using var dispatcherHost = await StartDispatcherAsync(nameof(ClientStreaming_OverGrpcTransport), dispatcher, ct);
         await WaitForGrpcReadyAsync(address, ct);
 
-        var client = dispatcher.CreateClientStreamClient("stream", codec);
+        var client = RequireClient(dispatcher.CreateClientStreamClient("stream", codec));
 
         var requestMeta = new RequestMeta(
             service: "stream",
@@ -916,7 +916,7 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
         await using var dispatcherHost = await StartDispatcherAsync(nameof(ClientStreaming_CancellationFromClient), dispatcher, ct);
         await WaitForGrpcReadyAsync(address, ct);
 
-        var client = dispatcher.CreateClientStreamClient("stream", codec);
+        var client = RequireClient(dispatcher.CreateClientStreamClient("stream", codec));
         var requestMeta = new RequestMeta(service: "stream", procedure: "stream::aggregate", encoding: codec.Encoding, transport: "grpc");
 
         var streamResult = await client.StartAsync(requestMeta, ct);
@@ -965,7 +965,7 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
         await using var dispatcherHost = await StartDispatcherAsync(nameof(ClientStreaming_DeadlineExceededMapsStatus), dispatcher, ct);
         await WaitForGrpcReadyAsync(address, ct);
 
-        var client = dispatcher.CreateClientStreamClient("stream", codec);
+        var client = RequireClient(dispatcher.CreateClientStreamClient("stream", codec));
         var requestMeta = new RequestMeta(
             service: "stream",
             procedure: "stream::deadline",
@@ -1030,7 +1030,7 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
         await using var dispatcherHost = await StartDispatcherAsync(nameof(ClientStreaming_LargePayloadChunks), dispatcher, ct);
         await WaitForGrpcReadyAsync(address, ct);
 
-        var client = dispatcher.CreateClientStreamClient("stream", codec);
+        var client = RequireClient(dispatcher.CreateClientStreamClient("stream", codec));
         var requestMeta = new RequestMeta(service: "stream", procedure: "stream::huge", encoding: codec.Encoding, transport: "grpc");
 
         var streamResult = await client.StartAsync(requestMeta, ct);
@@ -1100,7 +1100,7 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
         await using var dispatcherHost = await StartDispatcherAsync(nameof(ClientStreaming_ServerErrorPropagatesToClient), dispatcher, ct);
         await WaitForGrpcReadyAsync(address, ct);
 
-        var client = dispatcher.CreateClientStreamClient("stream", codec);
+        var client = RequireClient(dispatcher.CreateClientStreamClient("stream", codec));
         var requestMeta = new RequestMeta(
             service: "stream",
             procedure: "stream::server-error",
@@ -1174,7 +1174,7 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
         await using var dispatcherHost = await StartDispatcherAsync(nameof(Unary_ClientInterceptorExecutes), dispatcher, ct);
         await WaitForGrpcReadyAsync(address, ct);
 
-        var client = dispatcher.CreateUnaryClient("intercept", codec);
+        var client = RequireClient(dispatcher.CreateUnaryClient("intercept", codec));
         var requestMeta = new RequestMeta(
             service: "intercept",
             procedure: "intercept::echo",
@@ -1235,7 +1235,7 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
         await using var dispatcherHost = await StartDispatcherAsync(nameof(Unary_ServerInterceptorExecutes), dispatcher, ct);
         await WaitForGrpcReadyAsync(address, ct);
 
-        var client = dispatcher.CreateUnaryClient("server-intercept", codec);
+        var client = RequireClient(dispatcher.CreateUnaryClient("server-intercept", codec));
         var requestMeta = new RequestMeta(
             service: "server-intercept",
             procedure: "server-intercept::echo",
@@ -1292,7 +1292,7 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
 
         await WaitForGrpcReadyAsync(address, ct);
 
-        var client = dispatcher.CreateUnaryClient("echo", codec);
+        var client = RequireClient(dispatcher.CreateUnaryClient("echo", codec));
         var requestMeta = new RequestMeta(
             service: "echo",
             procedure: "ping",
@@ -1342,7 +1342,7 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
         await using var dispatcherHost = await StartDispatcherAsync(nameof(OnewayRoundtrip_OverGrpcTransport), dispatcher, ct);
         await WaitForGrpcReadyAsync(address, ct);
 
-        var client = dispatcher.CreateOnewayClient("audit", codec);
+        var client = RequireClient(dispatcher.CreateOnewayClient("audit", codec));
         var requestMeta = new RequestMeta(
             service: "audit",
             procedure: "audit::record",
@@ -1434,7 +1434,7 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
         await using var dispatcherHost = await StartDispatcherAsync(nameof(DuplexStreaming_OverGrpcTransport), dispatcher, ct);
         await WaitForGrpcReadyAsync(address, ct);
 
-        var client = dispatcher.CreateDuplexStreamClient("chat", codec);
+        var client = RequireClient(dispatcher.CreateDuplexStreamClient("chat", codec));
         var requestMeta = new RequestMeta(
             service: "chat",
             procedure: "chat::talk",
@@ -1504,7 +1504,7 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
         await WaitForGrpcReadyAsync(address, ct);
 
         var rawCodec = new RawCodec();
-        var client = dispatcher.CreateDuplexStreamClient<byte[], byte[]>("chat-limit", rawCodec);
+        var client = RequireClient(dispatcher.CreateDuplexStreamClient<byte[], byte[]>("chat-limit", rawCodec));
         var requestMeta = new RequestMeta(
             service: "chat-limit",
             procedure: "chat::oversized",
@@ -1593,7 +1593,7 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
         await using var dispatcherHost = await StartDispatcherAsync(nameof(DuplexStreaming_ServerCancellationPropagatesToClient), dispatcher, ct);
         await WaitForGrpcReadyAsync(address, ct);
 
-        var client = dispatcher.CreateDuplexStreamClient("chat", codec);
+        var client = RequireClient(dispatcher.CreateDuplexStreamClient("chat", codec));
         var requestMeta = new RequestMeta(
             service: "chat",
             procedure: "chat::cancel",
@@ -1715,7 +1715,7 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
         await using var dispatcherHost = await StartDispatcherAsync(nameof(DuplexStreaming_ClientCancellationPropagatesToServer), dispatcher, ct);
         await WaitForGrpcReadyAsync(address, ct);
 
-        var client = dispatcher.CreateDuplexStreamClient("chat", codec);
+        var client = RequireClient(dispatcher.CreateDuplexStreamClient("chat", codec));
         var requestMeta = new RequestMeta(
             service: "chat",
             procedure: "chat::client-cancel",
@@ -1832,7 +1832,7 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
         await WaitForGrpcReadyAsync(address, ct);
 
         {
-            var client = dispatcher.CreateDuplexStreamClient("chat", codec);
+            var client = RequireClient(dispatcher.CreateDuplexStreamClient("chat", codec));
             var requestMeta = new RequestMeta(
                 service: "chat",
                 procedure: "chat::flow",
@@ -1912,7 +1912,7 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
         await using var dispatcherHost = await StartDispatcherAsync(nameof(Unary_PropagatesMetadataBetweenClientAndServer), dispatcher, ct);
         await WaitForGrpcReadyAsync(address, ct);
 
-        var client = dispatcher.CreateUnaryClient("echo", codec);
+        var client = RequireClient(dispatcher.CreateUnaryClient("echo", codec));
         var deadline = DateTimeOffset.UtcNow.AddSeconds(2);
         var ttl = TimeSpan.FromSeconds(5);
 
@@ -2025,7 +2025,7 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
         await WaitForGrpcReadyAsync(address, ct);
 
         {
-            var client = dispatcher.CreateStreamClient("stream", codec);
+            var client = RequireClient(dispatcher.CreateStreamClient("stream", codec));
             var deadline = DateTimeOffset.UtcNow.AddSeconds(3);
 
             var requestMeta = new RequestMeta(
@@ -2637,25 +2637,32 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
         }
     }
 
-    internal sealed record EchoRequest(string Message)
+    private static TClient RequireClient<TClient>(Result<TClient> result)
     {
-        public string Message { get; init; } = Message;
+        result.IsSuccess.ShouldBeTrue(result.Error?.Message);
+        return result.Value;
     }
+}
 
-    internal sealed record EchoResponse
-    {
-        public string Message { get; init; } = string.Empty;
-    }
+internal sealed record EchoRequest(string Message)
+{
+    public string Message { get; init; } = Message;
+}
 
-    internal sealed record AggregateChunk(int Amount)
-    {
-        public int Amount { get; init; } = Amount;
-    }
+internal sealed record EchoResponse
+{
+    public string Message { get; init; } = string.Empty;
+}
 
-    internal sealed record AggregateResponse(int TotalAmount)
-    {
-        public int TotalAmount { get; init; } = TotalAmount;
-    }
+internal sealed record AggregateChunk(int Amount)
+{
+    public int Amount { get; init; } = Amount;
+}
+
+internal sealed record AggregateResponse(int TotalAmount)
+{
+    public int TotalAmount { get; init; } = TotalAmount;
+}
 
     internal sealed record ChatMessage(string Message)
     {

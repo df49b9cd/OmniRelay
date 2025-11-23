@@ -84,28 +84,72 @@ public static class TestServiceOmniRelay
         public ValueTask<Result<Response<global::OmniRelay.Tests.Protos.UnaryResponse>>> UnaryCallAsync(global::OmniRelay.Tests.Protos.UnaryRequest request, RequestMeta? meta = null, CancellationToken cancellationToken = default)
         {
             var requestMeta = PrepareRequestMeta(meta, _service, "UnaryCall", __UnaryCallCodec.Encoding);
-            var client = _unaryCallUnaryClient ??= _dispatcher.CreateUnaryClient<global::OmniRelay.Tests.Protos.UnaryRequest, global::OmniRelay.Tests.Protos.UnaryResponse>(_service, __UnaryCallCodec, _outboundKey);
+            var client = _unaryCallUnaryClient;
+            if (client is null)
+            {
+                var createResult = _dispatcher.CreateUnaryClient<global::OmniRelay.Tests.Protos.UnaryRequest, global::OmniRelay.Tests.Protos.UnaryResponse>(_service, __UnaryCallCodec, _outboundKey);
+                if (createResult.IsFailure)
+                {
+                    return ValueTask.FromResult(Result.Fail<Response<global::OmniRelay.Tests.Protos.UnaryResponse>>(createResult.Error!));
+                }
+
+                client = _unaryCallUnaryClient = createResult.Value;
+            }
+
             return client.CallAsync(new Request<global::OmniRelay.Tests.Protos.UnaryRequest>(requestMeta, request), cancellationToken);
         }
 
         public IAsyncEnumerable<Result<Response<global::OmniRelay.Tests.Protos.StreamResponse>>> ServerStreamAsync(global::OmniRelay.Tests.Protos.StreamRequest request, RequestMeta? meta = null, CancellationToken cancellationToken = default)
         {
             var requestMeta = PrepareRequestMeta(meta, _service, "ServerStream", __ServerStreamCodec.Encoding);
-            var client = _serverStreamStreamClient ??= _dispatcher.CreateStreamClient<global::OmniRelay.Tests.Protos.StreamRequest, global::OmniRelay.Tests.Protos.StreamResponse>(_service, __ServerStreamCodec, _outboundKey);
+            var client = _serverStreamStreamClient;
+            if (client is null)
+            {
+                var createResult = _dispatcher.CreateStreamClient<global::OmniRelay.Tests.Protos.StreamRequest, global::OmniRelay.Tests.Protos.StreamResponse>(_service, __ServerStreamCodec, _outboundKey);
+                if (createResult.IsFailure)
+                {
+                    return StreamFailure<global::OmniRelay.Tests.Protos.StreamResponse>(createResult.Error!);
+                }
+
+                client = _serverStreamStreamClient = createResult.Value;
+            }
+
             return client.CallAsync(new Request<global::OmniRelay.Tests.Protos.StreamRequest>(requestMeta, request), new StreamCallOptions(StreamDirection.Server), cancellationToken);
         }
 
         public ValueTask<Result<ClientStreamClient<global::OmniRelay.Tests.Protos.StreamRequest, global::OmniRelay.Tests.Protos.UnaryResponse>.ClientStreamSession>> ClientStreamAsync(RequestMeta? meta = null, CancellationToken cancellationToken = default)
         {
             var requestMeta = PrepareRequestMeta(meta, _service, "ClientStream", __ClientStreamCodec.Encoding);
-            var client = _clientStreamClientStream ??= _dispatcher.CreateClientStreamClient<global::OmniRelay.Tests.Protos.StreamRequest, global::OmniRelay.Tests.Protos.UnaryResponse>(_service, __ClientStreamCodec, _outboundKey);
+            var client = _clientStreamClientStream;
+            if (client is null)
+            {
+                var createResult = _dispatcher.CreateClientStreamClient<global::OmniRelay.Tests.Protos.StreamRequest, global::OmniRelay.Tests.Protos.UnaryResponse>(_service, __ClientStreamCodec, _outboundKey);
+                if (createResult.IsFailure)
+                {
+                    return ValueTask.FromResult(Result.Fail<ClientStreamClient<global::OmniRelay.Tests.Protos.StreamRequest, global::OmniRelay.Tests.Protos.UnaryResponse>.ClientStreamSession>(createResult.Error!));
+                }
+
+                client = _clientStreamClientStream = createResult.Value;
+            }
+
             return client.StartAsync(requestMeta, cancellationToken);
         }
 
         public ValueTask<Result<DuplexStreamClient<global::OmniRelay.Tests.Protos.StreamRequest, global::OmniRelay.Tests.Protos.StreamResponse>.DuplexStreamSession>> DuplexStreamAsync(RequestMeta? meta = null, CancellationToken cancellationToken = default)
         {
             var requestMeta = PrepareRequestMeta(meta, _service, "DuplexStream", __DuplexStreamCodec.Encoding);
-            var client = _duplexStreamDuplexClient ??= _dispatcher.CreateDuplexStreamClient<global::OmniRelay.Tests.Protos.StreamRequest, global::OmniRelay.Tests.Protos.StreamResponse>(_service, __DuplexStreamCodec, _outboundKey);
+            var client = _duplexStreamDuplexClient;
+            if (client is null)
+            {
+                var createResult = _dispatcher.CreateDuplexStreamClient<global::OmniRelay.Tests.Protos.StreamRequest, global::OmniRelay.Tests.Protos.StreamResponse>(_service, __DuplexStreamCodec, _outboundKey);
+                if (createResult.IsFailure)
+                {
+                    return ValueTask.FromResult(Result.Fail<DuplexStreamClient<global::OmniRelay.Tests.Protos.StreamRequest, global::OmniRelay.Tests.Protos.StreamResponse>.DuplexStreamSession>(createResult.Error!));
+                }
+
+                client = _duplexStreamDuplexClient = createResult.Value;
+            }
+
             return client.StartAsync(requestMeta, cancellationToken);
         }
 
@@ -130,6 +174,10 @@ public static class TestServiceOmniRelay
                 value = value with { Encoding = encoding };
             }
             return value;
+        }
+        private static async IAsyncEnumerable<Result<Response<TResponse>>> StreamFailure<TResponse>(Error error)
+        {
+            yield return Result.Fail<Response<TResponse>>(error);
         }
     }
 

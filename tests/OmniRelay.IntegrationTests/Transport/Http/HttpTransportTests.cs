@@ -59,7 +59,9 @@ public sealed class HttpTransportTests(ITestOutputHelper output) : TransportInte
         await using var host = await StartDispatcherAsync(nameof(UnaryRoundtrip_EncodesAndDecodesPayload), dispatcher, ct);
         await WaitForHttpEndpointReadyAsync(baseAddress, ct);
 
-        var client = host.Dispatcher.CreateUnaryClient<EchoRequest, EchoResponse>("echo", codec);
+        var clientResult = host.Dispatcher.CreateUnaryClient<EchoRequest, EchoResponse>("echo", codec);
+        clientResult.IsSuccess.ShouldBeTrue(clientResult.Error?.Message);
+        var client = clientResult.Value;
 
         var requestMeta = new RequestMeta(
             service: "echo",
@@ -127,7 +129,9 @@ public sealed class HttpTransportTests(ITestOutputHelper output) : TransportInte
         await using var host = await StartDispatcherAsync(nameof(OnewayRoundtrip_SucceedsWithAck), dispatcher, ct);
         await WaitForHttpEndpointReadyAsync(baseAddress, ct);
 
-        var client = host.Dispatcher.CreateOnewayClient<EchoRequest>("echo", codec);
+        var onewayResult = host.Dispatcher.CreateOnewayClient<EchoRequest>("echo", codec);
+        onewayResult.IsSuccess.ShouldBeTrue(onewayResult.Error?.Message);
+        var client = onewayResult.Value;
         var requestMeta = new RequestMeta(
             service: "echo",
             procedure: "notify",
@@ -450,7 +454,9 @@ public sealed class HttpTransportTests(ITestOutputHelper output) : TransportInte
         await using var host = await StartDispatcherAsync(nameof(DuplexStreaming_OverHttpWebSocket), dispatcher, ct);
         await WaitForHttpEndpointReadyAsync(baseAddress, ct);
 
-        var client = host.Dispatcher.CreateDuplexStreamClient<ChatMessage, ChatMessage>("chat", codec);
+        var duplexResult = host.Dispatcher.CreateDuplexStreamClient<ChatMessage, ChatMessage>("chat", codec);
+        duplexResult.IsSuccess.ShouldBeTrue(duplexResult.Error?.Message);
+        var client = duplexResult.Value;
         var requestMeta = new RequestMeta(
             service: "chat",
             procedure: "chat::echo",
@@ -513,7 +519,9 @@ public sealed class HttpTransportTests(ITestOutputHelper output) : TransportInte
         await using var host = await StartDispatcherAsync(nameof(DuplexStreaming_ServerCancels_PropagatesToClient), dispatcher, ct);
         await WaitForHttpEndpointReadyAsync(baseAddress, ct);
 
-        var client = host.Dispatcher.CreateDuplexStreamClient<ChatMessage, ChatMessage>("chat", codec);
+        var duplexResult = host.Dispatcher.CreateDuplexStreamClient<ChatMessage, ChatMessage>("chat", codec);
+        duplexResult.IsSuccess.ShouldBeTrue(duplexResult.Error?.Message);
+        var client = duplexResult.Value;
         var requestMeta = new RequestMeta(
             service: "chat",
             procedure: "chat::echo",

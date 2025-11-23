@@ -1,5 +1,6 @@
 using Grpc.Core;
 using Grpc.Core.Interceptors;
+using Hugo;
 
 namespace OmniRelay.Transport.Security;
 

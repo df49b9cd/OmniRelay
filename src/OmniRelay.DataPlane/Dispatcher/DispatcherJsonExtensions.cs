@@ -173,7 +173,7 @@ public static class DispatcherJsonExtensions
     /// <summary>
     /// Creates a JSON unary client for a service/procedure, optionally customizing the codec and outbound key.
     /// </summary>
-    public static UnaryClient<TRequest, TResponse> CreateJsonClient<TRequest, TResponse>(
+    public static Result<UnaryClient<TRequest, TResponse>> CreateJsonClient<TRequest, TResponse>(
         this Dispatcher dispatcher,
         string service,
         string procedure,

@@ -38,10 +38,13 @@ public class DispatcherJsonExtensionsTests
         options.AddUnaryOutbound("downstream", null, Substitute.For<IUnaryOutbound>());
         var dispatcher = new Dispatcher(options);
 
-        var client = dispatcher.CreateJsonClient<JsonDocument, JsonDocument>(
+        var clientResult = dispatcher.CreateJsonClient<JsonDocument, JsonDocument>(
             "downstream",
             "echo",
             aliases: ["alias"]);
+
+        Assert.True(clientResult.IsSuccess, clientResult.Error?.Message);
+        var client = clientResult.Value;
 
         Assert.IsType<Core.Clients.UnaryClient<JsonDocument, JsonDocument>>(client);
         Assert.True(dispatcher.Codecs.TryResolve<JsonDocument, JsonDocument>(ProcedureCodecScope.Outbound, "downstream", "echo", ProcedureKind.Unary, out _));
@@ -57,7 +60,10 @@ public class DispatcherJsonExtensionsTests
         var codec = new TestHelpers.TestCodec<JsonDocument, JsonDocument>();
         dispatcher.Codecs.RegisterOutbound("downstream", "echo", ProcedureKind.Unary, codec);
 
-        var client = dispatcher.CreateJsonClient<JsonDocument, JsonDocument>("downstream", "echo");
+        var clientResult = dispatcher.CreateJsonClient<JsonDocument, JsonDocument>("downstream", "echo");
+
+        Assert.True(clientResult.IsSuccess, clientResult.Error?.Message);
+        var client = clientResult.Value;
 
         Assert.IsType<Core.Clients.UnaryClient<JsonDocument, JsonDocument>>(client);
     }
@@ -78,8 +84,11 @@ public class DispatcherJsonExtensionsTests
         var first = dispatcher.CreateJsonClient<JsonDocument, JsonDocument>("downstream", "echo", configure);
         var second = dispatcher.CreateJsonClient<JsonDocument, JsonDocument>("downstream", "echo", configure);
 
-        Assert.NotNull(first);
-        Assert.NotNull(second);
+        Assert.True(first.IsSuccess, first.Error?.Message);
+        Assert.True(second.IsSuccess, second.Error?.Message);
+
+        Assert.NotNull(first.Value);
+        Assert.NotNull(second.Value);
         Assert.Equal(1, configureInvocations);
     }
 }

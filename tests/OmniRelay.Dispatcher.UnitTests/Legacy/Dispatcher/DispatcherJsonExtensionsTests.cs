@@ -86,10 +86,13 @@ public class DispatcherJsonExtensionsTests
         options.AddUnaryOutbound("remote", null, outbound);
         var dispatcher = new OmniRelay.Dispatcher.Dispatcher(options);
 
-        var client = dispatcher.CreateJsonClient<JsonEchoRequest, JsonEchoResponse>(
+        var clientResult = dispatcher.CreateJsonClient<JsonEchoRequest, JsonEchoResponse>(
             "remote",
             "echo::greet",
             codec => codec.Encoding = "application/json");
+
+        Assert.True(clientResult.IsSuccess, clientResult.Error?.Message);
+        var client = clientResult.Value;
 
         var meta = new RequestMeta(service: "remote", procedure: "echo::greet", transport: "test");
         var request = new Request<JsonEchoRequest>(meta, new JsonEchoRequest("sally"));
@@ -148,10 +151,12 @@ public class DispatcherJsonExtensionsTests
             encoding: "application/json");
         dispatcher.Codecs.RegisterOutbound("remote", "svc::op", ProcedureKind.Unary, codec);
 
-        var client = dispatcher.CreateJsonClient<JsonEchoRequest, JsonEchoResponse>(
+        var clientResult = dispatcher.CreateJsonClient<JsonEchoRequest, JsonEchoResponse>(
             "remote",
             "svc::op",
             configureCodec: null);
+        Assert.True(clientResult.IsSuccess, clientResult.Error?.Message);
+        var client = clientResult.Value;
 
         var meta = new RequestMeta(service: "remote", procedure: "svc::op", transport: "test");
         var response = await client.CallAsync(new Request<JsonEchoRequest>(meta, new JsonEchoRequest("lane")), TestContext.Current.CancellationToken);
@@ -174,7 +179,7 @@ public class DispatcherJsonExtensionsTests
         options.AddUnaryOutbound("remote", null, outbound);
         var dispatcher = new OmniRelay.Dispatcher.Dispatcher(options);
 
-        var client = dispatcher.CreateJsonClient<JsonEchoRequest, JsonEchoResponse>(
+        var clientResult = dispatcher.CreateJsonClient<JsonEchoRequest, JsonEchoResponse>(
             "remote",
             "svc::register",
             codec =>
@@ -185,7 +190,8 @@ public class DispatcherJsonExtensionsTests
             outboundKey: null,
             aliases: ["svc::alias"]);
 
-        Assert.NotNull(client);
+        Assert.True(clientResult.IsSuccess, clientResult.Error?.Message);
+        Assert.NotNull(clientResult.Value);
 
         Assert.True(dispatcher.Codecs.TryResolve<JsonEchoRequest, JsonEchoResponse>(
             ProcedureCodecScope.Outbound,
