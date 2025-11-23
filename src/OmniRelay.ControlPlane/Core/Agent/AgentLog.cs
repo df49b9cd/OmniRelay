@@ -30,4 +30,13 @@ internal static partial class AgentLog
 
     [LoggerMessage(EventId = 9, Level = LogLevel.Information, Message = "config applied (stub) version={Version} size={Size}")]
     internal static partial void ConfigAppliedStub(ILogger logger, string version, int size);
+
+    [LoggerMessage(EventId = 10, Level = LogLevel.Warning, Message = "control watch error code={Code} message={Message}")]
+    internal static partial void ControlWatchError(ILogger logger, string Code, string? Message);
+
+    [LoggerMessage(EventId = 11, Level = LogLevel.Debug, Message = "control watch resume_token version={Version} epoch={Epoch}")]
+    internal static partial void ControlWatchResume(ILogger logger, string Version, long Epoch);
+
+    [LoggerMessage(EventId = 12, Level = LogLevel.Debug, Message = "control backoff ms={Millis}")]
+    internal static partial void ControlBackoffApplied(ILogger logger, long Millis);
 }

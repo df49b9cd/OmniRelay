@@ -12,7 +12,7 @@ Define versioned protobuf schemas for control payloads and publish a compatibili
 - Contract tests ensure backward compatibility for minor changes.
 
 ## Status
-Open
+Done
 
 ## Testing Strategy
 - Unit: Cover new logic/config parsing/helpers introduced by this item.

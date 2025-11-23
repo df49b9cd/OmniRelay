@@ -2,6 +2,9 @@
 
 Split into iteration-sized stories (A–D).
 
+## Status
+Done (Phase 1 complete; Phase 2 deferred)
+
 ## Child Stories
 - **WORK-003A** – DSL host MVP (signed packages, opcode allowlist)
 - **WORK-003B** – Proxy-Wasm runtime selection & ABI support _(Deferred)_

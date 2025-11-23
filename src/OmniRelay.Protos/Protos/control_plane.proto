@@ -4,27 +4,54 @@ option csharp_namespace = "OmniRelay.Protos.Control";
 package omnirelay.control;
 
 // Capability-aware control-plane watch API (delta + snapshot).
+message CapabilitySet {
+  repeated string items = 1;
+  string build_epoch = 2; // e.g. git SHA or build timestamp for coarse compatibility hints.
+}
+
+message WatchResumeToken {
+  string version = 1;
+  int64 epoch = 2;
+  bytes opaque = 3;
+}
+
 message ControlWatchRequest {
   string node_id = 1;
-  repeated string capabilities = 2;
+  CapabilitySet capabilities = 2;
+  WatchResumeToken resume_token = 3;
+}
+
+message ControlBackoff {
+  int64 millis = 1;
+}
+
+message ControlError {
+  string code = 1;        // e.g. unsupported_capability, invalid_resume_token
+  string message = 2;     // human-readable explanation
+  string remediation = 3; // suggested fix
 }
 
 message ControlWatchResponse {
   string version = 1;
-  bytes payload = 2; // Serialized config bundle (routes/clusters/policies/extensions), TBD schema.
-  repeated string capabilities = 3; // Capabilities required for this payload.
+  int64 epoch = 2;
+  bytes payload = 3; // Serialized config bundle (routes/clusters/policies/extensions), TBD schema.
   bool full_snapshot = 4;
+  WatchResumeToken resume_token = 5;
+  ControlBackoff backoff = 6;
+  ControlError error = 7;
+  repeated string required_capabilities = 8; // Capabilities required for this payload.
 }
 
 message ControlSnapshotRequest {
   string node_id = 1;
-  repeated string capabilities = 2;
+  CapabilitySet capabilities = 2;
 }
 
 message ControlSnapshotResponse {
   string version = 1;
-  bytes payload = 2;
-  repeated string capabilities = 3;
+  int64 epoch = 2;
+  bytes payload = 3;
+  repeated string required_capabilities = 4;
 }
 
 service ControlPlaneWatch {

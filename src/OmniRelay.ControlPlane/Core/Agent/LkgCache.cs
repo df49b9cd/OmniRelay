@@ -8,25 +8,27 @@ public sealed class LkgCache
 {
     private readonly string _path;
 
-    internal sealed record LkgEnvelope(string Version, byte[] Payload);
+    internal sealed record LkgEnvelope(string Version, long Epoch, byte[] Payload, byte[] ResumeToken);
 
     public LkgCache(string path)
     {
         _path = path ?? throw new ArgumentNullException(nameof(path));
     }
 
-    public void Save(string version, byte[] payload)
+    public void Save(string version, long epoch, byte[] payload, byte[] resumeToken)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-        var envelope = new LkgEnvelope(version, payload);
+        var envelope = new LkgEnvelope(version, epoch, payload, resumeToken);
         var json = JsonSerializer.Serialize(envelope, LkgCacheJsonContext.Default.LkgEnvelope);
         File.WriteAllText(_path, json);
     }
 
-    public bool TryLoad(out string version, out byte[] payload)
+    public bool TryLoad(out string version, out long epoch, out byte[] payload, out byte[] resumeToken)
     {
         version = "";
+        epoch = 0;
         payload = Array.Empty<byte>();
+        resumeToken = Array.Empty<byte>();
         if (!File.Exists(_path))
         {
             return false;
@@ -40,7 +42,9 @@ public sealed class LkgCache
         }
 
         version = envelope.Version;
+        epoch = envelope.Epoch;
         payload = envelope.Payload;
+        resumeToken = envelope.ResumeToken;
         return true;
     }
 }

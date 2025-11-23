@@ -11,6 +11,9 @@ Split into iteration-sized stories (A–D).
 ## Definition of Done (epic)
 - Protocol implemented with negotiation, retries, and observability; used by MeshKit ↔ OmniRelay paths over mTLS.
 
+## Status
+Done
+
 ## Testing Strategy
 - Unit: Cover new logic/config parsing/helpers introduced by this item.
 - Integration: Exercise end-to-end behavior via test fixtures (hosts/agents/registry) relevant to this item.

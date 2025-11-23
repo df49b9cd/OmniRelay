@@ -12,7 +12,7 @@ Implement control watch streams over gRPC supporting deltas, snapshots, resume t
 - Backoff behavior observable via metrics/logs.
 
 ## Status
-Open
+Done
 
 ## Testing Strategy
 - Unit: Cover new logic/config parsing/helpers introduced by this item.

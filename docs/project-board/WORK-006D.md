@@ -13,7 +13,7 @@ Standardize errors, status codes, and observability for control streams.
 - Dashboards/metrics show stream health; tests assert expected signals on induced faults.
 
 ## Status
-Open
+Done
 
 ## Testing Strategy
 - Unit: Cover new logic/config parsing/helpers introduced by this item.

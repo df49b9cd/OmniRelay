@@ -13,7 +13,7 @@ Add capability exchange between OmniRelay/agents and MeshKit, tailoring payloads
 - Metrics/logs emitted for negotiation outcomes.
 
 ## Status
-Open
+Done
 
 ## Testing Strategy
 - Unit: Cover new logic/config parsing/helpers introduced by this item.

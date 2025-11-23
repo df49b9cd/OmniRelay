@@ -25,7 +25,15 @@ public sealed class MeshAgent : ILifecycle, IDisposable
         }
 
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var request = new ControlWatchRequest { NodeId = Environment.MachineName };
+        var request = new ControlWatchRequest
+        {
+            NodeId = Environment.MachineName,
+            Capabilities = new CapabilitySet
+            {
+                Items = { "core/v1", "dsl/v1" },
+                BuildEpoch = typeof(MeshAgent).Assembly.GetName().Version?.ToString() ?? "unknown"
+            }
+        };
         _watchTask = Task.Run(() => _harness.RunAsync(request, _cts.Token), _cts.Token);
     }
 
