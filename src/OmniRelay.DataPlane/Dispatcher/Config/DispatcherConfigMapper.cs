@@ -83,14 +83,21 @@ internal static partial class DispatcherConfigMapper
             var runtime = http.Runtime ?? new HttpServerRuntimeOptions();
             var tls = ParseHttpTls(http.Tls);
 
-            var inbound = new HttpInbound(
-                http.Urls.ToArray(),
+            var inboundResult = HttpInbound.TryCreate(
+                http.Urls.Select(url => new Uri(url, UriKind.Absolute)),
                 configureServices: null,
                 configureApp: null,
                 serverRuntimeOptions: runtime,
                 serverTlsOptions: tls,
                 transportSecurity: null,
                 authorizationEvaluator: null);
+
+            if (inboundResult.IsFailure)
+            {
+                throw new InvalidOperationException($"Failed to configure HTTP inbound '{name}': {inboundResult.Error?.Message}");
+            }
+
+            var inbound = inboundResult.Value;
 
             options.AddLifecycle(name, inbound);
         }
@@ -108,14 +115,21 @@ internal static partial class DispatcherConfigMapper
             var runtime = ParseGrpcRuntime(grpc.Runtime, interceptorAliases) ?? new GrpcServerRuntimeOptions { EnableDetailedErrors = grpc.EnableDetailedErrors };
             var tls = ParseGrpcTls(grpc.Tls);
 
-            var inbound = new GrpcInbound(
-                grpc.Urls.ToArray(),
+            var inboundResult = GrpcInbound.TryCreate(
+                grpc.Urls.Select(url => new Uri(url, UriKind.Absolute)),
                 configureServices: null,
                 serverRuntimeOptions: runtime,
                 serverTlsOptions: tls,
                 telemetryOptions: null,
                 transportSecurity: null,
                 authorizationEvaluator: null);
+
+            if (inboundResult.IsFailure)
+            {
+                throw new InvalidOperationException($"Failed to configure gRPC inbound '{name}': {inboundResult.Error?.Message}");
+            }
+
+            var inbound = inboundResult.Value;
 
             options.AddLifecycle(name, inbound);
         }
