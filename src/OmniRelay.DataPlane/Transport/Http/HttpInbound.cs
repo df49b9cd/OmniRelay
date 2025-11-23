@@ -1040,87 +1040,89 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
         long? maxInMemory,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            if (context.Request.ContentLength is { } contentLength)
+        return await Result.TryAsync(
+            async token =>
             {
-                if (maxInMemory is { } max && contentLength > max)
+                if (context.Request.ContentLength is { } contentLength)
                 {
-                    return Err<ReadOnlyMemory<byte>>(OmniRelayErrorAdapter.FromStatus(
-                        OmniRelayStatusCode.ResourceExhausted,
-                        "request body exceeds in-memory decode limit",
-                        transport: transport));
-                }
-
-                if (contentLength == 0)
-                {
-                    return Ok(ReadOnlyMemory<byte>.Empty);
-                }
-
-                if (contentLength > int.MaxValue)
-                {
-                    return Err<ReadOnlyMemory<byte>>(OmniRelayErrorAdapter.FromStatus(
-                        OmniRelayStatusCode.ResourceExhausted,
-                        "request body too large",
-                        transport: transport));
-                }
-
-                var buffer = new byte[(int)contentLength];
-                await context.Request.Body.ReadExactlyAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false);
-                return Ok((ReadOnlyMemory<byte>)buffer);
-            }
-
-            const int chunkSize = 81920;
-            long total = 0;
-            var writer = new ArrayBufferWriter<byte>(chunkSize);
-            var rented = ArrayPool<byte>.Shared.Rent(chunkSize);
-            try
-            {
-                while (true)
-                {
-                    var read = await context.Request.Body.ReadAsync(rented.AsMemory(0, chunkSize), cancellationToken).ConfigureAwait(false);
-                    if (read == 0)
+                    if (maxInMemory is { } max && contentLength > max)
                     {
-                        break;
-                    }
-
-                    total += read;
-
-                    if (maxInMemory is { } maxBytes && total > maxBytes)
-                    {
-                        return Err<ReadOnlyMemory<byte>>(OmniRelayErrorAdapter.FromStatus(
+                        throw new ResultException(OmniRelayErrorAdapter.FromStatus(
                             OmniRelayStatusCode.ResourceExhausted,
                             "request body exceeds in-memory decode limit",
                             transport: transport));
                     }
 
-                    if (total > int.MaxValue)
+                    if (contentLength == 0)
                     {
-                        return Err<ReadOnlyMemory<byte>>(OmniRelayErrorAdapter.FromStatus(
+                        return ReadOnlyMemory<byte>.Empty;
+                    }
+
+                    if (contentLength > int.MaxValue)
+                    {
+                        throw new ResultException(OmniRelayErrorAdapter.FromStatus(
                             OmniRelayStatusCode.ResourceExhausted,
                             "request body too large",
                             transport: transport));
                     }
 
-                    writer.Write(rented.AsSpan(0, read));
+                    var buffer = new byte[(int)contentLength];
+                    await context.Request.Body.ReadExactlyAsync(buffer.AsMemory(), token).ConfigureAwait(false);
+                    return (ReadOnlyMemory<byte>)buffer;
                 }
 
-                return Ok(writer.WrittenMemory);
-            }
-            finally
+                const int chunkSize = 81920;
+                long total = 0;
+                var writer = new ArrayBufferWriter<byte>(chunkSize);
+                var rented = ArrayPool<byte>.Shared.Rent(chunkSize);
+                try
+                {
+                    while (true)
+                    {
+                        var read = await context.Request.Body.ReadAsync(rented.AsMemory(0, chunkSize), token).ConfigureAwait(false);
+                        if (read == 0)
+                        {
+                            break;
+                        }
+
+                        total += read;
+
+                        if (maxInMemory is { } maxBytes && total > maxBytes)
+                        {
+                            throw new ResultException(OmniRelayErrorAdapter.FromStatus(
+                                OmniRelayStatusCode.ResourceExhausted,
+                                "request body exceeds in-memory decode limit",
+                                transport: transport));
+                        }
+
+                        if (total > int.MaxValue)
+                        {
+                            throw new ResultException(OmniRelayErrorAdapter.FromStatus(
+                                OmniRelayStatusCode.ResourceExhausted,
+                                "request body too large",
+                                transport: transport));
+                        }
+
+                        writer.Write(rented.AsSpan(0, read));
+                    }
+
+                    return writer.WrittenMemory;
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(rented);
+                }
+            },
+            cancellationToken: cancellationToken,
+            errorFactory: ex =>
             {
-                ArrayPool<byte>.Shared.Return(rented);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            return Err<ReadOnlyMemory<byte>>(Error.Canceled());
-        }
-        catch (Exception ex)
-        {
-            var omni = OmniRelayErrors.FromException(ex, transport);
-            return Err<ReadOnlyMemory<byte>>(omni.Error ?? Error.FromException(ex));
-        }
+                if (ex is OperationCanceledException)
+                {
+                    return Error.Canceled();
+                }
+
+                return OmniRelayErrors.FromException(ex, transport).Error ?? Error.FromException(ex);
+            }).ConfigureAwait(false);
     }
 
     private static async ValueTask<Result<Unit>> PumpServerStreamAsync(

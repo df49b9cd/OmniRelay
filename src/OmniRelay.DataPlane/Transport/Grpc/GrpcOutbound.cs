@@ -136,10 +136,10 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
             var invalidEndpoint = _addresses.FirstOrDefault(static uri => !uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase));
             if (invalidEndpoint is not null)
             {
-            return Err<GrpcOutbound>(OmniRelayErrorAdapter.FromStatus(
-                OmniRelayStatusCode.InvalidArgument,
-                $"HTTP/3 enabled for gRPC outbound '{remoteService}' but address '{invalidEndpoint}' is not HTTPS. Update configuration or disable HTTP/3.",
-                transport: GrpcTransportConstants.TransportName));
+                throw new ResultException(OmniRelayErrorAdapter.FromStatus(
+                    OmniRelayStatusCode.InvalidArgument,
+                    $"HTTP/3 enabled for gRPC outbound '{remoteService}' but address '{invalidEndpoint}' is not HTTPS. Update configuration or disable HTTP/3.",
+                    transport: GrpcTransportConstants.TransportName));
             }
         }
         _compressionOptions = compressionOptions;
@@ -157,7 +157,11 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
 
         if (_compressionOptions is { } compression)
         {
-            compression.Validate();
+            var validation = compression.Validate();
+            if (validation.IsFailure)
+            {
+                throw new ResultException(validation.Error!);
+            }
 
             var providers = compression.Providers.Count > 0
                 ? [.. compression.Providers]
