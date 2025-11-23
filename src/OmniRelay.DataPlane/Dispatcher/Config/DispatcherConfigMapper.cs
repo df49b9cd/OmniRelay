@@ -196,7 +196,7 @@ internal static partial class DispatcherConfigMapper
             }
             else
             {
-                var outbound = new GrpcOutbound(
+                var outboundResult = GrpcOutbound.TryCreate(
                     uriAddresses,
                     target.RemoteService ?? service,
                     clientTlsOptions: null,
@@ -205,6 +205,13 @@ internal static partial class DispatcherConfigMapper
                     peerCircuitBreakerOptions: null,
                     telemetryOptions: null,
                     endpointHttp3Support: null);
+
+                if (outboundResult.IsFailure)
+                {
+                    throw new InvalidOperationException($"Failed to create gRPC outbound for service '{service}': {outboundResult.Error?.Message}");
+                }
+
+                var outbound = outboundResult.Value;
 
                 switch (kind)
                 {

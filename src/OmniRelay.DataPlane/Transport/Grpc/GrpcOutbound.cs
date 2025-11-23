@@ -46,10 +46,171 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
     private readonly HashSet<string>? _compressionAlgorithms;
     private readonly string? _compressionHeaderValue;
     private volatile bool _started;
+    private static readonly Error AddressesNullError = Error.From("Addresses collection cannot be null.", "grpc.outbound.addresses_null");
+    private static readonly Error AddressesEmptyError = Error.From("At least one address must be provided for the gRPC outbound.", "grpc.outbound.addresses_empty");
     private CompositeClientInterceptor? _compositeClientInterceptor;
     private string? _interceptorService;
     private int _interceptorConfigured;
     private const string Http2FallbackMetadataKey = "omnirelay.grpc.force_http2";
+
+    private static Result<IReadOnlyList<Uri>> NormalizeAddresses(IEnumerable<Uri> addresses)
+    {
+        if (addresses is null)
+        {
+            return Err<IReadOnlyList<Uri>>(AddressesNullError);
+        }
+
+        var list = addresses
+            .Select(uri => uri ?? throw new ArgumentException("Peer address cannot be null.", nameof(addresses)))
+            .ToArray();
+
+        if (list.Length == 0)
+        {
+            return Err<IReadOnlyList<Uri>>(AddressesEmptyError);
+        }
+
+        return Ok((IReadOnlyList<Uri>)list);
+    }
+
+    /// <summary>
+    /// Preferred factory that performs validation and returns a result instead of throwing.
+    /// </summary>
+    public static Result<GrpcOutbound> TryCreate(
+        IEnumerable<Uri> addresses,
+        string remoteService,
+        GrpcChannelOptions? channelOptions = null,
+        GrpcClientTlsOptions? clientTlsOptions = null,
+        Func<IReadOnlyList<IPeer>, IPeerChooser>? peerChooser = null,
+        GrpcClientRuntimeOptions? clientRuntimeOptions = null,
+        GrpcCompressionOptions? compressionOptions = null,
+        PeerCircuitBreakerOptions? peerCircuitBreakerOptions = null,
+        GrpcTelemetryOptions? telemetryOptions = null,
+        IReadOnlyDictionary<Uri, bool>? endpointHttp3Support = null)
+    {
+        var normalized = NormalizeAddresses(addresses);
+        if (normalized.IsFailure)
+        {
+            return normalized.CastFailure<GrpcOutbound>();
+        }
+
+        if (string.IsNullOrWhiteSpace(remoteService))
+        {
+            return Err<GrpcOutbound>(Error.From(
+                "Remote service name must be provided.",
+                "grpc.outbound.remote_service_required"));
+        }
+
+        if (clientRuntimeOptions?.EnableHttp3 == true)
+        {
+            var invalid = normalized.Value.FirstOrDefault(uri => !uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase));
+            if (invalid is not null)
+            {
+                return Err<GrpcOutbound>(Error.From(
+                    $"HTTP/3 enabled for gRPC outbound '{remoteService}' but address '{invalid}' is not HTTPS. Update configuration or disable HTTP/3.",
+                    "grpc.outbound.h3_requires_https")
+                    .WithMetadata("address", invalid.ToString())
+                    .WithMetadata("service", remoteService));
+            }
+        }
+
+        if (compressionOptions is { })
+        {
+            var validated = compressionOptions.Validate();
+            if (validated.IsFailure)
+            {
+                return validated.CastFailure<GrpcOutbound>();
+            }
+        }
+
+        try
+        {
+            return Ok(new GrpcOutbound(
+                normalized.Value,
+                remoteService,
+                channelOptions,
+                clientTlsOptions,
+                peerChooser,
+                clientRuntimeOptions,
+                compressionOptions,
+                peerCircuitBreakerOptions,
+                telemetryOptions,
+                endpointHttp3Support));
+        }
+        catch (Exception ex)
+        {
+            return Err<GrpcOutbound>(Error.FromException(ex)
+                .WithMetadata("service", remoteService));
+        }
+    }
+
+    public static Result<GrpcOutbound> TryCreate(
+        Uri address,
+        string remoteService,
+        GrpcChannelOptions? channelOptions = null,
+        GrpcClientTlsOptions? clientTlsOptions = null,
+        Func<IReadOnlyList<IPeer>, IPeerChooser>? peerChooser = null,
+        GrpcClientRuntimeOptions? clientRuntimeOptions = null,
+        GrpcCompressionOptions? compressionOptions = null,
+        PeerCircuitBreakerOptions? peerCircuitBreakerOptions = null,
+        GrpcTelemetryOptions? telemetryOptions = null,
+        IReadOnlyDictionary<Uri, bool>? endpointHttp3Support = null) =>
+        TryCreate(
+            new[] { address },
+            remoteService,
+            channelOptions,
+            clientTlsOptions,
+            peerChooser,
+            clientRuntimeOptions,
+            compressionOptions,
+            peerCircuitBreakerOptions,
+            telemetryOptions,
+            endpointHttp3Support);
+
+    public static Result<GrpcOutbound> Create(
+        IEnumerable<Uri> addresses,
+        string remoteService,
+        GrpcChannelOptions? channelOptions = null,
+        GrpcClientTlsOptions? clientTlsOptions = null,
+        Func<IReadOnlyList<IPeer>, IPeerChooser>? peerChooser = null,
+        GrpcClientRuntimeOptions? clientRuntimeOptions = null,
+        GrpcCompressionOptions? compressionOptions = null,
+        PeerCircuitBreakerOptions? peerCircuitBreakerOptions = null,
+        GrpcTelemetryOptions? telemetryOptions = null,
+        IReadOnlyDictionary<Uri, bool>? endpointHttp3Support = null) =>
+        TryCreate(
+            addresses,
+            remoteService,
+            channelOptions,
+            clientTlsOptions,
+            peerChooser,
+            clientRuntimeOptions,
+            compressionOptions,
+            peerCircuitBreakerOptions,
+            telemetryOptions,
+            endpointHttp3Support);
+
+    public static Result<GrpcOutbound> Create(
+        Uri address,
+        string remoteService,
+        GrpcChannelOptions? channelOptions = null,
+        GrpcClientTlsOptions? clientTlsOptions = null,
+        Func<IReadOnlyList<IPeer>, IPeerChooser>? peerChooser = null,
+        GrpcClientRuntimeOptions? clientRuntimeOptions = null,
+        GrpcCompressionOptions? compressionOptions = null,
+        PeerCircuitBreakerOptions? peerCircuitBreakerOptions = null,
+        GrpcTelemetryOptions? telemetryOptions = null,
+        IReadOnlyDictionary<Uri, bool>? endpointHttp3Support = null) =>
+        TryCreate(
+            address,
+            remoteService,
+            channelOptions,
+            clientTlsOptions,
+            peerChooser,
+            clientRuntimeOptions,
+            compressionOptions,
+            peerCircuitBreakerOptions,
+            telemetryOptions,
+            endpointHttp3Support);
 
     /// <summary>
     /// Creates a gRPC outbound transport for a single peer address.
@@ -156,13 +317,6 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
 
         if (_compressionOptions is { } compression)
         {
-            var validation = compression.Validate();
-            if (validation.IsFailure)
-            {
-                var message = validation.Error?.Message ?? "Compression options are invalid.";
-                throw new ArgumentException(message, nameof(compressionOptions));
-            }
-
             var providers = compression.Providers.Count > 0
                 ? [.. compression.Providers]
                 : new List<ICompressionProvider>();

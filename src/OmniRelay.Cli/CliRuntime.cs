@@ -206,7 +206,13 @@ internal sealed class DefaultGrpcInvokerFactory : IGrpcInvokerFactory
 {
     public OmniRelay.Cli.Core.BenchmarkRunner.IGrpcInvoker Create(IReadOnlyList<Uri> addresses, string remoteService, GrpcClientRuntimeOptions? runtimeOptions)
     {
-        var outbound = new GrpcOutbound(addresses, remoteService, clientRuntimeOptions: runtimeOptions);
+        var outboundResult = GrpcOutbound.Create(addresses, remoteService, clientRuntimeOptions: runtimeOptions);
+        if (outboundResult.IsFailure)
+        {
+            throw new InvalidOperationException(outboundResult.Error?.Message ?? "Failed to create gRPC outbound.");
+        }
+
+        var outbound = outboundResult.Value;
         return new GrpcInvoker(outbound);
     }
 
