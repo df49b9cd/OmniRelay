@@ -66,12 +66,12 @@ public sealed class TeeUnaryOutbound : IUnaryOutbound, IOutboundDiagnostic, IDis
             LogLevel.Warning,
             new EventId(1001, "ShadowUnaryException"),
             "Shadow unary call threw for {Service}::{Procedure}");
-    private static readonly Action<ILogger, string> ShadowUnaryStopFailureLog =
-        LoggerMessage.Define<string>(
+    private static readonly Action<ILogger, string, Exception?, Exception?> ShadowUnaryStopFailureLog =
+        LoggerMessage.Define<string, Exception?>(
             LogLevel.Warning,
             new EventId(1002, "ShadowUnaryStopFailure"),
-            "tee unary stop returned failure: {Message}");
-    private static readonly Action<ILogger, Exception?> ShadowUnaryStopExceptionLog =
+            "tee unary stop returned failure: {Message}; Exception: {Exception}");
+    private static readonly Action<ILogger, Exception?, Exception?> ShadowUnaryStopExceptionLog =
         LoggerMessage.Define<Exception?>(
             LogLevel.Warning,
             new EventId(1003, "ShadowUnaryStopException"),
@@ -277,13 +277,13 @@ public sealed class TeeUnaryOutbound : IUnaryOutbound, IOutboundDiagnostic, IDis
         {
             while (exceptions.TryDequeue(out var ex))
             {
-                ShadowUnaryStopExceptionLog(_logger, ex);
+                ShadowUnaryStopExceptionLog(_logger, ex, null);
             }
         }
 
         if (waitResult.IsFailure && waitResult.Error is { } error)
         {
-            ShadowUnaryStopFailureLog(_logger, error.Message ?? "unknown", null);
+            ShadowUnaryStopFailureLog(_logger, error.Message ?? "unknown", null, null);
         }
     }
 
@@ -322,12 +322,12 @@ public sealed class TeeOnewayOutbound : IOnewayOutbound, IOutboundDiagnostic, ID
             LogLevel.Warning,
             new EventId(2001, "ShadowOnewayException"),
             "Shadow oneway call threw for {Service}::{Procedure}");
-    private static readonly Action<ILogger, string> ShadowOnewayStopFailureLog =
-        LoggerMessage.Define<string>(
+    private static readonly Action<ILogger, string, Exception?, Exception?> ShadowOnewayStopFailureLog =
+        LoggerMessage.Define<string, Exception?>(
             LogLevel.Warning,
             new EventId(2002, "ShadowOnewayStopFailure"),
-            "tee oneway stop returned failure: {Message}");
-    private static readonly Action<ILogger, Exception?> ShadowOnewayStopExceptionLog =
+            "tee oneway stop returned failure: {Message}; Exception: {Exception}");
+    private static readonly Action<ILogger, Exception?, Exception?> ShadowOnewayStopExceptionLog =
         LoggerMessage.Define<Exception?>(
             LogLevel.Warning,
             new EventId(2003, "ShadowOnewayStopException"),
@@ -533,13 +533,13 @@ public sealed class TeeOnewayOutbound : IOnewayOutbound, IOutboundDiagnostic, ID
         {
             while (exceptions.TryDequeue(out var ex))
             {
-                ShadowOnewayStopExceptionLog(_logger, ex);
+                ShadowOnewayStopExceptionLog(_logger, ex, null);
             }
         }
 
         if (waitResult.IsFailure && waitResult.Error is { } error)
         {
-            ShadowOnewayStopFailureLog(_logger, error.Message ?? "unknown", null);
+            ShadowOnewayStopFailureLog(_logger, error.Message ?? "unknown", null, null);
         }
     }
 
