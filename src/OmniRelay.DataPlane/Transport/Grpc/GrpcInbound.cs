@@ -30,7 +30,7 @@ namespace OmniRelay.Transport.Grpc;
 public sealed partial class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcServerInterceptorSink, INodeDrainParticipant
 {
     private static readonly Error UrlsRequired = Error.From("At least one URL must be provided for the gRPC inbound.", "grpc.inbound.urls_missing");
-    private readonly string[] _urls;
+    private readonly Uri[] _urls;
     private readonly Action<IServiceCollection>? _configureServices;
     private readonly Action<WebApplication>? _configureApp;
     private WebApplication? _app;
@@ -86,7 +86,7 @@ public sealed partial class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcSer
         try
         {
             return Ok(new GrpcInbound(
-                list,
+                list.Select(u => new Uri(u, UriKind.Absolute)),
                 configureServices,
                 configureApp,
                 serverTlsOptions,
@@ -112,8 +112,23 @@ public sealed partial class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcSer
         GrpcTelemetryOptions? telemetryOptions = null,
         TransportSecurityPolicyEvaluator? transportSecurity = null,
         MeshAuthorizationEvaluator? authorizationEvaluator = null)
+        : this(urls.Select(u => new Uri(u, UriKind.Absolute)), configureServices, configureApp, serverTlsOptions, serverRuntimeOptions, compressionOptions, telemetryOptions, transportSecurity, authorizationEvaluator)
     {
-        _urls = urls?.ToArray() ?? throw new ArgumentNullException(nameof(urls));
+    }
+
+    public GrpcInbound(
+        IEnumerable<Uri> urls,
+        Action<IServiceCollection>? configureServices = null,
+        Action<WebApplication>? configureApp = null,
+        GrpcServerTlsOptions? serverTlsOptions = null,
+        GrpcServerRuntimeOptions? serverRuntimeOptions = null,
+        GrpcCompressionOptions? compressionOptions = null,
+        GrpcTelemetryOptions? telemetryOptions = null,
+        TransportSecurityPolicyEvaluator? transportSecurity = null,
+        MeshAuthorizationEvaluator? authorizationEvaluator = null)
+    {
+        _urls = urls?.Select(u => u ?? throw new ArgumentException("Inbound URL cannot be null.", nameof(urls))).ToArray()
+            ?? throw new ArgumentNullException(nameof(urls));
         if (_urls.Length == 0)
         {
             throw new ArgumentException("At least one URL must be provided for the gRPC inbound.", nameof(urls));
@@ -224,9 +239,8 @@ public sealed partial class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcSer
                 }
             }
 
-            foreach (var url in _urls)
+            foreach (var uri in _urls)
             {
-                var uri = new Uri(url, UriKind.Absolute);
                 var host = string.Equals(uri.Host, "*", StringComparison.Ordinal) ? IPAddress.Any : IPAddress.Parse(uri.Host);
                 options.Listen(host, uri.Port, listenOptions =>
                 {
@@ -234,7 +248,7 @@ public sealed partial class GrpcInbound : ILifecycle, IDispatcherAware, IGrpcSer
                     {
                         listenOptions.Protocols = HttpProtocols.Http1AndHttp2AndHttp3;
 
-                        var endpointCheck = ValidateHttp3Endpoint(url);
+                        var endpointCheck = ValidateHttp3Endpoint(uri.ToString());
                         if (endpointCheck.IsFailure)
                         {
                             throw new InvalidOperationException(endpointCheck.Error?.Message ?? "Invalid HTTP/3 endpoint configuration.");
