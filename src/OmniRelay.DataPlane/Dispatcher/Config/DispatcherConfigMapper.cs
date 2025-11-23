@@ -148,6 +148,10 @@ internal static partial class DispatcherConfigMapper
     {
         foreach (var target in targets)
         {
+            var key = string.IsNullOrWhiteSpace(target.Key) || int.TryParse(target.Key, out _)
+                ? "default"
+                : target.Key!;
+
             var addresses = target.Addresses;
             if ((addresses is null || addresses.Count == 0) && !string.IsNullOrWhiteSpace(target.Url))
             {
@@ -170,11 +174,11 @@ internal static partial class DispatcherConfigMapper
                     var outbound = new HttpOutbound(client, uriAddresses[0], disposeClient: services.GetService<IHttpClientFactory>() is null);
                     if (kind == OutboundKind.Unary)
                     {
-                        options.AddUnaryOutbound(service, target.Key ?? "default", outbound);
+                        options.AddUnaryOutbound(service, key, outbound);
                     }
                     else
                     {
-                        options.AddOnewayOutbound(service, target.Key ?? "default", outbound);
+                        options.AddOnewayOutbound(service, key, outbound);
                     }
                 }
             }
@@ -193,19 +197,19 @@ internal static partial class DispatcherConfigMapper
                 switch (kind)
                 {
                     case OutboundKind.Unary:
-                        options.AddUnaryOutbound(service, target.Key ?? "default", outbound);
+                        options.AddUnaryOutbound(service, key, outbound);
                         break;
                     case OutboundKind.Oneway:
-                        options.AddOnewayOutbound(service, target.Key ?? "default", outbound);
+                        options.AddOnewayOutbound(service, key, outbound);
                         break;
                     case OutboundKind.Stream:
-                        options.AddStreamOutbound(service, target.Key ?? "default", outbound);
+                        options.AddStreamOutbound(service, key, outbound);
                         break;
                     case OutboundKind.ClientStream:
-                        options.AddClientStreamOutbound(service, target.Key ?? "default", outbound);
+                        options.AddClientStreamOutbound(service, key, outbound);
                         break;
                     case OutboundKind.Duplex:
-                        options.AddDuplexOutbound(service, target.Key ?? "default", outbound);
+                        options.AddDuplexOutbound(service, key, outbound);
                         break;
                 }
             }
