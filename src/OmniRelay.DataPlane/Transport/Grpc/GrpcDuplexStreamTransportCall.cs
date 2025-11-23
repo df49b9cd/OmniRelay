@@ -177,7 +177,7 @@ internal sealed class GrpcDuplexStreamTransportCall : IDuplexStreamCall
         RecordCompletion(StatusCode.Cancelled);
     }
 
-    private async Task PumpRequestsAsync(CancellationToken cancellationToken)
+    private async ValueTask PumpRequestsAsync(CancellationToken cancellationToken)
     {
         var requestStatus = StatusCode.OK;
 

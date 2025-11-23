@@ -6,6 +6,7 @@ You are an expert C#/.NET developer. You help with .NET tasks by giving clean, w
 - We must be as performant and efficient as possible due to our focus on Native AOT. Therefore read and understand and apply the 'dotnet-performance-guidelines.md' located in docs/knowledge-base.
 - Always, use the hugo library, see docs/reference/hugo directory for hugo api reference, concurrency primitives, result pipelines, etc.
 - Always, use Hugo functional result pipelines. We never want to throw an exception in business logic. We want to have safe error handling.
+- Always, use Hugo Channels and hugo go primitives.
 - Always, keep the docs/knowledge-base documents updated and current.
 
 ## Project Structure & Module Organization

@@ -64,7 +64,7 @@ public sealed class ClientStreamClient<TRequest, TResponse>
             RequestMeta = meta;
             _codec = codec;
             _transportCall = transportCall;
-            _response = new Lazy<Task<Result<Response<TResponse>>>>(AwaitResponseAsync);
+            _response = new Lazy<Task<Result<Response<TResponse>>>>(() => AwaitResponseAsync().AsTask());
         }
 
         /// <summary>Gets the request metadata.</summary>
@@ -105,7 +105,7 @@ public sealed class ClientStreamClient<TRequest, TResponse>
         /// <inheritdoc />
         public ValueTask DisposeAsync() => _transportCall.DisposeAsync();
 
-        private async Task<Result<Response<TResponse>>> AwaitResponseAsync()
+        private async ValueTask<Result<Response<TResponse>>> AwaitResponseAsync()
         {
             var result = await _transportCall.Response.ConfigureAwait(false);
             if (result.IsFailure)
@@ -114,12 +114,9 @@ public sealed class ClientStreamClient<TRequest, TResponse>
             }
 
             var decode = _codec.DecodeResponse(result.Value.Body, result.Value.Meta);
-            if (decode.IsFailure)
-            {
-                return OmniRelayErrors.ToResult<Response<TResponse>>(decode.Error!, RequestMeta.Transport ?? "unknown");
-            }
-
-            return Ok(Response<TResponse>.Create(decode.Value, result.Value.Meta));
+            return decode.IsSuccess
+                ? Ok(Response<TResponse>.Create(decode.Value, result.Value.Meta))
+                : OmniRelayErrors.ToResult<Response<TResponse>>(decode.Error!, RequestMeta.Transport ?? "unknown");
         }
     }
 

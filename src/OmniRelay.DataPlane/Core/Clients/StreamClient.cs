@@ -42,37 +42,37 @@ public sealed class StreamClient<TRequest, TResponse>
         ArgumentNullException.ThrowIfNull(request);
 
         var meta = EnsureEncoding(request.Meta);
+        var transport = request.Meta.Transport ?? options.Direction.ToString();
 
         var streamResult = await _codec.EncodeRequest(request.Body, meta)
             .Map(payload => new Request<ReadOnlyMemory<byte>>(meta, payload))
-            .ThenValueTaskAsync((outboundRequest, token) => _pipeline(outboundRequest, options, token), cancellationToken)
+            .ThenAsync(
+                (outboundRequest, token) => _pipeline(outboundRequest, options, token),
+                cancellationToken)
             .ConfigureAwait(false);
         if (streamResult.IsFailure)
         {
-            var transport = request.Meta.Transport ?? options.Direction.ToString();
             yield return OmniRelayErrors.ToResult<Response<TResponse>>(streamResult.Error!, transport);
             yield break;
         }
 
-        var callLease = streamResult.Value.AsAsyncDisposable(out var call);
-        try
-        {
-            await foreach (var payload in call.Responses.ReadAllAsync(cancellationToken).ConfigureAwait(false))
-            {
-                var decodeResult = _codec.DecodeResponse(payload, call.ResponseMeta);
-                if (decodeResult.IsFailure)
-                {
-                    await call.CompleteAsync(decodeResult.Error!, cancellationToken).ConfigureAwait(false);
-                    yield return OmniRelayErrors.ToResult<Response<TResponse>>(decodeResult.Error!, request.Meta.Transport ?? "stream");
-                    yield break;
-                }
+        await using var callLease = streamResult.Value.AsAsyncDisposable(out var call).ConfigureAwait(false);
+        var responseStream = Result.MapStreamAsync(
+                call.Responses.ReadAllAsync(cancellationToken),
+                (payload, token) => new ValueTask<Result<Response<TResponse>>>(
+                    DecodeResponse(payload, call.ResponseMeta, transport)),
+                cancellationToken);
 
-                yield return Ok(Response<TResponse>.Create(decodeResult.Value, call.ResponseMeta));
-            }
-        }
-        finally
+        await foreach (var result in responseStream.ConfigureAwait(false))
         {
-            await callLease.DisposeAsync().ConfigureAwait(false);
+            if (result.IsFailure && result.Error is { } error)
+            {
+                await call.CompleteAsync(error, cancellationToken).ConfigureAwait(false);
+                yield return result;
+                yield break;
+            }
+
+            yield return result;
         }
     }
 
@@ -86,5 +86,16 @@ public sealed class StreamClient<TRequest, TResponse>
         }
 
         return meta;
+    }
+
+    private Result<Response<TResponse>> DecodeResponse(
+        ReadOnlyMemory<byte> payload,
+        ResponseMeta meta,
+        string transport)
+    {
+        var decoded = _codec.DecodeResponse(payload, meta);
+        return decoded.IsSuccess
+            ? Ok(Response<TResponse>.Create(decoded.Value, meta))
+            : OmniRelayErrors.ToResult<Response<TResponse>>(decoded.Error!, transport);
     }
 }

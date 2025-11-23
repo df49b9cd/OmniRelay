@@ -62,14 +62,14 @@ public sealed class HttpOutbound : IUnaryOutbound, IOnewayOutbound, IOutboundDia
     /// Stops the outbound transport, optionally disposing the underlying <see cref="HttpClient"/>.
     /// </summary>
     /// <param name="cancellationToken">Cancellation token.</param>
-    public async ValueTask StopAsync(CancellationToken cancellationToken = default)
+    public ValueTask StopAsync(CancellationToken cancellationToken = default)
     {
         if (_disposeClient)
         {
             _httpClient.Dispose();
         }
 
-        await Task.CompletedTask.ConfigureAwait(false);
+        return ValueTask.CompletedTask;
     }
 
     /// <summary>
@@ -312,7 +312,7 @@ public sealed class HttpOutbound : IUnaryOutbound, IOnewayOutbound, IOutboundDia
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <param name="cachedPayload">Optional cached payload to avoid re-reading the response stream.</param>
     /// <returns>A normalized error.</returns>
-    private static async Task<Error> ReadErrorAsync(
+    private static async ValueTask<Error> ReadErrorAsync(
         HttpResponseMessage response,
         string transport,
         CancellationToken cancellationToken,
@@ -362,14 +362,14 @@ public sealed class HttpOutbound : IUnaryOutbound, IOnewayOutbound, IOutboundDia
         IRequest<ReadOnlyMemory<byte>> request,
         HttpOutboundCallKind callKind,
         HttpCompletionOption completionOption,
-        Func<HttpRequestMessage, HttpResponseMessage, CancellationToken, Task<Result<T>>> handler,
+        Func<HttpRequestMessage, HttpResponseMessage, CancellationToken, ValueTask<Result<T>>> handler,
         CancellationToken cancellationToken)
     {
         return Go.Ok(request)
             .Ensure(
                 req => !string.IsNullOrWhiteSpace(req.Meta.Procedure),
                 req => BuildMissingProcedureError(req.Meta))
-            .ThenValueTaskAsync(
+            .ThenAsync(
                 (validatedRequest, token) => RunHttpCallAsync(validatedRequest, callKind, completionOption, handler, token),
                 cancellationToken);
     }
@@ -378,7 +378,7 @@ public sealed class HttpOutbound : IUnaryOutbound, IOnewayOutbound, IOutboundDia
         IRequest<ReadOnlyMemory<byte>> request,
         HttpOutboundCallKind callKind,
         HttpCompletionOption completionOption,
-        Func<HttpRequestMessage, HttpResponseMessage, CancellationToken, Task<Result<T>>> handler,
+        Func<HttpRequestMessage, HttpResponseMessage, CancellationToken, ValueTask<Result<T>>> handler,
         CancellationToken cancellationToken)
     {
         async ValueTask<Result<T>> InvokeAsync(CancellationToken token)
@@ -420,7 +420,7 @@ public sealed class HttpOutbound : IUnaryOutbound, IOnewayOutbound, IOutboundDia
         return InvokeAsync(cancellationToken);
     }
 
-    private async Task<Result<Response<ReadOnlyMemory<byte>>>> HandleUnaryResponseAsync(
+    private async ValueTask<Result<Response<ReadOnlyMemory<byte>>>> HandleUnaryResponseAsync(
         HttpRequestMessage httpRequest,
         HttpResponseMessage response,
         RequestMeta requestMeta,
@@ -440,7 +440,7 @@ public sealed class HttpOutbound : IUnaryOutbound, IOnewayOutbound, IOutboundDia
         return Err<Response<ReadOnlyMemory<byte>>>(error);
     }
 
-    private async Task<Result<OnewayAck>> HandleOnewayResponseAsync(
+    private async ValueTask<Result<OnewayAck>> HandleOnewayResponseAsync(
         HttpRequestMessage httpRequest,
         HttpResponseMessage response,
         RequestMeta requestMeta,

@@ -104,54 +104,31 @@ public sealed class DuplexStreamClient<TRequest, TResponse>
         /// </summary>
         public async IAsyncEnumerable<Result<Response<TResponse>>> ReadResponsesAsync([EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
-            var responses = _call.ResponseReader.ReadAllAsync(cancellationToken).ConfigureAwait(false);
-            var enumerator = responses.GetAsyncEnumerator();
-            Result<Response<TResponse>>? pendingFailure = null;
-            try
+            var responseStream = Result.MapStreamAsync(
+                _call.ResponseReader.ReadAllAsync(cancellationToken),
+                (payload, token) => new ValueTask<Result<Response<TResponse>>>(
+                    DecodeResponse(payload, RequestMeta.Transport ?? "duplex")),
+                cancellationToken);
+
+            await foreach (var result in responseStream.ConfigureAwait(false))
             {
-                while (true)
+                if (result.IsFailure && result.Error is { } error)
                 {
-                    bool hasNext;
-                    try
-                    {
-                        hasNext = await enumerator.MoveNextAsync();
-                    }
-                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                    {
-                        throw;
-                    }
-                    catch (Exception ex)
-                    {
-                        pendingFailure = OmniRelayErrors.ToResult<Response<TResponse>>(ex, RequestMeta.Transport ?? "unknown");
-                        break;
-                    }
-
-                    if (!hasNext)
-                    {
-                        break;
-                    }
-
-                    var payload = enumerator.Current;
-                    var decode = _codec.DecodeResponse(payload, _call.ResponseMeta);
-                    if (decode.IsFailure)
-                    {
-                        await _call.CompleteResponsesAsync(decode.Error!, cancellationToken).ConfigureAwait(false);
-                        yield return OmniRelayErrors.ToResult<Response<TResponse>>(decode.Error!, RequestMeta.Transport ?? "unknown");
-                        yield break;
-                    }
-
-                    yield return Ok(Response<TResponse>.Create(decode.Value, _call.ResponseMeta));
+                    await _call.CompleteResponsesAsync(error, cancellationToken).ConfigureAwait(false);
+                    yield return result;
+                    yield break;
                 }
-            }
-            finally
-            {
-                await enumerator.DisposeAsync();
-            }
 
-            if (pendingFailure is not null)
-            {
-                yield return pendingFailure.Value;
+                yield return result;
             }
+        }
+
+        private Result<Response<TResponse>> DecodeResponse(ReadOnlyMemory<byte> payload, string transport)
+        {
+            var decode = _codec.DecodeResponse(payload, _call.ResponseMeta);
+            return decode.IsSuccess
+                ? Ok(Response<TResponse>.Create(decode.Value, _call.ResponseMeta))
+                : OmniRelayErrors.ToResult<Response<TResponse>>(decode.Error!, transport);
         }
 
         /// <inheritdoc />
