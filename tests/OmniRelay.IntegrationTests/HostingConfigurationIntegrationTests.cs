@@ -181,9 +181,6 @@ public class HostingConfigurationIntegrationTests
         var inboundPort = TestPortAllocator.GetRandomPort();
         var httpOutboundUrl = $"http://127.0.0.1:{TestPortAllocator.GetRandomPort()}/yarpc";
         var grpcAddress = $"http://127.0.0.1:{TestPortAllocator.GetRandomPort()}";
-        var tracingType = typeof(RpcTracingMiddleware).AssemblyQualifiedName!;
-        var metricsType = typeof(RpcMetricsMiddleware).AssemblyQualifiedName!;
-
         var builder = Host.CreateApplicationBuilder();
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
@@ -208,20 +205,27 @@ public class HostingConfigurationIntegrationTests
             ["omnirelay:outbounds:workflow:duplex:grpc:0:remoteService"] = "workflow",
             ["omnirelay:outbounds:workflow:duplex:grpc:0:addresses:0"] = grpcAddress,
 
-            ["omnirelay:middleware:outbound:unary:0"] = tracingType,
-            ["omnirelay:middleware:outbound:unary:1"] = metricsType,
-            ["omnirelay:middleware:outbound:oneway:0"] = tracingType,
-            ["omnirelay:middleware:outbound:stream:0"] = tracingType,
-            ["omnirelay:middleware:outbound:clientStream:0"] = tracingType,
-            ["omnirelay:middleware:outbound:duplex:0"] = tracingType
+            ["omnirelay:middleware:outbound:unary:0"] = "tracing",
+            ["omnirelay:middleware:outbound:unary:1"] = "metrics",
+            ["omnirelay:middleware:outbound:oneway:0"] = "tracing",
+            ["omnirelay:middleware:outbound:stream:0"] = "tracing",
+            ["omnirelay:middleware:outbound:clientStream:0"] = "tracing",
+            ["omnirelay:middleware:outbound:duplex:0"] = "tracing"
         });
 
         builder.Services.AddLogging();
-        builder.Services.AddOmniRelayDispatcherFromConfiguration(builder.Configuration.GetSection("omnirelay"));
+        builder.Services.AddOmniRelayDispatcherFromConfiguration(
+            builder.Configuration.GetSection("omnirelay"),
+            registerComponents: registry =>
+            {
+                registry.RegisterOutboundMiddlewareType<RpcTracingMiddleware>("tracing");
+                registry.RegisterOutboundMiddlewareType<RpcMetricsMiddleware>("metrics");
+            });
 
         using var host = builder.Build();
         var dispatcher = host.Services.GetRequiredService<Dispatcher.Dispatcher>();
 
+        // Diagnostic: ensure config binding brought in outbounds
         var ct = TestContext.Current.CancellationToken;
         await host.StartAsync(ct);
         await host.StopAsync(CancellationToken.None);
@@ -264,20 +268,28 @@ public class HostingConfigurationIntegrationTests
             ["omnirelay:inbounds:http:0:urls:0"] = $"http://127.0.0.1:{TestPortAllocator.GetRandomPort()}/",
             ["omnirelay:outbounds:codec:unary:http:0:key"] = "primary",
             ["omnirelay:outbounds:codec:unary:http:0:url"] = $"http://127.0.0.1:{TestPortAllocator.GetRandomPort()}/",
-            ["omnirelay:middleware:outbound:unary:0"] = typeof(RpcTracingMiddleware).AssemblyQualifiedName,
-            ["omnirelay:middleware:inbound:unary:0"] = typeof(RpcMetricsMiddleware).AssemblyQualifiedName,
+            ["omnirelay:middleware:outbound:unary:0"] = "tracing",
+            ["omnirelay:middleware:inbound:unary:0"] = "metrics",
             ["omnirelay:encodings:json:profiles:pretty:options:writeIndented"] = "true",
             ["omnirelay:encodings:json:outbound:0:service"] = "codec",
             ["omnirelay:encodings:json:outbound:0:procedure"] = "feature::echo",
             ["omnirelay:encodings:json:outbound:0:kind"] = "Unary",
-            ["omnirelay:encodings:json:outbound:0:requestType"] = typeof(JsonCodecRequest).AssemblyQualifiedName,
-            ["omnirelay:encodings:json:outbound:0:responseType"] = typeof(JsonCodecResponse).AssemblyQualifiedName,
             ["omnirelay:encodings:json:outbound:0:profile"] = "pretty",
-            ["omnirelay:encodings:json:outbound:0:encoding"] = "application/json;profile=pretty"
+            ["omnirelay:encodings:json:outbound:0:encoding"] = "application/json;profile=pretty",
+            ["omnirelay:encodings:json:outbound:0:codecKey"] = "json-codec"
         });
 
         builder.Services.AddLogging();
-        builder.Services.AddOmniRelayDispatcherFromConfiguration(builder.Configuration.GetSection("omnirelay"));
+        builder.Services.AddOmniRelayDispatcherFromConfiguration(
+            builder.Configuration.GetSection("omnirelay"),
+            registerComponents: registry =>
+            {
+                registry.RegisterOutboundMiddlewareType<RpcTracingMiddleware>("tracing");
+                registry.RegisterInboundMiddlewareType<RpcMetricsMiddleware>("metrics");
+                registry.RegisterOutboundJsonCodec<JsonCodecRequest, JsonCodecResponse>(
+                    "json-codec",
+                    "application/json;profile=pretty");
+            });
 
         using var host = builder.Build();
         var dispatcher = host.Services.GetRequiredService<Dispatcher.Dispatcher>();

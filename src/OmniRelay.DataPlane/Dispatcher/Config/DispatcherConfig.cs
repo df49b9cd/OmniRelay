@@ -10,6 +10,7 @@ public sealed class DispatcherConfig
     public InboundsConfig Inbounds { get; set; } = new();
     public OutboundsConfig Outbounds { get; set; } = new();
     public MiddlewareConfig Middleware { get; set; } = new();
+    public EncodingConfig Encodings { get; set; } = new();
 }
 
 public sealed class InboundsConfig
@@ -71,6 +72,43 @@ public sealed class MiddlewareStackConfig
     public List<string> Stream { get; set; } = new();
     public List<string> ClientStream { get; set; } = new();
     public List<string> Duplex { get; set; } = new();
+}
+
+public sealed class EncodingConfig
+{
+    public JsonEncodingConfig Json { get; set; } = new();
+}
+
+public sealed class JsonEncodingConfig
+{
+    public Dictionary<string, JsonProfileConfig> Profiles { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    public List<JsonOutboundEncodingConfig> Outbound { get; set; } = new();
+}
+
+public sealed class JsonProfileConfig
+{
+    public string Name { get; set; } = string.Empty;
+
+    public bool? WriteIndented { get; set; }
+}
+
+public sealed class JsonOutboundEncodingConfig
+{
+    public string? Service { get; set; }
+
+    public string? Procedure { get; set; }
+
+    public string? Kind { get; set; }
+
+    public string? Profile { get; set; }
+
+    public string? Encoding { get; set; }
+
+    /// <summary>
+    /// Key of a pre-registered outbound codec in <see cref="DispatcherComponentRegistry"/>.
+    /// </summary>
+    public string? CodecKey { get; set; }
 }
 
 /// <summary>Entry point for JSON source generation.</summary>

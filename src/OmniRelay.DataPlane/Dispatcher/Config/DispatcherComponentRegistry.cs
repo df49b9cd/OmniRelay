@@ -1,7 +1,10 @@
 using Grpc.Core.Interceptors;
 using Microsoft.Extensions.DependencyInjection;
+using System.Diagnostics.CodeAnalysis;
 using OmniRelay.Core.Middleware;
 using OmniRelay.Transport.Http.Middleware;
+using System.Text.Json.Serialization;
+using OmniRelay.Core;
 
 namespace OmniRelay.Dispatcher.Config;
 
@@ -24,6 +27,8 @@ public sealed class DispatcherComponentRegistry
     private readonly Dictionary<string, Func<IServiceProvider, Interceptor>> _grpcServerInterceptors = new(StringComparer.OrdinalIgnoreCase);
 
     private readonly Dictionary<string, Func<IServiceProvider, IHttpClientMiddleware>> _httpClientMiddleware = new(StringComparer.OrdinalIgnoreCase);
+
+    private readonly Dictionary<(string Key, ProcedureKind Kind), Action<DispatcherOptions, string, string>> _outboundCodecs = new();
 
     public void RegisterInboundMiddleware<T>(string key, Func<IServiceProvider, T> factory) where T : class
     {
@@ -83,6 +88,12 @@ public sealed class DispatcherComponentRegistry
         }
     }
 
+    public void RegisterInboundMiddlewareType<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] T>(string key) where T : class =>
+        RegisterInboundMiddleware(key, sp => ActivatorUtilities.GetServiceOrCreateInstance<T>(sp));
+
+    public void RegisterOutboundMiddlewareType<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] T>(string key) where T : class =>
+        RegisterOutboundMiddleware(key, sp => ActivatorUtilities.GetServiceOrCreateInstance<T>(sp));
+
     public void RegisterHttpClientMiddleware(string key, Func<IServiceProvider, IHttpClientMiddleware> factory)
     {
         _httpClientMiddleware[key] = factory ?? throw new ArgumentNullException(nameof(factory));
@@ -96,6 +107,27 @@ public sealed class DispatcherComponentRegistry
     public void RegisterGrpcServerInterceptor(string key, Func<IServiceProvider, Interceptor> factory)
     {
         _grpcServerInterceptors[key] = factory ?? throw new ArgumentNullException(nameof(factory));
+    }
+
+    public void RegisterOutboundJsonCodec<TRequest, TResponse>(
+        string key,
+        string encoding,
+        JsonSerializerContext? context = null)
+        where TRequest : notnull
+        where TResponse : notnull
+    {
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            throw new ArgumentException("Key is required.", nameof(key));
+        }
+
+        var codec = new JsonCodec<TRequest, TResponse>(
+            options: context?.Options,
+            encoding: string.IsNullOrWhiteSpace(encoding) ? "json" : encoding,
+            serializerContext: context);
+
+        _outboundCodecs[(key, ProcedureKind.Unary)] = (options, service, procedure) =>
+            options.AddOutboundUnaryCodec(service, procedure, codec);
     }
 
     internal bool TryResolveInbound(string key, ProcedureKind kind, IServiceProvider sp, out object? middleware)
@@ -163,6 +195,12 @@ public sealed class DispatcherComponentRegistry
         interceptor = null;
         return false;
     }
+
+    internal bool TryResolveOutboundCodec(
+        string key,
+        ProcedureKind kind,
+        out Action<DispatcherOptions, string, string>? action) =>
+        _outboundCodecs.TryGetValue((key, kind), out action);
 }
 
 public static class DispatcherComponentRegistryExtensions

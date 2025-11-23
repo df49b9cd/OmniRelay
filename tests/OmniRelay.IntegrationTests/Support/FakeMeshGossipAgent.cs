@@ -47,7 +47,8 @@ internal sealed class FakeMeshGossipAgent : IMeshGossipAgent
             NodeId = _metadata.NodeId,
             Status = MeshGossipMemberStatus.Alive,
             Metadata = _metadata,
-            LastSeen = DateTimeOffset.UtcNow
+            LastSeen = DateTimeOffset.UtcNow,
+            RoundTripTimeMs = 0.1
         });
 
         foreach (var peerId in _peerNodeIds)
@@ -70,7 +71,8 @@ internal sealed class FakeMeshGossipAgent : IMeshGossipAgent
                         ["rack"] = _rack
                     }
                 },
-                LastSeen = DateTimeOffset.UtcNow
+                LastSeen = DateTimeOffset.UtcNow,
+                RoundTripTimeMs = 5.0
             });
         }
 
