@@ -20,7 +20,13 @@ public sealed class TransportSecurityGrpcInterceptor : Interceptor
         where TRequest : class
         where TResponse : class
     {
-        EnsureAllowed(context);
+        var decision = _evaluator.Evaluate(TransportSecurityContext.FromServerCallContext("grpc", context));
+        if (decision.IsFailure || !decision.Value.IsAllowed)
+        {
+            var reason = decision.IsFailure ? decision.Error?.Message : decision.Value.Reason;
+            throw new RpcException(new Status(StatusCode.PermissionDenied, reason ?? "Transport policy violation."));
+        }
+
         return await continuation(request, context).ConfigureAwait(false);
     }
 
@@ -31,7 +37,13 @@ public sealed class TransportSecurityGrpcInterceptor : Interceptor
         where TRequest : class
         where TResponse : class
     {
-        EnsureAllowed(context);
+        var decision = _evaluator.Evaluate(TransportSecurityContext.FromServerCallContext("grpc", context));
+        if (decision.IsFailure || !decision.Value.IsAllowed)
+        {
+            var reason = decision.IsFailure ? decision.Error?.Message : decision.Value.Reason;
+            throw new RpcException(new Status(StatusCode.PermissionDenied, reason ?? "Transport policy violation."));
+        }
+
         return await continuation(requestStream, context).ConfigureAwait(false);
     }
 
@@ -43,7 +55,13 @@ public sealed class TransportSecurityGrpcInterceptor : Interceptor
         where TRequest : class
         where TResponse : class
     {
-        EnsureAllowed(context);
+        var decision = _evaluator.Evaluate(TransportSecurityContext.FromServerCallContext("grpc", context));
+        if (decision.IsFailure || !decision.Value.IsAllowed)
+        {
+            var reason = decision.IsFailure ? decision.Error?.Message : decision.Value.Reason;
+            throw new RpcException(new Status(StatusCode.PermissionDenied, reason ?? "Transport policy violation."));
+        }
+
         await continuation(request, responseStream, context).ConfigureAwait(false);
     }
 
@@ -55,16 +73,13 @@ public sealed class TransportSecurityGrpcInterceptor : Interceptor
         where TRequest : class
         where TResponse : class
     {
-        EnsureAllowed(context);
-        await continuation(requestStream, responseStream, context).ConfigureAwait(false);
-    }
-
-    private void EnsureAllowed(ServerCallContext context)
-    {
         var decision = _evaluator.Evaluate(TransportSecurityContext.FromServerCallContext("grpc", context));
-        if (!decision.IsAllowed)
+        if (decision.IsFailure || !decision.Value.IsAllowed)
         {
-            throw new RpcException(new Status(StatusCode.PermissionDenied, decision.Reason ?? "Transport policy violation."));
+            var reason = decision.IsFailure ? decision.Error?.Message : decision.Value.Reason;
+            throw new RpcException(new Status(StatusCode.PermissionDenied, reason ?? "Transport policy violation."));
         }
+
+        await continuation(requestStream, responseStream, context).ConfigureAwait(false);
     }
 }

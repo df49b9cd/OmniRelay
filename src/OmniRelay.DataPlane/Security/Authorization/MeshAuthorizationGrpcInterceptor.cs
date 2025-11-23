@@ -1,5 +1,7 @@
 using Grpc.Core;
 using Grpc.Core.Interceptors;
+using Hugo;
+using static Hugo.Go;
 
 namespace OmniRelay.Security.Authorization;
 
@@ -12,14 +14,21 @@ internal sealed class MeshAuthorizationGrpcInterceptor : Interceptor
         _evaluator = evaluator;
     }
 
-    private void EnsureAuthorized(ServerCallContext context)
+    private Result<Unit> EnsureAuthorized(ServerCallContext context)
     {
         var httpContext = context.GetHttpContext();
         var decision = _evaluator.Evaluate("grpc", context.Method ?? string.Empty, httpContext);
         if (!decision.IsAllowed)
         {
-            throw new RpcException(new Status(StatusCode.PermissionDenied, decision.Reason ?? "Authorization failed."));
+            var message = decision.Reason ?? "Authorization failed.";
+            var error = Hugo.Error.From(message, "authorization.denied")
+                .WithMetadata("transport", "grpc")
+                .WithMetadata("procedure", context.Method ?? string.Empty);
+
+            return Hugo.Result.Fail<Unit>(error);
         }
+
+        return Hugo.Result.Ok(Unit.Value);
     }
 
     public override async Task<TResponse> UnaryServerHandler<TRequest, TResponse>(
@@ -29,7 +38,15 @@ internal sealed class MeshAuthorizationGrpcInterceptor : Interceptor
         where TRequest : class
         where TResponse : class
     {
-        EnsureAuthorized(context);
+        var auth = EnsureAuthorized(context);
+        if (auth.IsFailure)
+        {
+            throw new RpcException(new Status(StatusCode.PermissionDenied, auth.Error!.Message), new Metadata
+            {
+                { "omnirelay-error-code", auth.Error!.Code ?? "authorization.denied" }
+            });
+        }
+
         return await continuation(request, context).ConfigureAwait(false);
     }
 
@@ -40,7 +57,15 @@ internal sealed class MeshAuthorizationGrpcInterceptor : Interceptor
         where TRequest : class
         where TResponse : class
     {
-        EnsureAuthorized(context);
+        var auth = EnsureAuthorized(context);
+        if (auth.IsFailure)
+        {
+            throw new RpcException(new Status(StatusCode.PermissionDenied, auth.Error!.Message), new Metadata
+            {
+                { "omnirelay-error-code", auth.Error!.Code ?? "authorization.denied" }
+            });
+        }
+
         return await continuation(requestStream, context).ConfigureAwait(false);
     }
 
@@ -52,7 +77,15 @@ internal sealed class MeshAuthorizationGrpcInterceptor : Interceptor
         where TRequest : class
         where TResponse : class
     {
-        EnsureAuthorized(context);
+        var auth = EnsureAuthorized(context);
+        if (auth.IsFailure)
+        {
+            throw new RpcException(new Status(StatusCode.PermissionDenied, auth.Error!.Message), new Metadata
+            {
+                { "omnirelay-error-code", auth.Error!.Code ?? "authorization.denied" }
+            });
+        }
+
         await continuation(request, responseStream, context).ConfigureAwait(false);
     }
 
@@ -64,7 +97,15 @@ internal sealed class MeshAuthorizationGrpcInterceptor : Interceptor
         where TRequest : class
         where TResponse : class
     {
-        EnsureAuthorized(context);
+        var auth = EnsureAuthorized(context);
+        if (auth.IsFailure)
+        {
+            throw new RpcException(new Status(StatusCode.PermissionDenied, auth.Error!.Message), new Metadata
+            {
+                { "omnirelay-error-code", auth.Error!.Code ?? "authorization.denied" }
+            });
+        }
+
         await continuation(requestStream, responseStream, context).ConfigureAwait(false);
     }
 }

@@ -393,11 +393,14 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
         {
             app.Use(async (context, next) =>
             {
-                var decision = _transportSecurity.Evaluate(TransportSecurityContext.FromHttpContext(HttpTransportName, context));
-                if (!decision.IsAllowed)
+                var decisionResult = _transportSecurity.Evaluate(TransportSecurityContext.FromHttpContext(HttpTransportName, context));
+                if (decisionResult.IsFailure || !decisionResult.Value.IsAllowed)
                 {
                     context.Response.StatusCode = StatusCodes.Status403Forbidden;
                     var host = context.Request.Host.HasValue ? context.Request.Host.Value : context.Connection.RemoteIpAddress?.ToString() ?? "*";
+                    var decision = decisionResult.IsFailure
+                        ? new TransportSecurityDecision(false, decisionResult.Error?.Message)
+                        : decisionResult.Value;
                     await HttpJsonWriter.WriteAsync(
                         context.Response,
                         decision.ToPayload(HttpTransportName, host),

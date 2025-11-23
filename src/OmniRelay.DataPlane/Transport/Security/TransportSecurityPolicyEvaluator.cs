@@ -1,4 +1,6 @@
 using System.Net;
+using Hugo;
+using static Hugo.Go;
 using Microsoft.Extensions.Logging;
 
 namespace OmniRelay.Transport.Security;
@@ -15,11 +17,11 @@ public sealed partial class TransportSecurityPolicyEvaluator
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public TransportSecurityDecision Evaluate(TransportSecurityContext context)
+    public Result<TransportSecurityDecision> Evaluate(TransportSecurityContext context)
     {
         if (!_policy.Enabled)
         {
-            return TransportSecurityDecision.Allowed;
+            return Result.Ok(TransportSecurityDecision.Allowed);
         }
 
         var normalizedProtocol = context.Protocol?.ToLowerInvariant() ?? string.Empty;
@@ -27,7 +29,7 @@ public sealed partial class TransportSecurityPolicyEvaluator
         {
             var reason = $"Protocol '{context.Protocol}' is not allowed.";
             Log.TransportDenied(_logger, reason);
-            return new TransportSecurityDecision(false, reason);
+            return Result.Ok(new TransportSecurityDecision(false, reason));
         }
 
         if (_policy.AllowedTlsVersions.Count > 0)
@@ -36,7 +38,7 @@ public sealed partial class TransportSecurityPolicyEvaluator
             {
                 var reason = "TLS protocol mismatch.";
                 Log.TransportDenied(_logger, reason);
-                return new TransportSecurityDecision(false, reason);
+                return Result.Ok(new TransportSecurityDecision(false, reason));
             }
         }
 
@@ -46,7 +48,7 @@ public sealed partial class TransportSecurityPolicyEvaluator
             {
                 var reason = "Cipher suite not permitted.";
                 Log.TransportDenied(_logger, reason);
-                return new TransportSecurityDecision(false, reason);
+                return Result.Ok(new TransportSecurityDecision(false, reason));
             }
         }
 
@@ -54,7 +56,7 @@ public sealed partial class TransportSecurityPolicyEvaluator
         {
             var reason = "Client certificate required.";
             Log.TransportDenied(_logger, reason);
-            return new TransportSecurityDecision(false, reason);
+            return Result.Ok(new TransportSecurityDecision(false, reason));
         }
 
         if (_policy.AllowedThumbprints.Count > 0 && context.ClientCertificate is not null)
@@ -64,7 +66,7 @@ public sealed partial class TransportSecurityPolicyEvaluator
             {
                 var reason = "Client certificate thumbprint not allowed.";
                 Log.TransportDenied(_logger, reason);
-                return new TransportSecurityDecision(false, reason);
+                return Result.Ok(new TransportSecurityDecision(false, reason));
             }
         }
 
@@ -74,11 +76,11 @@ public sealed partial class TransportSecurityPolicyEvaluator
             if (!decision.IsAllowed)
             {
                 Log.TransportDenied(_logger, decision.Reason ?? "Endpoint blocked by policy.");
-                return decision;
+                return Result.Ok(decision);
             }
         }
 
-        return TransportSecurityDecision.Allowed;
+        return Result.Ok(TransportSecurityDecision.Allowed);
     }
 
     private TransportSecurityDecision EvaluateEndpoints(TransportSecurityContext context)

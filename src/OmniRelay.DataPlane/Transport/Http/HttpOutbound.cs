@@ -52,6 +52,42 @@ public sealed class HttpOutbound : IUnaryOutbound, IOnewayOutbound, IOutboundDia
     }
 
     /// <summary>
+    /// Tries to create an HTTP outbound transport without throwing on validation errors.
+    /// </summary>
+    public static Result<HttpOutbound> TryCreate(
+        HttpClient httpClient,
+        Uri requestUri,
+        bool disposeClient = false,
+        HttpClientRuntimeOptions? runtimeOptions = null)
+    {
+        if (httpClient is null)
+        {
+            return Err<HttpOutbound>(
+                Error.From("HttpClient is required for HttpOutbound.", "http.outbound.argument_missing")
+                    .WithMetadata("argument", nameof(httpClient)));
+        }
+
+        if (requestUri is null)
+        {
+            return Err<HttpOutbound>(
+                Error.From("Request URI is required for HttpOutbound.", "http.outbound.argument_missing")
+                    .WithMetadata("argument", nameof(requestUri)));
+        }
+
+        if (runtimeOptions?.EnableHttp3 == true &&
+            !requestUri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+        {
+            return Err<HttpOutbound>(
+                Error.From(
+                    "HTTP/3 requests require HTTPS endpoints. Update the request URI or disable HTTP/3 for this outbound.",
+                    "http.outbound.h3_requires_https")
+                    .WithMetadata("uri", requestUri.ToString()));
+        }
+
+        return Ok(new HttpOutbound(httpClient, requestUri, disposeClient, runtimeOptions));
+    }
+
+    /// <summary>
     /// Starts the outbound transport. No-op for the HTTP client implementation.
     /// </summary>
     /// <param name="cancellationToken">Cancellation token.</param>
