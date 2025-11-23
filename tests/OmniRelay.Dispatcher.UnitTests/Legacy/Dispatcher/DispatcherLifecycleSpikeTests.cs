@@ -1,7 +1,7 @@
 using Hugo;
 using OmniRelay.Dispatcher;
-using static Hugo.Go;
 using Xunit;
+using static Hugo.Go;
 
 namespace OmniRelay.Tests.Dispatcher;
 

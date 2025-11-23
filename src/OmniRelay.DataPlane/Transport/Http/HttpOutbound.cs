@@ -5,12 +5,12 @@ using System.Net.Http.Headers;
 using System.Net.Mime;
 using System.Text.Json;
 using Hugo;
-using static Hugo.Go;
 using Microsoft.AspNetCore.Http;
 using OmniRelay.Core;
 using OmniRelay.Core.Transport;
 using OmniRelay.Errors;
 using OmniRelay.Transport.Http.Middleware;
+using static Hugo.Go;
 
 namespace OmniRelay.Transport.Http;
 

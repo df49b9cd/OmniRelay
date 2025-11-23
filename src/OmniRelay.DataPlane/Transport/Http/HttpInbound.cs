@@ -909,16 +909,16 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
                     context.Response.Headers[header.Key] = header.Value;
                 }
 
-            var pumpResult = await PumpServerStreamAsync(
-                    call,
-                    context.Response.BodyWriter,
-                    responseMeta,
-                    _serverRuntimeOptions?.ServerStreamWriteTimeout,
-                    _serverRuntimeOptions?.ServerStreamMaxMessageBytes,
-                    transport,
-                    baseTags,
-                    context.RequestAborted)
-                .ConfigureAwait(false);
+                var pumpResult = await PumpServerStreamAsync(
+                        call,
+                        context.Response.BodyWriter,
+                        responseMeta,
+                        _serverRuntimeOptions?.ServerStreamWriteTimeout,
+                        _serverRuntimeOptions?.ServerStreamMaxMessageBytes,
+                        transport,
+                        baseTags,
+                        context.RequestAborted)
+                    .ConfigureAwait(false);
 
                 var pumpError = pumpResult.Error;
                 if (pumpError is not null)

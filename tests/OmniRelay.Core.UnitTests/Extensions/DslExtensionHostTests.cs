@@ -1,8 +1,8 @@
+using System.Collections.Immutable;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Logging.Abstractions;
 using OmniRelay.Core.Extensions;
-using System.Collections.Immutable;
 using Xunit;
 
 namespace OmniRelay.Core.UnitTests.Extensions;

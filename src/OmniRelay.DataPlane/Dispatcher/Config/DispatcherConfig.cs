@@ -1,7 +1,7 @@
 using System.Security.Authentication;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
 using OmniRelay.Transport.Http;
-using System.Text.Json.Serialization;
 
 namespace OmniRelay.Dispatcher.Config;
 

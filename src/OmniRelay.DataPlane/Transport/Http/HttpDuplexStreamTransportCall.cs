@@ -214,12 +214,12 @@ internal sealed class HttpDuplexStreamTransportCall : IDuplexStreamCall, IResult
                         errorFactory: ex => NormalizeResultError(NormalizeTransportException(ex)))
                     .ConfigureAwait(false);
 
-            if (frameResult.IsFailure)
-            {
-                var error = frameResult.Error!;
-                await _inner.CompleteResponsesAsync(error, CancellationToken.None).ConfigureAwait(false);
-                return Err<Unit>(error);
-            }
+                if (frameResult.IsFailure)
+                {
+                    var error = frameResult.Error!;
+                    await _inner.CompleteResponsesAsync(error, CancellationToken.None).ConfigureAwait(false);
+                    return Err<Unit>(error);
+                }
 
                 var frame = frameResult.Value;
 

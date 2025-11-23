@@ -1,5 +1,5 @@
-using Microsoft.AspNetCore.Http;
 using Hugo;
+using Microsoft.AspNetCore.Http;
 
 namespace OmniRelay.Security.Authorization;
 

@@ -99,8 +99,8 @@ internal sealed class GrpcClientStreamTransportCall : IClientStreamTransportCall
         }
     }
 
-async ValueTask<Result<Unit>> IResultClientStreamTransportCall.WriteAsyncResult(ReadOnlyMemory<byte> payload, CancellationToken cancellationToken)
-{
+    async ValueTask<Result<Unit>> IResultClientStreamTransportCall.WriteAsyncResult(ReadOnlyMemory<byte> payload, CancellationToken cancellationToken)
+    {
         if (_disposed)
         {
             return Err<Unit>(Error.From("Client stream has been disposed.", "grpc.clientstream.disposed"));
@@ -139,7 +139,7 @@ async ValueTask<Result<Unit>> IResultClientStreamTransportCall.WriteAsyncResult(
             var error = MapInternalError(ex, "Failed to write client-stream message.");
             return Err<Unit>(error);
         }
-}
+    }
 
     /// <inheritdoc />
     public async ValueTask CompleteAsync(CancellationToken cancellationToken = default)
@@ -154,8 +154,8 @@ async ValueTask<Result<Unit>> IResultClientStreamTransportCall.WriteAsyncResult(
         }
     }
 
-async ValueTask<Result<Unit>> IResultClientStreamTransportCall.CompleteAsyncResult(CancellationToken cancellationToken)
-{
+    async ValueTask<Result<Unit>> IResultClientStreamTransportCall.CompleteAsyncResult(CancellationToken cancellationToken)
+    {
         if (_disposed)
         {
             return Ok(Unit.Value);
@@ -195,7 +195,7 @@ async ValueTask<Result<Unit>> IResultClientStreamTransportCall.CompleteAsyncResu
         {
             return Err<Unit>(MapInternalError(ex, "Failed to complete client stream."));
         }
-}
+    }
 
     /// <inheritdoc />
     public async ValueTask DisposeAsync()

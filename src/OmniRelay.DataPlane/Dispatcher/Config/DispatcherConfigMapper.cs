@@ -610,7 +610,6 @@ internal static partial class DispatcherConfigMapper
         return Enum.TryParse<SslProtocols>(value, ignoreCase: true, out var parsed) ? parsed : null;
     }
 
-    
     private static readonly Dictionary<string, Type> KnownInterceptors = new(StringComparer.OrdinalIgnoreCase)
     {
         ["logging"] = typeof(GrpcServerLoggingInterceptor),
@@ -658,8 +657,8 @@ internal static partial class DispatcherConfigMapper
         return registry;
     }
 
-private static TimeSpan? TryParseTimeSpan(string? value) =>
-        TimeSpan.TryParse(value, out var parsed) ? parsed : (TimeSpan?)null;
+    private static TimeSpan? TryParseTimeSpan(string? value) =>
+            TimeSpan.TryParse(value, out var parsed) ? parsed : (TimeSpan?)null;
 
     private static JsonEncodingConfig ParseJsonEncodings(IConfigurationSection section)
     {

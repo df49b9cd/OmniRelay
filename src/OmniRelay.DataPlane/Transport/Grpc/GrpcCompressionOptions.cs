@@ -1,8 +1,8 @@
 using System.IO.Compression;
 using Grpc.Net.Compression;
 using Hugo;
-using static Hugo.Go;
 using OmniRelay.Errors;
+using static Hugo.Go;
 
 namespace OmniRelay.Transport.Grpc;
 
@@ -18,9 +18,9 @@ public sealed record GrpcCompressionOptions
     public CompressionLevel? DefaultCompressionLevel { get; init; }
 
     /// <summary>
-/// Validates that the configured default algorithm has a corresponding registered provider.
-/// </summary>
-public Result<Unit> Validate()
+    /// Validates that the configured default algorithm has a corresponding registered provider.
+    /// </summary>
+    public Result<Unit> Validate()
     {
         if (string.IsNullOrWhiteSpace(DefaultAlgorithm))
         {

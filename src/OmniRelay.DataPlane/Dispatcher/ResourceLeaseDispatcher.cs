@@ -2,11 +2,11 @@ using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Globalization;
 using Hugo;
-using static Hugo.Go;
 using OmniRelay.ControlPlane.Throttling;
 using OmniRelay.Core;
 using OmniRelay.Core.Middleware;
 using OmniRelay.Diagnostics;
+using static Hugo.Go;
 
 namespace OmniRelay.Dispatcher;
 
