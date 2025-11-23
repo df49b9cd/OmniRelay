@@ -13,6 +13,7 @@ using OmniRelay.Tests;
 using OmniRelay.Tests.Protos;
 using OmniRelay.Tests.Support;
 using OmniRelay.TestSupport;
+using OmniRelay.Transport.Grpc.Interceptors;
 using Xunit;
 
 namespace OmniRelay.CodeGen.IntegrationTests;
@@ -43,6 +44,12 @@ public class CodegenWorkflowIntegrationTests
         serverBuilder.Services.AddLogging();
         serverBuilder.Services.AddSingleton(protocols);
         serverBuilder.Services.AddSingleton<HostedProtocolCaptureInterceptor>();
+        serverBuilder.Services.AddSingleton<IGrpcInterceptorAliasRegistry>(sp =>
+        {
+            var registry = new GrpcInterceptorAliasRegistry();
+            registry.RegisterServer("protocol-capture", typeof(HostedProtocolCaptureInterceptor));
+            return registry;
+        });
         serverBuilder.Services.AddSingleton<TestServiceOmniRelay.ITestService, LoopbackTestService>();
         serverBuilder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
@@ -51,7 +58,7 @@ public class CodegenWorkflowIntegrationTests
             ["omnirelay:inbounds:grpc:0:name"] = "grpc-http3",
             ["omnirelay:inbounds:grpc:0:urls:0"] = address.ToString(),
             ["omnirelay:inbounds:grpc:0:runtime:enableHttp3"] = "true",
-            ["omnirelay:inbounds:grpc:0:runtime:interceptors:0"] = typeof(HostedProtocolCaptureInterceptor).AssemblyQualifiedName,
+            ["omnirelay:inbounds:grpc:0:runtime:interceptors:0"] = "protocol-capture",
             ["omnirelay:inbounds:grpc:0:tls:certificatePath"] = certificatePath,
             ["omnirelay:inbounds:grpc:0:tls:checkCertificateRevocation"] = "false"
         });
@@ -141,6 +148,12 @@ public class CodegenWorkflowIntegrationTests
         serverBuilder.Services.AddLogging();
         serverBuilder.Services.AddSingleton(protocols);
         serverBuilder.Services.AddSingleton<HostedProtocolCaptureInterceptor>();
+        serverBuilder.Services.AddSingleton<IGrpcInterceptorAliasRegistry>(sp =>
+        {
+            var registry = new GrpcInterceptorAliasRegistry();
+            registry.RegisterServer("protocol-capture", typeof(HostedProtocolCaptureInterceptor));
+            return registry;
+        });
         serverBuilder.Services.AddSingleton<TestServiceOmniRelay.ITestService, LoopbackTestService>();
         serverBuilder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
@@ -149,7 +162,7 @@ public class CodegenWorkflowIntegrationTests
             ["omnirelay:inbounds:grpc:0:name"] = "grpc-http2",
             ["omnirelay:inbounds:grpc:0:urls:0"] = address.ToString(),
             ["omnirelay:inbounds:grpc:0:runtime:enableHttp3"] = "false",
-            ["omnirelay:inbounds:grpc:0:runtime:interceptors:0"] = typeof(HostedProtocolCaptureInterceptor).AssemblyQualifiedName,
+            ["omnirelay:inbounds:grpc:0:runtime:interceptors:0"] = "protocol-capture",
             ["omnirelay:inbounds:grpc:0:tls:certificatePath"] = certificatePath,
             ["omnirelay:inbounds:grpc:0:tls:checkCertificateRevocation"] = "false"
         });

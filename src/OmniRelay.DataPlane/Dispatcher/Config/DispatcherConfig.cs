@@ -1,3 +1,5 @@
+using System.Security.Authentication;
+using Microsoft.AspNetCore.Server.Kestrel.Https;
 using OmniRelay.Transport.Http;
 using OmniRelay.Transport.Grpc;
 using System.Text.Json.Serialization;
@@ -26,7 +28,7 @@ public sealed class HttpInboundConfig
     public string? Name { get; set; }
     public List<string> Urls { get; set; } = new();
     public HttpServerRuntimeOptions? Runtime { get; set; }
-    public HttpServerTlsOptions? Tls { get; set; }
+    public HttpServerTlsConfig? Tls { get; set; }
 }
 
 public sealed class GrpcInboundConfig
@@ -34,8 +36,8 @@ public sealed class GrpcInboundConfig
     public string? Name { get; set; }
     public List<string> Urls { get; set; } = new();
     public bool? EnableDetailedErrors { get; set; }
-    public GrpcServerRuntimeOptions? Runtime { get; set; }
-    public GrpcServerTlsOptions? Tls { get; set; }
+    public GrpcServerRuntimeConfig? Runtime { get; set; }
+    public GrpcServerTlsConfig? Tls { get; set; }
 }
 
 public sealed class OutboundsConfig : Dictionary<string, ServiceOutboundsConfig>
@@ -120,7 +122,45 @@ public sealed class JsonOutboundEncodingConfig
 /// <summary>Entry point for JSON source generation.</summary>
 [JsonSerializable(typeof(DispatcherConfig))]
 [JsonSerializable(typeof(HttpServerRuntimeOptions))]
-[JsonSerializable(typeof(HttpServerTlsOptions))]
-[JsonSerializable(typeof(GrpcServerRuntimeOptions))]
-[JsonSerializable(typeof(GrpcServerTlsOptions))]
+[JsonSerializable(typeof(HttpServerTlsConfig))]
+[JsonSerializable(typeof(GrpcServerRuntimeConfig))]
+[JsonSerializable(typeof(GrpcServerTlsConfig))]
+[JsonSerializable(typeof(SslProtocols))]
+[JsonSerializable(typeof(ClientCertificateMode))]
 internal partial class DispatcherConfigJsonContext : JsonSerializerContext;
+
+/// <summary>TLS config shape that is trimming/AOT safe (paths instead of certificate instances).</summary>
+public sealed class HttpServerTlsConfig
+{
+    public string? CertificatePath { get; set; }
+    public string? CertificatePassword { get; set; }
+    public ClientCertificateMode ClientCertificateMode { get; set; } = ClientCertificateMode.NoCertificate;
+    public bool? CheckCertificateRevocation { get; set; }
+}
+
+/// <summary>gRPC server TLS config shape (trim-safe).</summary>
+public sealed class GrpcServerTlsConfig
+{
+    public string? CertificatePath { get; set; }
+    public string? CertificatePassword { get; set; }
+    public ClientCertificateMode ClientCertificateMode { get; set; } = ClientCertificateMode.NoCertificate;
+    public bool? CheckCertificateRevocation { get; set; }
+    public SslProtocols? EnabledProtocols { get; set; }
+}
+
+/// <summary>gRPC server runtime config shape with interceptor aliases.</summary>
+public sealed class GrpcServerRuntimeConfig
+{
+    public bool EnableHttp3 { get; set; }
+    public int? MaxReceiveMessageSize { get; set; }
+    public int? MaxSendMessageSize { get; set; }
+    public TimeSpan? KeepAlivePingDelay { get; set; }
+    public TimeSpan? KeepAlivePingTimeout { get; set; }
+    public bool? EnableDetailedErrors { get; set; }
+    public TimeSpan? ServerStreamWriteTimeout { get; set; }
+    public TimeSpan? DuplexWriteTimeout { get; set; }
+    public int? ServerStreamMaxMessageBytes { get; set; }
+    public int? DuplexMaxMessageBytes { get; set; }
+    public Http3RuntimeOptions? Http3 { get; set; }
+    public List<string> Interceptors { get; set; } = new();
+}

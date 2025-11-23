@@ -1,16 +1,20 @@
 using System.Collections.Immutable;
+using System.Security.Authentication;
+using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
-using System.Security.Cryptography;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using OmniRelay.Core;
 using OmniRelay.Core.Middleware;
 using OmniRelay.Core.Peers;
 using OmniRelay.Transport.Grpc;
+using OmniRelay.Transport.Grpc.Interceptors;
 using OmniRelay.Transport.Http;
+using OmniRelay.Transport.Security;
 
 namespace OmniRelay.Dispatcher.Config;
 
@@ -38,7 +42,9 @@ internal static partial class DispatcherConfigMapper
         var options = new DispatcherOptions(config.Service);
         options.Mode = ParseMode(config.Mode);
 
-        ApplyInbounds(config.Inbounds, options);
+        var interceptorAliases = services.GetService<IGrpcInterceptorAliasRegistry>() ?? CreateDefaultAliasRegistry();
+
+        ApplyInbounds(config.Inbounds, options, interceptorAliases);
         ApplyOutbounds(services, config.Outbounds, options);
         ApplyMiddleware(services, registry, config.Middleware, options);
         ApplyEncodings(config.Encodings, registry, options);
@@ -63,7 +69,7 @@ internal static partial class DispatcherConfigMapper
         throw new InvalidOperationException($"Unsupported deployment mode '{value}'. Valid values: InProc, Sidecar, Edge.");
     }
 
-    private static void ApplyInbounds(InboundsConfig inbounds, DispatcherOptions options)
+    private static void ApplyInbounds(InboundsConfig inbounds, DispatcherOptions options, IGrpcInterceptorAliasRegistry interceptorAliases)
     {
         for (var i = 0; i < inbounds.Http.Count; i++)
         {
@@ -75,7 +81,7 @@ internal static partial class DispatcherConfigMapper
 
             var name = string.IsNullOrWhiteSpace(http.Name) ? $"http-{i}" : http.Name;
             var runtime = http.Runtime ?? new HttpServerRuntimeOptions();
-            var tls = http.Tls;
+            var tls = ParseHttpTls(http.Tls);
 
             var inbound = new HttpInbound(
                 http.Urls.ToArray(),
@@ -99,27 +105,14 @@ internal static partial class DispatcherConfigMapper
 
             var name = string.IsNullOrWhiteSpace(grpc.Name) ? $"grpc-{i}" : grpc.Name;
 
-            var runtime = new GrpcServerRuntimeOptions
-            {
-                EnableDetailedErrors = grpc.EnableDetailedErrors,
-                EnableHttp3 = grpc.Runtime?.EnableHttp3 ?? false,
-                MaxReceiveMessageSize = grpc.Runtime?.MaxReceiveMessageSize,
-                MaxSendMessageSize = grpc.Runtime?.MaxSendMessageSize,
-                KeepAlivePingDelay = grpc.Runtime?.KeepAlivePingDelay,
-                KeepAlivePingTimeout = grpc.Runtime?.KeepAlivePingTimeout,
-                ServerStreamWriteTimeout = grpc.Runtime?.ServerStreamWriteTimeout,
-                DuplexWriteTimeout = grpc.Runtime?.DuplexWriteTimeout,
-                ServerStreamMaxMessageBytes = grpc.Runtime?.ServerStreamMaxMessageBytes,
-                DuplexMaxMessageBytes = grpc.Runtime?.DuplexMaxMessageBytes,
-                Http3 = grpc.Runtime?.Http3,
-                Interceptors = grpc.Runtime?.Interceptors ?? Array.Empty<Type>()
-            };
+            var runtime = ParseGrpcRuntime(grpc.Runtime, interceptorAliases) ?? new GrpcServerRuntimeOptions { EnableDetailedErrors = grpc.EnableDetailedErrors };
+            var tls = ParseGrpcTls(grpc.Tls);
 
             var inbound = new GrpcInbound(
                 grpc.Urls.ToArray(),
                 configureServices: null,
                 serverRuntimeOptions: runtime,
-                serverTlsOptions: grpc.Tls,
+                serverTlsOptions: tls,
                 telemetryOptions: null,
                 transportSecurity: null,
                 authorizationEvaluator: null);
@@ -299,7 +292,7 @@ internal static partial class DispatcherConfigMapper
                 Name = string.IsNullOrWhiteSpace(http["name"]) ? null : http["name"],
                 Urls = urls,
                 Runtime = runtime,
-                Tls = ParseHttpTls(http.GetSection("tls"))
+                Tls = ParseHttpTlsConfig(http.GetSection("tls"))
             });
         }
 
@@ -315,8 +308,8 @@ internal static partial class DispatcherConfigMapper
                 Name = string.IsNullOrWhiteSpace(grpc["name"]) ? null : grpc["name"],
                 Urls = urls,
                 EnableDetailedErrors = bool.TryParse(grpc["enableDetailedErrors"], out var b) ? b : (bool?)null,
-                Runtime = ParseGrpcRuntime(grpc.GetSection("runtime")),
-                Tls = ParseGrpcTls(grpc.GetSection("tls"))
+                Runtime = ParseGrpcRuntimeConfig(grpc.GetSection("runtime")),
+                Tls = ParseGrpcTlsConfig(grpc.GetSection("tls"))
             });
         }
 
@@ -422,31 +415,54 @@ internal static partial class DispatcherConfigMapper
         return runtime;
     }
 
-    private static HttpServerTlsOptions? ParseHttpTls(IConfigurationSection section)
+    private static HttpServerTlsConfig? ParseHttpTlsConfig(IConfigurationSection section)
     {
         if (!section.Exists())
         {
             return null;
         }
 
-        var certPath = section["certificatePath"];
-        if (string.IsNullOrWhiteSpace(certPath))
+        var path = section["certificatePath"];
+        if (string.IsNullOrWhiteSpace(path))
         {
             return null;
         }
 
-        var certPassword = section["certificatePassword"];
-        var certificate = string.IsNullOrWhiteSpace(certPassword)
-            ? X509CertificateLoader.LoadPkcs12FromFile(certPath, ReadOnlySpan<char>.Empty, X509KeyStorageFlags.DefaultKeySet)
-            : X509CertificateLoader.LoadPkcs12FromFile(certPath, certPassword.AsSpan(), X509KeyStorageFlags.DefaultKeySet);
+        var cfg = new HttpServerTlsConfig
+        {
+            CertificatePath = path,
+            CertificatePassword = section["certificatePassword"],
+            CheckCertificateRevocation = TryParseBool(section["checkCertificateRevocation"])
+        };
 
-        var checkRevocation = bool.TryParse(section["checkCertificateRevocation"], out var rev) ? rev : (bool?)null;
+        if (Enum.TryParse<ClientCertificateMode>(section["clientCertificateMode"], ignoreCase: true, out var mode))
+        {
+            cfg.ClientCertificateMode = mode;
+        }
+
+        return cfg;
+    }
+
+    private static HttpServerTlsOptions? ParseHttpTls(HttpServerTlsConfig? cfg)
+    {
+        if (cfg is null)
+        {
+            return null;
+        }
+        if (string.IsNullOrWhiteSpace(cfg.CertificatePath))
+        {
+            return null;
+        }
+
+        var certificate = string.IsNullOrWhiteSpace(cfg.CertificatePassword)
+            ? X509CertificateLoader.LoadPkcs12FromFile(cfg.CertificatePath, ReadOnlySpan<char>.Empty, X509KeyStorageFlags.DefaultKeySet)
+            : X509CertificateLoader.LoadPkcs12FromFile(cfg.CertificatePath, cfg.CertificatePassword.AsSpan(), X509KeyStorageFlags.DefaultKeySet);
 
         return new HttpServerTlsOptions
         {
             Certificate = certificate,
-            ClientCertificateMode = ClientCertificateMode.NoCertificate,
-            CheckCertificateRevocation = checkRevocation
+            ClientCertificateMode = cfg.ClientCertificateMode,
+            CheckCertificateRevocation = cfg.CheckCertificateRevocation
         };
     }
 
@@ -467,14 +483,14 @@ internal static partial class DispatcherConfigMapper
         };
     }
 
-    private static GrpcServerRuntimeOptions? ParseGrpcRuntime(IConfigurationSection section)
+    private static GrpcServerRuntimeConfig? ParseGrpcRuntimeConfig(IConfigurationSection section)
     {
         if (!section.Exists())
         {
             return null;
         }
 
-        return new GrpcServerRuntimeOptions
+        var cfg = new GrpcServerRuntimeConfig
         {
             EnableHttp3 = bool.TryParse(section["enableHttp3"], out var enable) && enable,
             MaxReceiveMessageSize = TryParseInt(section["maxReceiveMessageSize"]),
@@ -485,40 +501,93 @@ internal static partial class DispatcherConfigMapper
             DuplexWriteTimeout = TryParseTimeSpan(section["duplexWriteTimeout"]),
             ServerStreamMaxMessageBytes = TryParseInt(section["serverStreamMaxMessageBytes"]),
             DuplexMaxMessageBytes = TryParseInt(section["duplexMaxMessageBytes"]),
-            Http3 = ParseHttp3(section.GetSection("http3")),
-            Interceptors = section.GetSection("interceptors").GetChildren()
-                .Select(c => c.Value)
-                .Where(v => !string.IsNullOrWhiteSpace(v))
-                .Select(ResolveType)
-                .Where(t => t is not null)
-                .ToArray()!
+            Http3 = ParseHttp3(section.GetSection("http3"))
         };
+
+        foreach (var interceptor in section.GetSection("interceptors").GetChildren())
+        {
+            if (!string.IsNullOrWhiteSpace(interceptor.Value))
+            {
+                cfg.Interceptors.Add(interceptor.Value);
+            }
+        }
+
+        return cfg;
     }
 
-    private static GrpcServerTlsOptions? ParseGrpcTls(IConfigurationSection section)
+    private static GrpcServerTlsConfig? ParseGrpcTlsConfig(IConfigurationSection section)
     {
         if (!section.Exists())
         {
             return null;
         }
 
-        var certPath = section["certificatePath"];
-        if (string.IsNullOrWhiteSpace(certPath))
+        var path = section["certificatePath"];
+        if (string.IsNullOrWhiteSpace(path))
         {
             return null;
         }
 
-        var certPassword = section["certificatePassword"];
-        var certificate = string.IsNullOrWhiteSpace(certPassword)
-            ? X509CertificateLoader.LoadPkcs12FromFile(certPath, ReadOnlySpan<char>.Empty, X509KeyStorageFlags.DefaultKeySet)
-            : X509CertificateLoader.LoadPkcs12FromFile(certPath, certPassword.AsSpan(), X509KeyStorageFlags.DefaultKeySet);
+        var cfg = new GrpcServerTlsConfig
+        {
+            CertificatePath = path,
+            CertificatePassword = section["certificatePassword"],
+            CheckCertificateRevocation = TryParseBool(section["checkCertificateRevocation"]),
+            EnabledProtocols = ParseSslProtocols(section["enabledProtocols"])
+        };
 
-        var checkRevocation = bool.TryParse(section["checkCertificateRevocation"], out var rev) ? rev : (bool?)null;
+        if (Enum.TryParse<ClientCertificateMode>(section["clientCertificateMode"], ignoreCase: true, out var mode))
+        {
+            cfg.ClientCertificateMode = mode;
+        }
+
+        return cfg;
+    }
+
+    private static GrpcServerRuntimeOptions? ParseGrpcRuntime(GrpcServerRuntimeConfig? cfg, IGrpcInterceptorAliasRegistry interceptorAliases)
+    {
+        if (cfg is null)
+        {
+            return null;
+        }
+
+        return new GrpcServerRuntimeOptions
+        {
+            EnableHttp3 = cfg.EnableHttp3,
+            MaxReceiveMessageSize = cfg.MaxReceiveMessageSize,
+            MaxSendMessageSize = cfg.MaxSendMessageSize,
+            KeepAlivePingDelay = cfg.KeepAlivePingDelay,
+            KeepAlivePingTimeout = cfg.KeepAlivePingTimeout,
+            ServerStreamWriteTimeout = cfg.ServerStreamWriteTimeout,
+            DuplexWriteTimeout = cfg.DuplexWriteTimeout,
+            ServerStreamMaxMessageBytes = cfg.ServerStreamMaxMessageBytes,
+            DuplexMaxMessageBytes = cfg.DuplexMaxMessageBytes,
+            Http3 = cfg.Http3,
+            Interceptors = ResolveInterceptors(cfg.Interceptors, interceptorAliases)
+        };
+    }
+
+    private static GrpcServerTlsOptions? ParseGrpcTls(GrpcServerTlsConfig? cfg)
+    {
+        if (cfg is null)
+        {
+            return null;
+        }
+        if (string.IsNullOrWhiteSpace(cfg.CertificatePath))
+        {
+            return null;
+        }
+
+        var certificate = string.IsNullOrWhiteSpace(cfg.CertificatePassword)
+            ? X509CertificateLoader.LoadPkcs12FromFile(cfg.CertificatePath, ReadOnlySpan<char>.Empty, X509KeyStorageFlags.DefaultKeySet)
+            : X509CertificateLoader.LoadPkcs12FromFile(cfg.CertificatePath, cfg.CertificatePassword.AsSpan(), X509KeyStorageFlags.DefaultKeySet);
 
         return new GrpcServerTlsOptions
         {
             Certificate = certificate,
-            CheckCertificateRevocation = checkRevocation
+            CheckCertificateRevocation = cfg.CheckCertificateRevocation,
+            EnabledProtocols = cfg.EnabledProtocols,
+            ClientCertificateMode = cfg.ClientCertificateMode
         };
     }
 
@@ -531,15 +600,62 @@ internal static partial class DispatcherConfigMapper
     private static long? TryParseLong(string? value) =>
         long.TryParse(value, out var parsed) ? parsed : (long?)null;
 
-    
-    private static Type? ResolveType(string? typeName)
+    private static SslProtocols? ParseSslProtocols(string? value)
     {
-        if (string.IsNullOrWhiteSpace(typeName))
+        if (string.IsNullOrWhiteSpace(value))
         {
             return null;
         }
 
-        return Type.GetType(typeName, throwOnError: false, ignoreCase: false);
+        return Enum.TryParse<SslProtocols>(value, ignoreCase: true, out var parsed) ? parsed : null;
+    }
+
+    
+    private static readonly Dictionary<string, Type> KnownInterceptors = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["logging"] = typeof(GrpcServerLoggingInterceptor),
+        ["grpc.logging"] = typeof(GrpcServerLoggingInterceptor),
+        ["exception"] = typeof(GrpcExceptionAdapterInterceptor),
+        ["transport-security"] = typeof(TransportSecurityGrpcInterceptor)
+    };
+
+    private static List<Type> ResolveInterceptors(IEnumerable<string> aliases, IGrpcInterceptorAliasRegistry registry)
+    {
+        var list = new List<Type>();
+        foreach (var alias in aliases)
+        {
+            if (string.IsNullOrWhiteSpace(alias))
+            {
+                continue;
+            }
+
+            if (KnownInterceptors.TryGetValue(alias, out var known))
+            {
+                list.Add(known);
+                continue;
+            }
+
+            if (registry.TryResolveServer(alias, out var resolved))
+            {
+                list.Add(resolved);
+                continue;
+            }
+
+            throw new InvalidOperationException($"Unknown gRPC server interceptor alias '{alias}'. Register it via IGrpcInterceptorAliasRegistry or use a built-in alias.");
+        }
+
+        return list;
+    }
+
+    internal static GrpcInterceptorAliasRegistry CreateDefaultAliasRegistry()
+    {
+        var registry = new GrpcInterceptorAliasRegistry();
+        foreach (var kvp in KnownInterceptors)
+        {
+            registry.RegisterServer(kvp.Key, kvp.Value);
+        }
+
+        return registry;
     }
 
 private static TimeSpan? TryParseTimeSpan(string? value) =>
@@ -708,6 +824,7 @@ public static class DispatcherConfigServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(configuration);
 
+        services.TryAddSingleton<IGrpcInterceptorAliasRegistry>(_ => DispatcherConfigMapper.CreateDefaultAliasRegistry());
         services.AddDispatcherComponentRegistry(registry => registerComponents?.Invoke(registry));
         services.AddSingleton(sp =>
         {
