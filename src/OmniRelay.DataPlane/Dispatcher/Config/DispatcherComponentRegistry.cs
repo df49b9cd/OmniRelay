@@ -89,10 +89,10 @@ public sealed class DispatcherComponentRegistry
     }
 
     public void RegisterInboundMiddlewareType<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] T>(string key) where T : class =>
-        RegisterInboundMiddleware(key, sp => ActivatorUtilities.GetServiceOrCreateInstance<T>(sp));
+        RegisterInboundMiddleware(key, ActivatorUtilities.GetServiceOrCreateInstance<T>);
 
     public void RegisterOutboundMiddlewareType<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] T>(string key) where T : class =>
-        RegisterOutboundMiddleware(key, sp => ActivatorUtilities.GetServiceOrCreateInstance<T>(sp));
+        RegisterOutboundMiddleware(key, ActivatorUtilities.GetServiceOrCreateInstance<T>);
 
     public void RegisterHttpClientMiddleware(string key, Func<IServiceProvider, IHttpClientMiddleware> factory)
     {

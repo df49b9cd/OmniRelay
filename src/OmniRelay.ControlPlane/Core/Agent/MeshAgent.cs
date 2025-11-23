@@ -1,5 +1,3 @@
-using Microsoft.Extensions.Logging;
-using OmniRelay.ControlPlane.ControlProtocol;
 using OmniRelay.Protos.Control;
 using OmniRelay.Core.Transport;
 
@@ -9,11 +7,11 @@ namespace OmniRelay.ControlPlane.Agent;
 public sealed class MeshAgent : ILifecycle, IDisposable
 {
     private readonly WatchHarness _harness;
-    private readonly ILogger<MeshAgent> _logger;
+    private readonly Microsoft.Extensions.Logging.ILogger<MeshAgent> _logger;
     private CancellationTokenSource? _cts;
     private Task? _watchTask;
 
-    public MeshAgent(WatchHarness harness, ILogger<MeshAgent> logger)
+    public MeshAgent(WatchHarness harness, Microsoft.Extensions.Logging.ILogger<MeshAgent> logger)
     {
         _harness = harness ?? throw new ArgumentNullException(nameof(harness));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));

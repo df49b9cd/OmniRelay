@@ -498,7 +498,7 @@ internal static partial class DispatcherConfigMapper
             if (registry.TryResolveOutboundCodec(key!, kind, out var action) && action is not null)
             {
                 var service = string.IsNullOrWhiteSpace(outbound.Service) ? options.ServiceName : outbound.Service!;
-                var procedure = outbound.Procedure!;
+                var procedure = outbound.Procedure ?? options.ServiceName;
                 action(options, service, procedure);
             }
         }

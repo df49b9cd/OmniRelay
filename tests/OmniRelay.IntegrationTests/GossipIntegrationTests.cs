@@ -17,7 +17,6 @@ public sealed class GossipIntegrationTests(ITestOutputHelper output) : Integrati
 {
     private const string LoopbackAddress = "127.0.0.1";
     private static readonly TimeSpan ConvergenceTimeout = TimeSpan.FromSeconds(15);
-    private static readonly TimeSpan DepartureTimeout = TimeSpan.FromSeconds(20);
     private readonly TestCertificateInfo _certificate = TestCertificateFactory.EnsureDeveloperCertificateInfo("CN=integration-gossip");
 
     [Fact(Timeout = 60_000)]

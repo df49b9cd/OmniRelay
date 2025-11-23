@@ -991,6 +991,8 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
 
     private static void PublishMembershipEvent(string reason, MeshGossipMemberSnapshot? changedMember = null)
     {
+        _ = reason;
+        _ = changedMember;
         // Control-plane event bus publishing removed in data-plane split.
     }
 

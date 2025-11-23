@@ -9,6 +9,7 @@
     <EnableSingleFileAnalyzer>true</EnableSingleFileAnalyzer>
     <AssemblyName>OmniRelay.ControlPlane</AssemblyName>
     <RootNamespace>OmniRelay.ControlPlane</RootNamespace>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
 
   <ItemGroup>
