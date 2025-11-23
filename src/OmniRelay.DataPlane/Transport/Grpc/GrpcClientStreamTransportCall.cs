@@ -89,7 +89,22 @@ internal sealed class GrpcClientStreamTransportCall : IClientStreamTransportCall
     /// <inheritdoc />
     public async ValueTask WriteAsync(ReadOnlyMemory<byte> payload, CancellationToken cancellationToken = default)
     {
-        ObjectDisposedException.ThrowIf(_disposed, nameof(GrpcClientStreamTransportCall));
+        var writeResult = await ((IResultClientStreamTransportCall)this)
+            .WriteAsyncResult(payload, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (writeResult.IsFailure && writeResult.Error is { } error)
+        {
+            throw OmniRelayErrors.FromError(error, GrpcTransportConstants.TransportName);
+        }
+    }
+
+async ValueTask<Result<Unit>> IResultClientStreamTransportCall.WriteAsyncResult(ReadOnlyMemory<byte> payload, CancellationToken cancellationToken)
+{
+        if (_disposed)
+        {
+            return Err<Unit>(Error.From("Client stream has been disposed.", "grpc.clientstream.disposed"));
+        }
 
         try
         {
@@ -98,7 +113,7 @@ internal sealed class GrpcClientStreamTransportCall : IClientStreamTransportCall
         catch (OperationCanceledException)
         {
             CancelFromWriteCancellation();
-            throw;
+            return Err<Unit>(Error.Canceled());
         }
 
         var buffer = GetCachedArray(payload);
@@ -106,68 +121,81 @@ internal sealed class GrpcClientStreamTransportCall : IClientStreamTransportCall
         try
         {
             await _pendingWrites.Writer.WriteAsync(buffer, cancellationToken).ConfigureAwait(false);
+            return Ok(Unit.Value);
+        }
+        catch (ChannelClosedException)
+        {
+            var error = _terminalError ?? Error.Canceled();
+            return Err<Unit>(error);
         }
         catch (OperationCanceledException)
         {
             CancelFromWriteCancellation();
-            throw;
-        }
-        catch (ChannelClosedException)
-        {
-            if (_terminalError is Error error)
-            {
-                throw OmniRelayErrors.FromError(error, GrpcTransportConstants.TransportName);
-            }
-
-            throw;
-        }
-    }
-
-    async ValueTask<Result<Unit>> IResultClientStreamTransportCall.WriteAsyncResult(ReadOnlyMemory<byte> payload, CancellationToken cancellationToken)
-    {
-        try
-        {
-            await WriteAsync(payload, cancellationToken).ConfigureAwait(false);
-            return Ok(Unit.Value);
+            return Err<Unit>(Error.Canceled());
         }
         catch (Exception ex)
         {
+            CancelFromWriteCancellation();
             var error = MapInternalError(ex, "Failed to write client-stream message.");
             return Err<Unit>(error);
         }
-    }
+}
 
     /// <inheritdoc />
     public async ValueTask CompleteAsync(CancellationToken cancellationToken = default)
     {
+        var result = await ((IResultClientStreamTransportCall)this)
+            .CompleteAsyncResult(cancellationToken)
+            .ConfigureAwait(false);
+
+        if (result.IsFailure && result.Error is { } error)
+        {
+            throw OmniRelayErrors.FromError(error, GrpcTransportConstants.TransportName);
+        }
+    }
+
+async ValueTask<Result<Unit>> IResultClientStreamTransportCall.CompleteAsyncResult(CancellationToken cancellationToken)
+{
         if (_disposed)
         {
-            return;
+            return Ok(Unit.Value);
         }
 
         if (Interlocked.Exchange(ref _completionRequested, 1) == 1)
         {
-            await _writePumpCompletion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
-            return;
+            try
+            {
+                await _writePumpCompletion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+                return Ok(Unit.Value);
+            }
+            catch (OperationCanceledException)
+            {
+                CancelFromWriteCancellation();
+                return Err<Unit>(Error.Canceled());
+            }
+            catch (Exception ex)
+            {
+                return Err<Unit>(MapInternalError(ex, "Failed to complete client stream."));
+            }
         }
 
-        cancellationToken.ThrowIfCancellationRequested();
-        _pendingWrites.Writer.TryComplete();
-        await _writePumpCompletion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
-    }
-
-    async ValueTask<Result<Unit>> IResultClientStreamTransportCall.CompleteAsyncResult(CancellationToken cancellationToken)
-    {
         try
         {
-            await CompleteAsync(cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            _pendingWrites.Writer.TryComplete();
+            await _writePumpCompletion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
             return Ok(Unit.Value);
+        }
+        catch (OperationCanceledException)
+        {
+            CancelFromWriteCancellation();
+            return Err<Unit>(Error.Canceled());
         }
         catch (Exception ex)
         {
             return Err<Unit>(MapInternalError(ex, "Failed to complete client stream."));
         }
-    }
+}
 
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
