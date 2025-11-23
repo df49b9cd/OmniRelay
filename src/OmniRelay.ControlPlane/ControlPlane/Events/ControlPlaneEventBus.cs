@@ -3,6 +3,7 @@ using System.Threading.Channels;
 using Hugo;
 using Microsoft.Extensions.Logging;
 using static Hugo.Go;
+using Unit = Hugo.Go.Unit;
 
 namespace OmniRelay.ControlPlane.Events;
 
@@ -21,28 +22,42 @@ public sealed partial class ControlPlaneEventBus : IControlPlaneEventBus, IDispo
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public ControlPlaneEventSubscription Subscribe(ControlPlaneEventFilter? filter = null, int capacity = 256)
+    public ValueTask<Result<ControlPlaneEventSubscription>> SubscribeAsync(
+        ControlPlaneEventFilter? filter = null,
+        int capacity = 256,
+        CancellationToken cancellationToken = default)
     {
-        ObjectDisposedException.ThrowIf(_disposed, nameof(ControlPlaneEventBus));
+        if (_disposed)
+        {
+            return ValueTask.FromResult(Result.Fail<ControlPlaneEventSubscription>(
+                Error.From("Control-plane event bus was disposed.", DisposedErrorCode, cause: null!, metadata: null)));
+        }
 
-        var subscription = Go.Ok(capacity)
-            .Ensure(value => value > 0, _ => Error.From("Subscription capacity must be at least 1.", CapacityErrorCode))
-            .Map(value => MakeChannel<ControlPlaneEvent>(new BoundedChannelOptions(value)
-            {
-                SingleReader = false,
-                SingleWriter = false,
-                FullMode = BoundedChannelFullMode.DropOldest
-            }))
-            .Map(channel =>
-            {
-                var id = Interlocked.Increment(ref _nextSubscriptionId);
-                _subscribers.TryAdd(id, new Subscriber(filter, channel));
-                ControlPlaneEventBusLog.SubscriberAdded(_logger, id, filter?.EventType);
-                return new ControlPlaneEventSubscription(this, id, channel.Reader);
-            })
-            .ValueOrThrow();
+        if (capacity <= 0)
+        {
+            return ValueTask.FromResult(Result.Fail<ControlPlaneEventSubscription>(
+                Error.From("Subscription capacity must be at least 1.", CapacityErrorCode, cause: null!, metadata: null)));
+        }
 
-        return subscription;
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return ValueTask.FromResult(Result.Fail<ControlPlaneEventSubscription>(
+                Error.Canceled("Subscription canceled", cancellationToken)));
+        }
+
+        var channel = MakeChannel<ControlPlaneEvent>(new BoundedChannelOptions(capacity)
+        {
+            SingleReader = false,
+            SingleWriter = false,
+            FullMode = BoundedChannelFullMode.DropOldest
+        });
+
+        var id = Interlocked.Increment(ref _nextSubscriptionId);
+        _subscribers.TryAdd(id, new Subscriber(filter, channel));
+        ControlPlaneEventBusLog.SubscriberAdded(_logger, id, filter?.EventType);
+
+        var subscription = new ControlPlaneEventSubscription(this, id, channel.Reader);
+        return ValueTask.FromResult(Ok(subscription));
     }
 
     public ValueTask<Result<Unit>> PublishAsync(ControlPlaneEvent message, CancellationToken cancellationToken = default)
@@ -50,7 +65,7 @@ public sealed partial class ControlPlaneEventBus : IControlPlaneEventBus, IDispo
         ArgumentNullException.ThrowIfNull(message);
         if (_disposed)
         {
-            return ValueTask.FromResult(Result.Fail<Unit>(Error.From("Control-plane event bus was disposed.", DisposedErrorCode)));
+            return ValueTask.FromResult(Result.Fail<Unit>(Error.From("Control-plane event bus was disposed.", DisposedErrorCode, cause: null!, metadata: null)));
         }
 
         if (_subscribers.IsEmpty)
@@ -60,11 +75,17 @@ public sealed partial class ControlPlaneEventBus : IControlPlaneEventBus, IDispo
 
         return ValueTask.FromResult(Result.Try(() =>
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return Result.Fail<Unit>(Error.Canceled("Event publish canceled", cancellationToken));
+            }
 
             foreach (var (id, subscriber) in _subscribers)
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return Result.Fail<Unit>(Error.Canceled("Event publish canceled", cancellationToken));
+                }
 
                 if (!subscriber.ShouldDeliver(message))
                 {

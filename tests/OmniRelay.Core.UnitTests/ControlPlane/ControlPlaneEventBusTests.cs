@@ -12,7 +12,9 @@ public sealed class ControlPlaneEventBusTests
     public async ValueTask PublishAsync_DeliversEventsToSubscribers()
     {
         var bus = new ControlPlaneEventBus(NullLogger<ControlPlaneEventBus>.Instance);
-        await using var subscription = bus.Subscribe();
+        var subscriptionResult = await bus.SubscribeAsync();
+        subscriptionResult.IsSuccess.ShouldBeTrue(subscriptionResult.Error?.Message);
+        await using var subscription = subscriptionResult.Value;
 
         var evt = CreateMembershipEvent(clusterId: "cluster-a");
         var publish = await bus.PublishAsync(evt, TestContext.Current.CancellationToken);
@@ -26,7 +28,9 @@ public sealed class ControlPlaneEventBusTests
     public async ValueTask PublishAsync_AppliesFilters()
     {
         var bus = new ControlPlaneEventBus(NullLogger<ControlPlaneEventBus>.Instance);
-        await using var subscription = bus.Subscribe(new ControlPlaneEventFilter { ClusterId = "cluster-a" });
+        var subscriptionResult = await bus.SubscribeAsync(new ControlPlaneEventFilter { ClusterId = "cluster-a" });
+        subscriptionResult.IsSuccess.ShouldBeTrue(subscriptionResult.Error?.Message);
+        await using var subscription = subscriptionResult.Value;
 
         var otherClusterEvent = CreateMembershipEvent(clusterId: "cluster-b");
         var ignored = await bus.PublishAsync(otherClusterEvent, TestContext.Current.CancellationToken);
