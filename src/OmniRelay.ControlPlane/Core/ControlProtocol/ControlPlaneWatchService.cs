@@ -59,6 +59,13 @@ public sealed class ControlPlaneWatchService : ControlPlaneWatch.ControlPlaneWat
 
         var current = currentResult.Value;
         var needsFullSnapshot = RequiresFullSnapshot(request.ResumeToken, current);
+        if (!CapabilitiesSatisfied(request.Capabilities, current.RequiredCapabilities))
+        {
+            var error = ControlProtocolErrors.MissingRequiredCapabilities(current.RequiredCapabilities, request.Capabilities);
+            await responseStream.WriteAsync(CreateErrorResponse(error, _options.UnsupportedCapabilityBackoff)).ConfigureAwait(false);
+            return;
+        }
+
         var initialResponse = BuildWatchResponse(current, request.NodeId, needsFullSnapshot, _options.DefaultBackoff);
         await responseStream.WriteAsync(initialResponse).ConfigureAwait(false);
 
