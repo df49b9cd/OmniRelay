@@ -12,7 +12,7 @@ public sealed class ControlPlaneEventBusTests
     public async ValueTask PublishAsync_DeliversEventsToSubscribers()
     {
         var bus = new ControlPlaneEventBus(NullLogger<ControlPlaneEventBus>.Instance);
-        var subscriptionResult = await bus.SubscribeAsync();
+        var subscriptionResult = await bus.SubscribeAsync(cancellationToken: TestContext.Current.CancellationToken);
         subscriptionResult.IsSuccess.ShouldBeTrue(subscriptionResult.Error?.Message);
         await using var subscription = subscriptionResult.Value;
 
@@ -28,7 +28,9 @@ public sealed class ControlPlaneEventBusTests
     public async ValueTask PublishAsync_AppliesFilters()
     {
         var bus = new ControlPlaneEventBus(NullLogger<ControlPlaneEventBus>.Instance);
-        var subscriptionResult = await bus.SubscribeAsync(new ControlPlaneEventFilter { ClusterId = "cluster-a" });
+        var subscriptionResult = await bus.SubscribeAsync(
+            new ControlPlaneEventFilter { ClusterId = "cluster-a" },
+            cancellationToken: TestContext.Current.CancellationToken);
         subscriptionResult.IsSuccess.ShouldBeTrue(subscriptionResult.Error?.Message);
         await using var subscription = subscriptionResult.Value;
 
