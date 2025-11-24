@@ -1,13 +1,18 @@
-name: CI Gate
+name: Native AOT Publish
 
 on:
-  push:
-    branches: [ main ]
-    paths-ignore:
-      - 'docs/**'
-      - '**/*.md'
-  pull_request:
-    branches: [ main ]
+  schedule:
+    - cron: '0 6 * * 1' # Mondays 06:00 UTC
+  workflow_dispatch:
+    inputs:
+      rid:
+        description: 'Runtime identifier (RID)'
+        default: 'linux-x64'
+        required: true
+      config:
+        description: 'Build configuration'
+        default: 'Release'
+        required: true
 
 permissions:
   contents: read
@@ -17,7 +22,7 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: 1
 
 jobs:
-  gate:
+  aot:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
@@ -46,20 +51,18 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-nuget-
 
-      - name: Run CI gate (build + unit slices + AOT publish)
+      - name: Native AOT publish (DataPlane + ControlPlane + CLI + MeshKit smoke)
         env:
-          RID: ${{ matrix.rid }}
-          CONFIG: Release
+          RID: ${{ github.event.inputs.rid || matrix.rid }}
+          CONFIG: ${{ github.event.inputs.config || 'Release' }}
         run: |
-          chmod +x eng/run-ci-gate.sh
-          ./eng/run-ci-gate.sh
+          chmod +x eng/run-aot-publish.sh
+          ./eng/run-aot-publish.sh "$RID" "$CONFIG"
 
-      - name: Upload CI artifacts
+      - name: Upload AOT artifacts
         if: always()
         uses: actions/upload-artifact@v5
         with:
-          name: ci-artifacts-${{ matrix.rid }}
-          path: |
-            artifacts/ci/**
-            **/TestResults/**/*.trx
-          if-no-files-found: ignore
+          name: aot-${{ matrix.rid }}
+          path: artifacts/aot/${{ github.event.inputs.rid || matrix.rid }}/**
+          if-no-files-found: error

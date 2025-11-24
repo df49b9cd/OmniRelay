@@ -6,14 +6,16 @@ RID=${RID:-linux-x64}
 CONFIG=${CONFIG:-Release}
 SKIP_AOT=${SKIP_AOT:-0}
 
+mkdir -p "$ARTIFACTS/test-results"
+
 mkdir -p "$ARTIFACTS"
 
 # 1) Build all
 DOTNET_CLI_TELEMETRY_OPTOUT=1 dotnet build "$ROOT/OmniRelay.slnx" -c "$CONFIG" --nologo
 
 # 2) Targeted test slices (fast gate)
-DOTNET_CLI_TELEMETRY_OPTOUT=1 dotnet test "$ROOT/tests/OmniRelay.Dispatcher.UnitTests/OmniRelay.Dispatcher.UnitTests.csproj" -c "$CONFIG" --nologo
-DOTNET_CLI_TELEMETRY_OPTOUT=1 dotnet test "$ROOT/tests/OmniRelay.Core.UnitTests/OmniRelay.Core.UnitTests.csproj" -c "$CONFIG" --nologo
+DOTNET_CLI_TELEMETRY_OPTOUT=1 dotnet test "$ROOT/tests/OmniRelay.Dispatcher.UnitTests/OmniRelay.Dispatcher.UnitTests.csproj" -c "$CONFIG" --nologo --logger "trx;LogFileName=dispatcher.trx" --results-directory "$ARTIFACTS/test-results"
+DOTNET_CLI_TELEMETRY_OPTOUT=1 dotnet test "$ROOT/tests/OmniRelay.Core.UnitTests/OmniRelay.Core.UnitTests.csproj" -c "$CONFIG" --nologo --logger "trx;LogFileName=core.trx" --results-directory "$ARTIFACTS/test-results"
 
 # 3) AOT publish (data-plane, control-plane, CLI) unless skipped
 if [[ "$SKIP_AOT" != "1" ]]; then

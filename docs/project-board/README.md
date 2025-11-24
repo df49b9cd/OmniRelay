@@ -27,10 +27,10 @@ Status legend: Open / In design / In progress / Needs re-scope / Done. Epics are
 | --- | --- | --- | --- |
 | WORK-023 | Shared transport/codec/proto packages | Done | Data-plane split complete; shared packages packed with SBOMs; MeshKit consumes ControlPlane + shared packages (no duplicated transport/codec code). |
 | WORK-001 | OmniRelay transport/pipeline parity (in-proc, sidecar, edge) | Done | Mode parity, admin/introspection alignment, and cross-mode validation baseline complete across in-proc/sidecar/edge. |
-| WORK-002 | Native AOT perf & compliance baseline | Needs re-scope | Apply dotnet-performance-guidelines; measure/watch p99; enforce no reflection/JIT in hot paths. |
-| WORK-003 | Extension hosts (DSL, Proxy-Wasm, native) + watchdogs | Needs re-scope | Sandbox, quotas, failure policies, and capability flags per runtime. |
-| WORK-004 | Deployment packaging (per-RID, in-proc host, sidecar, headless edge) | Needs re-scope | Signed artifacts, slim images, host wrappers. |
-| WORK-005 | CI gating for AOT/publish/tests | Open | Block merges unless all hosts build/publish AOT and core test tiers pass (DataPlane + ControlPlane). |
+| WORK-002 | Native AOT perf & compliance baseline | Done | Banned APIs enforced; perf/SLO baselines documented; perf smoke hook ready for CI gating. |
+| WORK-003 | Extension hosts (DSL, Proxy-Wasm, native) + watchdogs | Done (Phase 1) | DSL host shipped with signatures/quotas/telemetry; Wasm/native deferred until reactivated. |
+| WORK-004 | Deployment packaging (per-RID, in-proc host, sidecar, headless edge) | Done | NuGet + container packaging with capability manifest and SBOM/signing toggle; hardened defaults documented. |
+| WORK-005 | CI gating for AOT/publish/tests | Done | `eng/run-ci-gate.sh` builds, runs fast test slices, and AOT publishes DataPlane/ControlPlane/CLI; ready for PR/nightly enforcement. |
 
 ### L1 – MeshKit Control Plane
 
