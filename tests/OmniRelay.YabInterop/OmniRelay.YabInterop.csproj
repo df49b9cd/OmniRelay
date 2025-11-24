@@ -18,6 +18,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Remove="..\TestSupport\*.cs" />
+    <Compile Remove="..\GlobalUsings.cs" />
   </ItemGroup>
   <ItemGroup>
     <Protobuf Include="Protos/echo.proto" GrpcServices="None" />

@@ -1,7 +1,6 @@
 using Hugo;
 using Microsoft.Extensions.DependencyInjection;
 using OmniRelay.Dispatcher.Config;
-using OmniRelay.Dispatcher.Config.Models;
 using OmniRelay.TestSupport.Assertions;
 using Xunit;
 using static Hugo.Go;

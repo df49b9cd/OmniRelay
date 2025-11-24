@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <Compile Remove="$(MSBuildThisFileDirectory)..\\TestSupport\\*.cs" />
+    <Compile Remove="..\\GlobalUsings.cs" />
     <Compile Remove="Support/**" />
   </ItemGroup>
 
