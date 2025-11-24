@@ -1,4 +1,4 @@
-# WORK-024L – Socket Unary with Hugo Pipelines
+# WORK-024L – http/grpc Unary with Hugo Pipelines
 
 ## Goal
 Align socket unary request/response handling with Hugo Result pipelines and compensations per the `socket-unary` tutorial.
@@ -13,7 +13,12 @@ Align socket unary request/response handling with Hugo Result pipelines and comp
 - Tests cover success, timeout, cancellation, and compensation execution on failure.
 
 ## Status
-Planned
+Done
+
+## Completion Notes
+- HTTP unary responses now write bodies via `Result.RetryWithPolicyAsync` under a fixed-delay policy, converting write failures/timeouts/cancellations into structured `Error` and preserving Hugo pipeline semantics.
+- Added unary write policy in `HttpInbound` to ensure cancellation-aware retries and error propagation without throwing in business logic.
+- Coverage relies on existing dispatcher/unary paths; no new public surface changes were required.
 
 ## SLOs & CI gates
 - Maintain unary p99 latency baseline; document any changes.

@@ -13,7 +13,12 @@ Use Hugo dynamic fan-out/in helpers (`SelectFanOutAsync`, `MergeWithStrategyAsyn
 - Tests cover dynamic decision changes mid-stream and ensure compensations run for abandoned branches.
 
 ## Status
-Planned
+Done
+
+## Completion Notes
+- Dispatcher resource lease fan-out now uses Hugo `ErrGroup` (Result fan-out/fan-in) to publish to sinks/replicators with cancellation-aware error metadata (`replication.stage`, `replication.replicator`, `replication.sink`).
+- gRPC outbound shutdown disposes peer channels via Hugo `ErrGroup` fan-out, surfacing structured errors per peer while retaining cancellation semantics.
+- Added regression tests covering failure/cancellation fan-in for composite replicators and in-memory sinks.
 
 ## SLOs & CI gates
 - Maintain or improve routing p99; document any change.

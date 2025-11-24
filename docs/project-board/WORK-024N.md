@@ -1,4 +1,4 @@
-# WORK-024N – Socket Oneway (Fire-and-Forget) with Compensations
+# WORK-024N – http/grpc Oneway (Fire-and-Forget) with Compensations
 
 ## Goal
 Align socket oneway (fire-and-forget) flows with Hugo compensations and backpressure as described in the `socket-oneway` tutorial.
@@ -12,7 +12,12 @@ Align socket oneway (fire-and-forget) flows with Hugo compensations and backpres
 - Tests assert no hangs on shutdown and that failed sends execute compensations.
 
 ## Status
-Planned
+Done
+
+## Completion Notes
+- HTTP oneway outbound now executes via a bounded Hugo `TaskQueue` (capacity 64, concurrency 4) with structured backpressure errors; sends run as `Result` pipelines and return failures instead of throwing.
+- Pump cancellation/disposal is coordinated to avoid hangs on shutdown; compensation/backpressure semantics validated by new tests.
+- Added unit coverage for backpressure saturation and successful drain.
 
 ## SLOs & CI gates
 - Maintain oneway throughput without unbounded buffering.

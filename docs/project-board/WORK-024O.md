@@ -1,4 +1,4 @@
-# WORK-024O – Socket Duplex (Request/Response + Streaming)
+# WORK-024O – http/grpc Duplex (Request/Response + Streaming)
 
 ## Goal
 Use the Hugo `socket-duplex` tutorial patterns to unify request/response with streaming phases over sockets, preserving compensations and cancellation.
@@ -12,7 +12,12 @@ Use the Hugo `socket-duplex` tutorial patterns to unify request/response with st
 - Tests cover upgrade path from unary to streaming, ensuring resources are released if the upgrade fails mid-handshake.
 
 ## Status
-Planned
+Done
+
+## Completion Notes
+- Duplex handshake path now disposes the duplex call and WebSocket on handshake/upgrade failures, returning structured Hugo errors instead of leaving resources hanging.
+- Existing duplex pumps continue to run under Hugo `ErrGroup` with cancellation backpressure; disposal cleanup is guarded even when the upgrade fails.
+- No behavioral change to protocol framing; focus was on compensation/cleanup consistency per tutorial guidance.
 
 ## SLOs & CI gates
 - No regression in duplex upgrade latency; document changes.

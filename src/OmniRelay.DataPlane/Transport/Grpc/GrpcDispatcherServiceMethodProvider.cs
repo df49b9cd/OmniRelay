@@ -911,27 +911,6 @@ internal sealed class GrpcDispatcherServiceMethodProvider(Dispatcher.Dispatcher 
     }
 #pragma warning restore CA2016
 
-    private static Error MapServerStreamPumpError(Exception exception)
-    {
-        return exception switch
-        {
-            ResultException resultException when resultException.Error is not null => resultException.Error,
-            TimeoutException => OmniRelayErrorAdapter.FromStatus(
-                OmniRelayStatusCode.DeadlineExceeded,
-                "The server stream write timed out.",
-                transport: GrpcTransportConstants.TransportName),
-            OperationCanceledException => OmniRelayErrorAdapter.FromStatus(
-                OmniRelayStatusCode.Cancelled,
-                "The client cancelled the request.",
-                transport: GrpcTransportConstants.TransportName),
-            RpcException rpcException => OmniRelayErrorAdapter.FromStatus(
-                GrpcStatusMapper.FromStatus(rpcException.Status),
-                string.IsNullOrWhiteSpace(rpcException.Status.Detail) ? rpcException.StatusCode.ToString() : rpcException.Status.Detail,
-                transport: GrpcTransportConstants.TransportName),
-            _ => OmniRelayErrors.FromException(exception, GrpcTransportConstants.TransportName).Error
-        };
-    }
-
     private static void ApplySuccessTrailers(ServerCallContext callContext, ResponseMeta responseMeta)
     {
         ArgumentNullException.ThrowIfNull(callContext);

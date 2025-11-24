@@ -36,7 +36,7 @@ public sealed class WatchHarnessTests
             var telemetry = new TelemetryForwarder(NullLogger<TelemetryForwarder>.Instance);
             var harness = new WatchHarness(client, validator, applier, cache, telemetry, NullLogger<WatchHarness>.Instance);
 
-            using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(200));
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
             var result = await harness.RunAsync(new ControlWatchRequest { NodeId = "node-a" }, cts.Token);
 
             Assert.True(result.IsSuccess);

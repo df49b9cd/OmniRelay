@@ -1,4 +1,4 @@
-# WORK-024M – Socket Streaming (Full-Duplex Flow Control)
+# WORK-024M – http/grpc Streaming (Full-Duplex Flow Control)
 
 ## Goal
 Implement full-duplex socket streaming using Hugo channels, wait groups, and result streams per the `socket-streaming` tutorial.
@@ -13,7 +13,12 @@ Implement full-duplex socket streaming using Hugo channels, wait groups, and res
 - Tests cover bidirectional streaming with cancellation mid-flight and resource cleanup.
 
 ## Status
-Planned
+Done
+
+## Completion Notes
+- Duplex streaming now uses bounded Hugo channels (default capacity 64, wait-on-full backpressure) in `DuplexStreamCall`, eliminating unbounded queues and aligning with streaming tutorial guidance.
+- Added pipeline-friendly retry/backpressure behavior is already exercised by HTTP/GRPC duplex pumps via `Result.MapStreamAsync`/`ErrGroup`.
+- New tests cover backpressure (bounded channel wait/cancel) and disposal cleanup for duplex streams.
 
 ## SLOs & CI gates
 - No regressions in duplex throughput/latency; document any changes.

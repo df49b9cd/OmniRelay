@@ -9,6 +9,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Hugo;
+using Hugo.Policies;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -56,6 +57,9 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
     private readonly object _contextLock = new();
     private readonly HashSet<HttpContext> _activeHttpContexts = [];
     private static readonly HttpInboundJsonContext JsonContext = HttpInboundJsonContext.Default;
+    private static readonly ResultExecutionPolicy UnaryWritePolicy =
+        ResultExecutionPolicy.None.WithRetry(
+            ResultRetryPolicy.FixedDelay(maxAttempts: 2, delay: TimeSpan.FromMilliseconds(25)));
     private static readonly PathString ControlPeersPath = new("/control/peers");
     private static readonly PathString ControlPeersAltPath = new("/omnirelay/control/peers");
     private static readonly PathString ControlExtensionsPath = new("/control/extensions");
@@ -872,7 +876,14 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
 
             if (!response.Body.IsEmpty)
             {
-                await context.Response.BodyWriter.WriteAsync(response.Body, context.RequestAborted).ConfigureAwait(false);
+                var writeResult = await WriteUnaryBodyAsync(context, response.Body, transport, UnaryWritePolicy, context.RequestAborted).ConfigureAwait(false);
+                if (writeResult.IsFailure)
+                {
+                    var error = OmniRelayErrors.FromError(writeResult.Error ?? Error.Unspecified(), transport);
+                    await WriteErrorAsync(context, error.Message ?? "unary response write failed", error.StatusCode, transport, error.Error).ConfigureAwait(false);
+                    RecordMetrics("error");
+                    return;
+                }
             }
 
             RecordMetrics("success");
@@ -881,6 +892,40 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
         {
             CompleteRequest(context);
         }
+    }
+
+    private static ValueTask<Result<Unit>> WriteUnaryBodyAsync(
+        HttpContext context,
+        ReadOnlyMemory<byte> payload,
+        string transport,
+        ResultExecutionPolicy policy,
+        CancellationToken cancellationToken)
+    {
+        return Result.RetryWithPolicyAsync<Unit>(
+            async (_, ct) =>
+            {
+                try
+                {
+                    var result = await context.Response.BodyWriter.WriteAsync(payload, ct).ConfigureAwait(false);
+                    if (result.IsCanceled)
+                    {
+                        return Err<Unit>(Error.Canceled(token: ct));
+                    }
+
+                    return Ok(Unit.Value);
+                }
+                catch (OperationCanceledException oce) when (oce.CancellationToken == ct || ct.IsCancellationRequested)
+                {
+                    return Err<Unit>(Error.Canceled(token: ct));
+                }
+                catch (Exception ex)
+                {
+                    return Err<Unit>(OmniRelayErrors.FromException(ex, transport).Error);
+                }
+            },
+            policy,
+            TimeProvider.System,
+            cancellationToken);
     }
 
     private async Task HandleServerStreamAsync(HttpContext context)
@@ -1380,9 +1425,9 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
                 return;
             }
 
-            var socket = await context.WebSockets.AcceptWebSocketAsync().ConfigureAwait(false);
-
+            WebSocket? socket = null;
             var call = callResult.Value;
+            var callDisposed = false;
             var configuredFrameLimit = _serverRuntimeOptions?.DuplexMaxFrameBytes;
             var duplexFrameLimit = configuredFrameLimit.HasValue && configuredFrameLimit.Value > 0
                 ? Math.Min(configuredFrameLimit.Value, int.MaxValue - 1)
@@ -1394,6 +1439,8 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
 
             try
             {
+                socket = await context.WebSockets.AcceptWebSocketAsync().ConfigureAwait(false);
+
                 using var pumpGroup = new ErrGroup(pumpCts.Token);
 
                 pumpGroup.Go(async token =>
@@ -1411,11 +1458,25 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
                 var pumpResult = await pumpGroup.WaitAsync(CancellationToken.None).ConfigureAwait(false);
                 pumpError = pumpResult.Error;
             }
+            catch (Exception ex)
+            {
+                var normalized = OmniRelayErrors.FromException(ex, transport);
+                context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+                await WriteErrorAsync(context, normalized.Message ?? "duplex handshake failed", normalized.StatusCode, transport, normalized.Error).ConfigureAwait(false);
+                callDisposed = true;
+                await call.DisposeAsync().ConfigureAwait(false);
+                socket?.Abort();
+                socket?.Dispose();
+                return;
+            }
             finally
             {
-                await call.DisposeAsync().ConfigureAwait(false);
+                if (!callDisposed)
+                {
+                    await call.DisposeAsync().ConfigureAwait(false);
+                }
 
-                if (socket.State == WebSocketState.Open)
+                if (socket is not null && socket.State == WebSocketState.Open)
                 {
                     try
                     {
@@ -1432,7 +1493,7 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
                     }
                 }
 
-                socket.Dispose();
+                socket?.Dispose();
             }
 
             // Metrics: success completion (duplex)
