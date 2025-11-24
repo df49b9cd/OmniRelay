@@ -79,7 +79,7 @@ public sealed class WatchHarness : IAsyncDisposable
         _applyQueue = new TaskQueue<Func<CancellationToken, ValueTask<Result<Unit>>>>(_applyQueueOptions, TimeProvider.System, (_, _) => ValueTask.CompletedTask);
         _applySafeQueue = new SafeTaskQueueWrapper<Func<CancellationToken, ValueTask<Result<Unit>>>>(_applyQueue, ownsQueue: true);
         _applyAdapter = TaskQueueChannelAdapter<Func<CancellationToken, ValueTask<Result<Unit>>>>.Create(_applyQueue, concurrency: 1, ownsQueue: false);
-        _applyPump = RunApplyPumpAsync(cancellationToken);
+        _applyPump = RunApplyPumpAsync(CancellationToken.None);
 
         try
         {
@@ -114,25 +114,25 @@ public sealed class WatchHarness : IAsyncDisposable
             }
 
             return Ok(Unit.Value);
-        }
-        finally
-        {
-            if (_applyAdapter is not null)
-            {
-                await _applyAdapter.DisposeAsync().ConfigureAwait(false);
-                _applyAdapter = null;
             }
+            finally
+            {
+                if (_applyAdapter is not null)
+                {
+                    await _applyAdapter.DisposeAsync().ConfigureAwait(false);
+                    _applyAdapter = null;
+                }
 
-            if (_applyPump is not null)
-            {
-                try
+                if (_applyPump is not null)
                 {
-                    await _applyPump.ConfigureAwait(false);
+                    try
+                    {
+                        await _applyPump.ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                    }
                 }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
-                }
-            }
 
             if (_applySafeQueue is not null)
             {
