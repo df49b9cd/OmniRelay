@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Google.Protobuf;
 using Hugo;
 using Hugo.Policies;
@@ -7,7 +8,6 @@ using OmniRelay.ControlPlane.ControlProtocol;
 using OmniRelay.Protos.Control;
 using static Hugo.Go;
 using Unit = Hugo.Go.Unit;
-using System.Runtime.CompilerServices;
 
 namespace OmniRelay.ControlPlane.Agent;
 
