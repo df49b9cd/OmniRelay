@@ -13,7 +13,12 @@ Align list-based orchestration stages with streaming continuations using Hugo `R
 - Tests cover partial-failure fan-out (one shard fails, others succeed) and ensure compensations/cleanups run.
 
 ## Status
-Planned
+Done
+
+## Completion Notes
+- Shard simulations fan-out per-shard reconciliation using `ResultPipeline.FanOutAsync` under the repository retry policy and merge worker outputs with `ResultPipelineChannels.MergeAsync`, keeping cancellation/compensation threading intact.
+- Unknown assignments now return `shards.control.assignment.missing`; worker queues complete cleanly before merge.
+
 
 ## SLOs & CI gates
 - Maintain current p99 latency for shard list/diff operations; document any change.

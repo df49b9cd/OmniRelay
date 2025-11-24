@@ -1,0 +1,216 @@
+using Hugo;
+using Microsoft.Extensions.Logging.Abstractions;
+using OmniRelay.Core.Shards;
+using OmniRelay.Core.Shards.ControlPlane;
+using OmniRelay.Core.Shards.Hashing;
+using Xunit;
+
+namespace OmniRelay.Core.UnitTests.Shards.ControlPlane;
+
+public sealed class ShardControlPlaneServiceTests
+{
+    [Fact]
+    public async Task Simulate_FanOut_MergesChanges()
+    {
+        var records = new[]
+        {
+            new ShardRecord
+            {
+                Namespace = "ns",
+                ShardId = "shard-a",
+                StrategyId = ShardHashStrategyIds.Rendezvous,
+                OwnerNodeId = "node-a",
+                CapacityHint = 1,
+                Version = 1,
+                Checksum = "c1",
+                UpdatedAt = DateTimeOffset.UtcNow
+            },
+            new ShardRecord
+            {
+                Namespace = "ns",
+                ShardId = "shard-b",
+                StrategyId = ShardHashStrategyIds.Rendezvous,
+                OwnerNodeId = "node-b",
+                CapacityHint = 1,
+                Version = 1,
+                Checksum = "c2",
+                UpdatedAt = DateTimeOffset.UtcNow
+            }
+        };
+
+        var plannedAssignments = new[]
+        {
+            new ShardAssignment { Namespace = "ns", ShardId = "shard-a", OwnerNodeId = "node-c" },
+            new ShardAssignment { Namespace = "ns", ShardId = "shard-b", OwnerNodeId = "node-b" }
+        };
+
+        var strategy = new TestStrategy("fanout-test", plannedAssignments);
+        var registry = new ShardHashStrategyRegistry(new[] { strategy });
+        var repository = new FakeShardRepository(records);
+        var service = new ShardControlPlaneService(repository, registry, TimeProvider.System, NullLogger<ShardControlPlaneService>.Instance);
+
+        var request = new ShardSimulationRequest
+        {
+            Namespace = "ns",
+            StrategyId = strategy.Id,
+            Nodes = new[] { new ShardSimulationNode("node-a", 1, null, null) }
+        };
+
+        var result = await service.SimulateAsync(request, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, result.Value.Assignments.Count);
+        var change = Assert.Single(result.Value.Changes);
+        Assert.Equal("shard-a", change.ShardId);
+        Assert.Equal("node-a", change.CurrentOwner);
+        Assert.Equal("node-c", change.ProposedOwner);
+        Assert.True(change.ChangesOwner);
+    }
+
+    [Fact]
+    public async Task Simulate_FanOut_Fails_WhenWorkerFails()
+    {
+        var records = new[]
+        {
+            new ShardRecord
+            {
+                Namespace = "ns",
+                ShardId = "shard-a",
+                StrategyId = ShardHashStrategyIds.Rendezvous,
+                OwnerNodeId = "node-a",
+                CapacityHint = 1,
+                Version = 1,
+                Checksum = "c1",
+                UpdatedAt = DateTimeOffset.UtcNow
+            },
+            new ShardRecord
+            {
+                Namespace = "ns",
+                ShardId = "shard-b",
+                StrategyId = ShardHashStrategyIds.Rendezvous,
+                OwnerNodeId = "node-b",
+                CapacityHint = 1,
+                Version = 1,
+                Checksum = "c2",
+                UpdatedAt = DateTimeOffset.UtcNow
+            }
+        };
+
+        var plannedAssignments = new[]
+        {
+            new ShardAssignment { Namespace = "ns", ShardId = "shard-a", OwnerNodeId = "node-b" },
+            new ShardAssignment { Namespace = "ns", ShardId = "shard-b", OwnerNodeId = "node-c", LocalityHint = "fail" }
+        };
+
+        var strategy = new TestStrategy("fanout-fail", plannedAssignments);
+        var registry = new ShardHashStrategyRegistry(new[] { strategy });
+        var repository = new FakeShardRepository(records);
+        var service = new ShardControlPlaneService(repository, registry, TimeProvider.System, NullLogger<ShardControlPlaneService>.Instance);
+
+        var request = new ShardSimulationRequest
+        {
+            Namespace = "ns",
+            StrategyId = strategy.Id,
+            Nodes = new[] { new ShardSimulationNode("node-a", 1, null, null) }
+        };
+
+        var result = await service.SimulateAsync(request, CancellationToken.None);
+
+        Assert.True(result.IsFailure, $"Expected failure but got success. Error={result.Error}");
+        Assert.Equal("shards.control.assignment.failed", result.Error?.Code);
+    }
+
+    [Fact]
+    public async Task Simulate_Fails_WhenAssignmentMissing()
+    {
+        var records = new[]
+        {
+            new ShardRecord
+            {
+                Namespace = "ns",
+                ShardId = "shard-a",
+                StrategyId = ShardHashStrategyIds.Rendezvous,
+                OwnerNodeId = "node-a",
+                CapacityHint = 1,
+                Version = 1,
+                Checksum = "c1",
+                UpdatedAt = DateTimeOffset.UtcNow
+            }
+        };
+
+        var plannedAssignments = new[]
+        {
+            new ShardAssignment { Namespace = "ns", ShardId = "shard-a", OwnerNodeId = "node-b" },
+            new ShardAssignment { Namespace = "ns", ShardId = "missing", OwnerNodeId = "node-c" }
+        };
+
+        var strategy = new TestStrategy("fanout-missing", plannedAssignments);
+        var registry = new ShardHashStrategyRegistry(new[] { strategy });
+        var repository = new FakeShardRepository(records);
+        var service = new ShardControlPlaneService(repository, registry, TimeProvider.System, NullLogger<ShardControlPlaneService>.Instance);
+
+        var request = new ShardSimulationRequest
+        {
+            Namespace = "ns",
+            StrategyId = strategy.Id,
+            Nodes = new[] { new ShardSimulationNode("node-a", 1, null, null) }
+        };
+
+        var result = await service.SimulateAsync(request, CancellationToken.None);
+
+        Assert.True(result.IsFailure, $"Expected failure but got success. Error={result.Error}");
+        Assert.Equal("shards.control.assignment.missing", result.Error?.Code);
+    }
+
+    private sealed class FakeShardRepository : IShardRepository
+    {
+        private readonly IReadOnlyList<ShardRecord> _records;
+
+        public FakeShardRepository(IReadOnlyList<ShardRecord> records)
+        {
+            _records = records;
+        }
+
+        public ValueTask<ShardRecord?> GetAsync(ShardKey key, CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult<ShardRecord?>(_records.FirstOrDefault(r => r.Key == key));
+
+        public ValueTask<IReadOnlyList<ShardRecord>> ListAsync(string? namespaceId = null, CancellationToken cancellationToken = default)
+        {
+            var filtered = string.IsNullOrWhiteSpace(namespaceId)
+                ? _records
+                : _records.Where(r => string.Equals(r.Namespace, namespaceId, StringComparison.OrdinalIgnoreCase)).ToArray();
+            return ValueTask.FromResult<IReadOnlyList<ShardRecord>>(filtered);
+        }
+
+        public ValueTask<ShardMutationResult> UpsertAsync(ShardMutationRequest request, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public IAsyncEnumerable<ShardRecordDiff> StreamDiffsAsync(long? sinceVersion, CancellationToken cancellationToken = default) =>
+            AsyncEnumerable.Empty<ShardRecordDiff>();
+
+        public ValueTask<ShardQueryResult> QueryAsync(ShardQueryOptions options, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+    }
+
+    private sealed class TestStrategy : IShardHashStrategy
+    {
+        private readonly IReadOnlyList<ShardAssignment> _assignments;
+
+        public TestStrategy(string id, IReadOnlyList<ShardAssignment> assignments)
+        {
+            Id = id;
+            _assignments = assignments;
+        }
+
+        public string Id { get; }
+
+        public Result<ShardHashPlan> Compute(ShardHashRequest request)
+        {
+            return Result.Ok(new ShardHashPlan(
+                request.Namespace ?? "ns",
+                Id,
+                _assignments,
+                DateTimeOffset.UtcNow));
+        }
+    }
+}
