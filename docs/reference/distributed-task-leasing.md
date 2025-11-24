@@ -16,6 +16,8 @@ The DTOs live next to the component (`ResourceLeaseItemPayload`, `ResourceLeaseO
 
 Use `ResourceLeaseDispatcherOptions.QueueOptions` to align lease duration, heartbeat cadence, capacity, and backpressure thresholds with your SafeTaskQueue settings.
 
+Validation follows the same Result-based pipeline as other dispatcher components. Payload/restore failures return structured error codes (see `docs/reference/errors.md` → ResourceLease) such as `resourcelease.payload.required` or `resourcelease.restore.pending_item_required`, enabling transport layers to return 400/InvalidArgument without throwing.
+
 ### Peer health + membership gossip
 
 - `ResourceLeaseDispatcherOptions.LeaseHealthTracker` accepts a shared `PeerLeaseHealthTracker` (under `Core.Peers`). When supplied, the dispatcher emits lease assignments, heartbeats, disconnects, and requeue signals into the tracker so peer choosers can filter unhealthy owners.

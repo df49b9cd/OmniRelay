@@ -93,3 +93,18 @@ Dispatcher configuration and registration now surface validation failures via Hu
 | `dispatcher.config.lifecycle_name_required` | Lifecycle component name missing | Config pipeline |
 
 HTTP/gRPC gateways should map `dispatcher.*` codes to 400 (`NotFound` for resources is unaffected). Consumers can still opt into constructor-based paths (which throw) but should prefer `Dispatcher.Create` and Result-based builders for AOT-safe flows.
+
+## ResourceLease Validation Error Codes
+
+ResourceLease endpoints surface validation failures through `Error.Code` instead of throwing. Transport layers should map these to HTTP 400 / gRPC `InvalidArgument`.
+
+| Code | Meaning | Typical Surface |
+| --- | --- | --- |
+| `resourcelease.payload.required` | Enqueue/restore payload missing | `resourcelease::enqueue`, `resourcelease::restore` |
+| `resourcelease.payload.resource_type_required` | `ResourceType` missing/whitespace | `resourcelease::enqueue`, restore |
+| `resourcelease.payload.resource_id_required` | `ResourceId` missing/whitespace | `resourcelease::enqueue`, restore |
+| `resourcelease.payload.partition_key_required` | `PartitionKey` missing/whitespace | `resourcelease::enqueue`, restore |
+| `resourcelease.payload.encoding_required` | `PayloadEncoding` missing/whitespace | `resourcelease::enqueue`, restore |
+| `resourcelease.restore.pending_item_required` | Null entry in restore batch | `resourcelease::restore` |
+
+Downstream replication/deterministic components continue to return structured `Error` values (e.g., `replication.stage`, `replication.eventType`) so callers can aggregate failures without exceptions.
