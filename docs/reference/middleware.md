@@ -64,9 +64,11 @@ Available builders:
 
 ## Testing middleware order
 
-Unit tests can assert the new builder behaviour by combining recording middleware with the `Register*` overloads:
+Unit tests can use AwesomeAssertions to verify the new builder behaviour by combining recording middleware with the `Register*` overloads:
 
 ```csharp
+using AwesomeAssertions;
+
 var order = new List<string>();
 var options = new DispatcherOptions("keyvalue");
 options.UnaryInboundMiddleware.Add(new RecordingUnaryMiddleware("global", order));
@@ -83,6 +85,7 @@ dispatcher.RegisterUnary(
         .Use(new RecordingUnaryMiddleware("procedure-2", order))).ThrowIfFailure();
 
 // Invoke → order == [ "global", "procedure-1", "procedure-2", "handler" ]
+order.Should().Equal("global", "procedure-1", "procedure-2", "handler");
 ```
 
 This ordering mirrors yarpc-go’s inbound pipeline semantics, ensuring middleware written for Go can be ported to .NET with minimal behavioural drift.

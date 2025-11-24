@@ -63,7 +63,7 @@ If you already throw `RpcException` with OmniRelay trailers, the interceptor lea
 
 ## Testing & Diagnostics
 
-- Unit tests can assert metadata via `OmniRelayErrorAdapter.FaultMetadataKey` / `RetryableMetadataKey`.
+- Unit tests can use AwesomeAssertions to verify metadata via `OmniRelayErrorAdapter.FaultMetadataKey` / `RetryableMetadataKey`.
 - HTTP integration tests should verify the response headers/JSON mirror the filter output.
 - gRPC tests should inspect response trailers for `omnirelay-status` and `omnirelay.retryable` to confirm adapter wiring.
 
