@@ -15,6 +15,7 @@ using Microsoft.AspNetCore.Server.Kestrel.Https;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using OmniRelay.ControlPlane.Primitives;
 using OmniRelay.ControlPlane.Security;
 using OmniRelay.Diagnostics;
 using OmniRelay.Security.Secrets;
@@ -357,7 +358,18 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
         {
             try
             {
-                await Task.Delay(_options.Interval, cancellationToken).ConfigureAwait(false);
+                var delayResult = await AsyncDelay.DelayAsync(_options.Interval, cancellationToken).ConfigureAwait(false);
+                if (delayResult.IsFailure)
+                {
+                    if (delayResult.Error?.IsCanceled ?? false)
+                    {
+                        break;
+                    }
+
+                    MeshGossipHostLog.GossipRoundFailed(_logger, delayResult.Error?.Cause ?? new InvalidOperationException(delayResult.Error?.Message ?? "delay failed"));
+                    continue;
+                }
+
                 await ExecuteRoundAsync(cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -472,7 +484,17 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
         {
             try
             {
-                await Task.Delay(_options.SuspicionInterval, cancellationToken).ConfigureAwait(false);
+                var delayResult = await AsyncDelay.DelayAsync(_options.SuspicionInterval, cancellationToken).ConfigureAwait(false);
+                if (delayResult.IsFailure)
+                {
+                    if (delayResult.Error?.IsCanceled ?? false)
+                    {
+                        break;
+                    }
+
+                    MeshGossipHostLog.GossipRoundFailed(_logger, delayResult.Error?.Cause ?? new InvalidOperationException(delayResult.Error?.Message ?? "delay failed"));
+                    continue;
+                }
                 _membership.Sweep(suspicion, leave);
                 RecordMetrics(_membership.Snapshot());
                 PublishMembershipEvent("sweep");
@@ -498,7 +520,17 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
         {
             try
             {
-                await Task.Delay(_options.ShuffleInterval, cancellationToken).ConfigureAwait(false);
+                var delayResult = await AsyncDelay.DelayAsync(_options.ShuffleInterval, cancellationToken).ConfigureAwait(false);
+                if (delayResult.IsFailure)
+                {
+                    if (delayResult.Error?.IsCanceled ?? false)
+                    {
+                        break;
+                    }
+
+                    MeshGossipHostLog.GossipRoundFailed(_logger, delayResult.Error?.Cause ?? new InvalidOperationException(delayResult.Error?.Message ?? "delay failed"));
+                    continue;
+                }
 
                 var target = _peerView.SelectShuffleTarget();
                 if (target is null || _httpClient is null)
