@@ -1,11 +1,12 @@
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
+using AwesomeAssertions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using OmniRelay.Core.Leadership;
 using OmniRelay.HyperscaleFeatureTests.Infrastructure;
-using OmniRelay.Tests;
 using Xunit;
+using static AwesomeAssertions.FluentActions;
 
 namespace OmniRelay.HyperscaleFeatureTests.Scenarios;
 
@@ -32,7 +33,7 @@ public sealed class LeadershipHyperscaleFeatureTests : IAsyncLifetime
             ElectionBackoff = TimeSpan.FromMilliseconds(250),
             MaxElectionWindow = TimeSpan.FromSeconds(5),
             ClusterId = "hyperscale-validation",
-            MeshVersion = "disc-002-feature-tests"
+            MeshVersion = "mesh-leadership-feature-tests"
         };
 
         _cluster = new HyperscaleLeadershipCluster(_store, _options, _loggerFactory);
@@ -50,8 +51,8 @@ public sealed class LeadershipHyperscaleFeatureTests : IAsyncLifetime
         await _cluster.DisposeAsync();
     }
 
-    [Fact(DisplayName = "Leadership cluster maintains exclusive leaders per scope and fails over inside SLA")]
-    public async Task LeadershipCluster_MeetsElectionSlaUnderChurnAsync()
+    [Fact(DisplayName = "Leadership cluster maintains exclusive leaders per scope and fails over inside SLA", Timeout = TestTimeouts.Default)]
+    public async ValueTask LeadershipCluster_MeetsElectionSlaUnderChurnAsync()
     {
         var ct = TestContext.Current.CancellationToken;
         await _cluster.WaitForStableLeadershipAsync(TimeSpan.FromSeconds(10), ct);
@@ -65,28 +66,28 @@ public sealed class LeadershipHyperscaleFeatureTests : IAsyncLifetime
         foreach (var scopeId in targetScopes)
         {
             var incumbent = _cluster.GetToken(scopeId);
-            Assert.NotNull(incumbent);
+            incumbent.Should().NotBeNull();
 
             var duration = await _cluster.ForceFailoverAsync(scopeId, ct);
-            Assert.True(duration <= _options.MaxElectionWindow, $"Failover for {scopeId} exceeded SLA ({duration}).");
+            duration.Should().BeLessThanOrEqualTo(_options.MaxElectionWindow, $"Failover for {scopeId} exceeded SLA ({duration}).");
 
             var successor = _cluster.GetToken(scopeId);
-            Assert.NotNull(successor);
-            Assert.NotEqual(incumbent!.LeaderId, successor!.LeaderId);
-            Assert.True(successor.FenceToken > incumbent.FenceToken, "Fence token must increase after failover.");
+            successor.Should().NotBeNull();
+            successor!.LeaderId.Should().NotBe(incumbent!.LeaderId);
+            successor.FenceToken.Should().BeGreaterThan(incumbent.FenceToken, "Fence token must increase after failover.");
         }
 
         var snapshot = _cluster.Snapshot();
         foreach (var scope in _cluster.Scopes)
         {
             var token = snapshot.Find(scope.ScopeId);
-            Assert.NotNull(token);
-            Assert.False(token!.IsExpired(DateTimeOffset.UtcNow), $"Token for {scope.ScopeId} expired.");
+            token.Should().NotBeNull();
+            token!.IsExpired(DateTimeOffset.UtcNow).Should().BeFalse($"Token for {scope.ScopeId} expired.");
         }
     }
 
-    [Fact(DisplayName = "Leadership event streams stay consistent during watcher churn and registry lag")]
-    public async Task LeadershipStreams_WithWatcherChurnRemainConsistentAsync()
+    [Fact(DisplayName = "Leadership event streams stay consistent during watcher churn and registry lag", Timeout = TestTimeouts.Default)]
+    public async ValueTask LeadershipStreams_WithWatcherChurnRemainConsistentAsync()
     {
         var ct = TestContext.Current.CancellationToken;
         await _cluster.WaitForStableLeadershipAsync(TimeSpan.FromSeconds(10), ct);
@@ -125,8 +126,8 @@ public sealed class LeadershipHyperscaleFeatureTests : IAsyncLifetime
             }
         }
 
-        Assert.Contains(watchers, watcher => watcher.Transport.Contains("h3", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(watchers, watcher => watcher.Transport.Contains("h2", StringComparison.OrdinalIgnoreCase));
+        watchers.Should().Contain(watcher => watcher.Transport.Contains("h3", StringComparison.OrdinalIgnoreCase));
+        watchers.Should().Contain(watcher => watcher.Transport.Contains("h2", StringComparison.OrdinalIgnoreCase));
     }
 
     private List<LeadershipWatcher> CreateWatchers(
@@ -203,7 +204,7 @@ public sealed class LeadershipHyperscaleFeatureTests : IAsyncLifetime
             return result;
         }, timeout, cancellationToken);
 
-        Assert.True(converged, lastFailure ?? "Leadership watchers failed to catch up with the latest snapshot.");
+        converged.Should().BeTrue(lastFailure ?? "Leadership watchers failed to catch up with the latest snapshot.");
     }
 
     private static bool WatchersMatchSnapshot(

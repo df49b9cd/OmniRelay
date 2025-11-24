@@ -63,7 +63,7 @@ If you already throw `RpcException` with OmniRelay trailers, the interceptor lea
 
 ## Testing & Diagnostics
 
-- Unit tests can assert metadata via `OmniRelayErrorAdapter.FaultMetadataKey` / `RetryableMetadataKey`.
+- Unit tests can use AwesomeAssertions to verify metadata via `OmniRelayErrorAdapter.FaultMetadataKey` / `RetryableMetadataKey`.
 - HTTP integration tests should verify the response headers/JSON mirror the filter output.
 - gRPC tests should inspect response trailers for `omnirelay-status` and `omnirelay.retryable` to confirm adapter wiring.
 
@@ -74,3 +74,48 @@ If you already throw `RpcException` with OmniRelay trailers, the interceptor lea
 3. Ensure custom middleware rethrows `OmniRelayException` or wraps via `OmniRelayErrors.FromException`.
 4. Update documentation/tooling references to include the new adapters.  
    (The parity backlog tracks this under **Error Model Parity → Error Helpers**.)
+
+## Dispatcher Validation Error Codes
+
+Dispatcher configuration and registration now surface validation failures via Hugo `Error.Code` values instead of throwing. Clients should bubble these codes (HTTP 400 / gRPC InvalidArgument unless noted).
+
+| Code | Meaning | Typical Surface |
+| --- | --- | --- |
+| `dispatcher.codec.local_service_required` | `DispatcherOptions.ServiceName` missing/whitespace when building codec registry | Startup/config load |
+| `dispatcher.codec.service_required` | Outbound codec registration missing remote service id | Startup/config load |
+| `dispatcher.codec.procedure_required` | Codec registration missing procedure name | Startup/config load |
+| `dispatcher.codec.duplicate` | Codec already registered for given scope/service/procedure/kind | Startup/config load |
+| `dispatcher.codec.registration_failed` | Wrapper when codec registry creation fails for any reason | Startup/config load |
+| `dispatcher.procedure.name_required` | Procedure name null/whitespace during registration | Runtime registration |
+| `dispatcher.procedure.alias_invalid` | Alias null/whitespace during registration | Runtime registration |
+| `dispatcher.procedure.handler_missing` | Builder lacks a handler when Build is invoked | Runtime registration |
+| `dispatcher.config.service_required` | DispatcherOptions.Create service name missing | Config pipeline |
+| `dispatcher.config.lifecycle_name_required` | Lifecycle component name missing | Config pipeline |
+
+HTTP/gRPC gateways should map `dispatcher.*` codes to 400 (`NotFound` for resources is unaffected). Consumers can still opt into constructor-based paths (which throw) but should prefer `Dispatcher.Create` and Result-based builders for AOT-safe flows.
+
+## ResourceLease Validation Error Codes
+
+ResourceLease endpoints surface validation failures through `Error.Code` instead of throwing. Transport layers should map these to HTTP 400 / gRPC `InvalidArgument`.
+
+| Code | Meaning | Typical Surface |
+| --- | --- | --- |
+| `resourcelease.payload.required` | Enqueue/restore payload missing | `resourcelease::enqueue`, `resourcelease::restore` |
+| `resourcelease.payload.resource_type_required` | `ResourceType` missing/whitespace | `resourcelease::enqueue`, restore |
+| `resourcelease.payload.resource_id_required` | `ResourceId` missing/whitespace | `resourcelease::enqueue`, restore |
+| `resourcelease.payload.partition_key_required` | `PartitionKey` missing/whitespace | `resourcelease::enqueue`, restore |
+| `resourcelease.payload.encoding_required` | `PayloadEncoding` missing/whitespace | `resourcelease::enqueue`, restore |
+| `resourcelease.restore.pending_item_required` | Null entry in restore batch | `resourcelease::restore` |
+
+Downstream replication/deterministic components continue to return structured `Error` values (e.g., `replication.stage`, `replication.eventType`) so callers can aggregate failures without exceptions.
+
+### Deterministic coordinator / state-store wiring
+
+| Code | Meaning | Typical Surface |
+| --- | --- | --- |
+| `resourcelease.deterministic.options_required` | `ResourceLeaseDeterministicOptions` missing | Deterministic coordinator creation |
+| `resourcelease.deterministic.state_store_required` | `StateStore` missing on options | Deterministic coordinator creation |
+| `resourcelease.deterministic.root_required` | Root path missing/whitespace for file-system state store | `FileSystemDeterministicStateStore.Create` |
+| `resourcelease.dispatcher.dispatcher_required` | Dispatcher instance missing | `ResourceLeaseDispatcherComponent.Create` |
+| `resourcelease.dispatcher.options_required` | Dispatcher options missing | `ResourceLeaseDispatcherComponent.Create` |
+| `resourcelease.deterministic.table_required` | Table name missing/whitespace for SQLite deterministic store | `SqliteDeterministicStateStore.Create` |

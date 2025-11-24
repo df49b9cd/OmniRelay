@@ -11,9 +11,7 @@ using OmniRelay.Dispatcher;
 using OmniRelay.Errors;
 using OmniRelay.IntegrationTests.Support;
 using OmniRelay.Tests.Support;
-using OmniRelay.TestSupport;
 using OmniRelay.Transport.Http;
-using Shouldly;
 using Xunit;
 using static Hugo.Go;
 
@@ -22,7 +20,7 @@ namespace OmniRelay.IntegrationTests;
 public sealed class HttpOutboundIntegrationTests(ITestOutputHelper output) : IntegrationTest(output)
 {
     [Http3Fact(Timeout = 45_000)]
-    public async Task HttpOutbound_WithHttp3Preferred_FallsBackToHttp2()
+    public async ValueTask HttpOutbound_WithHttp3Preferred_FallsBackToHttp2()
     {
         if (!QuicListener.IsSupported)
         {
@@ -58,18 +56,21 @@ public sealed class HttpOutboundIntegrationTests(ITestOutputHelper output) : Int
 
         using var handler = CreateHttp3SocketsHandler();
         using var httpClient = new HttpClient(handler, disposeHandler: false) { BaseAddress = remoteAddress };
-        var httpOutbound = new HttpOutbound(
-            httpClient,
-            remoteAddress,
-            disposeClient: false,
-            runtimeOptions: new HttpClientRuntimeOptions { EnableHttp3 = true });
+        var httpOutbound = HttpOutbound.Create(
+                httpClient,
+                remoteAddress,
+                disposeClient: false,
+                runtimeOptions: new HttpClientRuntimeOptions { EnableHttp3 = true })
+            .ValueOrChecked();
 
         var clientOptions = new DispatcherOptions("runtime-client");
         clientOptions.AddUnaryOutbound("runtime-remote", null, httpOutbound);
 
         var clientDispatcher = new OmniRelay.Dispatcher.Dispatcher(clientOptions);
         var codec = new JsonCodec<PingRequest, PingResponse>(new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-        var client = clientDispatcher.CreateUnaryClient<PingRequest, PingResponse>("runtime-remote", codec);
+        var clientResult = clientDispatcher.CreateUnaryClient<PingRequest, PingResponse>("runtime-remote", codec);
+        clientResult.IsSuccess.ShouldBeTrue(clientResult.Error?.Message);
+        var client = clientResult.Value;
 
         await using var clientHost = await DispatcherHost.StartAsync("runtime-client", clientDispatcher, LoggerFactory, ct);
 
@@ -89,7 +90,7 @@ public sealed class HttpOutboundIntegrationTests(ITestOutputHelper output) : Int
     }
 
     [Fact(Timeout = 45_000)]
-    public async Task HttpOutbound_FailoverAcrossPeers_RetriesUntilSuccess()
+    public async ValueTask HttpOutbound_FailoverAcrossPeers_RetriesUntilSuccess()
     {
         var peer1Port = TestPortAllocator.GetRandomPort();
         var peer1Address = new Uri($"http://127.0.0.1:{peer1Port}/");
@@ -135,8 +136,8 @@ public sealed class HttpOutboundIntegrationTests(ITestOutputHelper output) : Int
         using var peer1Client = new HttpClient { BaseAddress = peer1Address };
         using var peer2Client = new HttpClient { BaseAddress = peer2Address };
 
-        var outbound1 = new HttpOutbound(peer1Client, peer1Address, disposeClient: false);
-        var outbound2 = new HttpOutbound(peer2Client, peer2Address, disposeClient: false);
+        var outbound1 = HttpOutbound.Create(peer1Client, peer1Address, disposeClient: false).ValueOrChecked();
+        var outbound2 = HttpOutbound.Create(peer2Client, peer2Address, disposeClient: false).ValueOrChecked();
         var failoverOutbound = new FailoverUnaryOutbound(outbound1, outbound2);
 
         var clientOptions = new DispatcherOptions("failover-client");
@@ -144,7 +145,9 @@ public sealed class HttpOutboundIntegrationTests(ITestOutputHelper output) : Int
 
         var dispatcher = new OmniRelay.Dispatcher.Dispatcher(clientOptions);
         var codec = new JsonCodec<PingRequest, PingResponse>(new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-        var client = dispatcher.CreateUnaryClient<PingRequest, PingResponse>("failover-remote", codec);
+        var clientResult = dispatcher.CreateUnaryClient<PingRequest, PingResponse>("failover-remote", codec);
+        clientResult.IsSuccess.ShouldBeTrue(clientResult.Error?.Message);
+        var client = clientResult.Value;
 
         await using var clientHost = await DispatcherHost.StartAsync("failover-client", dispatcher, LoggerFactory, ct);
 

@@ -1,4 +1,8 @@
+using AwesomeAssertions;
+using Hugo;
 using NSubstitute;
+using static Hugo.Go;
+using Unit = Hugo.Go.Unit;
 using Xunit;
 
 namespace OmniRelay.Dispatcher.UnitTests;
@@ -17,31 +21,40 @@ public sealed class ResourceLeaseShardingReplicatorTests
     private static bool HasShard(ResourceLeaseReplicationEvent replicationEvent, string shardId) =>
         replicationEvent.Metadata.TryGetValue("shard.id", out var value) && value == shardId;
 
-    [Fact]
-    public async Task ShardedReplicator_AppendsShardMetadata()
+    [Fact(Timeout = TestTimeouts.Default)]
+    public async ValueTask ShardedReplicator_AppendsShardMetadata()
     {
         var inner = Substitute.For<IResourceLeaseReplicator>();
+        inner.PublishAsync(Arg.Any<ResourceLeaseReplicationEvent>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo => ValueTask.FromResult(Ok(Unit.Value)));
+
         var replicator = new ShardedResourceLeaseReplicator(inner, "users");
         var evt = SampleEvent();
 
-        await replicator.PublishAsync(evt, CancellationToken.None);
+        var result = await replicator.PublishAsync(evt, CancellationToken.None);
 
+        result.IsSuccess.Should().BeTrue(result.Error?.ToString());
         await inner.Received(1).PublishAsync(
             Arg.Is<ResourceLeaseReplicationEvent>(e => HasShard(e, "users")),
             CancellationToken.None);
     }
 
-    [Fact]
-    public async Task CompositeReplicator_FansOut()
+    [Fact(Timeout = TestTimeouts.Default)]
+    public async ValueTask CompositeReplicator_FansOut()
     {
         var first = Substitute.For<IResourceLeaseReplicator>();
         var second = Substitute.For<IResourceLeaseReplicator>();
+        first.PublishAsync(Arg.Any<ResourceLeaseReplicationEvent>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo => ValueTask.FromResult(Ok(Unit.Value)));
+        second.PublishAsync(Arg.Any<ResourceLeaseReplicationEvent>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo => ValueTask.FromResult(Ok(Unit.Value)));
 
         var composite = new CompositeResourceLeaseReplicator([first, second]);
         var evt = SampleEvent();
 
-        await composite.PublishAsync(evt, CancellationToken.None);
+        var result = await composite.PublishAsync(evt, CancellationToken.None);
 
+        result.IsSuccess.Should().BeTrue(result.Error?.ToString());
         await first.Received(1).PublishAsync(evt, CancellationToken.None);
         await second.Received(1).PublishAsync(evt, CancellationToken.None);
     }

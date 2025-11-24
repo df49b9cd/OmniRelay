@@ -4,11 +4,11 @@ using System.Net.Quic;
 using System.Security.Authentication;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using AwesomeAssertions;
 using Microsoft.AspNetCore.Builder;
 using OmniRelay.Core;
 using OmniRelay.Dispatcher;
 using OmniRelay.Tests.Protos;
-using OmniRelay.TestSupport;
 using OmniRelay.Transport.Grpc;
 using Xunit;
 using Xunit.Sdk;
@@ -18,7 +18,7 @@ namespace OmniRelay.CodeGen.IntegrationTests;
 public class GeneratedClientHttp3Tests
 {
     [Http3Fact(Timeout = 45_000)]
-    public async Task GeneratedClient_Unary_UsesHttp3_WhenEnabled()
+    public async ValueTask GeneratedClient_Unary_UsesHttp3_WhenEnabled()
     {
         if (!QuicListener.IsSupported)
         {
@@ -57,7 +57,7 @@ public class GeneratedClientHttp3Tests
         TestServiceOmniRelay.RegisterTestService(dispatcher, new Impl());
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await dispatcher.StartAsyncChecked(ct);
         await WaitForGrpcReadyAsync(address, ct);
 
         // Outbound with HTTP/3 enabled
@@ -85,25 +85,25 @@ public class GeneratedClientHttp3Tests
             {
                 return;
             }
-            Assert.True(result.IsSuccess, result.Error?.ToString());
+            result.IsSuccess.Should().BeTrue(result.Error?.ToString());
         }
         finally
         {
             await outbound.StopAsync(ct);
-            await dispatcher.StopOrThrowAsync(ct);
+            await dispatcher.StopAsyncChecked(ct);
         }
 
-        Assert.True(TryDequeueWithWait(observed, out var protocol), "No protocol captured.");
+        TryDequeueWithWait(observed, out var protocol).Should().BeTrue("No protocol captured.");
         if (protocol.StartsWith("HTTP/3", StringComparison.OrdinalIgnoreCase))
         {
             throw new XunitException("Grpc.Net.Client negotiated HTTP/3; update GeneratedClientHttp3Tests expectations.");
         }
 
-        Assert.StartsWith("HTTP/2", protocol, StringComparison.Ordinal);
+        protocol.Should().StartWithEquivalentOf("HTTP/2");
     }
 
     [Http3Fact(Timeout = 45_000)]
-    public async Task GeneratedClient_Unary_FallsBack_ToHttp2_WhenServerDisablesHttp3()
+    public async ValueTask GeneratedClient_Unary_FallsBack_ToHttp2_WhenServerDisablesHttp3()
     {
         if (!QuicListener.IsSupported)
         {
@@ -142,7 +142,7 @@ public class GeneratedClientHttp3Tests
         TestServiceOmniRelay.RegisterTestService(dispatcher, new Impl());
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await dispatcher.StartAsyncChecked(ct);
         await WaitForGrpcReadyAsync(address, ct);
 
         // Outbound desires HTTP/3 but should fall back
@@ -174,21 +174,21 @@ public class GeneratedClientHttp3Tests
             {
                 return;
             }
-            Assert.True(result.IsSuccess, result.Error?.ToString());
+            result.IsSuccess.Should().BeTrue(result.Error?.ToString());
         }
         finally
         {
             await outbound.StopAsync(ct);
-            await dispatcher.StopOrThrowAsync(ct);
+            await dispatcher.StopAsyncChecked(ct);
         }
 
-        Assert.True(TryDequeueWithWait(observed, out var protocol), "No protocol captured.");
+        TryDequeueWithWait(observed, out var protocol).Should().BeTrue("No protocol captured.");
         if (protocol.StartsWith("HTTP/3", StringComparison.OrdinalIgnoreCase))
         {
             throw new XunitException("Grpc.Net.Client negotiated HTTP/3; update GeneratedClientHttp3Tests expectations.");
         }
 
-        Assert.StartsWith("HTTP/2", protocol, StringComparison.Ordinal);
+        protocol.Should().StartWithEquivalentOf("HTTP/2");
     }
 
     private sealed class Impl : TestServiceOmniRelay.ITestService
@@ -204,7 +204,7 @@ public class GeneratedClientHttp3Tests
         {
             var writeResult =
                 await stream.WriteAsync(new StreamResponse { Value = request.Body.Value }, cancellationToken);
-            writeResult.ThrowIfFailure();
+            writeResult.ValueOrChecked();
         }
 
         public ValueTask<Response<UnaryResponse>> ClientStreamAsync(

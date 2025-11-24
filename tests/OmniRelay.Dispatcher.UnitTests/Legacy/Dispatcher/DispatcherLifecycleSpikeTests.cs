@@ -1,56 +1,80 @@
+using AwesomeAssertions;
+using Hugo;
 using OmniRelay.Dispatcher;
 using Xunit;
+using static Hugo.Go;
 
 namespace OmniRelay.Tests.Dispatcher;
 
 public class DispatcherLifecycleSpikeTests
 {
-    [Fact]
-    public async Task RunAsync_CoordinatesStartAndStopSequences()
+    [Fact(Timeout = TestTimeouts.Default)]
+    public async ValueTask RunAsync_CoordinatesStartAndStopSequences()
     {
-        var startSteps = new List<Func<CancellationToken, Task>>
+        var startSteps = new List<Func<CancellationToken, ValueTask<Result<Unit>>>>
         {
-            async ct => await Task.Delay(50, ct),
-            async ct => await Task.Delay(10, ct)
+            async ct =>
+            {
+                await Task.Delay(50, ct);
+                return Ok(Unit.Value);
+            },
+            async ct =>
+            {
+                await Task.Delay(10, ct);
+                return Ok(Unit.Value);
+            }
         };
 
-        var stopSteps = new List<Func<CancellationToken, Task>>
+        var stopSteps = new List<Func<CancellationToken, ValueTask<Result<Unit>>>>
         {
-            async ct => await Task.Delay(5, ct),
-            async ct => await Task.Delay(15, ct)
+            async ct =>
+            {
+                await Task.Delay(5, ct);
+                return Ok(Unit.Value);
+            },
+            async ct =>
+            {
+                await Task.Delay(15, ct);
+                return Ok(Unit.Value);
+            }
         };
 
-        var (started, stopped) = await DispatcherLifecycleSpike.RunAsync(
+        var result = await DispatcherLifecycleSpike.RunAsync(
             startSteps,
             stopSteps,
             CancellationToken.None);
 
-        Assert.Equal(startSteps.Count, started.Count);
-        Assert.All(Enumerable.Range(0, startSteps.Count), index =>
-            Assert.Contains($"start:{index}", started));
+        result.IsSuccess.Should().BeTrue(result.Error?.Message);
 
-        Assert.Equal(stopSteps.Count, stopped.Count);
-        Assert.Equal(["stop:0", "stop:1"], stopped);
+        var (started, stopped) = result.Value;
+
+        started.Should().HaveCount(startSteps.Count);
+        Enumerable.Range(0, startSteps.Count).Should().AllSatisfy(index =>
+            started.Should().Contain($"start:{index}"));
+
+        stopped.Should().HaveCount(stopSteps.Count);
+        stopped.Should().Equal("stop:0", "stop:1");
     }
 
-    [Fact]
-    public async Task RunAsync_PropagatesCancellation()
+    [Fact(Timeout = TestTimeouts.Default)]
+    public async ValueTask RunAsync_PropagatesCancellation()
     {
-        var startSteps = new List<Func<CancellationToken, Task>>
+        var startSteps = new List<Func<CancellationToken, ValueTask<Result<Unit>>>>
         {
             async ct =>
             {
                 await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+                return Ok(Unit.Value);
             }
         };
 
-        var stopSteps = new List<Func<CancellationToken, Task>>();
+        var stopSteps = new List<Func<CancellationToken, ValueTask<Result<Unit>>>>();
 
         using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
 
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
-        {
-            await DispatcherLifecycleSpike.RunAsync(startSteps, stopSteps, cts.Token);
-        });
+        var result = await DispatcherLifecycleSpike.RunAsync(startSteps, stopSteps, cts.Token);
+
+        result.IsFailure.Should().BeTrue();
+        result.Error?.Code.Should().Be(Error.Canceled().Code);
     }
 }

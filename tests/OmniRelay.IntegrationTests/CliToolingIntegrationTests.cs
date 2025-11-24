@@ -6,11 +6,11 @@ using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
+using AwesomeAssertions;
 using OmniRelay.Core;
 using OmniRelay.Dispatcher;
 using OmniRelay.IntegrationTests.Support;
 using OmniRelay.Tests.Support;
-using OmniRelay.TestSupport;
 using OmniRelay.Transport.Http;
 using Xunit;
 using static Hugo.Go;
@@ -21,7 +21,7 @@ namespace OmniRelay.IntegrationTests;
 public sealed class CliToolingIntegrationTests
 {
     [Fact(Timeout = 240_000)]
-    public async Task CliConfigValidateAndServe_StartsDispatcherFromScaffold()
+    public async ValueTask CliConfigValidateAndServe_StartsDispatcherFromScaffold()
     {
         using var tempDir = new TempDirectory();
         var configPath = TempDirectory.Resolve("appsettings.cli.json");
@@ -30,7 +30,7 @@ public sealed class CliToolingIntegrationTests
         var scaffoldResult = await OmniRelayCliTestHelper.RunAsync(
             ["config", "scaffold", "--output", configPath, "--section", "omnirelay", "--service", serviceName],
             TestContext.Current.CancellationToken);
-        Assert.True(scaffoldResult.ExitCode == 0, $"CLI scaffold failed: {scaffoldResult.StandardError}");
+        scaffoldResult.ExitCode.Should().Be(0, scaffoldResult.StandardError);
 
         var httpPort = TestPortAllocator.GetRandomPort();
         var grpcPort = TestPortAllocator.GetRandomPort();
@@ -48,8 +48,8 @@ public sealed class CliToolingIntegrationTests
         }
 
         var validateResult = await OmniRelayCliTestHelper.RunAsync(validateArgs, TestContext.Current.CancellationToken);
-        Assert.True(validateResult.ExitCode == 0, $"config validate failed: {validateResult.StandardError}");
-        Assert.Contains($"Configuration valid for service '{serviceName}'", validateResult.StandardOutput, StringComparison.Ordinal);
+        validateResult.ExitCode.Should().Be(0, validateResult.StandardError);
+        validateResult.StandardOutput.Should().Contain($"Configuration valid for service '{serviceName}'");
 
         var readyFile = TempDirectory.Resolve("ready.txt");
         var serveArgs = new List<string>
@@ -75,22 +75,22 @@ public sealed class CliToolingIntegrationTests
 
         using var httpClient = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{httpPort}/") };
         var healthResponse = await httpClient.GetAsync("healthz", TestContext.Current.CancellationToken);
-        Assert.Equal(HttpStatusCode.OK, healthResponse.StatusCode);
+        healthResponse.StatusCode.Should().Be(HttpStatusCode.OK);
 
         await serveProcess.WaitForExitAsync(TestContext.Current.CancellationToken);
         var serveResult = await serveProcess.GetResultAsync(TestContext.Current.CancellationToken);
-        Assert.True(serveResult.ExitCode == 0, $"serve command failed: {serveResult.StandardError}");
+        serveResult.ExitCode.Should().Be(0, serveResult.StandardError);
     }
 
     [Fact(Timeout = 240_000)]
-    public async Task CliCommands_CanIntrospectRequestAndBenchmark_HttpHost()
+    public async ValueTask CliCommands_CanIntrospectRequestAndBenchmark_HttpHost()
     {
         var serviceName = $"cli-introspect-{Guid.NewGuid():N}";
         var httpPort = TestPortAllocator.GetRandomPort();
         var baseAddress = new Uri($"http://127.0.0.1:{httpPort}/");
 
         var options = new DispatcherOptions(serviceName);
-        var httpInbound = new HttpInbound([baseAddress.ToString()]);
+        var httpInbound = HttpInbound.TryCreate([baseAddress]).ValueOrChecked();
         options.AddLifecycle("cli-http", httpInbound);
         var dispatcher = new OmniRelay.Dispatcher.Dispatcher(options);
 
@@ -106,20 +106,20 @@ public sealed class CliToolingIntegrationTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await dispatcher.StartAsyncChecked(ct);
 
         try
         {
             var introspectResult = await OmniRelayCliTestHelper.RunAsync(
                 ["introspect", "--url", $"{baseAddress}omnirelay/introspect", "--format", "json"],
                 ct);
-            Assert.True(introspectResult.ExitCode == 0, $"introspect failed: {introspectResult.StandardError}");
+            introspectResult.ExitCode.Should().Be(0, introspectResult.StandardError);
             using (var document = JsonDocument.Parse(string.IsNullOrWhiteSpace(introspectResult.StandardOutput)
                 ? "{}"
                 : introspectResult.StandardOutput))
             {
-                Assert.True(document.RootElement.TryGetProperty("service", out var serviceProperty));
-                Assert.Equal(serviceName, serviceProperty.GetString());
+                document.RootElement.TryGetProperty("service", out var serviceProperty).Should().BeTrue();
+                serviceProperty.GetString().Should().Be(serviceName);
             }
 
             var requestResult = await OmniRelayCliTestHelper.RunAsync(
@@ -139,9 +139,9 @@ public sealed class CliToolingIntegrationTests
                     "hello-cli"
                 ],
                 ct);
-            Assert.True(requestResult.ExitCode == 0, $"request failed: {requestResult.StandardError}");
-            Assert.Contains("Request succeeded.", requestResult.StandardOutput, StringComparison.Ordinal);
-            Assert.Contains("pong:hello-cli", requestResult.StandardOutput, StringComparison.Ordinal);
+            requestResult.ExitCode.Should().Be(0, requestResult.StandardError);
+            requestResult.StandardOutput.Should().Contain("Request succeeded.");
+            requestResult.StandardOutput.Should().Contain("pong:hello-cli");
 
             var benchmarkResult = await OmniRelayCliTestHelper.RunAsync(
                 [
@@ -164,18 +164,18 @@ public sealed class CliToolingIntegrationTests
                     "3"
                 ],
                 ct);
-            Assert.True(benchmarkResult.ExitCode == 0, $"benchmark failed: {benchmarkResult.StandardError}");
-            Assert.Contains("Benchmark complete.", benchmarkResult.StandardOutput, StringComparison.Ordinal);
-            Assert.Contains("Success: 3", benchmarkResult.StandardOutput, StringComparison.Ordinal);
+            benchmarkResult.ExitCode.Should().Be(0, benchmarkResult.StandardError);
+            benchmarkResult.StandardOutput.Should().Contain("Benchmark complete.");
+            benchmarkResult.StandardOutput.Should().Contain("Success: 3");
         }
         finally
         {
-            await dispatcher.StopOrThrowAsync(CancellationToken.None);
+            await dispatcher.StopAsyncChecked(CancellationToken.None);
         }
     }
 
     [Http3Fact(Timeout = 150_000)]
-    public async Task CliHttp3Flags_EnableQuicListeners()
+    public async ValueTask CliHttp3Flags_EnableQuicListeners()
     {
         if (!QuicListener.IsSupported)
         {
@@ -203,7 +203,7 @@ public sealed class CliToolingIntegrationTests
                 "--http3-grpc"
             ],
             TestContext.Current.CancellationToken);
-        Assert.True(scaffoldResult.ExitCode == 0, $"CLI scaffold failed: {scaffoldResult.StandardError}");
+        scaffoldResult.ExitCode.Should().Be(0, scaffoldResult.StandardError);
 
         var httpPort = TestPortAllocator.GetRandomPort();
         var http3Port = TestPortAllocator.GetRandomPort();
@@ -248,13 +248,13 @@ public sealed class CliToolingIntegrationTests
         using (var client = CreateHttp3Client(new Uri($"https://127.0.0.1:{http3Port}/")))
         {
             var response = await client.GetAsync("healthz", TestContext.Current.CancellationToken);
-            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-            Assert.Equal(3, response.Version.Major);
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+            response.Version.Major.Should().Be(3);
         }
 
         await serveProcess.WaitForExitAsync(TestContext.Current.CancellationToken);
         var serveResult = await serveProcess.GetResultAsync(TestContext.Current.CancellationToken);
-        Assert.True(serveResult.ExitCode == 0, $"serve command failed: {serveResult.StandardError}");
+        serveResult.ExitCode.Should().Be(0, serveResult.StandardError);
     }
 
     private static async Task WaitForFileAsync(string path, TimeSpan timeout, CancellationToken cancellationToken)

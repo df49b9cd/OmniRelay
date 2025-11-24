@@ -3,11 +3,11 @@ using System.Net.Quic;
 using System.Net.Security;
 using System.Security.Authentication;
 using System.Text.Json;
+using AwesomeAssertions;
 using OmniRelay.Core;
 using OmniRelay.Dispatcher;
 using OmniRelay.IntegrationTests.Support;
 using OmniRelay.Tests.Support;
-using OmniRelay.TestSupport;
 using OmniRelay.Transport.Http;
 using Xunit;
 using static OmniRelay.IntegrationTests.Support.TransportTestHelper;
@@ -17,7 +17,7 @@ namespace OmniRelay.IntegrationTests.Transport.Http;
 public sealed class Http3FallbackErrorTests(ITestOutputHelper output) : TransportIntegrationTest(output)
 {
     [Http3Fact(Timeout = 45_000)]
-    public async Task MissingProcedure_Http3AndHttp2ResponsesMatch()
+    public async ValueTask MissingProcedure_Http3AndHttp2ResponsesMatch()
     {
         if (!QuicListener.IsSupported)
         {
@@ -49,18 +49,16 @@ public sealed class Http3FallbackErrorTests(ITestOutputHelper output) : Transpor
         var http3Snapshot = await CaptureErrorSnapshotAsync(CreateHttp3Client(baseAddress, HttpVersionPolicy.RequestVersionExact), ct);
         var http2Snapshot = await CaptureErrorSnapshotAsync(CreateHttp2Client(baseAddress), ct);
 
-        Assert.Equal(
-            http2Snapshot with
-            {
-                ProtocolHeader = http3Snapshot.ProtocolHeader,
-                HttpVersion = http3Snapshot.HttpVersion
-            },
-            http3Snapshot);
-        Assert.StartsWith("HTTP/", http3Snapshot.ProtocolHeader, StringComparison.Ordinal);
+        http3Snapshot.Should().Be(http2Snapshot with
+        {
+            ProtocolHeader = http3Snapshot.ProtocolHeader,
+            HttpVersion = http3Snapshot.HttpVersion
+        });
+        http3Snapshot.ProtocolHeader.Should().StartWith("HTTP/");
     }
 
     [Http3Fact(Timeout = 45_000)]
-    public async Task MissingProcedure_Http3FallbackToHttp2MatchesPayload()
+    public async ValueTask MissingProcedure_Http3FallbackToHttp2MatchesPayload()
     {
         if (!QuicListener.IsSupported)
         {
@@ -92,9 +90,9 @@ public sealed class Http3FallbackErrorTests(ITestOutputHelper output) : Transpor
         var fallbackSnapshot = await CaptureErrorSnapshotAsync(CreateHttp3Client(baseAddress, HttpVersionPolicy.RequestVersionOrLower), ct);
         var http2Snapshot = await CaptureErrorSnapshotAsync(CreateHttp2Client(baseAddress), ct);
 
-        Assert.Equal(HttpStatusCode.BadRequest, fallbackSnapshot.StatusCode);
-        Assert.Equal(http2Snapshot, fallbackSnapshot);
-        Assert.Equal("HTTP/2", fallbackSnapshot.ProtocolHeader);
+        fallbackSnapshot.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        fallbackSnapshot.Should().Be(http2Snapshot);
+        fallbackSnapshot.ProtocolHeader.Should().Be("HTTP/2");
     }
 
     private static async Task<ErrorSnapshot> CaptureErrorSnapshotAsync(HttpClient client, CancellationToken cancellationToken)

@@ -6,7 +6,6 @@ using OmniRelay.Core;
 using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
 using OmniRelay.Tests.Support;
-using OmniRelay.TestSupport;
 using OmniRelay.Transport.Http;
 using Xunit;
 using static Hugo.Go;
@@ -16,7 +15,7 @@ namespace OmniRelay.Tests.Transport.Http;
 public class HttpOutboundVersionPolicyTests
 {
     [Http3Fact(Timeout = 45_000)]
-    public async Task HttpOutbound_WithHttp3Enabled_UsesHttp3()
+    public async ValueTask HttpOutbound_WithHttp3Enabled_UsesHttp3()
     {
         if (!QuicListener.IsSupported)
         {
@@ -42,16 +41,16 @@ public class HttpOutboundVersionPolicyTests
             (request, _) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty, new ResponseMeta())))));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await dispatcher.StartAsyncChecked(ct);
         await WaitForHttpReadyAsync(address, ct);
 
         using var handler = CreateHttp3SocketsHandler();
         using var httpClient = new HttpClient(handler, disposeHandler: false);
-        var outbound = new HttpOutbound(httpClient, address, disposeClient: false, runtimeOptions: new HttpClientRuntimeOptions
+        var outbound = HttpOutbound.Create(httpClient, address, disposeClient: false, runtimeOptions: new HttpClientRuntimeOptions
         {
             EnableHttp3 = true,
             VersionPolicy = HttpVersionPolicy.RequestVersionExact
-        });
+        }).ValueOrChecked();
 
         try
         {
@@ -68,12 +67,12 @@ public class HttpOutboundVersionPolicyTests
         finally
         {
             await outbound.StopAsync(ct);
-            await dispatcher.StopOrThrowAsync(ct);
+            await dispatcher.StopAsyncChecked(ct);
         }
     }
 
     [Http3Fact(Timeout = 45_000)]
-    public async Task HttpOutbound_WithOrHigher_ToHttp2Server_DowngradesToHttp2()
+    public async ValueTask HttpOutbound_WithOrHigher_ToHttp2Server_DowngradesToHttp2()
     {
         using var certificate = TestCertificateFactory.CreateLoopbackCertificate("CN=omnirelay-http2-outbound");
 
@@ -94,16 +93,16 @@ public class HttpOutboundVersionPolicyTests
             (request, _) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty, new ResponseMeta())))));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await dispatcher.StartAsyncChecked(ct);
         await WaitForHttpReadyAsync(address, ct);
 
         using var handler = CreateHttp3SocketsHandler();
         using var httpClient = new HttpClient(handler, disposeHandler: false);
-        var outbound = new HttpOutbound(httpClient, address, disposeClient: false, runtimeOptions: new HttpClientRuntimeOptions
+        var outbound = HttpOutbound.Create(httpClient, address, disposeClient: false, runtimeOptions: new HttpClientRuntimeOptions
         {
             EnableHttp3 = true,
             VersionPolicy = HttpVersionPolicy.RequestVersionOrLower
-        });
+        }).ValueOrChecked();
 
         try
         {
@@ -120,12 +119,12 @@ public class HttpOutboundVersionPolicyTests
         finally
         {
             await outbound.StopAsync(ct);
-            await dispatcher.StopOrThrowAsync(ct);
+            await dispatcher.StopAsyncChecked(ct);
         }
     }
 
     [Http3Fact(Timeout = 45_000)]
-    public async Task HttpOutbound_WithExactHttp3_ToHttp2Server_Fails()
+    public async ValueTask HttpOutbound_WithExactHttp3_ToHttp2Server_Fails()
     {
         using var certificate = TestCertificateFactory.CreateLoopbackCertificate("CN=omnirelay-http3-exact-outbound");
 
@@ -146,17 +145,17 @@ public class HttpOutboundVersionPolicyTests
             (request, _) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty, new ResponseMeta())))));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await dispatcher.StartAsyncChecked(ct);
         await WaitForHttpReadyAsync(address, ct);
 
         using var handler = CreateHttp3SocketsHandler();
         using var httpClient = new HttpClient(handler, disposeHandler: false);
-        var outbound = new HttpOutbound(httpClient, address, disposeClient: false, runtimeOptions: new HttpClientRuntimeOptions
+        var outbound = HttpOutbound.Create(httpClient, address, disposeClient: false, runtimeOptions: new HttpClientRuntimeOptions
         {
             EnableHttp3 = true,
             RequestVersion = HttpVersion.Version30,
             VersionPolicy = HttpVersionPolicy.RequestVersionExact
-        });
+        }).ValueOrChecked();
 
         try
         {
@@ -169,7 +168,7 @@ public class HttpOutboundVersionPolicyTests
         finally
         {
             await outbound.StopAsync(ct);
-            await dispatcher.StopOrThrowAsync(ct);
+            await dispatcher.StopAsyncChecked(ct);
         }
     }
 

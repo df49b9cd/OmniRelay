@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Mime;
 using System.Text;
+using AwesomeAssertions;
 using OmniRelay.Core;
 using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
@@ -14,7 +15,7 @@ namespace OmniRelay.IntegrationTests;
 public class HttpStreamingIntegrationTests
 {
     [Fact(Timeout = 30_000)]
-    public async Task ServerStream_EmitsSseFramesOverHttp()
+    public async ValueTask ServerStream_EmitsSseFramesOverHttp()
     {
         var port = TestPortAllocator.GetRandomPort();
         var baseAddress = new Uri($"http://127.0.0.1:{port}/");
@@ -53,7 +54,7 @@ public class HttpStreamingIntegrationTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await dispatcher.StartAsyncChecked(ct);
 
         try
         {
@@ -62,10 +63,10 @@ public class HttpStreamingIntegrationTests
             client.DefaultRequestHeaders.Accept.ParseAdd("text/event-stream");
 
             using var response = await client.GetAsync("/", HttpCompletionOption.ResponseHeadersRead, ct);
-            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-            Assert.Equal("text/event-stream", response.Content.Headers.ContentType?.MediaType);
-            Assert.True(response.Headers.TryGetValues("X-Accel-Buffering", out var bufferingValues));
-            Assert.Contains("no", bufferingValues);
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+            response.Content.Headers.ContentType?.MediaType.Should().Be("text/event-stream");
+            response.Headers.TryGetValues("X-Accel-Buffering", out var bufferingValues).Should().BeTrue();
+            bufferingValues.Should().Contain("no");
 
             using var stream = await response.Content.ReadAsStreamAsync(ct);
             using var reader = new StreamReader(stream, Encoding.UTF8);
@@ -85,16 +86,16 @@ public class HttpStreamingIntegrationTests
                 }
             }
 
-            Assert.Equal(new[] { "event-0", "event-1", "event-2" }, events);
+            events.Should().Equal("event-0", "event-1", "event-2");
         }
         finally
         {
-            await dispatcher.StopOrThrowAsync(CancellationToken.None);
+            await dispatcher.StopAsyncChecked(CancellationToken.None);
         }
     }
 
     [Fact(Timeout = 30_000)]
-    public async Task ServerStream_EnforcesMessageSizeLimit()
+    public async ValueTask ServerStream_EnforcesMessageSizeLimit()
     {
         var port = TestPortAllocator.GetRandomPort();
         var baseAddress = new Uri($"http://127.0.0.1:{port}/");
@@ -132,7 +133,7 @@ public class HttpStreamingIntegrationTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await dispatcher.StartAsyncChecked(ct);
 
         try
         {
@@ -140,37 +141,44 @@ public class HttpStreamingIntegrationTests
             client.DefaultRequestHeaders.Add(HttpTransportHeaders.Procedure, "stream::oversized");
             client.DefaultRequestHeaders.Accept.ParseAdd("text/event-stream");
 
-            using var response = await client.GetAsync("/", HttpCompletionOption.ResponseHeadersRead, ct);
-            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-
-            using var stream = await response.Content.ReadAsStreamAsync(ct);
-            using var reader = new StreamReader(stream, Encoding.UTF8);
-
             try
             {
-                while (true)
+                using var response = await client.GetAsync("/", HttpCompletionOption.ResponseHeadersRead, ct);
+                response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+                using var stream = await response.Content.ReadAsStreamAsync(ct);
+                using var reader = new StreamReader(stream, Encoding.UTF8);
+
+                try
                 {
-                    var line = await reader.ReadLineAsync(ct);
-                    if (line is null)
+                    while (true)
                     {
-                        break;
+                        var line = await reader.ReadLineAsync(ct);
+                        if (line is null)
+                        {
+                            break;
+                        }
                     }
                 }
+                catch (Exception ex) when (ex is IOException or OperationCanceledException)
+                {
+                    // Connection was aborted because the payload exceeded the configured limit.
+                }
             }
-            catch (Exception ex) when (ex is IOException or OperationCanceledException)
+            catch (HttpRequestException)
             {
-                // Connection was aborted because the payload exceeded the configured limit.
+                // Some runtimes surface the aborted connection as a request failure; treat as expected.
             }
 
-            Assert.NotNull(streamCall);
+            streamCall.Should().NotBeNull();
             await WaitForCompletionAsync(streamCall!, ct);
-            Assert.Equal(StreamCompletionStatus.Faulted, streamCall!.Context.CompletionStatus);
-            Assert.NotNull(streamCall.Context.CompletionError);
-            Assert.Equal(OmniRelayStatusCode.ResourceExhausted, OmniRelayErrorAdapter.ToStatus(streamCall.Context.CompletionError!));
+            streamCall!.Context.CompletionStatus.Should().Be(StreamCompletionStatus.Faulted);
+            streamCall.Context.CompletionError.Should().NotBeNull();
+            OmniRelayErrorAdapter.ToStatus(streamCall.Context.CompletionError!).Should().Be(OmniRelayStatusCode.ResourceExhausted);
         }
         finally
         {
-            await dispatcher.StopOrThrowAsync(CancellationToken.None);
+            await dispatcher.StopAsyncChecked(CancellationToken.None);
         }
     }
 

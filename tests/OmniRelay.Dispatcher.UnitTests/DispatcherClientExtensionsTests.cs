@@ -1,44 +1,54 @@
+using AwesomeAssertions;
 using Hugo;
 using NSubstitute;
 using OmniRelay.Core.Clients;
 using OmniRelay.Core.Transport;
+using OmniRelay.Errors;
 using Xunit;
 
 namespace OmniRelay.Dispatcher.UnitTests;
 
 public class DispatcherClientExtensionsTests
 {
-    [Fact]
+    [Fact(Timeout = TestTimeouts.Default)]
     public void CreateUnaryClient_WithCodec_ResolvesOutbound()
     {
         var dispatcher = CreateDispatcher(out var unaryOutbound);
         var codec = new TestHelpers.TestCodec<string, string>();
 
-        var client = dispatcher.CreateUnaryClient("downstream", codec);
+        var clientResult = dispatcher.CreateUnaryClient("downstream", codec);
 
-        Assert.IsType<UnaryClient<string, string>>(client);
-        Assert.False(unaryOutbound.ReceivedCalls().Any());
+        clientResult.IsSuccess.Should().BeTrue();
+        var client = clientResult.Value;
+
+        client.Should().BeOfType<UnaryClient<string, string>>();
+        unaryOutbound.ReceivedCalls().Should().BeEmpty();
     }
 
-    [Fact]
+    [Fact(Timeout = TestTimeouts.Default)]
     public void CreateUnaryClient_WithRegisteredCodec_UsesRegistry()
     {
         var dispatcher = CreateDispatcher(out _);
         var codec = new TestHelpers.TestCodec<string, string>();
         dispatcher.Codecs.RegisterOutbound("downstream", "echo", ProcedureKind.Unary, codec);
 
-        var client = dispatcher.CreateUnaryClient<string, string>("downstream", "echo");
+        var clientResult = dispatcher.CreateUnaryClient<string, string>("downstream", "echo");
 
-        Assert.IsType<UnaryClient<string, string>>(client);
+        clientResult.IsSuccess.Should().BeTrue();
+        var client = clientResult.Value;
+
+        client.Should().BeOfType<UnaryClient<string, string>>();
     }
 
-    [Fact]
-    public void CreateDuplexClient_WhenOutboundMissing_Throws()
+    [Fact(Timeout = TestTimeouts.Default)]
+    public void CreateDuplexClient_WhenOutboundMissing_ReturnsFailure()
     {
         var dispatcher = new Dispatcher(new DispatcherOptions("svc"));
 
-        Assert.Throws<ResultException>(() =>
-            dispatcher.CreateDuplexStreamClient<string, string>("remote", new TestHelpers.TestCodec<string, string>()));
+        var result = dispatcher.CreateDuplexStreamClient<string, string>("remote", new TestHelpers.TestCodec<string, string>());
+
+        result.IsFailure.Should().BeTrue();
+        OmniRelayErrorAdapter.ToStatus(result.Error!).Should().Be(OmniRelayStatusCode.NotFound);
     }
 
     private static Dispatcher CreateDispatcher(out IUnaryOutbound unaryOutbound)

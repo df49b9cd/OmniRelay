@@ -1,11 +1,12 @@
 using System.Net;
 using System.Net.Mime;
+using AwesomeAssertions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using OmniRelay.Configuration;
 using OmniRelay.Core;
 using OmniRelay.Dispatcher;
+using OmniRelay.Dispatcher.Config;
 using OmniRelay.Transport.Http;
 using Xunit;
 using static Hugo.Go;
@@ -15,7 +16,7 @@ namespace OmniRelay.IntegrationTests;
 public class HttpDispatcherHostIntegrationTests
 {
     [Fact(Timeout = 30_000)]
-    public async Task HttpInbound_ConfiguredViaHost_RoundtripsUnaryRequest()
+    public async ValueTask HttpInbound_ConfiguredViaHost_RoundtripsUnaryRequest()
     {
         var port = TestPortAllocator.GetRandomPort();
         var baseUrl = $"http://127.0.0.1:{port}";
@@ -28,7 +29,7 @@ public class HttpDispatcherHostIntegrationTests
         });
 
         builder.Services.AddLogging();
-        builder.Services.AddOmniRelayDispatcher(builder.Configuration.GetSection("omnirelay"));
+        builder.Services.AddOmniRelayDispatcherFromConfiguration(builder.Configuration.GetSection("omnirelay"));
 
         using var host = builder.Build();
         var dispatcher = host.Services.GetRequiredService<Dispatcher.Dispatcher>();
@@ -54,14 +55,14 @@ public class HttpDispatcherHostIntegrationTests
 
             using var content = new ByteArrayContent("ping"u8.ToArray());
             using var response = await httpClient.PostAsync("/", content, ct);
-            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
             var body = await response.Content.ReadAsStringAsync(ct);
-            Assert.Equal("integration-http-response", body);
+            body.Should().Be("integration-http-response");
 
-            Assert.True(response.Headers.TryGetValues(HttpTransportHeaders.Encoding, out var encodingValues));
-            Assert.Contains(MediaTypeNames.Text.Plain, encodingValues);
-            Assert.True(response.Headers.TryGetValues(HttpTransportHeaders.Transport, out var transportValues));
-            Assert.Contains("http", transportValues);
+            response.Headers.TryGetValues(HttpTransportHeaders.Encoding, out var encodingValues).Should().BeTrue();
+            encodingValues.Should().Contain(MediaTypeNames.Text.Plain);
+            response.Headers.TryGetValues(HttpTransportHeaders.Transport, out var transportValues).Should().BeTrue();
+            transportValues.Should().Contain("http");
         }
         finally
         {

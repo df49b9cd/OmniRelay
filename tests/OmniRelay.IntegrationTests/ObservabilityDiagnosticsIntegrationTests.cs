@@ -6,6 +6,7 @@ using System.Net.Mime;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using AwesomeAssertions;
 using Microsoft.Extensions.Logging;
 using OmniRelay.Core;
 using OmniRelay.Core.Middleware;
@@ -25,19 +26,19 @@ public class ObservabilityDiagnosticsIntegrationTests
     private const string GrpcActivitySourceName = "OmniRelay.Transport.Grpc";
 
     [Fact(Timeout = 60_000)]
-    public async Task IntrospectionAndHealthChecks_ReportHealthyAndDegradedStatus()
+    public async ValueTask IntrospectionAndHealthChecks_ReportHealthyAndDegradedStatus()
     {
         var healthyPort = TestPortAllocator.GetRandomPort();
         var healthyBase = new Uri($"http://127.0.0.1:{healthyPort}/");
         var healthyOptions = new DispatcherOptions("observability-healthy");
-        var healthyInbound = new HttpInbound([healthyBase.ToString()]);
+        var healthyInbound = HttpInbound.TryCreate([healthyBase]).ValueOrChecked();
         healthyOptions.AddLifecycle("observability-healthy-http", healthyInbound);
 
         var healthyDispatcher = new Dispatcher.Dispatcher(healthyOptions);
         RegisterPingProcedure(healthyDispatcher);
 
         var ct = TestContext.Current.CancellationToken;
-        await healthyDispatcher.StartOrThrowAsync(ct);
+        await healthyDispatcher.StartAsyncChecked(ct);
         await WaitForHttpReadyAsync(healthyBase, ct);
 
         try
@@ -47,33 +48,33 @@ public class ObservabilityDiagnosticsIntegrationTests
             using (var introspection = await ReadJsonDocumentAsync(client, "omnirelay/introspect", ct))
             {
                 var root = introspection.RootElement;
-                Assert.Equal("observability-healthy", root.GetProperty("service").GetString());
-                Assert.Equal("Running", root.GetProperty("status").GetString());
+                root.GetProperty("service").GetString().Should().Be("observability-healthy");
+                root.GetProperty("status").GetString().Should().Be("Running");
 
                 var components = root.GetProperty("components").EnumerateArray().Select(component => component.GetProperty("name").GetString()).ToArray();
-                Assert.Contains("observability-healthy-http", components);
+                components.Should().Contain("observability-healthy-http");
             }
 
             using (var healthz = await ReadJsonDocumentAsync(client, "healthz", ct))
             {
                 var root = healthz.RootElement;
-                Assert.Equal("ok", root.GetProperty("status").GetString());
-                Assert.Equal("live", root.GetProperty("mode").GetString());
-                Assert.Equal(0, root.GetProperty("issues").GetArrayLength());
-                Assert.False(root.GetProperty("draining").GetBoolean());
+                root.GetProperty("status").GetString().Should().Be("ok");
+                root.GetProperty("mode").GetString().Should().Be("live");
+                root.GetProperty("issues").GetArrayLength().Should().Be(0);
+                root.GetProperty("draining").GetBoolean().Should().BeFalse();
             }
 
             using (var readyz = await ReadJsonDocumentAsync(client, "readyz", ct))
             {
                 var root = readyz.RootElement;
-                Assert.Equal("ok", root.GetProperty("status").GetString());
-                Assert.Equal("ready", root.GetProperty("mode").GetString());
-                Assert.Equal(0, root.GetProperty("issues").GetArrayLength());
+                root.GetProperty("status").GetString().Should().Be("ok");
+                root.GetProperty("mode").GetString().Should().Be("ready");
+                root.GetProperty("issues").GetArrayLength().Should().Be(0);
             }
         }
         finally
         {
-            await healthyDispatcher.StopOrThrowAsync(CancellationToken.None);
+            await healthyDispatcher.StopAsyncChecked(CancellationToken.None);
         }
 
         var degradedPort = TestPortAllocator.GetRandomPort();
@@ -100,14 +101,14 @@ public class ObservabilityDiagnosticsIntegrationTests
                     .Select(issue => issue.GetString())
                     .ToArray();
 
-                Assert.Equal(HttpStatusCode.ServiceUnavailable, readyResponse.StatusCode);
-                Assert.Equal("unavailable", readyz.RootElement.GetProperty("status").GetString());
-                Assert.Contains("dispatcher-status:Created", issues);
+                readyResponse.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
+                readyz.RootElement.GetProperty("status").GetString().Should().Be("unavailable");
+                issues.Should().Contain("dispatcher-status:Created");
             }
 
             using (var healthz = await ReadJsonDocumentAsync(client, "healthz", ct))
             {
-                Assert.Equal("ok", healthz.RootElement.GetProperty("status").GetString());
+                healthz.RootElement.GetProperty("status").GetString().Should().Be("ok");
             }
         }
         finally
@@ -117,7 +118,7 @@ public class ObservabilityDiagnosticsIntegrationTests
     }
 
     [Fact(Timeout = 60_000)]
-    public async Task StructuredLoggingAndMetrics_IncludeProtocolAndPeerContext()
+    public async ValueTask StructuredLoggingAndMetrics_IncludeProtocolAndPeerContext()
     {
         var serviceName = "observability-http";
         var port = TestPortAllocator.GetRandomPort();
@@ -150,7 +151,7 @@ public class ObservabilityDiagnosticsIntegrationTests
         });
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await dispatcher.StartAsyncChecked(ct);
         await WaitForHttpReadyAsync(baseAddress, ct);
 
         try
@@ -164,7 +165,7 @@ public class ObservabilityDiagnosticsIntegrationTests
             httpRequest.Content = new StringContent("""{"message":"ping"}""", Encoding.UTF8, "application/json");
 
             using var response = await httpClient.SendAsync(httpRequest, ct);
-            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
 
             var outboundMeta = new RequestMeta(
                 service: serviceName,
@@ -189,7 +190,7 @@ public class ObservabilityDiagnosticsIntegrationTests
                     return ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(request.Body, meta)));
                 });
 
-            Assert.True(outboundResult.IsSuccess);
+            outboundResult.IsSuccess.Should().BeTrue();
 
             var middlewareContext = new HttpClientMiddlewareContext(
                 new HttpRequestMessage(HttpMethod.Post, "https://backend.example/omnirelay"),
@@ -209,23 +210,23 @@ public class ObservabilityDiagnosticsIntegrationTests
             };
 
             using var fakeResponse = await httpClientLogging.InvokeAsync(middlewareContext, terminal, ct);
-            Assert.Equal(HttpStatusCode.OK, fakeResponse.StatusCode);
+            fakeResponse.StatusCode.Should().Be(HttpStatusCode.OK);
         }
         finally
         {
-            await dispatcher.StopOrThrowAsync(CancellationToken.None);
+            await dispatcher.StopAsyncChecked(CancellationToken.None);
         }
 
         var inboundLog = logProvider.Entries.FirstOrDefault(entry => entry.Message.StartsWith("rpc inbound unary completed", StringComparison.OrdinalIgnoreCase));
-        Assert.NotNull(inboundLog);
+        inboundLog.Should().NotBeNull();
         AssertScopeContains(inboundLog!, "rpc.transport", "http");
         AssertScopeContains(inboundLog!, "rpc.peer", "client-edge");
 
         var outboundLog = logProvider.Entries.FirstOrDefault(entry => entry.Message.StartsWith("rpc outbound unary completed", StringComparison.OrdinalIgnoreCase));
-        Assert.NotNull(outboundLog);
+        outboundLog.Should().NotBeNull();
         AssertScopeContains(outboundLog!, "rpc.peer", "backend-primary");
 
-        Assert.Contains(logProvider.Entries, entry =>
+        logProvider.Entries.Should().Contain(entry =>
             entry.Category == typeof(HttpClientLoggingMiddleware).FullName &&
             entry.Message.Contains("Sending HTTP outbound request", StringComparison.OrdinalIgnoreCase));
 
@@ -235,13 +236,13 @@ public class ObservabilityDiagnosticsIntegrationTests
                 HasTag(measurement, "rpc.service", serviceName))
             .ToArray();
 
-        Assert.NotEmpty(requestMetrics);
-        Assert.Contains(requestMetrics, measurement => HasTag(measurement, "rpc.protocol", "HTTP/1.1"));
-        Assert.Contains(requestMetrics, measurement => HasTag(measurement, "network.transport", "tcp"));
+        requestMetrics.Should().NotBeEmpty();
+        requestMetrics.Should().Contain(measurement => HasTag(measurement, "rpc.protocol", "HTTP/1.1"));
+        requestMetrics.Should().Contain(measurement => HasTag(measurement, "network.transport", "tcp"));
     }
 
     [Fact(Timeout = 90_000)]
-    public async Task OpenTelemetrySpans_RecordTransportAttributesForStreaming()
+    public async ValueTask OpenTelemetrySpans_RecordTransportAttributesForStreaming()
     {
         var activities = new ConcurrentBag<Activity>();
         using var listener = CreateGrpcActivityListener(activities);
@@ -251,7 +252,7 @@ public class ObservabilityDiagnosticsIntegrationTests
         var address = new Uri($"http://127.0.0.1:{port}");
 
         var serverOptions = new DispatcherOptions(serviceName);
-        var grpcInbound = new GrpcInbound([address.ToString()]);
+        var grpcInbound = GrpcInbound.TryCreate([address]).ValueOrChecked();
         serverOptions.AddLifecycle("observability-grpc-inbound", grpcInbound);
         var serverDispatcher = new Dispatcher.Dispatcher(serverOptions);
         serverDispatcher.RegisterTestService(new StreamingProbeService());
@@ -268,8 +269,8 @@ public class ObservabilityDiagnosticsIntegrationTests
         var client = TestServiceOmniRelay.CreateTestServiceClient(clientDispatcher, serviceName);
 
         var ct = TestContext.Current.CancellationToken;
-        await serverDispatcher.StartOrThrowAsync(ct);
-        await clientDispatcher.StartOrThrowAsync(ct);
+        await serverDispatcher.StartAsyncChecked(ct);
+        await clientDispatcher.StartAsyncChecked(ct);
         await WaitForGrpcReadyAsync(address, ct);
 
         try
@@ -277,35 +278,35 @@ public class ObservabilityDiagnosticsIntegrationTests
             var payloads = new List<string>();
             await foreach (var response in client.ServerStreamAsync(new StreamRequest { Value = "probe" }, cancellationToken: ct).WithCancellation(ct))
             {
-                payloads.Add(response.ValueOrThrow().Body.Value);
+                payloads.Add(response.ValueOrChecked().Body.Value);
             }
 
-            Assert.Equal(new[] { "probe-0", "probe-1", "probe-2" }, payloads);
+            payloads.Should().Equal("probe-0", "probe-1", "probe-2");
         }
         finally
         {
-            await clientDispatcher.StopOrThrowAsync(CancellationToken.None);
-            await serverDispatcher.StopOrThrowAsync(CancellationToken.None);
+            await clientDispatcher.StopAsyncChecked(CancellationToken.None);
+            await serverDispatcher.StopAsyncChecked(CancellationToken.None);
         }
 
         var serverSpan = activities.FirstOrDefault(activity =>
             string.Equals(activity.DisplayName, "grpc.server.server_stream", StringComparison.Ordinal));
-        Assert.NotNull(serverSpan);
-        Assert.Equal(ActivityKind.Server, serverSpan!.Kind);
-        Assert.Equal("HTTP/2", serverSpan.GetTagItem("rpc.protocol"));
-        Assert.Equal("http", serverSpan.GetTagItem("network.protocol.name"));
-        Assert.Equal("2", serverSpan.GetTagItem("network.protocol.version"));
-        Assert.Equal("tcp", serverSpan.GetTagItem("network.transport"));
-        Assert.False(string.IsNullOrWhiteSpace(serverSpan.GetTagItem("net.peer.ip") as string));
-        Assert.True(serverSpan.Duration > TimeSpan.Zero);
+        serverSpan.Should().NotBeNull();
+        serverSpan!.Kind.Should().Be(ActivityKind.Server);
+        serverSpan.GetTagItem("rpc.protocol").Should().Be("HTTP/2");
+        serverSpan.GetTagItem("network.protocol.name").Should().Be("http");
+        serverSpan.GetTagItem("network.protocol.version").Should().Be("2");
+        serverSpan.GetTagItem("network.transport").Should().Be("tcp");
+        (serverSpan.GetTagItem("net.peer.ip") as string).Should().NotBeNullOrWhiteSpace();
+        serverSpan.Duration.Should().BeGreaterThan(TimeSpan.Zero);
 
         var clientSpan = activities.FirstOrDefault(activity =>
             string.Equals(activity.DisplayName, "grpc.client.server_stream", StringComparison.Ordinal));
-        Assert.NotNull(clientSpan);
-        Assert.Equal(ActivityKind.Client, clientSpan!.Kind);
-        Assert.Equal("grpc", clientSpan.GetTagItem("rpc.system"));
-        Assert.False(string.IsNullOrWhiteSpace(clientSpan.GetTagItem("net.peer.ip") as string));
-        Assert.True(clientSpan.Duration > TimeSpan.Zero);
+        clientSpan.Should().NotBeNull();
+        clientSpan!.Kind.Should().Be(ActivityKind.Client);
+        clientSpan.GetTagItem("rpc.system").Should().Be("grpc");
+        (clientSpan.GetTagItem("net.peer.ip") as string).Should().NotBeNullOrWhiteSpace();
+        clientSpan.Duration.Should().BeGreaterThan(TimeSpan.Zero);
     }
 
     private static void RegisterPingProcedure(Dispatcher.Dispatcher dispatcher)
@@ -417,9 +418,11 @@ public class ObservabilityDiagnosticsIntegrationTests
 
     private static void AssertScopeContains(LogEntry entry, string key, string expected)
     {
-        Assert.Contains(entry.Scope, pair =>
+        var hasMatch = entry.Scope.Any(pair =>
             string.Equals(pair.Key, key, StringComparison.OrdinalIgnoreCase) &&
             string.Equals(pair.Value?.ToString(), expected, StringComparison.OrdinalIgnoreCase));
+
+        hasMatch.Should().BeTrue($"Expected scope to contain '{key}={expected}'.");
     }
 
     private static bool HasTag(MeasurementRecord measurement, string key, object expected)
@@ -585,7 +588,7 @@ public class ObservabilityDiagnosticsIntegrationTests
             {
                 var payload = new StreamResponse { Value = $"{request.Body.Value}-{index}" };
                 var writeResult = await stream.WriteAsync(payload, cancellationToken);
-                writeResult.ThrowIfFailure();
+                writeResult.ValueOrChecked();
                 await Task.Delay(TimeSpan.FromMilliseconds(20), cancellationToken);
             }
         }

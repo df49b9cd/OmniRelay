@@ -39,7 +39,7 @@ public sealed class DispatcherHost : IAsyncDisposable
 
         var logger = loggerFactory.CreateLogger($"DispatcherHost[{name}]");
         logger.LogInformation("Starting dispatcher for service {Service}", dispatcher.ServiceName);
-        await dispatcher.StartOrThrowAsync(cancellationToken);
+        await dispatcher.StartAsyncChecked(cancellationToken);
         logger.LogInformation("Dispatcher for service {Service} started", dispatcher.ServiceName);
 
         return new DispatcherHost(dispatcher, logger, ownsLifetime);
@@ -56,7 +56,7 @@ public sealed class DispatcherHost : IAsyncDisposable
         }
 
         _logger.LogInformation("Stopping dispatcher for service {Service}", _dispatcher.ServiceName);
-        await _dispatcher.StopOrThrowAsync(CancellationToken.None);
+        await _dispatcher.StopAsyncChecked(CancellationToken.None);
         _logger.LogInformation("Dispatcher for service {Service} stopped", _dispatcher.ServiceName);
     }
 }

@@ -7,6 +7,7 @@ using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Authentication;
 using System.Security.Cryptography;
+using AwesomeAssertions;
 using Grpc.Core;
 using Grpc.Core.Interceptors;
 using Grpc.Net.Client;
@@ -17,10 +18,10 @@ using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
 using OmniRelay.IntegrationTests.Support;
 using OmniRelay.Tests.Support;
-using OmniRelay.TestSupport;
 using OmniRelay.Transport.Grpc;
 using OmniRelay.Transport.Grpc.Interceptors;
 using Xunit;
+using static AwesomeAssertions.FluentActions;
 using static Hugo.Go;
 
 namespace OmniRelay.IntegrationTests.Transport.Grpc;
@@ -28,7 +29,7 @@ namespace OmniRelay.IntegrationTests.Transport.Grpc;
 public class GrpcHttp3NegotiationTests(ITestOutputHelper output) : TransportIntegrationTest(output)
 {
     [Http3Fact(Timeout = 45_000)]
-    public async Task GrpcInbound_WithHttp3Enabled_ExecutesInterceptorsOverHttp3()
+    public async ValueTask GrpcInbound_WithHttp3Enabled_ExecutesInterceptorsOverHttp3()
     {
         if (!QuicListener.IsSupported)
         {
@@ -100,27 +101,27 @@ public class GrpcHttp3NegotiationTests(ITestOutputHelper output) : TransportInte
         {
             var call = invoker.AsyncUnaryCall(method, null, new CallOptions(headers: metadata), []);
             var response = await call.ResponseAsync.WaitAsync(ct);
-            Assert.Empty(response);
+            response.Should().BeEmpty();
         }
         finally
         {
         }
 
-        Assert.True(observedProtocols.TryDequeue(out var protocol), "No HTTP protocol was observed by the interceptor.");
-        Assert.StartsWith("HTTP/3", protocol, StringComparison.Ordinal);
+        observedProtocols.TryDequeue(out var protocol).Should().BeTrue("No HTTP protocol was observed by the interceptor.");
+        protocol.Should().StartWithEquivalentOf("HTTP/3");
 
-        Assert.True(requestMetaProtocols.TryDequeue(out var metaProtocol), "No HTTP protocol was captured in request metadata.");
-        Assert.StartsWith("HTTP/3", metaProtocol, StringComparison.Ordinal);
+        requestMetaProtocols.TryDequeue(out var metaProtocol).Should().BeTrue("No HTTP protocol was captured in request metadata.");
+        metaProtocol.Should().StartWithEquivalentOf("HTTP/3");
 
         var recordedActivity = activities.LastOrDefault(activity => string.Equals(activity.OperationName, "grpc.server.unary", StringComparison.Ordinal));
-        Assert.NotNull(recordedActivity);
-        Assert.Equal("http", recordedActivity!.GetTagItem("network.protocol.name"));
-        Assert.StartsWith("3", recordedActivity.GetTagItem("network.protocol.version")?.ToString(), StringComparison.Ordinal);
-        Assert.StartsWith("HTTP/3", recordedActivity.GetTagItem("rpc.protocol")?.ToString(), StringComparison.Ordinal);
+        recordedActivity.Should().NotBeNull();
+        recordedActivity!.GetTagItem("network.protocol.name").Should().Be("http");
+        recordedActivity.GetTagItem("network.protocol.version")?.ToString().Should().StartWith("3");
+        recordedActivity.GetTagItem("rpc.protocol")?.ToString().Should().StartWithEquivalentOf("HTTP/3");
     }
 
     [Http3Fact(Timeout = 45_000)]
-    public async Task GrpcInbound_WithHttp3Enabled_RunsTransportInterceptorsOverHttp3()
+    public async ValueTask GrpcInbound_WithHttp3Enabled_RunsTransportInterceptorsOverHttp3()
     {
         if (!QuicListener.IsSupported)
         {
@@ -188,20 +189,20 @@ public class GrpcHttp3NegotiationTests(ITestOutputHelper output) : TransportInte
 
         var call = invoker.AsyncUnaryCall(method, null, new CallOptions(headers: metadata), []);
         var response = await call.ResponseAsync.WaitAsync(ct);
-        Assert.Empty(response);
+        response.Should().BeEmpty();
 
-        Assert.True(runtimeProtocols.TryDequeue(out var runtimeProtocol), "No HTTP protocol was observed by the runtime interceptor.");
-        Assert.StartsWith("HTTP/3", runtimeProtocol, StringComparison.Ordinal);
+        runtimeProtocols.TryDequeue(out var runtimeProtocol).Should().BeTrue("No HTTP protocol was observed by the runtime interceptor.");
+        runtimeProtocol.Should().StartWithEquivalentOf("HTTP/3");
 
-        Assert.True(transportProtocols.TryDequeue(out var transportProtocol), "No HTTP protocol was observed by the transport interceptor.");
-        Assert.StartsWith("HTTP/3", transportProtocol, StringComparison.Ordinal);
+        transportProtocols.TryDequeue(out var transportProtocol).Should().BeTrue("No HTTP protocol was observed by the transport interceptor.");
+        transportProtocol.Should().StartWithEquivalentOf("HTTP/3");
 
-        Assert.True(requestMetaProtocols.TryDequeue(out var metaProtocol), "No HTTP protocol was captured in request metadata.");
-        Assert.StartsWith("HTTP/3", metaProtocol, StringComparison.Ordinal);
+        requestMetaProtocols.TryDequeue(out var metaProtocol).Should().BeTrue("No HTTP protocol was captured in request metadata.");
+        metaProtocol.Should().StartWithEquivalentOf("HTTP/3");
     }
 
     [Http3Fact(Timeout = 45_000)]
-    public async Task GrpcInbound_WithHttp3Disabled_FallsBackToHttp2()
+    public async ValueTask GrpcInbound_WithHttp3Disabled_FallsBackToHttp2()
     {
         if (!QuicListener.IsSupported)
         {
@@ -268,26 +269,26 @@ public class GrpcHttp3NegotiationTests(ITestOutputHelper output) : TransportInte
 
         try
         {
-            var call = invoker.AsyncUnaryCall(method, null, new CallOptions(headers: metadata), []);
-            var response = await call.ResponseAsync.WaitAsync(ct);
-            Assert.Empty(response);
+        var call = invoker.AsyncUnaryCall(method, null, new CallOptions(headers: metadata), []);
+        var response = await call.ResponseAsync.WaitAsync(ct);
+        response.Should().BeEmpty();
         }
         finally
         {
         }
 
-        Assert.True(observedProtocols.TryDequeue(out var protocol), "No HTTP protocol was observed by the interceptor.");
-        Assert.StartsWith("HTTP/2", protocol, StringComparison.Ordinal);
+        observedProtocols.TryDequeue(out var protocol).Should().BeTrue("No HTTP protocol was observed by the interceptor.");
+        protocol.Should().StartWithEquivalentOf("HTTP/2");
 
-        Assert.True(transportProtocols.TryDequeue(out var transportProtocol), "No HTTP protocol was observed by the transport interceptor.");
-        Assert.StartsWith("HTTP/2", transportProtocol, StringComparison.Ordinal);
+        transportProtocols.TryDequeue(out var transportProtocol).Should().BeTrue("No HTTP protocol was observed by the transport interceptor.");
+        transportProtocol.Should().StartWithEquivalentOf("HTTP/2");
 
-        Assert.True(requestMetaProtocols.TryDequeue(out var metaProtocol), "No HTTP protocol was captured in request metadata.");
-        Assert.StartsWith("HTTP/2", metaProtocol, StringComparison.Ordinal);
+        requestMetaProtocols.TryDequeue(out var metaProtocol).Should().BeTrue("No HTTP protocol was captured in request metadata.");
+        metaProtocol.Should().StartWithEquivalentOf("HTTP/2");
     }
 
     [Http3Fact(Timeout = 45_000)]
-    public async Task GrpcInbound_WithHttp3_ServerStreamHandlesLargePayload()
+    public async ValueTask GrpcInbound_WithHttp3_ServerStreamHandlesLargePayload()
     {
         if (!QuicListener.IsSupported)
         {
@@ -349,22 +350,22 @@ public class GrpcHttp3NegotiationTests(ITestOutputHelper output) : TransportInte
         try
         {
             var streamingCall = invoker.AsyncServerStreamingCall(method, null, new CallOptions(), []);
-            Assert.True(await streamingCall.ResponseStream.MoveNext(ct));
+            (await streamingCall.ResponseStream.MoveNext(ct)).Should().BeTrue();
             var message = streamingCall.ResponseStream.Current;
-            Assert.Equal(payload.Length, message.Length);
-            Assert.True(message.SequenceEqual(payload));
-            Assert.False(await streamingCall.ResponseStream.MoveNext(ct));
+            message.Length.Should().Be(payload.Length);
+            message.SequenceEqual(payload).Should().BeTrue();
+            (await streamingCall.ResponseStream.MoveNext(ct)).Should().BeFalse();
         }
         finally
         {
         }
 
-        Assert.True(acceptEncodings.TryDequeue(out var negotiatedEncoding), "No grpc-accept-encoding header was observed.");
-        Assert.False(string.IsNullOrWhiteSpace(negotiatedEncoding));
+        acceptEncodings.TryDequeue(out var negotiatedEncoding).Should().BeTrue("No grpc-accept-encoding header was observed.");
+        negotiatedEncoding.Should().NotBeNullOrWhiteSpace();
     }
 
     [Http3Fact(Timeout = 45_000)]
-    public async Task GrpcInbound_WithHttp3_DuplexHandlesLargePayloads()
+    public async ValueTask GrpcInbound_WithHttp3_DuplexHandlesLargePayloads()
     {
         if (!QuicListener.IsSupported)
         {
@@ -429,11 +430,11 @@ public class GrpcHttp3NegotiationTests(ITestOutputHelper output) : TransportInte
             await call.RequestStream.WriteAsync(payload, cancellationToken: ct);
             await call.RequestStream.CompleteAsync().WaitAsync(ct);
 
-            Assert.True(await call.ResponseStream.MoveNext(ct));
+            (await call.ResponseStream.MoveNext(ct)).Should().BeTrue();
             var echo = call.ResponseStream.Current;
-            Assert.Equal(payload.Length, echo.Length);
-            Assert.True(echo.SequenceEqual(payload));
-            Assert.False(await call.ResponseStream.MoveNext(ct));
+            echo.Length.Should().Be(payload.Length);
+            echo.SequenceEqual(payload).Should().BeTrue();
+            (await call.ResponseStream.MoveNext(ct)).Should().BeFalse();
         }
         finally
         {
@@ -441,7 +442,7 @@ public class GrpcHttp3NegotiationTests(ITestOutputHelper output) : TransportInte
     }
 
     [Http3Fact(Timeout = 60_000)]
-    public async Task GrpcInbound_WithHttp3_KeepAliveMaintainsDuplex()
+    public async ValueTask GrpcInbound_WithHttp3_KeepAliveMaintainsDuplex()
     {
         if (!QuicListener.IsSupported)
         {
@@ -516,13 +517,13 @@ public class GrpcHttp3NegotiationTests(ITestOutputHelper output) : TransportInte
             await call.RequestStream.WriteAsync(payload2, cancellationToken: ct);
             await call.RequestStream.CompleteAsync().WaitAsync(ct);
 
-            Assert.True(await call.ResponseStream.MoveNext(ct));
-            Assert.Equal(payload1.Length, call.ResponseStream.Current.Length);
+            (await call.ResponseStream.MoveNext(ct)).Should().BeTrue();
+            call.ResponseStream.Current.Length.Should().Be(payload1.Length);
 
-            Assert.True(await call.ResponseStream.MoveNext(ct));
-            Assert.Equal(payload2.Length, call.ResponseStream.Current.Length);
+            (await call.ResponseStream.MoveNext(ct)).Should().BeTrue();
+            call.ResponseStream.Current.Length.Should().Be(payload2.Length);
 
-            Assert.False(await call.ResponseStream.MoveNext(ct));
+            (await call.ResponseStream.MoveNext(ct)).Should().BeFalse();
         }
         finally
         {
@@ -530,7 +531,7 @@ public class GrpcHttp3NegotiationTests(ITestOutputHelper output) : TransportInte
     }
 
     [Http3Fact(Timeout = 45_000)]
-    public async Task GrpcInbound_WithHttp3Enabled_DrainRejectsNewCallsWithRetryAfter()
+    public async ValueTask GrpcInbound_WithHttp3Enabled_DrainRejectsNewCallsWithRetryAfter()
     {
         if (!QuicListener.IsSupported)
         {
@@ -593,17 +594,18 @@ public class GrpcHttp3NegotiationTests(ITestOutputHelper output) : TransportInte
             var inFlightCall = invoker.AsyncUnaryCall(method, null, new CallOptions(headers: metadata), []);
             await requestStarted.Task.WaitAsync(ct);
 
-            stopTask = dispatcher.StopOrThrowAsync(ct);
+            stopTask = dispatcher.StopAsyncChecked(ct);
             await Task.Delay(100, ct);
 
             var rejectedCall = invoker.AsyncUnaryCall(method, null, new CallOptions(headers: metadata), []);
-            var rejection = await Assert.ThrowsAsync<RpcException>(() => rejectedCall.ResponseAsync);
-            Assert.Equal(StatusCode.Unavailable, rejection.StatusCode);
-            Assert.Equal("1", rejection.Trailers.GetValue("retry-after"));
+            var rejection = await Invoking(() => rejectedCall.ResponseAsync)
+                .Should().ThrowAsync<RpcException>();
+            rejection.Which.StatusCode.Should().Be(StatusCode.Unavailable);
+            rejection.Which.Trailers.GetValue("retry-after").Should().Be("1");
 
             releaseRequest.TrySetResult();
             var response = await inFlightCall.ResponseAsync.WaitAsync(ct);
-            Assert.Empty(response);
+            response.Should().BeEmpty();
 
             await stopTask;
         }
@@ -615,16 +617,16 @@ public class GrpcHttp3NegotiationTests(ITestOutputHelper output) : TransportInte
             }
             else
             {
-                await dispatcher.StopOrThrowAsync(ct);
+                await dispatcher.StopAsyncChecked(ct);
             }
         }
 
-        Assert.True(observedProtocols.TryDequeue(out var protocol), "No HTTP protocol was observed by the interceptor.");
-        Assert.StartsWith("HTTP/3", protocol, StringComparison.Ordinal);
+        observedProtocols.TryDequeue(out var protocol).Should().BeTrue("No HTTP protocol was observed by the interceptor.");
+        protocol.Should().StartWithEquivalentOf("HTTP/3");
     }
 
     [Http3Fact(Timeout = 45_000)]
-    public async Task GrpcInbound_WithHttp3Enabled_CompressionNegotiatesGzip()
+    public async ValueTask GrpcInbound_WithHttp3Enabled_CompressionNegotiatesGzip()
     {
         if (!QuicListener.IsSupported)
         {
@@ -693,27 +695,28 @@ public class GrpcHttp3NegotiationTests(ITestOutputHelper output) : TransportInte
         {
             using var call = invoker.AsyncUnaryCall(method, null, new CallOptions(), []);
             var response = await call.ResponseAsync.WaitAsync(ct);
-            Assert.Equal(payload.Length, response.Length);
+            response.Length.Should().Be(payload.Length);
 
             var headers = await call.ResponseHeadersAsync.WaitAsync(ct);
             var encoding = headers.GetValue("grpc-encoding") ?? call.GetTrailers().GetValue("grpc-encoding");
             if (encoding is not null)
             {
-                Assert.Equal("gzip", encoding);
+                encoding.Should().Be("gzip");
             }
         }
         finally
         {
         }
 
-        Assert.True(acceptEncodings.TryDequeue(out var negotiated), "No grpc-accept-encoding header was observed.");
-        Assert.Contains(
-            negotiated.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries),
-            value => value.Equals("gzip", StringComparison.OrdinalIgnoreCase));
+        acceptEncodings.TryDequeue(out var negotiated).Should().BeTrue("No grpc-accept-encoding header was observed.");
+        negotiated.Should().NotBeNullOrWhiteSpace();
+        negotiated
+            .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Should().Contain(value => value.Equals("gzip", StringComparison.OrdinalIgnoreCase));
     }
 
     [Http3Fact(Timeout = 45_000)]
-    public async Task GrpcInbound_WithHttp3Disabled_CompressionNegotiatesGzip()
+    public async ValueTask GrpcInbound_WithHttp3Disabled_CompressionNegotiatesGzip()
     {
         using var certificate = TestCertificateFactory.CreateLoopbackCertificate("CN=omnirelay-grpc-http2-compression");
 
@@ -777,23 +780,24 @@ public class GrpcHttp3NegotiationTests(ITestOutputHelper output) : TransportInte
         {
             using var call = invoker.AsyncUnaryCall(method, null, new CallOptions(), []);
             var response = await call.ResponseAsync.WaitAsync(ct);
-            Assert.Equal(payload.Length, response.Length);
+            response.Length.Should().Be(payload.Length);
 
             var headers = await call.ResponseHeadersAsync.WaitAsync(ct);
             var encoding = headers.GetValue("grpc-encoding") ?? call.GetTrailers().GetValue("grpc-encoding");
             if (encoding is not null)
             {
-                Assert.Equal("gzip", encoding);
+                encoding.Should().Be("gzip");
             }
         }
         finally
         {
         }
 
-        Assert.True(acceptEncodings.TryDequeue(out var negotiated), "No grpc-accept-encoding header was observed.");
-        Assert.Contains(
-            negotiated.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries),
-            value => value.Equals("gzip", StringComparison.OrdinalIgnoreCase));
+        acceptEncodings.TryDequeue(out var negotiated).Should().BeTrue("No grpc-accept-encoding header was observed.");
+        negotiated.Should().NotBeNullOrWhiteSpace();
+        negotiated
+            .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Should().Contain(value => value.Equals("gzip", StringComparison.OrdinalIgnoreCase));
     }
 
     private static async Task WaitForGrpcReadyAsync(Uri address, CancellationToken cancellationToken)

@@ -1,11 +1,11 @@
 using System.Net;
+using AwesomeAssertions;
 using OmniRelay.Core;
 using OmniRelay.Core.Clients;
 using OmniRelay.Core.Peers;
 using OmniRelay.Dispatcher;
 using OmniRelay.IntegrationTests.Support;
 using OmniRelay.Tests.Support;
-using OmniRelay.TestSupport;
 using OmniRelay.Transport.Grpc;
 using Xunit;
 using static Hugo.Go;
@@ -16,7 +16,7 @@ namespace OmniRelay.IntegrationTests.Transport.Grpc;
 public sealed class GrpcOutboundResilienceTests(ITestOutputHelper output) : TransportIntegrationTest(output)
 {
     [Http3Fact(Timeout = 60_000)]
-    public async Task Breaker_Trips_On_Http3_Handshake_Failures()
+    public async ValueTask Breaker_Trips_On_Http3_Handshake_Failures()
     {
         // Server supports only HTTP/2
         using var certificate = TestCertificateFactory.CreateLoopbackCertificate("CN=omnirelay-grpc-resilience-h2");
@@ -64,32 +64,32 @@ public sealed class GrpcOutboundResilienceTests(ITestOutputHelper output) : Tran
             await outbound.StartAsync(ct);
 
             var codec = new RawCodec();
-            var client = new UnaryClient<byte[], byte[]>(outbound, codec, dispatcher.ClientConfigOrThrow("grpc-resilience-h2").UnaryMiddleware);
+            var client = new UnaryClient<byte[], byte[]>(outbound, codec, dispatcher.ClientConfigChecked("grpc-resilience-h2").UnaryMiddleware);
             var request = new Request<byte[]>(new RequestMeta("grpc-resilience-h2", "grpc-resilience-h2::ping"), []);
 
             // Issue several attempts to exceed breaker threshold
             for (var i = 0; i < 5; i++)
             {
                 var result = await client.CallAsync(request, ct);
-                Assert.True(result.IsFailure);
+                result.IsFailure.Should().BeTrue();
             }
 
             // Inspect outbound diagnostics for peer state and failure counts
             var snapshot = (GrpcOutboundSnapshot)outbound.GetOutboundDiagnostics()!;
-            Assert.Single(snapshot.PeerSummaries);
+            snapshot.PeerSummaries.Should().ContainSingle();
             var peer = snapshot.PeerSummaries[0];
-            Assert.True(peer.FailureCount >= 3, $"Expected at least 3 failures, observed {peer.FailureCount}");
-            Assert.Equal(PeerState.Unavailable, peer.State);
+            peer.FailureCount.Should().BeGreaterThanOrEqualTo(3, $"Expected at least 3 failures, observed {peer.FailureCount}");
+            peer.State.Should().Be(PeerState.Unavailable);
         }
         finally
         {
             await outbound.StopAsync(ct);
-            await dispatcher.StopOrThrowAsync(ct);
+            await dispatcher.StopAsyncChecked(ct);
         }
     }
 
     [Http3Fact(Timeout = 30_000)]
-    public async Task Breaker_Trips_On_Transport_Errors_No_Server()
+    public async ValueTask Breaker_Trips_On_Transport_Errors_No_Server()
     {
         // No server listening at this HTTPS endpoint
         var port = TestPortAllocator.GetRandomPort();
@@ -124,14 +124,14 @@ public sealed class GrpcOutboundResilienceTests(ITestOutputHelper output) : Tran
             for (var i = 0; i < 5; i++)
             {
                 var result = await client.CallAsync(request, ct);
-                Assert.True(result.IsFailure);
+                result.IsFailure.Should().BeTrue();
             }
 
             var snapshot = (GrpcOutboundSnapshot)outbound.GetOutboundDiagnostics()!;
-            Assert.Single(snapshot.PeerSummaries);
+            snapshot.PeerSummaries.Should().ContainSingle();
             var peer = snapshot.PeerSummaries[0];
-            Assert.True(peer.FailureCount >= 3);
-            Assert.Equal(PeerState.Unavailable, peer.State);
+            peer.FailureCount.Should().BeGreaterThanOrEqualTo(3);
+            peer.State.Should().Be(PeerState.Unavailable);
         }
         finally
         {

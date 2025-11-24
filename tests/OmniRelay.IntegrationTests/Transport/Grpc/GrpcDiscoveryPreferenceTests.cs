@@ -1,4 +1,5 @@
 using System.Net.Quic;
+using AwesomeAssertions;
 using Grpc.Core;
 using Grpc.Core.Interceptors;
 using Microsoft.Extensions.DependencyInjection;
@@ -7,7 +8,6 @@ using OmniRelay.Core.Clients;
 using OmniRelay.Dispatcher;
 using OmniRelay.IntegrationTests.Support;
 using OmniRelay.Tests.Support;
-using OmniRelay.TestSupport;
 using OmniRelay.Transport.Grpc;
 using Xunit;
 using static Hugo.Go;
@@ -18,7 +18,7 @@ namespace OmniRelay.IntegrationTests.Transport.Grpc;
 public sealed class GrpcDiscoveryPreferenceTests(ITestOutputHelper output) : TransportIntegrationTest(output)
 {
     [Http3Fact(Timeout = 60_000)]
-    public async Task Prefer_Http3_Endpoints_When_Available()
+    public async ValueTask Prefer_Http3_Endpoints_When_Available()
     {
         if (!QuicListener.IsSupported)
         {
@@ -106,19 +106,19 @@ public sealed class GrpcDiscoveryPreferenceTests(ITestOutputHelper output) : Tra
         {
             await outbound.StartAsync(ct);
             var codec = new RawCodec();
-            var client = new UnaryClient<byte[], byte[]>(outbound, codec, dispatcher.ClientConfigOrThrow("grpc-discovery-pref").UnaryMiddleware);
+            var client = new UnaryClient<byte[], byte[]>(outbound, codec, dispatcher.ClientConfigChecked("grpc-discovery-pref").UnaryMiddleware);
             var request = new Request<byte[]>(new RequestMeta("grpc-discovery-pref", "grpc-discovery-pref::ping"), []);
             var result = await client.CallAsync(request, ct);
-            Assert.True(result.IsSuccess, result.Error?.ToString() ?? "Result was not successful.");
+            result.IsSuccess.Should().BeTrue(result.Error?.ToString() ?? "Result was not successful.");
         }
         finally
         {
             await outbound.StopAsync(ct);
-            await dispatcher.StopOrThrowAsync(ct);
+            await dispatcher.StopAsyncChecked(ct);
         }
 
-        Assert.True(observedProtocols.TryDequeue(out var protocol), "No HTTP protocol was observed by the server interceptor.");
-        Assert.StartsWith("HTTP/3", protocol, StringComparison.Ordinal);
+        observedProtocols.TryDequeue(out var protocol).Should().BeTrue("No HTTP protocol was observed by the server interceptor.");
+        protocol.Should().StartWithEquivalentOf("HTTP/3");
     }
 
     private sealed class ProtocolCaptureInterceptor(System.Collections.Concurrent.ConcurrentQueue<string> observed) : Interceptor

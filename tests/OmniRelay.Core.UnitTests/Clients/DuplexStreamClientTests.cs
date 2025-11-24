@@ -2,7 +2,6 @@ using Hugo;
 using NSubstitute;
 using OmniRelay.Core.Clients;
 using OmniRelay.Core.Transport;
-using OmniRelay.Dispatcher;
 using OmniRelay.Errors;
 using Xunit;
 using static Hugo.Go;
@@ -15,7 +14,7 @@ public class DuplexStreamClientTests
     public sealed class Res { public int B { get; init; } }
 
     [Fact(Timeout = TestTimeouts.Default)]
-    public async Task StartAsync_Writes_Encodes_And_Reads_Decoded_Responses()
+    public async ValueTask StartAsync_Writes_Encodes_And_Reads_Decoded_Responses()
     {
         var outbound = Substitute.For<IDuplexOutbound>();
         var codec = Substitute.For<ICodec<Req, Res>>();
@@ -30,12 +29,12 @@ public class DuplexStreamClientTests
 
         var client = new DuplexStreamClient<Req, Res>(outbound, codec, []);
         var sessionResult = await client.StartAsync(meta, TestContext.Current.CancellationToken);
-        await using var session = sessionResult.ValueOrThrow();
+        await using var session = sessionResult.ValueOrChecked();
 
         var firstWrite = await session.WriteAsync(new Req { A = 1 }, TestContext.Current.CancellationToken);
-        firstWrite.ThrowIfFailure();
+        firstWrite.ValueOrChecked();
         var secondWrite = await session.WriteAsync(new Req { A = 2 }, TestContext.Current.CancellationToken);
-        secondWrite.ThrowIfFailure();
+        secondWrite.ValueOrChecked();
         await duplex.ResponseWriter.WriteAsync(new byte[] { 3 }, TestContext.Current.CancellationToken);
         await duplex.ResponseWriter.WriteAsync(new byte[] { 4 }, TestContext.Current.CancellationToken);
         await duplex.CompleteResponsesAsync(null, TestContext.Current.CancellationToken);
@@ -43,7 +42,7 @@ public class DuplexStreamClientTests
         var received = new List<Response<Res>>();
         await foreach (var r in session.ReadResponsesAsync(TestContext.Current.CancellationToken))
         {
-            received.Add(r.ValueOrThrow());
+            received.Add(r.ValueOrChecked());
         }
 
         received.Count.ShouldBe(2);
@@ -52,7 +51,7 @@ public class DuplexStreamClientTests
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
-    public async Task StartAsync_PipelineFailure_Throws()
+    public async ValueTask StartAsync_PipelineFailure_Throws()
     {
         var outbound = Substitute.For<IDuplexOutbound>();
         var codec = Substitute.For<ICodec<Req, Res>>();
@@ -66,7 +65,7 @@ public class DuplexStreamClientTests
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
-    public async Task WriteAsync_EncodeFailure_Throws()
+    public async ValueTask WriteAsync_EncodeFailure_Throws()
     {
         var outbound = Substitute.For<IDuplexOutbound>();
         var codec = Substitute.For<ICodec<Req, Res>>();
@@ -79,7 +78,7 @@ public class DuplexStreamClientTests
 
         var client = new DuplexStreamClient<Req, Res>(outbound, codec, []);
         var sessionResult = await client.StartAsync(new RequestMeta(), TestContext.Current.CancellationToken);
-        await using var session = sessionResult.ValueOrThrow();
+        await using var session = sessionResult.ValueOrChecked();
 
         var writeResult = await session.WriteAsync(new Req(), TestContext.Current.CancellationToken);
         writeResult.IsFailure.ShouldBeTrue();
@@ -87,7 +86,7 @@ public class DuplexStreamClientTests
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
-    public async Task ReadResponsesAsync_DecodeFailure_CompletesStreamAndThrows()
+    public async ValueTask ReadResponsesAsync_DecodeFailure_CompletesStreamAndThrows()
     {
         var outbound = Substitute.For<IDuplexOutbound>();
         var codec = Substitute.For<ICodec<Req, Res>>();
@@ -102,7 +101,7 @@ public class DuplexStreamClientTests
 
         var client = new DuplexStreamClient<Req, Res>(outbound, codec, []);
         var sessionResult = await client.StartAsync(new RequestMeta(), TestContext.Current.CancellationToken);
-        await using var session = sessionResult.ValueOrThrow();
+        await using var session = sessionResult.ValueOrChecked();
 
         var readTask = Task.Run(async () =>
         {
@@ -121,7 +120,7 @@ public class DuplexStreamClientTests
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
-    public async Task StartAsync_SetsEncodingWhenMissing()
+    public async ValueTask StartAsync_SetsEncodingWhenMissing()
     {
         var outbound = Substitute.For<IDuplexOutbound>();
         var codec = Substitute.For<ICodec<Req, Res>>();
@@ -138,7 +137,7 @@ public class DuplexStreamClientTests
 
         var client = new DuplexStreamClient<Req, Res>(outbound, codec, []);
         var startResult = await client.StartAsync(new RequestMeta(service: "svc"), TestContext.Current.CancellationToken);
-        await using var _ = startResult.ValueOrThrow();
+        await using var _ = startResult.ValueOrChecked();
 
         captured.ShouldNotBeNull();
         captured!.Meta.Encoding.ShouldBe("proto");

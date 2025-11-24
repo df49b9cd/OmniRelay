@@ -1,3 +1,5 @@
+using AwesomeAssertions;
+using static AwesomeAssertions.FluentActions;
 using Hugo;
 using OmniRelay.Core;
 using OmniRelay.Core.Middleware;
@@ -9,21 +11,27 @@ namespace OmniRelay.Tests.Dispatcher;
 
 public class ProcedureBuilderTests
 {
-    [Fact]
+    [Fact(Timeout = TestTimeouts.Default)]
     public void UnaryBuilder_HandleRequired()
     {
         var builder = new UnaryProcedureBuilder();
-        Assert.Throws<InvalidOperationException>(() => builder.Build("svc", "proc"));
+        var result = builder.Build("svc", "proc");
+
+        result.IsFailure.Should().BeTrue();
+        result.Error!.Code.Should().Be("dispatcher.procedure.handler_missing");
     }
 
-    [Fact]
+    [Fact(Timeout = TestTimeouts.Default)]
     public void OnewayBuilder_HandleRequired()
     {
         var builder = new OnewayProcedureBuilder();
-        Assert.Throws<InvalidOperationException>(() => builder.Build("svc", "proc"));
+        var result = builder.Build("svc", "proc");
+
+        result.IsFailure.Should().BeTrue();
+        result.Error!.Code.Should().Be("dispatcher.procedure.handler_missing");
     }
 
-    [Fact]
+    [Fact(Timeout = TestTimeouts.Default)]
     public void StreamBuilder_TrimsAliasesAndCapturesMetadata()
     {
         StreamIntrospectionMetadata metadata = new(new StreamChannelMetadata(StreamDirection.Server, "bounded", 32, true));
@@ -37,26 +45,30 @@ public class ProcedureBuilderTests
             .WithEncoding("json")
             .WithMetadata(metadata);
 
-        var spec = builder.Build("svc", "name");
+        var specResult = builder.Build("svc", "name");
+        specResult.IsSuccess.Should().BeTrue();
+        var spec = specResult.Value;
 
-        Assert.Equal("json", spec.Encoding);
-        Assert.Same(middleware, Assert.Single(spec.Middleware));
-        Assert.Equal(new[] { "foo::bar", "one", "two" }, spec.Aliases);
-        Assert.Equal(metadata, spec.Metadata);
+        spec.Encoding.Should().Be("json");
+        spec.Middleware.Should().ContainSingle().Which.Should().BeSameAs(middleware);
+        spec.Aliases.Should().Equal("foo::bar", "one", "two");
+        spec.Metadata.Should().Be(metadata);
     }
 
-    [Fact]
+    [Fact(Timeout = TestTimeouts.Default)]
     public void AddAlias_ThrowsForWhitespace()
     {
         var builder = new UnaryProcedureBuilder().Handle((req, _) => ValueTask.FromResult(Result.Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty))));
-        Assert.Throws<ArgumentException>(() => builder.AddAlias(" "));
+        Invoking(() => builder.AddAlias(" "))
+            .Should().Throw<ArgumentException>();
     }
 
-    [Fact]
+    [Fact(Timeout = TestTimeouts.Default)]
     public void Use_NullThrows()
     {
         var builder = new UnaryProcedureBuilder().Handle((req, _) => ValueTask.FromResult(Result.Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty))));
-        Assert.Throws<ArgumentNullException>(() => builder.Use(null!));
+        Invoking(() => builder.Use(null!))
+            .Should().Throw<ArgumentNullException>();
     }
 
     private sealed class RecordingStreamMiddleware : IStreamInboundMiddleware

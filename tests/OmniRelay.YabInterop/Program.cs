@@ -8,7 +8,6 @@ using OmniRelay.Errors;
 using OmniRelay.Transport.Grpc;
 using OmniRelay.Transport.Http;
 using OmniRelay.YabInterop;
-using OmniRelay.YabInterop.Protos;
 using static Hugo.Go;
 
 var httpPort = 8080;
@@ -108,7 +107,7 @@ Console.CancelKeyPress += (_, eventArgs) =>
 
 try
 {
-    await dispatcher.StartOrThrowAsync(cts.Token);
+    await dispatcher.StartAsyncChecked(cts.Token);
 
     if (enableHttp)
     {
@@ -142,7 +141,7 @@ catch (OperationCanceledException)
 }
 finally
 {
-    await dispatcher.StopOrThrowAsync(CancellationToken.None);
+    await dispatcher.StopAsyncChecked(CancellationToken.None);
 }
 
 static async Task WriteDescriptorAsync(string outputPath)

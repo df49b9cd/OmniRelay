@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AwesomeAssertions;
 using NSubstitute;
 using OmniRelay.Core;
 using OmniRelay.Core.Transport;
@@ -8,8 +9,8 @@ namespace OmniRelay.Dispatcher.UnitTests;
 
 public class DispatcherJsonExtensionsTests
 {
-    [Fact]
-    public async Task RegisterJsonUnary_RegistersProcedureAndCodec()
+    [Fact(Timeout = TestTimeouts.Default)]
+    public async ValueTask RegisterJsonUnary_RegistersProcedureAndCodec()
     {
         var dispatcher = new Dispatcher(new DispatcherOptions("svc"));
 
@@ -23,32 +24,38 @@ public class DispatcherJsonExtensionsTests
             configureCodec: builder => builder.Encoding = "custom/json",
             configureProcedure: builder => builder.AddAlias("alias"));
 
-        Assert.True(dispatcher.TryGetProcedure("echo", ProcedureKind.Unary, out var spec));
-        var unary = Assert.IsType<UnaryProcedureSpec>(spec);
-        Assert.Contains("alias", unary.Aliases);
+        dispatcher.TryGetProcedure("echo", ProcedureKind.Unary, out var spec).Should().BeTrue();
+        var unary = spec.Should().BeOfType<UnaryProcedureSpec>().Which;
+        unary.Aliases.Should().Contain("alias");
 
-        Assert.True(dispatcher.Codecs.TryResolve<JsonDocument, JsonDocument>(ProcedureCodecScope.Inbound, "svc", "echo", ProcedureKind.Unary, out var codec));
-        Assert.Equal("custom/json", codec.Encoding);
+        dispatcher.Codecs.TryResolve<JsonDocument, JsonDocument>(ProcedureCodecScope.Inbound, "svc", "echo", ProcedureKind.Unary, out var codec)
+            .Should().BeTrue();
+        codec.Encoding.Should().Be("custom/json");
     }
 
-    [Fact]
+    [Fact(Timeout = TestTimeouts.Default)]
     public void CreateJsonClient_RegistersOutboundCodecWhenMissing()
     {
         var options = new DispatcherOptions("svc");
         options.AddUnaryOutbound("downstream", null, Substitute.For<IUnaryOutbound>());
         var dispatcher = new Dispatcher(options);
 
-        var client = dispatcher.CreateJsonClient<JsonDocument, JsonDocument>(
+        var clientResult = dispatcher.CreateJsonClient<JsonDocument, JsonDocument>(
             "downstream",
             "echo",
             aliases: ["alias"]);
 
-        Assert.IsType<Core.Clients.UnaryClient<JsonDocument, JsonDocument>>(client);
-        Assert.True(dispatcher.Codecs.TryResolve<JsonDocument, JsonDocument>(ProcedureCodecScope.Outbound, "downstream", "echo", ProcedureKind.Unary, out _));
-        Assert.True(dispatcher.Codecs.TryResolve<JsonDocument, JsonDocument>(ProcedureCodecScope.Outbound, "downstream", "alias", ProcedureKind.Unary, out _));
+        clientResult.IsSuccess.Should().BeTrue(clientResult.Error?.Message);
+        var client = clientResult.Value;
+
+        client.Should().BeOfType<Core.Clients.UnaryClient<JsonDocument, JsonDocument>>();
+        dispatcher.Codecs.TryResolve<JsonDocument, JsonDocument>(ProcedureCodecScope.Outbound, "downstream", "echo", ProcedureKind.Unary, out _)
+            .Should().BeTrue();
+        dispatcher.Codecs.TryResolve<JsonDocument, JsonDocument>(ProcedureCodecScope.Outbound, "downstream", "alias", ProcedureKind.Unary, out _)
+            .Should().BeTrue();
     }
 
-    [Fact]
+    [Fact(Timeout = TestTimeouts.Default)]
     public void CreateJsonClient_ReusesExistingCodec()
     {
         var options = new DispatcherOptions("svc");
@@ -57,12 +64,15 @@ public class DispatcherJsonExtensionsTests
         var codec = new TestHelpers.TestCodec<JsonDocument, JsonDocument>();
         dispatcher.Codecs.RegisterOutbound("downstream", "echo", ProcedureKind.Unary, codec);
 
-        var client = dispatcher.CreateJsonClient<JsonDocument, JsonDocument>("downstream", "echo");
+        var clientResult = dispatcher.CreateJsonClient<JsonDocument, JsonDocument>("downstream", "echo");
 
-        Assert.IsType<Core.Clients.UnaryClient<JsonDocument, JsonDocument>>(client);
+        clientResult.IsSuccess.Should().BeTrue(clientResult.Error?.Message);
+        var client = clientResult.Value;
+
+        client.Should().BeOfType<Core.Clients.UnaryClient<JsonDocument, JsonDocument>>();
     }
 
-    [Fact]
+    [Fact(Timeout = TestTimeouts.Default)]
     public void CreateJsonClient_WithCustomCodecRegistration_IsIdempotent()
     {
         var options = new DispatcherOptions("svc");
@@ -78,8 +88,11 @@ public class DispatcherJsonExtensionsTests
         var first = dispatcher.CreateJsonClient<JsonDocument, JsonDocument>("downstream", "echo", configure);
         var second = dispatcher.CreateJsonClient<JsonDocument, JsonDocument>("downstream", "echo", configure);
 
-        Assert.NotNull(first);
-        Assert.NotNull(second);
-        Assert.Equal(1, configureInvocations);
+        first.IsSuccess.Should().BeTrue(first.Error?.Message);
+        second.IsSuccess.Should().BeTrue(second.Error?.Message);
+
+        first.Value.Should().NotBeNull();
+        second.Value.Should().NotBeNull();
+        configureInvocations.Should().Be(1);
     }
 }

@@ -2,11 +2,11 @@ using System.Net;
 using System.Net.Quic;
 using System.Net.Security;
 using System.Security.Authentication;
+using AwesomeAssertions;
 using OmniRelay.Core;
 using OmniRelay.Dispatcher;
 using OmniRelay.IntegrationTests.Support;
 using OmniRelay.Tests.Support;
-using OmniRelay.TestSupport;
 using OmniRelay.Transport.Http;
 using Xunit;
 using static OmniRelay.IntegrationTests.Support.TransportTestHelper;
@@ -16,7 +16,7 @@ namespace OmniRelay.IntegrationTests.Transport.Http;
 public sealed class Http3OrHigherFallbackTests(ITestOutputHelper output) : TransportIntegrationTest(output)
 {
     [Http3Fact(Timeout = 45_000)]
-    public async Task HttpInbound_WithHttp3Enabled_RequestVersionOrHigher_UpgradesToHttp3()
+    public async ValueTask HttpInbound_WithHttp3Enabled_RequestVersionOrHigher_UpgradesToHttp3()
     {
         if (!QuicListener.IsSupported)
         {
@@ -53,12 +53,12 @@ public sealed class Http3OrHigherFallbackTests(ITestOutputHelper output) : Trans
 
         using var response = await client.PostAsync("/", new ByteArrayContent([]), ct);
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal(3, response.Version.Major);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.Version.Major.Should().Be(3);
     }
 
     [Http3Fact(Timeout = 45_000)]
-    public async Task HttpInbound_WithHttp3Disabled_RequestVersionOrHigher_FallsBackToHttp2()
+    public async ValueTask HttpInbound_WithHttp3Disabled_RequestVersionOrHigher_FallsBackToHttp2()
     {
         if (!QuicListener.IsSupported)
         {
@@ -95,8 +95,8 @@ public sealed class Http3OrHigherFallbackTests(ITestOutputHelper output) : Trans
 
         using var response = await client.PostAsync("/", new ByteArrayContent([]), ct);
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal(2, response.Version.Major);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.Version.Major.Should().Be(2);
     }
 
     private static SslClientAuthenticationOptions CreateSslOptions()

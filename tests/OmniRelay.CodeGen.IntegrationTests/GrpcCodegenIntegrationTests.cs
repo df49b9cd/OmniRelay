@@ -15,7 +15,7 @@ public class GrpcCodegenIntegrationTests
     private const string ServiceName = "grpc-integration";
 
     [Fact(Timeout = 30_000)]
-    public async Task GeneratedServiceHonorsProtobufCodegen()
+    public async ValueTask GeneratedServiceHonorsProtobufCodegen()
     {
         var port = TestPortAllocator.GetRandomPort();
         var address = new Uri($"http://127.0.0.1:{port}");
@@ -27,7 +27,7 @@ public class GrpcCodegenIntegrationTests
         dispatcher.RegisterTestService(new GeneratedTestService());
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await dispatcher.StartAsyncChecked(ct);
         await WaitForGrpcReadyAsync(address, ct);
 
         try
@@ -48,11 +48,11 @@ public class GrpcCodegenIntegrationTests
 
             var call = invoker.AsyncUnaryCall(method, null, new CallOptions(metadata, cancellationToken: ct), []);
             var response = await call.ResponseAsync.WaitAsync(ct);
-            Assert.NotNull(response);
+            response.ShouldNotBeNull();
         }
         finally
         {
-            await dispatcher.StopOrThrowAsync(CancellationToken.None);
+            await dispatcher.StopAsyncChecked(CancellationToken.None);
         }
     }
 

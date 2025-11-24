@@ -1,25 +1,27 @@
 using System.Text;
+using AwesomeAssertions;
 using Hugo;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using OmniRelay.Configuration;
 using OmniRelay.Core;
 using OmniRelay.Core.Middleware;
 using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
+using OmniRelay.Dispatcher.Config;
+using OmniRelay.Errors;
 using OmniRelay.IntegrationTests.Codecs;
-using OmniRelay.TestSupport;
 using OmniRelay.Transport.Grpc;
 using OmniRelay.Transport.Http;
 using Xunit;
+using static AwesomeAssertions.FluentActions;
 
 namespace OmniRelay.IntegrationTests;
 
 public class HostingConfigurationIntegrationTests
 {
     [Fact(Timeout = 30_000)]
-    public async Task AddOmniRelayDispatcher_ComposesConfigurationFromJsonAndEnvironment()
+    public async ValueTask AddOmniRelayDispatcher_ComposesConfigurationFromJsonAndEnvironment()
     {
         var port = TestPortAllocator.GetRandomPort();
         var json = $$"""
@@ -60,29 +62,29 @@ public class HostingConfigurationIntegrationTests
         builder.Configuration.AddInMemoryCollection(overlay);
 
         builder.Services.AddLogging();
-        builder.Services.AddOmniRelayDispatcher(builder.Configuration.GetSection("omnirelay"));
+        builder.Services.AddOmniRelayDispatcherFromConfiguration(builder.Configuration.GetSection("omnirelay"));
 
         using var host = builder.Build();
         var dispatcher = host.Services.GetRequiredService<Dispatcher.Dispatcher>();
 
-        Assert.Equal("env-service", dispatcher.ServiceName);
+        dispatcher.ServiceName.Should().Be("env-service");
 
         var hostedServices = host.Services.GetServices<IHostedService>().ToList();
-        Assert.Contains(hostedServices, service => service.GetType().Name == "DispatcherHostedService");
+        hostedServices.Should().Contain(service => service.GetType().Name == "DispatcherHostedService");
 
         var introspection = dispatcher.Introspect();
-        Assert.Contains(introspection.Components, component =>
+        introspection.Components.Should().Contain(component =>
             component.Name == "http-env" &&
             component.ComponentType.Contains("HttpInbound", StringComparison.Ordinal));
 
-        var ledgerOutbound = Assert.Single(introspection.Outbounds, outbound => outbound.Service == "ledger");
-        var unaryOutbound = Assert.Single(ledgerOutbound.Unary);
-        Assert.Equal("primary", unaryOutbound.Key);
-        Assert.Contains("HttpOutbound", unaryOutbound.ImplementationType, StringComparison.Ordinal);
+        var ledgerOutbound = introspection.Outbounds.Should().ContainSingle(outbound => outbound.Service == "ledger").Which;
+        var unaryOutbound = ledgerOutbound.Unary.Should().ContainSingle(outbound => outbound.Key == "primary").Which;
+        unaryOutbound.Key.Should().Be("primary");
+        unaryOutbound.ImplementationType.Should().Contain("HttpOutbound");
 
-        var clientConfig = dispatcher.ClientConfigOrThrow("ledger");
-        Assert.True(clientConfig.TryGetUnary("primary", out var outboundInstance));
-        Assert.IsAssignableFrom<HttpOutbound>(outboundInstance);
+        var clientConfig = dispatcher.ClientConfigChecked("ledger");
+        clientConfig.TryGetUnary("primary", out var outboundInstance).Should().BeTrue();
+        outboundInstance.Should().BeAssignableTo<HttpOutbound>();
 
         var ct = TestContext.Current.CancellationToken;
         await host.StartAsync(ct);
@@ -130,90 +132,26 @@ public class HostingConfigurationIntegrationTests
         builder.Configuration.AddCommandLine(args);
 
         builder.Services.AddLogging();
-        builder.Services.AddOmniRelayDispatcher(builder.Configuration.GetSection("omnirelay"));
+        builder.Services.AddOmniRelayDispatcherFromConfiguration(builder.Configuration.GetSection("omnirelay"));
 
         using var host = builder.Build();
         var dispatcher = host.Services.GetRequiredService<Dispatcher.Dispatcher>();
 
-        Assert.Equal("cli-service", dispatcher.ServiceName);
+        dispatcher.ServiceName.Should().Be("cli-service");
         var components = dispatcher.Introspect().Components;
-        Assert.Contains(components, component => component.Name == "http-cli");
+        components.Should().Contain(component => component.Name == "http-cli");
 
-        var paymentsOutbound = Assert.Single(dispatcher.Introspect().Outbounds, outbound => outbound.Service == "payments");
-        var unaryBinding = Assert.Single(paymentsOutbound.Unary);
-        Assert.Contains("HttpOutbound", unaryBinding.ImplementationType, StringComparison.Ordinal);
+        var paymentsOutbound = dispatcher.Introspect().Outbounds.Should().ContainSingle(outbound => outbound.Service == "payments").Which;
+        var unaryBinding = paymentsOutbound.Unary.Should().ContainSingle(binding => binding.Key == "primary").Which;
+        unaryBinding.ImplementationType.Should().Contain("HttpOutbound");
 
-        var clientConfig = dispatcher.ClientConfigOrThrow("payments");
-        Assert.True(clientConfig.TryGetUnary("primary", out var outboundInstance));
-        Assert.IsAssignableFrom<HttpOutbound>(outboundInstance);
-    }
-
-    [Fact(Timeout = 30_000)]
-    public void AddOmniRelayDispatcher_BindsAllOutboundShapes()
-    {
-        var outboundSpec = new RecordingOutboundSpec();
-
-        var builder = Host.CreateApplicationBuilder();
-        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
-        {
-            ["omnirelay:service"] = "multi-outbounds",
-            ["omnirelay:outbounds:workflow:unary:custom:0:spec"] = RecordingOutboundSpec.SpecName,
-            ["omnirelay:outbounds:workflow:unary:custom:0:key"] = "unary-primary",
-            ["omnirelay:outbounds:workflow:unary:custom:0:url"] = "http://workflow/unary",
-            ["omnirelay:outbounds:workflow:oneway:custom:0:spec"] = RecordingOutboundSpec.SpecName,
-            ["omnirelay:outbounds:workflow:oneway:custom:0:key"] = "oneway-primary",
-            ["omnirelay:outbounds:workflow:oneway:custom:0:url"] = "http://workflow/oneway",
-            ["omnirelay:outbounds:workflow:stream:custom:0:spec"] = RecordingOutboundSpec.SpecName,
-            ["omnirelay:outbounds:workflow:stream:custom:0:key"] = "stream-primary",
-            ["omnirelay:outbounds:workflow:stream:custom:0:url"] = "http://workflow/stream",
-            ["omnirelay:outbounds:workflow:clientStream:custom:0:spec"] = RecordingOutboundSpec.SpecName,
-            ["omnirelay:outbounds:workflow:clientStream:custom:0:key"] = "client-primary",
-            ["omnirelay:outbounds:workflow:clientStream:custom:0:url"] = "http://workflow/client",
-            ["omnirelay:outbounds:workflow:duplex:custom:0:spec"] = RecordingOutboundSpec.SpecName,
-            ["omnirelay:outbounds:workflow:duplex:custom:0:key"] = "duplex-primary",
-            ["omnirelay:outbounds:workflow:duplex:custom:0:url"] = "http://workflow/duplex"
-        });
-
-        builder.Services.AddLogging();
-        builder.Services.AddSingleton<ICustomOutboundSpec>(outboundSpec);
-        builder.Services.AddOmniRelayDispatcher(builder.Configuration.GetSection("omnirelay"));
-
-        using var host = builder.Build();
-        var dispatcher = host.Services.GetRequiredService<Dispatcher.Dispatcher>();
-
-        var clientConfig = dispatcher.ClientConfigOrThrow("workflow");
-
-        Assert.True(clientConfig.TryGetUnary("unary-primary", out var unary));
-        Assert.IsType<RecordingUnaryOutbound>(unary);
-
-        Assert.True(clientConfig.TryGetOneway("oneway-primary", out var oneway));
-        Assert.IsType<RecordingOnewayOutbound>(oneway);
-
-        Assert.True(clientConfig.TryGetStream("stream-primary", out var stream));
-        Assert.IsType<RecordingStreamOutbound>(stream);
-
-        Assert.True(clientConfig.TryGetClientStream("client-primary", out var clientStream));
-        Assert.IsType<RecordingClientStreamOutbound>(clientStream);
-
-        Assert.True(clientConfig.TryGetDuplex("duplex-primary", out var duplex));
-        Assert.IsType<RecordingDuplexOutbound>(duplex);
-
-        var outboundDescriptor = dispatcher.Introspect().Outbounds.Single(o => o.Service == "workflow");
-        Assert.Equal("unary-primary", Assert.Single(outboundDescriptor.Unary).Key);
-        Assert.Equal("oneway-primary", Assert.Single(outboundDescriptor.Oneway).Key);
-        Assert.Equal("stream-primary", Assert.Single(outboundDescriptor.Stream).Key);
-        Assert.Equal("client-primary", Assert.Single(outboundDescriptor.ClientStream).Key);
-        Assert.Equal("duplex-primary", Assert.Single(outboundDescriptor.Duplex).Key);
-
-        Assert.Single(outboundSpec.UnaryOutbounds, o => o.Key == "unary-primary");
-        Assert.Single(outboundSpec.OnewayOutbounds, o => o.Key == "oneway-primary");
-        Assert.Single(outboundSpec.StreamOutbounds, o => o.Key == "stream-primary");
-        Assert.Single(outboundSpec.ClientStreamOutbounds, o => o.Key == "client-primary");
-        Assert.Single(outboundSpec.DuplexOutbounds, o => o.Key == "duplex-primary");
+        var clientConfig = dispatcher.ClientConfigChecked("payments");
+        clientConfig.TryGetUnary("primary", out var outboundInstance).Should().BeTrue();
+        outboundInstance.Should().BeAssignableTo<HttpOutbound>();
     }
 
     [Http3Fact(Timeout = 30_000)]
-    public async Task AddOmniRelayDispatcher_EnableHttp3WithoutHttps_Throws()
+    public async ValueTask AddOmniRelayDispatcher_EnableHttp3WithoutHttps_Throws()
     {
         var builder = Host.CreateApplicationBuilder();
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
@@ -225,29 +163,23 @@ public class HostingConfigurationIntegrationTests
         });
 
         builder.Services.AddLogging();
-        builder.Services.AddOmniRelayDispatcher(builder.Configuration.GetSection("omnirelay"));
+        builder.Services.AddOmniRelayDispatcherFromConfiguration(builder.Configuration.GetSection("omnirelay"));
 
         using var host = builder.Build();
 
-        var ex = await Assert.ThrowsAsync<ResultException>(async () =>
-        {
-            await host.StartAsync(TestContext.Current.CancellationToken);
-        });
+        var ex = await Invoking(() => host.StartAsync(TestContext.Current.CancellationToken))
+            .Should().ThrowAsync<OmniRelayException>();
 
-        Assert.NotNull(ex.InnerException);
-        var inner = Assert.IsType<InvalidOperationException>(ex.InnerException);
-        Assert.Contains("HTTP/3 requires HTTPS", inner.Message, StringComparison.OrdinalIgnoreCase);
+        ex.Which.StatusCode.Should().BeOneOf(OmniRelayStatusCode.InvalidArgument, OmniRelayStatusCode.Unknown);
+        ex.Which.Message.Should().ContainEquivalentOf("HTTP/3 requires HTTPS");
     }
 
     [Fact(Timeout = 30_000)]
-    public async Task AddOmniRelayDispatcher_ConfiguresHttpAndGrpcOutboundsWithMiddleware()
+    public async ValueTask AddOmniRelayDispatcher_ConfiguresHttpAndGrpcOutboundsWithMiddleware()
     {
         var inboundPort = TestPortAllocator.GetRandomPort();
         var httpOutboundUrl = $"http://127.0.0.1:{TestPortAllocator.GetRandomPort()}/yarpc";
         var grpcAddress = $"http://127.0.0.1:{TestPortAllocator.GetRandomPort()}";
-        var tracingType = typeof(RpcTracingMiddleware).AssemblyQualifiedName!;
-        var metricsType = typeof(RpcMetricsMiddleware).AssemblyQualifiedName!;
-
         var builder = Host.CreateApplicationBuilder();
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
@@ -272,53 +204,60 @@ public class HostingConfigurationIntegrationTests
             ["omnirelay:outbounds:workflow:duplex:grpc:0:remoteService"] = "workflow",
             ["omnirelay:outbounds:workflow:duplex:grpc:0:addresses:0"] = grpcAddress,
 
-            ["omnirelay:middleware:outbound:unary:0"] = tracingType,
-            ["omnirelay:middleware:outbound:unary:1"] = metricsType,
-            ["omnirelay:middleware:outbound:oneway:0"] = tracingType,
-            ["omnirelay:middleware:outbound:stream:0"] = tracingType,
-            ["omnirelay:middleware:outbound:clientStream:0"] = tracingType,
-            ["omnirelay:middleware:outbound:duplex:0"] = tracingType
+            ["omnirelay:middleware:outbound:unary:0"] = "tracing",
+            ["omnirelay:middleware:outbound:unary:1"] = "metrics",
+            ["omnirelay:middleware:outbound:oneway:0"] = "tracing",
+            ["omnirelay:middleware:outbound:stream:0"] = "tracing",
+            ["omnirelay:middleware:outbound:clientStream:0"] = "tracing",
+            ["omnirelay:middleware:outbound:duplex:0"] = "tracing"
         });
 
         builder.Services.AddLogging();
-        builder.Services.AddOmniRelayDispatcher(builder.Configuration.GetSection("omnirelay"));
+        builder.Services.AddOmniRelayDispatcherFromConfiguration(
+            builder.Configuration.GetSection("omnirelay"),
+            registerComponents: registry =>
+            {
+                registry.RegisterOutboundMiddlewareType<RpcTracingMiddleware>("tracing");
+                registry.RegisterOutboundMiddlewareType<RpcMetricsMiddleware>("metrics");
+            });
 
         using var host = builder.Build();
         var dispatcher = host.Services.GetRequiredService<Dispatcher.Dispatcher>();
 
+        // Diagnostic: ensure config binding brought in outbounds
         var ct = TestContext.Current.CancellationToken;
         await host.StartAsync(ct);
         await host.StopAsync(CancellationToken.None);
 
-        var clientConfig = dispatcher.ClientConfigOrThrow("workflow");
-        Assert.IsType<HttpOutbound>(clientConfig.Unary["http-unary"]);
-        Assert.IsType<HttpOutbound>(clientConfig.Oneway["http-oneway"]);
-        Assert.IsType<GrpcOutbound>(clientConfig.Stream["grpc-stream"]);
-        Assert.IsType<GrpcOutbound>(clientConfig.ClientStream["grpc-client"]);
-        Assert.IsType<GrpcOutbound>(clientConfig.Duplex["grpc-duplex"]);
+        var clientConfig = dispatcher.ClientConfigChecked("workflow");
+        clientConfig.Unary["http-unary"].Should().BeOfType<HttpOutbound>();
+        clientConfig.Oneway["http-oneway"].Should().BeOfType<HttpOutbound>();
+        clientConfig.Stream["grpc-stream"].Should().BeOfType<GrpcOutbound>();
+        clientConfig.ClientStream["grpc-client"].Should().BeOfType<GrpcOutbound>();
+        clientConfig.Duplex["grpc-duplex"].Should().BeOfType<GrpcOutbound>();
 
-        Assert.Contains(clientConfig.UnaryMiddleware, middleware => middleware is RpcTracingMiddleware);
-        Assert.Contains(clientConfig.UnaryMiddleware, middleware => middleware is RpcMetricsMiddleware);
-        Assert.Contains(clientConfig.OnewayMiddleware, middleware => middleware is RpcTracingMiddleware);
-        Assert.Contains(clientConfig.StreamMiddleware, middleware => middleware is RpcTracingMiddleware);
-        Assert.Contains(clientConfig.ClientStreamMiddleware, middleware => middleware is RpcTracingMiddleware);
-        Assert.Contains(clientConfig.DuplexMiddleware, middleware => middleware is RpcTracingMiddleware);
+        clientConfig.UnaryMiddleware.Should().Contain(middleware => middleware is RpcTracingMiddleware);
+        clientConfig.UnaryMiddleware.Should().Contain(middleware => middleware is RpcMetricsMiddleware);
+        clientConfig.OnewayMiddleware.Should().Contain(middleware => middleware is RpcTracingMiddleware);
+        clientConfig.StreamMiddleware.Should().Contain(middleware => middleware is RpcTracingMiddleware);
+        clientConfig.ClientStreamMiddleware.Should().Contain(middleware => middleware is RpcTracingMiddleware);
+        clientConfig.DuplexMiddleware.Should().Contain(middleware => middleware is RpcTracingMiddleware);
 
-        var outboundDescriptor = dispatcher.Introspect().Outbounds.Single(o => o.Service == "workflow");
-        Assert.Contains(outboundDescriptor.Unary, descriptor =>
+        var outboundDescriptor = dispatcher.Introspect().Outbounds.Should().ContainSingle(o => o.Service == "workflow").Which;
+        outboundDescriptor.Unary.Should().Contain(descriptor =>
             descriptor.Key == "http-unary" && descriptor.ImplementationType.Contains(nameof(HttpOutbound), StringComparison.Ordinal));
-        Assert.Contains(outboundDescriptor.Oneway, descriptor =>
+        outboundDescriptor.Oneway.Should().Contain(descriptor =>
             descriptor.Key == "http-oneway" && descriptor.ImplementationType.Contains(nameof(HttpOutbound), StringComparison.Ordinal));
-        Assert.Contains(outboundDescriptor.Stream, descriptor =>
+        outboundDescriptor.Stream.Should().Contain(descriptor =>
             descriptor.Key == "grpc-stream" && descriptor.ImplementationType.Contains(nameof(GrpcOutbound), StringComparison.Ordinal));
-        Assert.Contains(outboundDescriptor.ClientStream, descriptor =>
+        outboundDescriptor.ClientStream.Should().Contain(descriptor =>
             descriptor.Key == "grpc-client" && descriptor.ImplementationType.Contains(nameof(GrpcOutbound), StringComparison.Ordinal));
-        Assert.Contains(outboundDescriptor.Duplex, descriptor =>
+        outboundDescriptor.Duplex.Should().Contain(descriptor =>
             descriptor.Key == "grpc-duplex" && descriptor.ImplementationType.Contains(nameof(GrpcOutbound), StringComparison.Ordinal));
     }
 
     [Fact(Timeout = 30_000)]
-    public async Task AddOmniRelayDispatcher_RegistersJsonCodecProfileAndMiddleware()
+    public async ValueTask AddOmniRelayDispatcher_RegistersJsonCodecProfileAndMiddleware()
     {
         var builder = Host.CreateApplicationBuilder();
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
@@ -328,20 +267,28 @@ public class HostingConfigurationIntegrationTests
             ["omnirelay:inbounds:http:0:urls:0"] = $"http://127.0.0.1:{TestPortAllocator.GetRandomPort()}/",
             ["omnirelay:outbounds:codec:unary:http:0:key"] = "primary",
             ["omnirelay:outbounds:codec:unary:http:0:url"] = $"http://127.0.0.1:{TestPortAllocator.GetRandomPort()}/",
-            ["omnirelay:middleware:outbound:unary:0"] = typeof(RpcTracingMiddleware).AssemblyQualifiedName,
-            ["omnirelay:middleware:inbound:unary:0"] = typeof(RpcMetricsMiddleware).AssemblyQualifiedName,
+            ["omnirelay:middleware:outbound:unary:0"] = "tracing",
+            ["omnirelay:middleware:inbound:unary:0"] = "metrics",
             ["omnirelay:encodings:json:profiles:pretty:options:writeIndented"] = "true",
             ["omnirelay:encodings:json:outbound:0:service"] = "codec",
             ["omnirelay:encodings:json:outbound:0:procedure"] = "feature::echo",
             ["omnirelay:encodings:json:outbound:0:kind"] = "Unary",
-            ["omnirelay:encodings:json:outbound:0:requestType"] = typeof(JsonCodecRequest).AssemblyQualifiedName,
-            ["omnirelay:encodings:json:outbound:0:responseType"] = typeof(JsonCodecResponse).AssemblyQualifiedName,
             ["omnirelay:encodings:json:outbound:0:profile"] = "pretty",
-            ["omnirelay:encodings:json:outbound:0:encoding"] = "application/json;profile=pretty"
+            ["omnirelay:encodings:json:outbound:0:encoding"] = "application/json;profile=pretty",
+            ["omnirelay:encodings:json:outbound:0:codecKey"] = "json-codec"
         });
 
         builder.Services.AddLogging();
-        builder.Services.AddOmniRelayDispatcher(builder.Configuration.GetSection("omnirelay"));
+        builder.Services.AddOmniRelayDispatcherFromConfiguration(
+            builder.Configuration.GetSection("omnirelay"),
+            registerComponents: registry =>
+            {
+                registry.RegisterOutboundMiddlewareType<RpcTracingMiddleware>("tracing");
+                registry.RegisterInboundMiddlewareType<RpcMetricsMiddleware>("metrics");
+                registry.RegisterOutboundJsonCodec<JsonCodecRequest, JsonCodecResponse>(
+                    "json-codec",
+                    "application/json;profile=pretty");
+            });
 
         using var host = builder.Build();
         var dispatcher = host.Services.GetRequiredService<Dispatcher.Dispatcher>();
@@ -350,11 +297,11 @@ public class HostingConfigurationIntegrationTests
         await host.StartAsync(ct);
         await host.StopAsync(CancellationToken.None);
 
-        Assert.Contains(dispatcher.UnaryOutboundMiddleware, middleware => middleware is RpcTracingMiddleware);
-        Assert.Contains(dispatcher.UnaryInboundMiddleware, middleware => middleware is RpcMetricsMiddleware);
+        dispatcher.UnaryOutboundMiddleware.Should().Contain(middleware => middleware is RpcTracingMiddleware);
+        dispatcher.UnaryInboundMiddleware.Should().Contain(middleware => middleware is RpcMetricsMiddleware);
 
         var codecs = dispatcher.Codecs.Snapshot();
-        Assert.Contains(codecs, entry =>
+        codecs.Should().Contain(entry =>
             entry.Scope == ProcedureCodecScope.Outbound &&
             string.Equals(entry.Service, "codec", StringComparison.OrdinalIgnoreCase) &&
             string.Equals(entry.Procedure, "feature::echo", StringComparison.OrdinalIgnoreCase) &&
@@ -365,12 +312,10 @@ public class HostingConfigurationIntegrationTests
     }
 
     [Fact(Timeout = 30_000)]
-    public async Task AddOmniRelayDispatcher_StartsMultipleInboundsAndExposesMetadata()
+    public async ValueTask AddOmniRelayDispatcher_StartsMultipleInboundsAndExposesMetadata()
     {
         var httpPort = TestPortAllocator.GetRandomPort();
         var grpcPort = TestPortAllocator.GetRandomPort();
-        var inboundSpec = new RecordingInboundSpec();
-
         var builder = Host.CreateApplicationBuilder();
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
@@ -378,15 +323,11 @@ public class HostingConfigurationIntegrationTests
             ["omnirelay:inbounds:http:0:name"] = "http-primary",
             ["omnirelay:inbounds:http:0:urls:0"] = $"http://127.0.0.1:{httpPort}/",
             ["omnirelay:inbounds:grpc:0:name"] = "grpc-primary",
-            ["omnirelay:inbounds:grpc:0:urls:0"] = $"http://127.0.0.1:{grpcPort}",
-            ["omnirelay:inbounds:custom:0:spec"] = RecordingInboundSpec.SpecName,
-            ["omnirelay:inbounds:custom:0:name"] = "custom-primary",
-            ["omnirelay:inbounds:custom:0:endpoint"] = "/ws"
+            ["omnirelay:inbounds:grpc:0:urls:0"] = $"http://127.0.0.1:{grpcPort}"
         });
 
         builder.Services.AddLogging();
-        builder.Services.AddSingleton<ICustomInboundSpec>(inboundSpec);
-        builder.Services.AddOmniRelayDispatcher(builder.Configuration.GetSection("omnirelay"));
+        builder.Services.AddOmniRelayDispatcherFromConfiguration(builder.Configuration.GetSection("omnirelay"));
 
         using var host = builder.Build();
         var dispatcher = host.Services.GetRequiredService<Dispatcher.Dispatcher>();
@@ -396,149 +337,11 @@ public class HostingConfigurationIntegrationTests
         await host.StopAsync(CancellationToken.None);
 
         var components = dispatcher.Introspect().Components;
-        Assert.Contains(components, component => component.Name == "http-primary" && component.ComponentType.Contains("HttpInbound", StringComparison.Ordinal));
-        Assert.Contains(components, component => component.Name == "grpc-primary" && component.ComponentType.Contains("GrpcInbound", StringComparison.Ordinal));
-        Assert.Contains(components, component => component.Name == "custom-primary" && component.ComponentType.Contains(nameof(RecordingInboundLifecycle), StringComparison.Ordinal));
-
-        var customLifecycle = inboundSpec.Created.Single(lifecycle => lifecycle.Name == "custom-primary");
-        Assert.True(customLifecycle.Started);
-        Assert.True(customLifecycle.Stopped);
-        Assert.NotNull(customLifecycle.Dispatcher);
+        components.Should().Contain(component => component.Name == "http-primary" && component.ComponentType.Contains("HttpInbound", StringComparison.Ordinal));
+        components.Should().Contain(component => component.Name == "grpc-primary" && component.ComponentType.Contains("GrpcInbound", StringComparison.Ordinal));
     }
 
-    [Fact(Timeout = 30_000)]
-    public void AddOmniRelayDispatcher_UsesCustomTransportSpecs()
-    {
-        var inboundSpec = new RecordingInboundSpec();
-        var outboundSpec = new RecordingOutboundSpec();
-
-        var builder = Host.CreateApplicationBuilder();
-        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
-        {
-            ["omnirelay:service"] = "custom-spec",
-            ["omnirelay:inbounds:custom:0:spec"] = RecordingInboundSpec.SpecName,
-            ["omnirelay:inbounds:custom:0:name"] = "ws-inbound",
-            ["omnirelay:inbounds:custom:0:endpoint"] = "/ws",
-            ["omnirelay:outbounds:search:unary:custom:0:spec"] = RecordingOutboundSpec.SpecName,
-            ["omnirelay:outbounds:search:unary:custom:0:key"] = "primary",
-            ["omnirelay:outbounds:search:unary:custom:0:url"] = "http://search.internal:8080"
-        });
-
-        builder.Services.AddLogging();
-        builder.Services.AddSingleton<ICustomInboundSpec>(inboundSpec);
-        builder.Services.AddSingleton<ICustomOutboundSpec>(outboundSpec);
-        builder.Services.AddOmniRelayDispatcher(builder.Configuration.GetSection("omnirelay"));
-
-        using var host = builder.Build();
-        var dispatcher = host.Services.GetRequiredService<Dispatcher.Dispatcher>();
-
-        Assert.Equal("/ws", inboundSpec.LastEndpoint);
-        Assert.Equal("http://search.internal:8080", outboundSpec.LastUrl);
-
-        var introspection = dispatcher.Introspect();
-        Assert.Contains(introspection.Components, component => component.Name == "ws-inbound");
-
-        var searchOutbounds = Assert.Single(introspection.Outbounds, outbound => outbound.Service == "search");
-        var unary = Assert.Single(searchOutbounds.Unary);
-        Assert.Equal("primary", unary.Key);
-        Assert.Contains(nameof(RecordingUnaryOutbound), unary.ImplementationType, StringComparison.Ordinal);
-
-        var clientConfig = dispatcher.ClientConfigOrThrow("search");
-        Assert.True(clientConfig.TryGetUnary("primary", out var outboundInstance));
-        Assert.IsType<RecordingUnaryOutbound>(outboundInstance);
-    }
-
-    private sealed class RecordingInboundSpec : ICustomInboundSpec
-    {
-        public const string SpecName = "test-inbound";
-        public string Name => SpecName;
-        public string? LastEndpoint { get; private set; }
-        public List<RecordingInboundLifecycle> Created { get; } = [];
-
-        public ILifecycle CreateInbound(IConfigurationSection configuration, IServiceProvider services)
-        {
-            LastEndpoint = configuration["endpoint"];
-            var lifecycle = new RecordingInboundLifecycle(configuration["name"] ?? "custom");
-            Created.Add(lifecycle);
-            return lifecycle;
-        }
-    }
-
-    private sealed class RecordingInboundLifecycle(string name) : ILifecycle, IDispatcherAware
-    {
-        public Dispatcher.Dispatcher? Dispatcher { get; private set; }
-        public bool Started { get; private set; }
-        public bool Stopped { get; private set; }
-        public string Name { get; } = name;
-
-        public ValueTask StartAsync(CancellationToken cancellationToken = default)
-        {
-            Started = true;
-            return ValueTask.CompletedTask;
-        }
-
-        public ValueTask StopAsync(CancellationToken cancellationToken = default)
-        {
-            Stopped = true;
-            return ValueTask.CompletedTask;
-        }
-
-        public void Bind(Dispatcher.Dispatcher dispatcher) => Dispatcher = dispatcher;
-
-        public override string ToString() => Name;
-    }
-
-    private sealed class RecordingOutboundSpec : ICustomOutboundSpec
-    {
-        public const string SpecName = "test-outbound";
-        public string Name => SpecName;
-        public string? LastUrl { get; private set; }
-        public List<RecordingUnaryOutbound> UnaryOutbounds { get; } = [];
-        public List<RecordingOnewayOutbound> OnewayOutbounds { get; } = [];
-        public List<RecordingStreamOutbound> StreamOutbounds { get; } = [];
-        public List<RecordingClientStreamOutbound> ClientStreamOutbounds { get; } = [];
-        public List<RecordingDuplexOutbound> DuplexOutbounds { get; } = [];
-
-        public IUnaryOutbound? CreateUnaryOutbound(IConfigurationSection configuration, IServiceProvider services)
-        {
-            LastUrl = configuration["url"];
-            var outbound = new RecordingUnaryOutbound(configuration["key"] ?? "default", LastUrl ?? "missing");
-            UnaryOutbounds.Add(outbound);
-            return outbound;
-        }
-
-        public IOnewayOutbound? CreateOnewayOutbound(IConfigurationSection configuration, IServiceProvider services)
-        {
-            LastUrl = configuration["url"];
-            var outbound = new RecordingOnewayOutbound(configuration["key"] ?? "default", LastUrl ?? "missing");
-            OnewayOutbounds.Add(outbound);
-            return outbound;
-        }
-
-        public IStreamOutbound? CreateStreamOutbound(IConfigurationSection configuration, IServiceProvider services)
-        {
-            LastUrl = configuration["url"];
-            var outbound = new RecordingStreamOutbound(configuration["key"] ?? "default", LastUrl ?? "missing");
-            StreamOutbounds.Add(outbound);
-            return outbound;
-        }
-
-        public IClientStreamOutbound? CreateClientStreamOutbound(IConfigurationSection configuration, IServiceProvider services)
-        {
-            LastUrl = configuration["url"];
-            var outbound = new RecordingClientStreamOutbound(configuration["key"] ?? "default", LastUrl ?? "missing");
-            ClientStreamOutbounds.Add(outbound);
-            return outbound;
-        }
-
-        public IDuplexOutbound? CreateDuplexOutbound(IConfigurationSection configuration, IServiceProvider services)
-        {
-            LastUrl = configuration["url"];
-            var outbound = new RecordingDuplexOutbound(configuration["key"] ?? "default", LastUrl ?? "missing");
-            DuplexOutbounds.Add(outbound);
-            return outbound;
-        }
-    }
+    // Custom transport spec support was removed with the legacy configuration binder. Test omitted.
 
     private sealed class RecordingUnaryOutbound(string key, string url) : IUnaryOutbound
     {

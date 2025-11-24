@@ -16,6 +16,24 @@ The DTOs live next to the component (`ResourceLeaseItemPayload`, `ResourceLeaseO
 
 Use `ResourceLeaseDispatcherOptions.QueueOptions` to align lease duration, heartbeat cadence, capacity, and backpressure thresholds with your SafeTaskQueue settings.
 
+Validation follows the same Result-based pipeline as other dispatcher components. Payload/restore failures return structured error codes (see `docs/reference/errors.md` → ResourceLease) such as `resourcelease.payload.required` or `resourcelease.restore.pending_item_required`, enabling transport layers to return 400/InvalidArgument without throwing.
+
+Create the component through the Result-based factory to surface deterministic wiring errors safely:
+
+```csharp
+var componentResult = ResourceLeaseDispatcherComponent.Create(dispatcher, new ResourceLeaseDispatcherOptions
+{
+    Namespace = "resourcelease",
+    Replicator = replicator,
+    DeterministicOptions = new ResourceLeaseDeterministicOptions
+    {
+        StateStore = SqliteDeterministicStateStore.Create("Data Source=/var/lib/omnirelay/lease-effects.db").Value
+    }
+});
+
+var component = componentResult.Value; // check IsSuccess before using
+```
+
 ### Peer health + membership gossip
 
 - `ResourceLeaseDispatcherOptions.LeaseHealthTracker` accepts a shared `PeerLeaseHealthTracker` (under `Core.Peers`). When supplied, the dispatcher emits lease assignments, heartbeats, disconnects, and requeue signals into the tracker so peer choosers can filter unhealthy owners.
@@ -28,6 +46,7 @@ Use `ResourceLeaseDispatcherOptions.QueueOptions` to align lease duration, heart
 - `ResourceLeaseDispatcherOptions.Replicator` accepts an `IResourceLeaseReplicator` that sequences every enqueue/lease/heartbeat/complete/fail/drain/restore mutation and fans the ordered log to subscribers. Each `ResourceLeaseReplicationEvent` carries a monotonic `SequenceNumber`, ownership token, optional payload/error info, and queue depth metadata so every node can deterministically replay the same state.
 - `ResourceLeaseReplicationEventType` enumerates the canonical changes (`Enqueue`, `LeaseGranted`, `Heartbeat`, `Completed`, `Failed`, `DrainSnapshot`, `RestoreSnapshot`). Events are published after the SafeTaskQueue operation succeeds, ensuring replicating nodes never observe speculative mutations.
 - `InMemoryResourceLeaseReplicator` ships as a default hub: it increments the sequence number, timestamps the event, and delivers it to registered `IResourceLeaseReplicationSink` instances. `CheckpointingResourceLeaseReplicationSink` provides deduplication by discarding events with sequence numbers at or below the last applied checkpoint, which survives retries and out-of-order deliveries in streaming transports.
+- Replicators and sinks now follow the Hugo result pipeline (`ValueTask<Result<Unit>>`), returning structured `Error` values instead of throwing. Treat cancellation as data (`Error.Canceled`) and surface transport/state issues through metadata (for example `replication.stage`, `replication.sequence`) so callers can aggregate failures without exceptions.
 - Durable implementations are available as dedicated packages so you can pull only the transports you need:
   - `SqliteResourceLeaseReplicator` (package `OmniRelay.ResourceLeaseReplicator.Sqlite`) persists each event inside a SQLite database before fanning out to sinks. It automatically creates the table (customise via options) and resumes sequence numbers from the stored log after restarts.
   - `ObjectStorageResourceLeaseReplicator` (package `OmniRelay.ResourceLeaseReplicator.ObjectStorage`) emits immutable JSON blobs to any `IResourceLeaseObjectStore`. The built-in `FileSystemResourceLeaseObjectStore` targets local disks; implement S3/GCS/Azure equivalents by implementing the interface in that package.

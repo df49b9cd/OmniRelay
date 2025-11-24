@@ -1,19 +1,22 @@
+using AwesomeAssertions;
 using NSubstitute;
 using OmniRelay.Core.Transport;
 using Xunit;
+using static AwesomeAssertions.FluentActions;
 
 namespace OmniRelay.Dispatcher.UnitTests;
 
 public class DispatcherOptionsTests
 {
-    [Fact]
+    [Fact(Timeout = TestTimeouts.Default)]
     public void Constructor_WithBlankServiceName_Throws()
     {
-        Assert.Throws<ArgumentException>(() => new DispatcherOptions("  "));
+        Invoking(() => new DispatcherOptions("  "))
+            .Should().Throw<ArgumentException>();
     }
 
-    [Fact]
-    public async Task AddLifecycle_WithDuplicateInstance_StartsOnce()
+    [Fact(Timeout = TestTimeouts.Default)]
+    public async ValueTask AddLifecycle_WithDuplicateInstance_StartsOnce()
     {
         var options = new DispatcherOptions("test-service");
         var lifecycle = new CountingLifecycle();
@@ -23,14 +26,14 @@ public class DispatcherOptionsTests
 
         var dispatcher = new Dispatcher(options);
 
-        await dispatcher.StartOrThrowAsync(CancellationToken.None);
-        await dispatcher.StopOrThrowAsync(CancellationToken.None);
+        await dispatcher.StartAsyncChecked(CancellationToken.None);
+        await dispatcher.StopAsyncChecked(CancellationToken.None);
 
-        Assert.Equal(1, lifecycle.StartCalls);
-        Assert.Equal(1, lifecycle.StopCalls);
+        lifecycle.StartCalls.Should().Be(1);
+        lifecycle.StopCalls.Should().Be(1);
     }
 
-    [Fact]
+    [Fact(Timeout = TestTimeouts.Default)]
     public void AddTransport_AddsLifecycleComponent()
     {
         var options = new DispatcherOptions("svc");
@@ -41,10 +44,10 @@ public class DispatcherOptionsTests
         var dispatcher = new Dispatcher(options);
         var components = dispatcher.Introspect().Components;
 
-        Assert.Contains(components, component => component.Name == "http");
+        components.Should().Contain(component => component.Name == "http");
     }
 
-    [Fact]
+    [Fact(Timeout = TestTimeouts.Default)]
     public void AddUnaryOutbound_RegistersLifecycle()
     {
         var options = new DispatcherOptions("svc");
@@ -53,11 +56,11 @@ public class DispatcherOptionsTests
         var dispatcher = new Dispatcher(options);
         var outbounds = dispatcher.Introspect().Outbounds.Single();
 
-        Assert.Equal("remote", outbounds.Service);
-        Assert.Single(outbounds.Unary);
+        outbounds.Service.Should().Be("remote");
+        outbounds.Unary.Should().HaveCount(1);
     }
 
-    [Fact]
+    [Fact(Timeout = TestTimeouts.Default)]
     public void AddUnaryOutbound_TrimsKeys()
     {
         var options = new DispatcherOptions("svc");
@@ -65,20 +68,21 @@ public class DispatcherOptionsTests
         options.AddUnaryOutbound("remote", "  primary  ", outbound);
 
         var dispatcher = new Dispatcher(options);
-        var config = dispatcher.ClientConfigOrThrow("remote");
+        var config = dispatcher.ClientConfigChecked("remote");
 
-        Assert.True(config.TryGetUnary("primary", out var resolved));
-        Assert.Same(outbound, resolved);
+        config.TryGetUnary("primary", out var resolved).Should().BeTrue();
+        resolved.Should().BeSameAs(outbound);
     }
 
-    [Fact]
+    [Fact(Timeout = TestTimeouts.Default)]
     public void AddUnaryOutbound_DuplicateTrimmedKey_Throws()
     {
         var options = new DispatcherOptions("svc");
         options.AddUnaryOutbound("remote", "primary", Substitute.For<IUnaryOutbound>());
 
-        Assert.Throws<InvalidOperationException>(() =>
-            options.AddUnaryOutbound("remote", " primary ", Substitute.For<IUnaryOutbound>()));
+        Invoking(() =>
+                options.AddUnaryOutbound("remote", " primary ", Substitute.For<IUnaryOutbound>()))
+            .Should().Throw<InvalidOperationException>();
     }
 
     private sealed class CountingLifecycle : ILifecycle

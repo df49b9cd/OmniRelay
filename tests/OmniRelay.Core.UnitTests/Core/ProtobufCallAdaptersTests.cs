@@ -1,7 +1,6 @@
 using System.Threading.Channels;
 using Google.Protobuf.WellKnownTypes;
 using OmniRelay.Core.Transport;
-using OmniRelay.Dispatcher;
 using OmniRelay.Errors;
 using Xunit;
 
@@ -15,7 +14,7 @@ public class ProtobufCallAdaptersTests
         new(service: "svc", procedure: "rpc", transport: "grpc", encoding: codec.Encoding);
 
     [Fact(Timeout = TestTimeouts.Default)]
-    public async Task UnaryHandler_SuccessfullyEncodesResponse()
+    public async ValueTask UnaryHandler_SuccessfullyEncodesResponse()
     {
         var codec = CreateCodec();
         var meta = CreateRequestMeta(codec);
@@ -42,7 +41,7 @@ public class ProtobufCallAdaptersTests
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
-    public async Task UnaryHandler_ReturnsDecodeErrorWithoutInvokingHandler()
+    public async ValueTask UnaryHandler_ReturnsDecodeErrorWithoutInvokingHandler()
     {
         var codec = CreateCodec();
         var meta = CreateRequestMeta(codec);
@@ -65,7 +64,7 @@ public class ProtobufCallAdaptersTests
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
-    public async Task UnaryHandler_HandlerExceptionReturnsInternalError()
+    public async ValueTask UnaryHandler_HandlerExceptionReturnsInternalError()
     {
         var codec = CreateCodec();
         var meta = CreateRequestMeta(codec);
@@ -83,7 +82,7 @@ public class ProtobufCallAdaptersTests
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
-    public async Task ServerStreamHandler_WritesMessagesAndPropagatesMetadata()
+    public async ValueTask ServerStreamHandler_WritesMessagesAndPropagatesMetadata()
     {
         var codec = CreateCodec();
         var meta = CreateRequestMeta(codec);
@@ -98,7 +97,7 @@ public class ProtobufCallAdaptersTests
                 typedRequest.Body.Value.ShouldBe("hello");
                 writer.ResponseMeta = new ResponseMeta(transport: "custom");
                 var writeResult = await writer.WriteAsync(new StringValue { Value = "world" }, ct);
-                writeResult.ThrowIfFailure();
+                writeResult.ValueOrChecked();
             });
 
         var result = await handler(request, options, TestContext.Current.CancellationToken);
@@ -116,7 +115,7 @@ public class ProtobufCallAdaptersTests
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
-    public async Task ServerStreamHandler_HandlerExceptionCompletesWithError()
+    public async ValueTask ServerStreamHandler_HandlerExceptionCompletesWithError()
     {
         var codec = CreateCodec();
         var meta = CreateRequestMeta(codec);
@@ -139,7 +138,7 @@ public class ProtobufCallAdaptersTests
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
-    public async Task ServerStreamWriter_WriteAsyncEncodingFailureCompletesWithError()
+    public async ValueTask ServerStreamWriter_WriteAsyncEncodingFailureCompletesWithError()
     {
         var codec = CreateCodec();
         var meta = CreateRequestMeta(codec);
@@ -168,7 +167,7 @@ public class ProtobufCallAdaptersTests
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
-    public async Task ClientStreamContext_ReadAllAsync_DecodesMessages()
+    public async ValueTask ClientStreamContext_ReadAllAsync_DecodesMessages()
     {
         var codec = CreateCodec();
         var meta = CreateRequestMeta(codec);
@@ -184,14 +183,14 @@ public class ProtobufCallAdaptersTests
         var messages = new List<string>();
         await foreach (var messageResult in typedContext.ReadAllAsync(ct))
         {
-            messages.Add(messageResult.ValueOrThrow().Value);
+            messages.Add(messageResult.ValueOrChecked().Value);
         }
 
         messages.ShouldBe(new[] { "one", "two" });
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
-    public async Task ClientStreamContext_ReadAllAsync_InvalidPayloadThrows()
+    public async ValueTask ClientStreamContext_ReadAllAsync_InvalidPayloadThrows()
     {
         var codec = CreateCodec();
         var meta = CreateRequestMeta(codec);
@@ -215,7 +214,7 @@ public class ProtobufCallAdaptersTests
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
-    public async Task ClientStreamHandler_EncodesResponse()
+    public async ValueTask ClientStreamHandler_EncodesResponse()
     {
         var codec = CreateCodec();
         var meta = CreateRequestMeta(codec);
@@ -229,7 +228,7 @@ public class ProtobufCallAdaptersTests
                 var values = new List<string>();
                 await foreach (var itemResult in ctx.ReadAllAsync(ct))
                 {
-                    values.Add(itemResult.ValueOrThrow().Value);
+                    values.Add(itemResult.ValueOrChecked().Value);
                 }
 
                 return Response<StringValue>.Create(
@@ -252,7 +251,7 @@ public class ProtobufCallAdaptersTests
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
-    public async Task ClientStreamHandler_HandlerExceptionReturnsInternalError()
+    public async ValueTask ClientStreamHandler_HandlerExceptionReturnsInternalError()
     {
         var codec = CreateCodec();
         var meta = CreateRequestMeta(codec);
@@ -271,7 +270,7 @@ public class ProtobufCallAdaptersTests
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
-    public async Task DuplexHandler_ReadsAndWritesMessages()
+    public async ValueTask DuplexHandler_ReadsAndWritesMessages()
     {
         var codec = CreateCodec();
         var meta = CreateRequestMeta(codec);
@@ -284,9 +283,9 @@ public class ProtobufCallAdaptersTests
                 ctx.ResponseMeta = new ResponseMeta(transport: "duplex");
                 await foreach (var messageResult in ctx.ReadAllAsync(ct))
                 {
-                    var message = messageResult.ValueOrThrow();
+                    var message = messageResult.ValueOrChecked();
                     var writeResult = await ctx.WriteAsync(new StringValue { Value = message.Value.ToUpperInvariant() }, ct);
-                    writeResult.ThrowIfFailure();
+                    writeResult.ValueOrChecked();
                 }
             });
 
@@ -310,7 +309,7 @@ public class ProtobufCallAdaptersTests
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
-    public async Task DuplexHandler_HandlerExceptionCompletesWithError()
+    public async ValueTask DuplexHandler_HandlerExceptionCompletesWithError()
     {
         var codec = CreateCodec();
         var meta = CreateRequestMeta(codec);
@@ -331,7 +330,7 @@ public class ProtobufCallAdaptersTests
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
-    public async Task DuplexContext_WriteAsyncEncodingFailureCompletesWithError()
+    public async ValueTask DuplexContext_WriteAsyncEncodingFailureCompletesWithError()
     {
         var codec = CreateCodec();
         var meta = CreateRequestMeta(codec);

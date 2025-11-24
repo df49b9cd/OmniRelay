@@ -1,12 +1,16 @@
 using System.Text.Json;
+using AwesomeAssertions;
+using Hugo;
+using static Hugo.Go;
+using Unit = Hugo.Go.Unit;
 using Xunit;
 
 namespace OmniRelay.Dispatcher.UnitTests;
 
 public sealed class ObjectStorageResourceLeaseReplicatorTests
 {
-    [Fact]
-    public async Task PublishAsync_WritesBlobAndNotifiesSinks()
+    [Fact(Timeout = TestTimeouts.Default)]
+    public async ValueTask PublishAsync_WritesBlobAndNotifiesSinks()
     {
         using var temp = new TempDirectory();
         var store = new FileSystemResourceLeaseObjectStore(temp.Path);
@@ -14,18 +18,20 @@ public sealed class ObjectStorageResourceLeaseReplicatorTests
         var replicator = new ObjectStorageResourceLeaseReplicator(store, sinks: [sink]);
 
         var cancellationToken = TestContext.Current.CancellationToken;
-        await replicator.PublishAsync(CreateEvent(), cancellationToken);
+        var result = await replicator.PublishAsync(CreateEvent(), cancellationToken);
 
-        Assert.Single(sink.Events);
-        Assert.Equal(1, sink.Events[0].SequenceNumber);
+        result.IsSuccess.Should().BeTrue(result.Error?.ToString());
+
+        sink.Events.Should().ContainSingle();
+        sink.Events[0].SequenceNumber.Should().Be(1);
 
         var keys = await store.ListKeysAsync("resourcelease/", cancellationToken);
-        Assert.Single(keys);
+        keys.Should().ContainSingle();
 
         var blobPath = Path.Combine(temp.Path, keys[0].Replace('/', Path.DirectorySeparatorChar));
         var json = await File.ReadAllTextAsync(blobPath, cancellationToken);
         var stored = JsonSerializer.Deserialize(json, ResourceLeaseJsonContext.Default.ResourceLeaseReplicationEvent);
-        Assert.Equal(sink.Events[0].SequenceNumber, stored?.SequenceNumber);
+        stored?.SequenceNumber.Should().Be(sink.Events[0].SequenceNumber);
     }
 
     private static ResourceLeaseReplicationEvent CreateEvent() =>
@@ -43,10 +49,10 @@ public sealed class ObjectStorageResourceLeaseReplicatorTests
     {
         public List<ResourceLeaseReplicationEvent> Events { get; } = [];
 
-        public ValueTask ApplyAsync(ResourceLeaseReplicationEvent replicationEvent, CancellationToken cancellationToken)
+        public ValueTask<Result<Unit>> ApplyAsync(ResourceLeaseReplicationEvent replicationEvent, CancellationToken cancellationToken)
         {
             Events.Add(replicationEvent);
-            return ValueTask.CompletedTask;
+            return ValueTask.FromResult(Ok(Unit.Value));
         }
     }
 

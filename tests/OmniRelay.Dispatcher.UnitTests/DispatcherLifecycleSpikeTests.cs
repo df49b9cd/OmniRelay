@@ -1,28 +1,41 @@
+using AwesomeAssertions;
+using Hugo;
 using Xunit;
+using static Hugo.Go;
 
 namespace OmniRelay.Dispatcher.UnitTests;
 
 public class DispatcherLifecycleSpikeTests
 {
-    [Fact]
-    public async Task RunAsync_ReportsStartAndStopOrder()
+    [Fact(Timeout = TestTimeouts.Default)]
+    public async ValueTask RunAsync_ReportsStartAndStopOrder()
     {
-        var startSteps = new List<Func<CancellationToken, Task>>
+        var startSteps = new List<Func<CancellationToken, ValueTask<Result<Unit>>>>
         {
-            async token => await Task.Delay(10, token),
-            async token => await Task.Delay(1, token)
+            async token =>
+            {
+                await Task.Delay(10, token);
+                return Ok(Unit.Value);
+            },
+            async token =>
+            {
+                await Task.Delay(1, token);
+                return Ok(Unit.Value);
+            }
         };
 
-        var stopSteps = new List<Func<CancellationToken, Task>>
+        var stopSteps = new List<Func<CancellationToken, ValueTask<Result<Unit>>>>
         {
-            token => Task.CompletedTask,
-            token => Task.CompletedTask
+            token => new ValueTask<Result<Unit>>(Ok(Unit.Value)),
+            token => new ValueTask<Result<Unit>>(Ok(Unit.Value))
         };
 
-        var (started, stopped) = await DispatcherLifecycleSpike.RunAsync(startSteps, stopSteps, CancellationToken.None);
+        var result = await DispatcherLifecycleSpike.RunAsync(startSteps, stopSteps, CancellationToken.None);
+        result.IsSuccess.Should().BeTrue(result.Error?.Message);
 
-        Assert.Contains("start:0", started);
-        Assert.Contains("start:1", started);
-        Assert.Equal(["stop:0", "stop:1"], stopped);
+        var (started, stopped) = result.Value;
+        started.Should().Contain("start:0");
+        started.Should().Contain("start:1");
+        stopped.Should().Equal("stop:0", "stop:1");
     }
 }

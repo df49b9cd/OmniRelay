@@ -5,8 +5,8 @@ OmniRelay supports shadow traffic (also called teeing) by wrapping a primary out
 ## Quick start
 
 ```csharp
-var primary = new GrpcOutbound(primaryAddress, "users");
-var shadow = new GrpcOutbound(shadowAddress, "users");
+var primary = GrpcOutbound.Create(primaryAddress, "users").ValueOrThrow();
+var shadow = GrpcOutbound.Create(shadowAddress, "users").ValueOrThrow();
 
 var teeOptions = new TeeOptions
 {

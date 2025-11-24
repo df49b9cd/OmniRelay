@@ -2,15 +2,16 @@ using System.Net;
 using System.Net.Quic;
 using System.Net.Security;
 using System.Security.Authentication;
+using AwesomeAssertions;
 using Grpc.Core;
 using Grpc.Net.Client;
 using OmniRelay.Core;
 using OmniRelay.Dispatcher;
 using OmniRelay.IntegrationTests.Support;
 using OmniRelay.Tests.Support;
-using OmniRelay.TestSupport;
 using OmniRelay.Transport.Grpc;
 using Xunit;
+using static AwesomeAssertions.FluentActions;
 using static Hugo.Go;
 using static OmniRelay.IntegrationTests.Support.TransportTestHelper;
 
@@ -19,7 +20,7 @@ namespace OmniRelay.IntegrationTests.Transport.Grpc;
 public class GrpcHttp3DeadlineParityTests(ITestOutputHelper output) : TransportIntegrationTest(output)
 {
     [Http3Fact(Timeout = 30_000)]
-    public async Task Grpc_Http3_DeadlineExceeded_Matches_Http2()
+    public async ValueTask Grpc_Http3_DeadlineExceeded_Matches_Http2()
     {
         if (!QuicListener.IsSupported)
         {
@@ -64,12 +65,13 @@ public class GrpcHttp3DeadlineParityTests(ITestOutputHelper output) : TransportI
         var invokerH3 = h3Channel.CreateCallInvoker();
         var method = new Method<byte[], byte[]>(MethodType.Unary, "grpc-deadline", "grpc-deadline::slow", GrpcMarshallerCache.ByteMarshaller, GrpcMarshallerCache.ByteMarshaller);
 
-        var h3Ex = await Assert.ThrowsAsync<RpcException>(async () =>
-        {
-            using var call = invokerH3.AsyncUnaryCall(method, null, new CallOptions(deadline: DateTime.UtcNow.AddMilliseconds(100)), []);
-            _ = await call.ResponseAsync;
-        });
-        Assert.Equal(StatusCode.DeadlineExceeded, h3Ex.StatusCode);
+        var h3Ex = await Invoking(async () =>
+            {
+                using var call = invokerH3.AsyncUnaryCall(method, null, new CallOptions(deadline: DateTime.UtcNow.AddMilliseconds(100)), []);
+                _ = await call.ResponseAsync;
+            })
+            .Should().ThrowAsync<RpcException>();
+        h3Ex.Which.StatusCode.Should().Be(StatusCode.DeadlineExceeded);
 
         // HTTP/2 client with same deadline
         using var h2Handler = new SocketsHttpHandler
@@ -90,12 +92,13 @@ public class GrpcHttp3DeadlineParityTests(ITestOutputHelper output) : TransportI
         using var h2Channel = GrpcChannel.ForAddress(address, new GrpcChannelOptions { HttpClient = h2Client });
         var invokerH2 = h2Channel.CreateCallInvoker();
 
-        var h2Ex = await Assert.ThrowsAsync<RpcException>(async () =>
-        {
-            using var call = invokerH2.AsyncUnaryCall(method, null, new CallOptions(deadline: DateTime.UtcNow.AddMilliseconds(100)), []);
-            _ = await call.ResponseAsync;
-        });
-        Assert.Equal(StatusCode.DeadlineExceeded, h2Ex.StatusCode);
+        var h2Ex = await Invoking(async () =>
+            {
+                using var call = invokerH2.AsyncUnaryCall(method, null, new CallOptions(deadline: DateTime.UtcNow.AddMilliseconds(100)), []);
+                _ = await call.ResponseAsync;
+            })
+            .Should().ThrowAsync<RpcException>();
+        h2Ex.Which.StatusCode.Should().Be(StatusCode.DeadlineExceeded);
 
         // Unblock server and stop
         block.TrySetCanceled(ct);

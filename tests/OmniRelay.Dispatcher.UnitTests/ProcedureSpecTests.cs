@@ -1,5 +1,5 @@
+using AwesomeAssertions;
 using OmniRelay.Core;
-using OmniRelay.Core.Middleware;
 using Xunit;
 using static Hugo.Go;
 
@@ -7,7 +7,7 @@ namespace OmniRelay.Dispatcher.UnitTests;
 
 public class ProcedureSpecTests
 {
-    [Fact]
+    [Fact(Timeout = TestTimeouts.Default)]
     public void FullName_ComposesServiceAndName()
     {
         var spec = new UnaryProcedureSpec(
@@ -15,19 +15,22 @@ public class ProcedureSpecTests
             "proc",
             (_, _) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty))));
 
-        Assert.Equal("svc::proc", spec.FullName);
+        spec.FullName.Should().Be("svc::proc");
     }
 
-    [Fact]
-    public void Constructor_WithWhitespaceAlias_Throws()
+    [Fact(Timeout = TestTimeouts.Default)]
+    public void Create_WithWhitespaceAlias_ReturnsFailure()
     {
-        var middleware = Array.Empty<IUnaryInboundMiddleware>();
-
-        Assert.Throws<ArgumentException>(() =>
-            new UnaryProcedureSpec(
+        var result = ProcedureSpec.Create(
+            "proc",
+            ["valid", "  "],
+            aliases => new UnaryProcedureSpec(
                 "svc",
                 "proc",
                 (_, _) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty))),
-                aliases: ["valid", "  "]));
+                aliases: aliases));
+
+        result.IsFailure.Should().BeTrue();
+        result.Error!.Code.Should().Be("dispatcher.procedure.alias_invalid");
     }
 }

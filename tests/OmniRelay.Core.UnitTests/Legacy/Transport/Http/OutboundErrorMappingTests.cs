@@ -16,7 +16,7 @@ public class OutboundErrorMappingTests
     }
 
     [Fact(Timeout = 30000)]
-    public async Task JsonErrorBody_IsMappedToOmniRelayError()
+    public async ValueTask JsonErrorBody_IsMappedToOmniRelayError()
     {
         var ct = TestContext.Current.CancellationToken;
         var json = "{\"message\":\"bad request\",\"status\":\"InvalidArgument\",\"code\":\"E_BAD\"}";
@@ -26,7 +26,7 @@ public class OutboundErrorMappingTests
         };
         response.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
         using var client = new HttpClient(new StubHandler(response));
-        var outbound = new HttpOutbound(client, new Uri("http://example/yarpc"));
+        var outbound = HttpOutbound.Create(client, new Uri("http://example/yarpc")).ValueOrChecked();
         await outbound.StartAsync(ct);
 
         var meta = new RequestMeta(service: "svc", procedure: "proc::unary", transport: "http");
@@ -39,7 +39,7 @@ public class OutboundErrorMappingTests
     }
 
     [Fact(Timeout = 30000)]
-    public async Task NonJsonError_FallsBackToStatusMapping()
+    public async ValueTask NonJsonError_FallsBackToStatusMapping()
     {
         var ct = TestContext.Current.CancellationToken;
         var response = new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
@@ -47,7 +47,7 @@ public class OutboundErrorMappingTests
             Content = new StringContent("Unavailable")
         };
         using var client = new HttpClient(new StubHandler(response));
-        var outbound = new HttpOutbound(client, new Uri("http://example/yarpc"));
+        var outbound = HttpOutbound.Create(client, new Uri("http://example/yarpc")).ValueOrChecked();
         await outbound.StartAsync(ct);
 
         var meta = new RequestMeta(service: "svc", procedure: "proc::unary", transport: "http");

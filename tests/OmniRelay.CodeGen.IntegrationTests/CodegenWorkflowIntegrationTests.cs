@@ -1,18 +1,19 @@
 using System.Collections.Concurrent;
 using System.Net.Quic;
 using System.Security.Cryptography.X509Certificates;
+using AwesomeAssertions;
 using Hugo;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using OmniRelay.Configuration;
 using OmniRelay.Core;
 using OmniRelay.Dispatcher;
+using OmniRelay.Dispatcher.Config;
 using OmniRelay.IntegrationTests.Support;
 using OmniRelay.Tests;
 using OmniRelay.Tests.Protos;
 using OmniRelay.Tests.Support;
-using OmniRelay.TestSupport;
+using OmniRelay.Transport.Grpc.Interceptors;
 using Xunit;
 
 namespace OmniRelay.CodeGen.IntegrationTests;
@@ -22,7 +23,7 @@ public class CodegenWorkflowIntegrationTests
     private const string EncodingName = "protobuf";
 
     [Http3Fact(Timeout = 90_000)]
-    public async Task GeneratedClient_RoundTripsOverHttp3_WhenDispatcherHostEnablesIt()
+    public async ValueTask GeneratedClient_RoundTripsOverHttp3_WhenDispatcherHostEnablesIt()
     {
         if (!QuicListener.IsSupported)
         {
@@ -43,18 +44,25 @@ public class CodegenWorkflowIntegrationTests
         serverBuilder.Services.AddLogging();
         serverBuilder.Services.AddSingleton(protocols);
         serverBuilder.Services.AddSingleton<HostedProtocolCaptureInterceptor>();
+        serverBuilder.Services.AddSingleton<IGrpcInterceptorAliasRegistry>(sp =>
+        {
+            var registry = new GrpcInterceptorAliasRegistry();
+            registry.RegisterServer("protocol-capture", typeof(HostedProtocolCaptureInterceptor));
+            return registry;
+        });
         serverBuilder.Services.AddSingleton<TestServiceOmniRelay.ITestService, LoopbackTestService>();
         serverBuilder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["omnirelay:service"] = "codegen-host-http3",
+            ["omnirelay:diagnostics:runtime:enableControlPlane"] = "false",
             ["omnirelay:inbounds:grpc:0:name"] = "grpc-http3",
             ["omnirelay:inbounds:grpc:0:urls:0"] = address.ToString(),
             ["omnirelay:inbounds:grpc:0:runtime:enableHttp3"] = "true",
-            ["omnirelay:inbounds:grpc:0:runtime:interceptors:0"] = typeof(HostedProtocolCaptureInterceptor).AssemblyQualifiedName,
+            ["omnirelay:inbounds:grpc:0:runtime:interceptors:0"] = "protocol-capture",
             ["omnirelay:inbounds:grpc:0:tls:certificatePath"] = certificatePath,
             ["omnirelay:inbounds:grpc:0:tls:checkCertificateRevocation"] = "false"
         });
-        serverBuilder.Services.AddOmniRelayDispatcher(serverBuilder.Configuration.GetSection("omnirelay"));
+        serverBuilder.Services.AddOmniRelayDispatcherFromConfiguration(serverBuilder.Configuration.GetSection("omnirelay"));
 
         using var serverHost = serverBuilder.Build();
         var serverDispatcher = serverHost.Services.GetRequiredService<Dispatcher.Dispatcher>();
@@ -66,6 +74,7 @@ public class CodegenWorkflowIntegrationTests
         clientBuilder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["omnirelay:service"] = "codegen-client-http3",
+            ["omnirelay:diagnostics:runtime:enableControlPlane"] = "false",
             ["omnirelay:outbounds:codegen-host-http3:unary:grpc:0:remoteService"] = "codegen-host-http3",
             ["omnirelay:outbounds:codegen-host-http3:unary:grpc:0:endpoints:0:address"] = address.ToString(),
             ["omnirelay:outbounds:codegen-host-http3:unary:grpc:0:endpoints:0:supportsHttp3"] = "true",
@@ -74,7 +83,7 @@ public class CodegenWorkflowIntegrationTests
             ["omnirelay:outbounds:codegen-host-http3:unary:grpc:0:runtime:versionPolicy"] = "RequestVersionExact",
             ["omnirelay:outbounds:codegen-host-http3:unary:grpc:0:tls:allowUntrustedCertificates"] = "true"
         });
-        clientBuilder.Services.AddOmniRelayDispatcher(clientBuilder.Configuration.GetSection("omnirelay"));
+        clientBuilder.Services.AddOmniRelayDispatcherFromConfiguration(clientBuilder.Configuration.GetSection("omnirelay"));
 
         using var clientHost = clientBuilder.Build();
         var clientDispatcher = clientHost.Services.GetRequiredService<Dispatcher.Dispatcher>();
@@ -93,8 +102,8 @@ public class CodegenWorkflowIntegrationTests
                 return;
             }
 
-            Assert.True(response.IsSuccess, response.Error?.Message);
-            Assert.Equal("http3-ok", response.Value.Body.Message);
+            response.IsSuccess.Should().BeTrue(response.Error?.Message);
+            response.Value.Body.Message.Should().Be("http3-ok");
         }
         finally
         {
@@ -103,17 +112,20 @@ public class CodegenWorkflowIntegrationTests
             DeleteIfExists(certificatePath);
         }
 
-        Assert.True(serviceImpl.UnaryMetas.TryDequeue(out var unaryMeta), "Unary metadata not captured.");
-        Assert.Equal("codegen-host-http3", unaryMeta.Service);
-        Assert.Equal("UnaryCall", unaryMeta.Procedure);
-        Assert.Equal(EncodingName, unaryMeta.Encoding);
+        serviceImpl.UnaryMetas.TryDequeue(out var unaryMeta).Should().BeTrue("Unary metadata not captured.");
+        unaryMeta.Should().NotBeNull();
+        var http3Meta = unaryMeta!;
+        http3Meta.Service.Should().Be("codegen-host-http3");
+        http3Meta.Procedure.Should().Be("UnaryCall");
+        http3Meta.Encoding.Should().Be(EncodingName);
 
-        Assert.True(protocols.TryDequeue(out var observed), "No protocol captured.");
-        Assert.StartsWith("HTTP/3", observed, StringComparison.OrdinalIgnoreCase);
+        protocols.TryDequeue(out var observed).Should().BeTrue("No protocol captured.");
+        observed.Should().NotBeNull();
+        observed!.Should().StartWithEquivalentOf("HTTP/3");
     }
 
     [Http3Fact(Timeout = 90_000)]
-    public async Task GeneratedClient_FallsBackToHttp2_WhenServerDisablesHttp3()
+    public async ValueTask GeneratedClient_FallsBackToHttp2_WhenServerDisablesHttp3()
     {
         if (!QuicListener.IsSupported)
         {
@@ -139,18 +151,25 @@ public class CodegenWorkflowIntegrationTests
         serverBuilder.Services.AddLogging();
         serverBuilder.Services.AddSingleton(protocols);
         serverBuilder.Services.AddSingleton<HostedProtocolCaptureInterceptor>();
+        serverBuilder.Services.AddSingleton<IGrpcInterceptorAliasRegistry>(sp =>
+        {
+            var registry = new GrpcInterceptorAliasRegistry();
+            registry.RegisterServer("protocol-capture", typeof(HostedProtocolCaptureInterceptor));
+            return registry;
+        });
         serverBuilder.Services.AddSingleton<TestServiceOmniRelay.ITestService, LoopbackTestService>();
         serverBuilder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["omnirelay:service"] = "codegen-host-http2",
+            ["omnirelay:diagnostics:runtime:enableControlPlane"] = "false",
             ["omnirelay:inbounds:grpc:0:name"] = "grpc-http2",
             ["omnirelay:inbounds:grpc:0:urls:0"] = address.ToString(),
             ["omnirelay:inbounds:grpc:0:runtime:enableHttp3"] = "false",
-            ["omnirelay:inbounds:grpc:0:runtime:interceptors:0"] = typeof(HostedProtocolCaptureInterceptor).AssemblyQualifiedName,
+            ["omnirelay:inbounds:grpc:0:runtime:interceptors:0"] = "protocol-capture",
             ["omnirelay:inbounds:grpc:0:tls:certificatePath"] = certificatePath,
             ["omnirelay:inbounds:grpc:0:tls:checkCertificateRevocation"] = "false"
         });
-        serverBuilder.Services.AddOmniRelayDispatcher(serverBuilder.Configuration.GetSection("omnirelay"));
+        serverBuilder.Services.AddOmniRelayDispatcherFromConfiguration(serverBuilder.Configuration.GetSection("omnirelay"));
 
         using var serverHost = serverBuilder.Build();
         var serverDispatcher = serverHost.Services.GetRequiredService<Dispatcher.Dispatcher>();
@@ -162,6 +181,7 @@ public class CodegenWorkflowIntegrationTests
         clientBuilder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["omnirelay:service"] = "codegen-client-http2",
+            ["omnirelay:diagnostics:runtime:enableControlPlane"] = "false",
             ["omnirelay:outbounds:codegen-host-http2:unary:grpc:0:remoteService"] = "codegen-host-http2",
             ["omnirelay:outbounds:codegen-host-http2:unary:grpc:0:endpoints:0:address"] = address.ToString(),
             ["omnirelay:outbounds:codegen-host-http2:unary:grpc:0:endpoints:0:supportsHttp3"] = "false",
@@ -170,7 +190,7 @@ public class CodegenWorkflowIntegrationTests
             ["omnirelay:outbounds:codegen-host-http2:unary:grpc:0:runtime:versionPolicy"] = "RequestVersionExact",
             ["omnirelay:outbounds:codegen-host-http2:unary:grpc:0:tls:allowUntrustedCertificates"] = "true"
         });
-        clientBuilder.Services.AddOmniRelayDispatcher(clientBuilder.Configuration.GetSection("omnirelay"));
+        clientBuilder.Services.AddOmniRelayDispatcherFromConfiguration(clientBuilder.Configuration.GetSection("omnirelay"));
 
         using var clientHost = clientBuilder.Build();
         var clientDispatcher = clientHost.Services.GetRequiredService<Dispatcher.Dispatcher>();
@@ -189,8 +209,8 @@ public class CodegenWorkflowIntegrationTests
                 return;
             }
 
-            Assert.True(response.IsSuccess, response.Error?.Message);
-            Assert.Equal("fallback-ok", response.Value.Body.Message);
+            response.IsSuccess.Should().BeTrue(response.Error?.Message);
+            response.Value.Body.Message.Should().Be("fallback-ok");
         }
         finally
         {
@@ -199,17 +219,20 @@ public class CodegenWorkflowIntegrationTests
             DeleteIfExists(certificatePath);
         }
 
-        Assert.True(serviceImpl.UnaryMetas.TryDequeue(out var unaryMeta), "Unary metadata not captured.");
-        Assert.Equal("codegen-host-http2", unaryMeta.Service);
-        Assert.Equal("UnaryCall", unaryMeta.Procedure);
-        Assert.Equal(EncodingName, unaryMeta.Encoding);
+        serviceImpl.UnaryMetas.TryDequeue(out var unaryMeta).Should().BeTrue("Unary metadata not captured.");
+        unaryMeta.Should().NotBeNull();
+        var http2Meta = unaryMeta!;
+        http2Meta.Service.Should().Be("codegen-host-http2");
+        http2Meta.Procedure.Should().Be("UnaryCall");
+        http2Meta.Encoding.Should().Be(EncodingName);
 
-        Assert.True(protocols.TryDequeue(out var observed), "No protocol captured.");
-        Assert.StartsWith("HTTP/2", observed, StringComparison.OrdinalIgnoreCase);
+        protocols.TryDequeue(out var observed).Should().BeTrue("No protocol captured.");
+        observed.Should().NotBeNull();
+        observed!.Should().StartWithEquivalentOf("HTTP/2");
     }
 
     [Fact(Timeout = 90_000)]
-    public async Task GeneratedClient_StreamHelpers_WorkWhenResolvedFromDependencyInjection()
+    public async ValueTask GeneratedClient_StreamHelpers_WorkWhenResolvedFromDependencyInjection()
     {
         var address = new Uri($"http://127.0.0.1:{TestPortAllocator.GetRandomPort()}");
 
@@ -219,10 +242,11 @@ public class CodegenWorkflowIntegrationTests
         serverBuilder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["omnirelay:service"] = "codegen-host-streams",
+            ["omnirelay:diagnostics:runtime:enableControlPlane"] = "false",
             ["omnirelay:inbounds:grpc:0:name"] = "grpc-h2",
             ["omnirelay:inbounds:grpc:0:urls:0"] = address.ToString()
         });
-        serverBuilder.Services.AddOmniRelayDispatcher(serverBuilder.Configuration.GetSection("omnirelay"));
+        serverBuilder.Services.AddOmniRelayDispatcherFromConfiguration(serverBuilder.Configuration.GetSection("omnirelay"));
 
         using var serverHost = serverBuilder.Build();
         var serverDispatcher = serverHost.Services.GetRequiredService<Dispatcher.Dispatcher>();
@@ -234,6 +258,7 @@ public class CodegenWorkflowIntegrationTests
         clientBuilder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["omnirelay:service"] = "codegen-client-streams",
+            ["omnirelay:diagnostics:runtime:enableControlPlane"] = "false",
             ["omnirelay:outbounds:codegen-host-streams:unary:grpc:0:remoteService"] = "codegen-host-streams",
             ["omnirelay:outbounds:codegen-host-streams:unary:grpc:0:addresses:0"] = address.ToString(),
             ["omnirelay:outbounds:codegen-host-streams:stream:grpc:0:remoteService"] = "codegen-host-streams",
@@ -243,7 +268,7 @@ public class CodegenWorkflowIntegrationTests
             ["omnirelay:outbounds:codegen-host-streams:duplex:grpc:0:remoteService"] = "codegen-host-streams",
             ["omnirelay:outbounds:codegen-host-streams:duplex:grpc:0:addresses:0"] = address.ToString()
         });
-        clientBuilder.Services.AddOmniRelayDispatcher(clientBuilder.Configuration.GetSection("omnirelay"));
+        clientBuilder.Services.AddOmniRelayDispatcherFromConfiguration(clientBuilder.Configuration.GetSection("omnirelay"));
         clientBuilder.Services.AddSingleton(sp =>
         {
             var dispatcher = sp.GetRequiredService<Dispatcher.Dispatcher>();
@@ -262,40 +287,40 @@ public class CodegenWorkflowIntegrationTests
             var client = clientHost.Services.GetRequiredService<TestServiceOmniRelay.TestServiceClient>();
 
             var unary = await client.UnaryCallAsync(new UnaryRequest { Message = "di" }, cancellationToken: ct);
-            Assert.True(unary.IsSuccess, unary.Error?.Message);
-            Assert.Equal("di-ok", unary.Value.Body.Message);
+            unary.IsSuccess.Should().BeTrue(unary.Error?.Message);
+            unary.Value.Body.Message.Should().Be("di-ok");
 
             var streamValues = new List<string>();
             await foreach (var message in client.ServerStreamAsync(new StreamRequest { Value = "flow" }, cancellationToken: ct))
             {
-                streamValues.Add(message.ValueOrThrow().Body.Value);
+                streamValues.Add(message.ValueOrChecked().Body.Value);
             }
-            Assert.Equal(new[] { "flow#0", "flow#1", "flow#2" }, streamValues);
+            streamValues.Should().Equal(new[] { "flow#0", "flow#1", "flow#2" });
 
             var sessionResult = await client.ClientStreamAsync(cancellationToken: ct);
-            await using (var session = sessionResult.ValueOrThrow())
+            await using (var session = sessionResult.ValueOrChecked())
             {
-                (await session.WriteAsync(new StreamRequest { Value = "4" }, ct)).ThrowIfFailure();
-                (await session.WriteAsync(new StreamRequest { Value = "6" }, ct)).ThrowIfFailure();
+                (await session.WriteAsync(new StreamRequest { Value = "4" }, ct)).ValueOrChecked();
+                (await session.WriteAsync(new StreamRequest { Value = "6" }, ct)).ValueOrChecked();
                 await session.CompleteAsync(ct);
-                var aggregate = (await session.Response).ValueOrThrow();
-                Assert.Equal("sum:10", aggregate.Body.Message);
+                var aggregate = (await session.Response).ValueOrChecked();
+                aggregate.Body.Message.Should().Be("sum:10");
             }
 
             var duplexResult = await client.DuplexStreamAsync(cancellationToken: ct);
-            await using (var duplex = duplexResult.ValueOrThrow())
+            await using (var duplex = duplexResult.ValueOrChecked())
             {
-                (await duplex.WriteAsync(new StreamRequest { Value = "alpha" }, ct)).ThrowIfFailure();
-                (await duplex.WriteAsync(new StreamRequest { Value = "beta" }, ct)).ThrowIfFailure();
+                (await duplex.WriteAsync(new StreamRequest { Value = "alpha" }, ct)).ValueOrChecked();
+                (await duplex.WriteAsync(new StreamRequest { Value = "beta" }, ct)).ValueOrChecked();
                 await duplex.CompleteRequestsAsync(cancellationToken: ct);
 
                 var duplexValues = new List<string>();
                 await foreach (var response in duplex.ReadResponsesAsync(ct))
                 {
-                    duplexValues.Add(response.ValueOrThrow().Body.Value);
+                    duplexValues.Add(response.ValueOrChecked().Body.Value);
                 }
 
-                Assert.Equal(new[] { "ready", "echo:alpha", "echo:beta" }, duplexValues);
+                duplexValues.Should().Equal(new[] { "ready", "echo:alpha", "echo:beta" });
             }
         }
         finally
@@ -304,23 +329,29 @@ public class CodegenWorkflowIntegrationTests
             await serverHost.StopAsync(CancellationToken.None);
         }
 
-        Assert.True(serviceImpl.ServerStreamMetas.TryDequeue(out var serverStreamMeta), "Server stream metadata missing.");
-        Assert.Equal("codegen-host-streams", serverStreamMeta.Service);
-        Assert.Equal("ServerStream", serverStreamMeta.Procedure);
-        Assert.Equal(EncodingName, serverStreamMeta.Encoding);
+        serviceImpl.ServerStreamMetas.TryDequeue(out var serverStreamMeta).Should().BeTrue("Server stream metadata missing.");
+        serverStreamMeta.Should().NotBeNull();
+        var serverMeta = serverStreamMeta!;
+        serverMeta.Service.Should().Be("codegen-host-streams");
+        serverMeta.Procedure.Should().Be("ServerStream");
+        serverMeta.Encoding.Should().Be(EncodingName);
 
-        Assert.True(serviceImpl.ClientStreamMetas.TryDequeue(out var clientStreamMeta), "Client stream metadata missing.");
-        Assert.Equal("codegen-host-streams", clientStreamMeta.Service);
-        Assert.Equal("ClientStream", clientStreamMeta.Procedure);
-        Assert.Equal(EncodingName, clientStreamMeta.Encoding);
+        serviceImpl.ClientStreamMetas.TryDequeue(out var clientStreamMeta).Should().BeTrue("Client stream metadata missing.");
+        clientStreamMeta.Should().NotBeNull();
+        var clientMeta = clientStreamMeta!;
+        clientMeta.Service.Should().Be("codegen-host-streams");
+        clientMeta.Procedure.Should().Be("ClientStream");
+        clientMeta.Encoding.Should().Be(EncodingName);
 
-        Assert.True(serviceImpl.DuplexStreamMetas.TryDequeue(out var duplexMeta), "Duplex stream metadata missing.");
-        Assert.Equal("codegen-host-streams", duplexMeta.Service);
-        Assert.Equal("DuplexStream", duplexMeta.Procedure);
-        Assert.Equal(EncodingName, duplexMeta.Encoding);
+        serviceImpl.DuplexStreamMetas.TryDequeue(out var duplexMeta).Should().BeTrue("Duplex stream metadata missing.");
+        duplexMeta.Should().NotBeNull();
+        var duplexStreamMeta = duplexMeta!;
+        duplexStreamMeta.Service.Should().Be("codegen-host-streams");
+        duplexStreamMeta.Procedure.Should().Be("DuplexStream");
+        duplexStreamMeta.Encoding.Should().Be(EncodingName);
     }
 
-    [Fact]
+    [Fact(Timeout = TestTimeouts.Default)]
     public void GeneratedRegistration_MatchesManualProcedureMetadata()
     {
         var serviceName = "codegen-manual";
@@ -334,36 +365,36 @@ public class CodegenWorkflowIntegrationTests
         var manualProcedures = manualDispatcher.Introspect().Procedures;
         var generatedProcedures = generatedDispatcher.Introspect().Procedures;
 
-        Assert.Equal(manualProcedures.Unary, generatedProcedures.Unary);
-        Assert.Equal(manualProcedures.Oneway, generatedProcedures.Oneway);
-        Assert.Equal(manualProcedures.Stream, generatedProcedures.Stream);
-        Assert.Equal(manualProcedures.ClientStream, generatedProcedures.ClientStream);
-        Assert.Equal(manualProcedures.Duplex, generatedProcedures.Duplex);
+        generatedProcedures.Unary.Should().Equal(manualProcedures.Unary);
+        generatedProcedures.Oneway.Should().Equal(manualProcedures.Oneway);
+        generatedProcedures.Stream.Should().Equal(manualProcedures.Stream);
+        generatedProcedures.ClientStream.Should().Equal(manualProcedures.ClientStream);
+        generatedProcedures.Duplex.Should().Equal(manualProcedures.Duplex);
 
         static TSpec GetSpec<TSpec>(Dispatcher.Dispatcher dispatcher, string procedure, ProcedureKind kind)
             where TSpec : ProcedureSpec
         {
-            Assert.True(dispatcher.TryGetProcedure(procedure, kind, out var spec), $"Procedure '{procedure}' not registered.");
-            return Assert.IsType<TSpec>(spec);
+            dispatcher.TryGetProcedure(procedure, kind, out var spec).Should().BeTrue($"Procedure '{procedure}' not registered.");
+            return spec.Should().BeOfType<TSpec>().Which;
         }
 
         var manualUnary = GetSpec<UnaryProcedureSpec>(manualDispatcher, "UnaryCall", ProcedureKind.Unary);
         var generatedUnary = GetSpec<UnaryProcedureSpec>(generatedDispatcher, "UnaryCall", ProcedureKind.Unary);
-        Assert.Equal(manualUnary.Encoding, generatedUnary.Encoding);
-        Assert.Equal(manualUnary.Middleware.Count, generatedUnary.Middleware.Count);
+        generatedUnary.Encoding.Should().Be(manualUnary.Encoding);
+        generatedUnary.Middleware.Count.Should().Be(manualUnary.Middleware.Count);
 
         var manualServerStream = GetSpec<StreamProcedureSpec>(manualDispatcher, "ServerStream", ProcedureKind.Stream);
         var generatedServerStream = GetSpec<StreamProcedureSpec>(generatedDispatcher, "ServerStream", ProcedureKind.Stream);
-        Assert.Equal(manualServerStream.Encoding, generatedServerStream.Encoding);
-        Assert.Equal(manualServerStream.Metadata, generatedServerStream.Metadata);
+        generatedServerStream.Encoding.Should().Be(manualServerStream.Encoding);
+        generatedServerStream.Metadata.Should().Be(manualServerStream.Metadata);
 
         var manualClientStream = GetSpec<ClientStreamProcedureSpec>(manualDispatcher, "ClientStream", ProcedureKind.ClientStream);
         var generatedClientStream = GetSpec<ClientStreamProcedureSpec>(generatedDispatcher, "ClientStream", ProcedureKind.ClientStream);
-        Assert.Equal(manualClientStream.Encoding, generatedClientStream.Encoding);
+        generatedClientStream.Encoding.Should().Be(manualClientStream.Encoding);
 
         var manualDuplex = GetSpec<DuplexProcedureSpec>(manualDispatcher, "DuplexStream", ProcedureKind.Duplex);
         var generatedDuplex = GetSpec<DuplexProcedureSpec>(generatedDispatcher, "DuplexStream", ProcedureKind.Duplex);
-        Assert.Equal(manualDuplex.Encoding, generatedDuplex.Encoding);
+        generatedDuplex.Encoding.Should().Be(manualDuplex.Encoding);
     }
 
     private static string PersistCertificate(X509Certificate2 certificate)
@@ -469,7 +500,7 @@ public class CodegenWorkflowIntegrationTests
             for (var index = 0; index < 3; index++)
             {
                 var writeResult = await stream.WriteAsync(new StreamResponse { Value = $"{request.Body.Value}#{index}" }, cancellationToken).ConfigureAwait(false);
-                writeResult.ThrowIfFailure();
+                writeResult.ValueOrChecked();
             }
         }
 
@@ -479,7 +510,7 @@ public class CodegenWorkflowIntegrationTests
             var sum = 0;
             await foreach (var chunkResult in context.ReadAllAsync(cancellationToken).ConfigureAwait(false))
             {
-                var chunk = chunkResult.ValueOrThrow();
+                var chunk = chunkResult.ValueOrChecked();
                 _ = int.TryParse(chunk.Value, out var value);
                 sum += value;
             }
@@ -492,12 +523,12 @@ public class CodegenWorkflowIntegrationTests
         {
             DuplexStreamMetas.Enqueue(context.RequestMeta);
             var initialWrite = await context.WriteAsync(new StreamResponse { Value = "ready" }, cancellationToken).ConfigureAwait(false);
-            initialWrite.ThrowIfFailure();
+            initialWrite.ValueOrChecked();
             await foreach (var chunkResult in context.ReadAllAsync(cancellationToken).ConfigureAwait(false))
             {
-                var chunk = chunkResult.ValueOrThrow();
+                var chunk = chunkResult.ValueOrChecked();
                 var writeResult = await context.WriteAsync(new StreamResponse { Value = $"echo:{chunk.Value}" }, cancellationToken).ConfigureAwait(false);
-                writeResult.ThrowIfFailure();
+                writeResult.ValueOrChecked();
             }
         }
     }

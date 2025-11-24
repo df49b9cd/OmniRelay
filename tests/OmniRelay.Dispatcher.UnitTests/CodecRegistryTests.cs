@@ -1,68 +1,81 @@
+using AwesomeAssertions;
+using Hugo;
 using Xunit;
+using static AwesomeAssertions.FluentActions;
+using static Hugo.Go;
 
 namespace OmniRelay.Dispatcher.UnitTests;
 
 public class CodecRegistryTests
 {
-    [Fact]
+    [Fact(Timeout = TestTimeouts.Default)]
     public void Constructor_WithWhitespaceService_Throws()
     {
-        Assert.Throws<ArgumentException>(() => new CodecRegistry(" ", []));
+        var result = CodecRegistry.Create(" ", []);
+        result.IsFailure.Should().BeTrue();
+        result.Error.Should().NotBeNull();
+        result.Error!.Code.Should().Be("dispatcher.codec.local_service_required");
     }
 
-    [Fact]
+    [Fact(Timeout = TestTimeouts.Default)]
     public void RegisterInbound_ThenResolve_ReturnsCodec()
     {
         var codec = new TestHelpers.TestCodec<string, string>();
-        var registry = new CodecRegistry("svc");
+        var registry = CodecRegistry.Create("svc").ValueOrThrow();
 
-        registry.RegisterInbound("proc", ProcedureKind.Unary, codec);
+        registry.RegisterInbound("proc", ProcedureKind.Unary, codec).IsSuccess.Should().BeTrue();
 
-        Assert.True(registry.TryResolve(ProcedureCodecScope.Inbound, "svc", "proc", ProcedureKind.Unary, out var descriptor));
-        Assert.Same(codec, descriptor.Codec);
-        Assert.True(registry.TryResolve<string, string>(ProcedureCodecScope.Inbound, "svc", "proc", ProcedureKind.Unary, out var typed));
-        Assert.Same(codec, typed);
+        registry.TryResolve(ProcedureCodecScope.Inbound, "svc", "proc", ProcedureKind.Unary, out var descriptor).Should().BeTrue();
+        descriptor.Should().NotBeNull();
+        descriptor!.Codec.Should().BeSameAs(codec);
+        registry.TryResolve<string, string>(ProcedureCodecScope.Inbound, "svc", "proc", ProcedureKind.Unary, out var typed).Should().BeTrue();
+        typed.Should().NotBeNull();
+        typed!.Should().BeSameAs(codec);
     }
 
-    [Fact]
+    [Fact(Timeout = TestTimeouts.Default)]
     public void RegisterOutbound_WithDuplicate_Throws()
     {
         var codec = new TestHelpers.TestCodec<int, int>();
-        var registry = new CodecRegistry("svc");
+        var registry = CodecRegistry.Create("svc").ValueOrThrow();
 
-        registry.RegisterOutbound("remote", "proc", ProcedureKind.Unary, codec);
+        registry.RegisterOutbound("remote", "proc", ProcedureKind.Unary, codec).IsSuccess.Should().BeTrue();
 
-        Assert.Throws<InvalidOperationException>(() =>
-            registry.RegisterOutbound("remote", "proc", ProcedureKind.Unary, codec));
+        var duplicate = registry.RegisterOutbound("remote", "proc", ProcedureKind.Unary, codec);
+        duplicate.IsFailure.Should().BeTrue();
+        duplicate.Error!.Code.Should().Be("dispatcher.codec.duplicate");
     }
 
-    [Fact]
+    [Fact(Timeout = TestTimeouts.Default)]
     public void Register_WithAliases_ResolvesAll()
     {
         var codec = new TestHelpers.TestCodec<int, int>();
-        var registry = new CodecRegistry("svc");
+        var registry = CodecRegistry.Create("svc").ValueOrThrow();
 
-        registry.RegisterInbound("primary", ProcedureKind.Unary, codec, ["alias-1", "alias-2"]);
+        registry.RegisterInbound("primary", ProcedureKind.Unary, codec, ["alias-1", "alias-2"]).IsSuccess.Should().BeTrue();
 
-        Assert.True(registry.TryResolve(ProcedureCodecScope.Inbound, "svc", "alias-1", ProcedureKind.Unary, out var first));
-        Assert.True(registry.TryResolve(ProcedureCodecScope.Inbound, "svc", "alias-2", ProcedureKind.Unary, out var second));
-        Assert.Same(codec, first.Codec);
-        Assert.Same(codec, second.Codec);
+        registry.TryResolve(ProcedureCodecScope.Inbound, "svc", "alias-1", ProcedureKind.Unary, out var first).Should().BeTrue();
+        registry.TryResolve(ProcedureCodecScope.Inbound, "svc", "alias-2", ProcedureKind.Unary, out var second).Should().BeTrue();
+        first.Should().NotBeNull();
+        second.Should().NotBeNull();
+        first!.Codec.Should().BeSameAs(codec);
+        second!.Codec.Should().BeSameAs(codec);
     }
 
-    [Fact]
+    [Fact(Timeout = TestTimeouts.Default)]
     public void TryResolve_WithTypeMismatch_Throws()
     {
         var codec = new TestHelpers.TestCodec<int, string>();
-        var registry = new CodecRegistry("svc");
+        var registry = CodecRegistry.Create("svc").ValueOrThrow();
 
-        registry.RegisterInbound("proc", ProcedureKind.Unary, codec);
+        registry.RegisterInbound("proc", ProcedureKind.Unary, codec).IsSuccess.Should().BeTrue();
 
-        Assert.Throws<InvalidOperationException>(() =>
-            registry.TryResolve<string, string>(ProcedureCodecScope.Inbound, "svc", "proc", ProcedureKind.Unary, out _));
+        Invoking(() =>
+            registry.TryResolve<string, string>(ProcedureCodecScope.Inbound, "svc", "proc", ProcedureKind.Unary, out _))
+            .Should().Throw<InvalidOperationException>();
     }
 
-    [Fact]
+    [Fact(Timeout = TestTimeouts.Default)]
     public void Snapshot_ReturnsRegisteredEntries()
     {
         var codec = new TestHelpers.TestCodec<int, int>();
@@ -77,16 +90,16 @@ public class CodecRegistryTests
             codec.Encoding,
             []);
 
-        var registry = new CodecRegistry("svc", [registration]);
+        var registry = CodecRegistry.Create("svc", [registration]).ValueOrThrow();
 
         var snapshot = registry.Snapshot();
 
-        Assert.Single(snapshot);
+        snapshot.Should().ContainSingle();
         var entry = snapshot[0];
-        Assert.Equal(ProcedureCodecScope.Outbound, entry.Scope);
-        Assert.Equal("remote", entry.Service);
-        Assert.Equal("proc", entry.Procedure);
-        Assert.Equal(ProcedureKind.Unary, entry.Kind);
-        Assert.Same(codec, entry.Descriptor.Codec);
+        entry.Scope.Should().Be(ProcedureCodecScope.Outbound);
+        entry.Service.Should().Be("remote");
+        entry.Procedure.Should().Be("proc");
+        entry.Kind.Should().Be(ProcedureKind.Unary);
+        entry.Descriptor.Codec.Should().BeSameAs(codec);
     }
 }

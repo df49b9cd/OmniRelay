@@ -1,4 +1,5 @@
 using System.Net;
+using AwesomeAssertions;
 using OmniRelay.Core;
 using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
@@ -12,7 +13,7 @@ namespace OmniRelay.IntegrationTests.Transport.Http;
 public sealed class SseBehaviorTests(ITestOutputHelper output) : TransportIntegrationTest(output)
 {
     [Fact(Timeout = 30000)]
-    public async Task MissingAcceptHeader_ForSse_Returns406()
+    public async ValueTask MissingAcceptHeader_ForSse_Returns406()
     {
         var port = TestPortAllocator.GetRandomPort();
         var baseAddress = new Uri($"http://127.0.0.1:{port}/");
@@ -39,6 +40,6 @@ public sealed class SseBehaviorTests(ITestOutputHelper output) : TransportIntegr
         httpClient.DefaultRequestHeaders.Add(HttpTransportHeaders.Procedure, "stream::events");
         using var response = await httpClient.GetAsync("/", ct);
 
-        Assert.Equal(HttpStatusCode.NotAcceptable, response.StatusCode);
+        response.StatusCode.Should().Be(HttpStatusCode.NotAcceptable);
     }
 }

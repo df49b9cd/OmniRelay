@@ -1,4 +1,5 @@
 using System.Net;
+using AwesomeAssertions;
 using OmniRelay.Core;
 using OmniRelay.Dispatcher;
 using OmniRelay.IntegrationTests.Support;
@@ -11,7 +12,7 @@ namespace OmniRelay.IntegrationTests.Transport.Http;
 public sealed class HeaderValidationTests(ITestOutputHelper output) : TransportIntegrationTest(output)
 {
     [Fact(Timeout = 30000)]
-    public async Task MissingRpcProcedureHeader_Returns400()
+    public async ValueTask MissingRpcProcedureHeader_Returns400()
     {
         var port = TestPortAllocator.GetRandomPort();
         var baseAddress = new Uri($"http://127.0.0.1:{port}/");
@@ -34,6 +35,6 @@ public sealed class HeaderValidationTests(ITestOutputHelper output) : TransportI
         using var content = new ByteArrayContent([]);
         using var response = await httpClient.PostAsync("/", content, ct);
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 }

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Google.Protobuf;
 using Google.Protobuf.Compiler;
 using Google.Protobuf.Reflection;
+using AwesomeAssertions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
@@ -13,22 +14,22 @@ namespace OmniRelay.Tests.Codegen;
 
 public class ProtobufCodeGeneratorTests
 {
-    [Fact]
+    [Fact(Timeout = TestTimeouts.Default)]
     public void Generated_Code_Matches_Golden_File()
     {
         var request = CodeGeneratorRequestFactory.Create();
         var response = CodeGeneratorProcessRunner.Execute(request);
 
-        Assert.Single(response.File);
+        response.File.Should().HaveCount(1);
         var generated = response.File[0].Content.Replace("\r\n", "\n");
         var goldenPath = TestPath.Combine("tests", "OmniRelay.Codegen.Tests", "Generated", "TestService.OmniRelay.g.cs");
         File.WriteAllText(TestPath.Combine("tests", "OmniRelay.Codegen.Tests", "Generated", "TestService.actual.g.cs"), response.File[0].Content);
         var expected = File.ReadAllText(goldenPath).Replace("\r\n", "\n");
 
-        Assert.Equal(expected, generated);
+        generated.Should().Be(expected);
     }
 
-    [Fact]
+    [Fact(Timeout = TestTimeouts.Default)]
     public void IncrementalGenerator_Produces_Golden_File()
     {
         var descriptorSet = CodeGeneratorRequestFactory.CreateDescriptorSet();
@@ -54,14 +55,14 @@ public class ProtobufCodeGeneratorTests
             driver = (CSharpGeneratorDriver)driver.RunGenerators(compilation, cancellationToken);
             var runResult = driver.GetRunResult();
 
-            Assert.True(runResult.GeneratedTrees.Length > 0, "Generator did not produce any output.");
+            runResult.GeneratedTrees.Should().NotBeEmpty("Generator did not produce any output.");
 
             var generatedRaw = runResult.GeneratedTrees[0].GetText(TestContext.Current.CancellationToken).ToString();
             File.WriteAllText(TestPath.Combine("tests", "OmniRelay.Codegen.Tests", "Generated", "TestService.incremental.g.cs"), generatedRaw);
             var generatedText = generatedRaw.Replace("\r\n", "\n");
             var expected = File.ReadAllText(TestPath.Combine("tests", "OmniRelay.Codegen.Tests", "Generated", "TestService.OmniRelay.g.cs")).Replace("\r\n", "\n");
 
-            Assert.Equal(expected, generatedText);
+            generatedText.Should().Be(expected);
         }
         finally
         {

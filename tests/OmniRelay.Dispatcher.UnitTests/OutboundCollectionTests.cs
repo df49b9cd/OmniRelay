@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using AwesomeAssertions;
 using NSubstitute;
 using OmniRelay.Core.Transport;
 using Xunit;
@@ -7,17 +8,17 @@ namespace OmniRelay.Dispatcher.UnitTests;
 
 public class OutboundRegistryTests
 {
-    [Fact]
+    [Fact(Timeout = TestTimeouts.Default)]
     public void Resolve_WithNullKey_ReturnsDefaultBinding()
     {
         var unary = Substitute.For<IUnaryOutbound>();
         var collection = CreateCollection(unaryOutbound: unary);
 
-        Assert.Same(unary, collection.ResolveUnary());
-        Assert.Same(unary, collection.ResolveUnary(" "));
+        collection.ResolveUnary().Should().BeSameAs(unary);
+        collection.ResolveUnary(" ").Should().BeSameAs(unary);
     }
 
-    [Fact]
+    [Fact(Timeout = TestTimeouts.Default)]
     public void Resolve_WithAlternateKey_IsCaseInsensitive()
     {
         var unary = Substitute.For<IUnaryOutbound>();
@@ -33,19 +34,19 @@ public class OutboundRegistryTests
             [],
             []);
 
-        Assert.Same(unary, collection.ResolveUnary("PRIMARY"));
+        collection.ResolveUnary("PRIMARY").Should().BeSameAs(unary);
     }
 
-    [Fact]
+    [Fact(Timeout = TestTimeouts.Default)]
     public void TryGet_ReturnsFalseWhenKeyMissing()
     {
         var collection = CreateCollection();
 
-        Assert.False(collection.TryGetUnary("missing", out _));
-        Assert.False(collection.TryGetOneway("missing", out _));
-        Assert.False(collection.TryGetStream("missing", out _));
-        Assert.False(collection.TryGetClientStream("missing", out _));
-        Assert.False(collection.TryGetDuplex("missing", out _));
+        collection.TryGetUnary("missing", out _).Should().BeFalse();
+        collection.TryGetOneway("missing", out _).Should().BeFalse();
+        collection.TryGetStream("missing", out _).Should().BeFalse();
+        collection.TryGetClientStream("missing", out _).Should().BeFalse();
+        collection.TryGetDuplex("missing", out _).Should().BeFalse();
     }
 
     private static OutboundRegistry CreateCollection(

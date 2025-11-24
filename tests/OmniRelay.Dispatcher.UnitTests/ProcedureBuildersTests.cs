@@ -1,3 +1,4 @@
+using AwesomeAssertions;
 using NSubstitute;
 using OmniRelay.Core;
 using OmniRelay.Core.Middleware;
@@ -9,7 +10,7 @@ namespace OmniRelay.Dispatcher.UnitTests;
 
 public class ProcedureBuildersTests
 {
-    [Fact]
+    [Fact(Timeout = TestTimeouts.Default)]
     public void UnaryProcedureBuilder_BuildsSpecWithEncodingAndAliases()
     {
         var middleware = Substitute.For<IUnaryInboundMiddleware>();
@@ -20,61 +21,64 @@ public class ProcedureBuildersTests
             .AddAlias("alias-one")
             .AddAliases(["alias-two", "alias-three"]);
 
-        var spec = builder.Build("svc", "proc");
+        var specResult = builder.Build("svc", "proc");
+        specResult.IsSuccess.Should().BeTrue();
+        var spec = specResult.Value;
 
-        Assert.Equal("svc", spec.Service);
-        Assert.Equal("proc", spec.Name);
-        Assert.Equal("json", spec.Encoding);
-        Assert.Contains(middleware, spec.Middleware);
-        Assert.Equal(new[] { "alias-one", "alias-two", "alias-three" }, spec.Aliases);
+        spec.Service.Should().Be("svc");
+        spec.Name.Should().Be("proc");
+        spec.Encoding.Should().Be("json");
+        spec.Middleware.Should().Contain(middleware);
+        spec.Aliases.Should().Equal("alias-one", "alias-two", "alias-three");
     }
 
-    [Fact]
+    [Fact(Timeout = TestTimeouts.Default)]
     public void OnewayProcedureBuilder_WithoutHandler_Throws()
     {
         var builder = new OnewayProcedureBuilder();
 
-        Assert.Throws<InvalidOperationException>(() => builder.Build("svc", "name"));
+        var result = builder.Build("svc", "name");
+        result.IsFailure.Should().BeTrue();
     }
 
-    [Fact]
+    [Fact(Timeout = TestTimeouts.Default)]
     public void StreamProcedureBuilder_WithMetadata_StoresOnSpec()
     {
         var metadata = new StreamIntrospectionMetadata(new StreamChannelMetadata(StreamDirection.Server, "bounded", 5, true));
 
-        var spec = new StreamProcedureBuilder()
+        var specResult = new StreamProcedureBuilder()
             .Handle((_, _, _) => ValueTask.FromResult(Ok<IStreamCall>(new TestHelpers.DummyStreamCall())))
             .WithMetadata(metadata)
             .Build("svc", "stream");
-
-        Assert.Equal(metadata, spec.Metadata);
+        specResult.IsSuccess.Should().BeTrue();
+        specResult.Value.Metadata.Should().Be(metadata);
     }
 
-    [Fact]
+    [Fact(Timeout = TestTimeouts.Default)]
     public void ClientStreamProcedureBuilder_WithMetadata_StoresOnSpec()
     {
         var metadata = new ClientStreamIntrospectionMetadata(new StreamChannelMetadata(StreamDirection.Client, "bounded", 10, false), false);
 
-        var spec = new ClientStreamProcedureBuilder()
+        var specResult = new ClientStreamProcedureBuilder()
             .Handle((_, _) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty))))
             .WithMetadata(metadata)
             .Build("svc", "client");
-
-        Assert.Equal(metadata, spec.Metadata);
+        specResult.IsSuccess.Should().BeTrue();
+        specResult.Value.Metadata.Should().Be(metadata);
     }
 
-    [Fact]
+    [Fact(Timeout = TestTimeouts.Default)]
     public void DuplexProcedureBuilder_WithMetadata_StoresOnSpec()
     {
         var metadata = new DuplexIntrospectionMetadata(
             new StreamChannelMetadata(StreamDirection.Client, "bounded", 1, true),
             new StreamChannelMetadata(StreamDirection.Server, "bounded", 1, true));
 
-        var spec = new DuplexProcedureBuilder()
+        var specResult = new DuplexProcedureBuilder()
             .Handle((_, _) => ValueTask.FromResult(Ok<IDuplexStreamCall>(new TestHelpers.DummyDuplexStreamCall())))
             .WithMetadata(metadata)
             .Build("svc", "duplex");
-
-        Assert.Equal(metadata, spec.Metadata);
+        specResult.IsSuccess.Should().BeTrue();
+        specResult.Value.Metadata.Should().Be(metadata);
     }
 }

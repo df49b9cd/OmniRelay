@@ -12,14 +12,14 @@ certificate. When bootstrapping manually, pass `HttpServerTlsOptions` with a
 populated `Certificate`:
 
 ```csharp
-var inbound = new HttpInbound(
-    new[] { "https://0.0.0.0:8443" },
+var inbound = HttpInbound.TryCreate(
+    new[] { new Uri("https://0.0.0.0:8443") },
     serverTlsOptions: new HttpServerTlsOptions
     {
         Certificate = LoadCertificate(),
         ClientCertificateMode = ClientCertificateMode.NoCertificate,
         CheckCertificateRevocation = true
-    });
+    }).ValueOrThrow();
 ```
 
 Configuration hosts wire the same structure via the `inbounds.http[].tls`
@@ -299,6 +299,6 @@ options.UnaryOutboundMiddleware.Add(new RpcTracingMiddleware());
 ```
 
 `RpcTracingMiddleware` creates an `Activity` per RPC, flowing headers through
-`Rpc-Trace-*` metadata. Pair it with `AddOmniRelayDispatcher().AddOpenTelemetry`
+`Rpc-Trace-*` metadata. Pair it with `AddOmniRelayDispatcherFromConfiguration(...).AddOpenTelemetry`
 configuration so the runtime exports HTTP metrics and spans that share the same
 `Resource` attributes.

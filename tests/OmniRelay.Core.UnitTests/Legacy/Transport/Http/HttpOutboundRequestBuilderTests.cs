@@ -11,20 +11,22 @@ namespace OmniRelay.Tests.Transport.Http;
 
 public sealed class HttpOutboundRequestBuilderTests
 {
-    [Fact]
-    public void Constructor_WithHttp3EnabledOnHttpScheme_Throws()
+    [Fact(Timeout = TestTimeouts.Default)]
+    public void Constructor_WithHttp3EnabledOnHttpScheme_ReturnsFailure()
     {
         using var client = new HttpClient(new HttpClientHandler());
-        Should.Throw<InvalidOperationException>(() =>
-            new HttpOutbound(
-                client,
-                new Uri("http://example.test/rpc"),
-                disposeClient: false,
-                runtimeOptions: new HttpClientRuntimeOptions { EnableHttp3 = true }));
+        var outbound = HttpOutbound.Create(
+            client,
+            new Uri("http://example.test/rpc"),
+            disposeClient: false,
+            runtimeOptions: new HttpClientRuntimeOptions { EnableHttp3 = true });
+
+        outbound.IsFailure.ShouldBeTrue();
+        outbound.Error?.Code.ShouldBe("http.outbound.h3_requires_https");
     }
 
     [Fact(Timeout = 30_000)]
-    public async Task CallAsync_MapsRequestMetadataToHttpRequest()
+    public async ValueTask CallAsync_MapsRequestMetadataToHttpRequest()
     {
         var captured = new CapturedRequest();
         using var handler = new RecordingHandler(async (request, token) =>
@@ -53,11 +55,12 @@ public sealed class HttpOutboundRequestBuilderTests
 
         using var client = new HttpClient(handler);
         var requestUri = new Uri("https://example.test/rpc");
-        var outbound = new HttpOutbound(
-            client,
-            requestUri,
-            disposeClient: true,
-            runtimeOptions: new HttpClientRuntimeOptions { EnableHttp3 = true });
+        var outbound = HttpOutbound.Create(
+                client,
+                requestUri,
+                disposeClient: true,
+                runtimeOptions: new HttpClientRuntimeOptions { EnableHttp3 = true })
+            .ValueOrChecked();
 
         var ttl = TimeSpan.FromMilliseconds(1250);
         var deadline = DateTimeOffset.UtcNow.AddMinutes(5);

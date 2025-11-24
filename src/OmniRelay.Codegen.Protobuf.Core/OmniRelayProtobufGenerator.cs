@@ -326,7 +326,7 @@ public sealed class OmniRelayProtobufGenerator
             builder.AppendLine($"builder.WithEncoding({method.CodecFieldName}.Encoding);");
             builder.AppendLine($"builder.Handle(ProtobufCallAdapters.{adapterFactory}({method.CodecFieldName}, implementation.{method.HandlerName}));");
             builder.PopIndent();
-            builder.AppendLine("}).ThrowIfFailure();");
+            builder.AppendLine("}).ValueOrChecked();");
         }
 
         private void GenerateInterface(IndentedStringBuilder builder, IReadOnlyList<MethodModel> methods)
@@ -414,6 +414,7 @@ public sealed class OmniRelayProtobufGenerator
             }
 
             AppendPrepareRequestMetaHelper(builder);
+            AppendStreamFailureHelper(builder);
 
             builder.PopIndent();
             builder.AppendLine("}");
@@ -425,7 +426,22 @@ public sealed class OmniRelayProtobufGenerator
             builder.AppendLine("{");
             builder.PushIndent();
             builder.AppendLine($"var requestMeta = PrepareRequestMeta(meta, _service, \"{method.ProcedureName}\", {method.CodecFieldName}.Encoding);");
-            builder.AppendLine($"var client = {method.UnaryClientField} ??= _dispatcher.CreateUnaryClient<{method.InputType}, {method.OutputType}>(_service, {method.CodecFieldName}, _outboundKey);");
+            builder.AppendLine($"var client = {method.UnaryClientField};");
+            builder.AppendLine("if (client is null)");
+            builder.AppendLine("{");
+            builder.PushIndent();
+            builder.AppendLine($"var createResult = _dispatcher.CreateUnaryClient<{method.InputType}, {method.OutputType}>(_service, {method.CodecFieldName}, _outboundKey);");
+            builder.AppendLine("if (createResult.IsFailure)");
+            builder.AppendLine("{");
+            builder.PushIndent();
+            builder.AppendLine($"return ValueTask.FromResult(Result.Fail<Response<{method.OutputType}>>(createResult.Error!));");
+            builder.PopIndent();
+            builder.AppendLine("}");
+            builder.AppendLine();
+            builder.AppendLine($"client = {method.UnaryClientField} = createResult.Value;");
+            builder.PopIndent();
+            builder.AppendLine("}");
+            builder.AppendLine();
             builder.AppendLine($"return client.CallAsync(new Request<{method.InputType}>(requestMeta, request), cancellationToken);");
             builder.PopIndent();
             builder.AppendLine("}");
@@ -438,7 +454,22 @@ public sealed class OmniRelayProtobufGenerator
             builder.AppendLine("{");
             builder.PushIndent();
             builder.AppendLine($"var requestMeta = PrepareRequestMeta(meta, _service, \"{method.ProcedureName}\", {method.CodecFieldName}.Encoding);");
-            builder.AppendLine($"var client = {method.StreamClientField} ??= _dispatcher.CreateStreamClient<{method.InputType}, {method.OutputType}>(_service, {method.CodecFieldName}, _outboundKey);");
+            builder.AppendLine($"var client = {method.StreamClientField};");
+            builder.AppendLine("if (client is null)");
+            builder.AppendLine("{");
+            builder.PushIndent();
+            builder.AppendLine($"var createResult = _dispatcher.CreateStreamClient<{method.InputType}, {method.OutputType}>(_service, {method.CodecFieldName}, _outboundKey);");
+            builder.AppendLine("if (createResult.IsFailure)");
+            builder.AppendLine("{");
+            builder.PushIndent();
+            builder.AppendLine($"return StreamFailure<{method.OutputType}>(createResult.Error!);");
+            builder.PopIndent();
+            builder.AppendLine("}");
+            builder.AppendLine();
+            builder.AppendLine($"client = {method.StreamClientField} = createResult.Value;");
+            builder.PopIndent();
+            builder.AppendLine("}");
+            builder.AppendLine();
             builder.AppendLine($"return client.CallAsync(new Request<{method.InputType}>(requestMeta, request), new StreamCallOptions(StreamDirection.Server), cancellationToken);");
             builder.PopIndent();
             builder.AppendLine("}");
@@ -451,7 +482,22 @@ public sealed class OmniRelayProtobufGenerator
             builder.AppendLine("{");
             builder.PushIndent();
             builder.AppendLine($"var requestMeta = PrepareRequestMeta(meta, _service, \"{method.ProcedureName}\", {method.CodecFieldName}.Encoding);");
-            builder.AppendLine($"var client = {method.ClientStreamField} ??= _dispatcher.CreateClientStreamClient<{method.InputType}, {method.OutputType}>(_service, {method.CodecFieldName}, _outboundKey);");
+            builder.AppendLine($"var client = {method.ClientStreamField};");
+            builder.AppendLine("if (client is null)");
+            builder.AppendLine("{");
+            builder.PushIndent();
+            builder.AppendLine($"var createResult = _dispatcher.CreateClientStreamClient<{method.InputType}, {method.OutputType}>(_service, {method.CodecFieldName}, _outboundKey);");
+            builder.AppendLine("if (createResult.IsFailure)");
+            builder.AppendLine("{");
+            builder.PushIndent();
+            builder.AppendLine($"return ValueTask.FromResult(Result.Fail<ClientStreamClient<{method.InputType}, {method.OutputType}>.ClientStreamSession>(createResult.Error!));");
+            builder.PopIndent();
+            builder.AppendLine("}");
+            builder.AppendLine();
+            builder.AppendLine($"client = {method.ClientStreamField} = createResult.Value;");
+            builder.PopIndent();
+            builder.AppendLine("}");
+            builder.AppendLine();
             builder.AppendLine("return client.StartAsync(requestMeta, cancellationToken);");
             builder.PopIndent();
             builder.AppendLine("}");
@@ -464,7 +510,22 @@ public sealed class OmniRelayProtobufGenerator
             builder.AppendLine("{");
             builder.PushIndent();
             builder.AppendLine($"var requestMeta = PrepareRequestMeta(meta, _service, \"{method.ProcedureName}\", {method.CodecFieldName}.Encoding);");
-            builder.AppendLine($"var client = {method.DuplexClientField} ??= _dispatcher.CreateDuplexStreamClient<{method.InputType}, {method.OutputType}>(_service, {method.CodecFieldName}, _outboundKey);");
+            builder.AppendLine($"var client = {method.DuplexClientField};");
+            builder.AppendLine("if (client is null)");
+            builder.AppendLine("{");
+            builder.PushIndent();
+            builder.AppendLine($"var createResult = _dispatcher.CreateDuplexStreamClient<{method.InputType}, {method.OutputType}>(_service, {method.CodecFieldName}, _outboundKey);");
+            builder.AppendLine("if (createResult.IsFailure)");
+            builder.AppendLine("{");
+            builder.PushIndent();
+            builder.AppendLine($"return ValueTask.FromResult(Result.Fail<DuplexStreamClient<{method.InputType}, {method.OutputType}>.DuplexStreamSession>(createResult.Error!));");
+            builder.PopIndent();
+            builder.AppendLine("}");
+            builder.AppendLine();
+            builder.AppendLine($"client = {method.DuplexClientField} = createResult.Value;");
+            builder.PopIndent();
+            builder.AppendLine("}");
+            builder.AppendLine();
             builder.AppendLine("return client.StartAsync(requestMeta, cancellationToken);");
             builder.PopIndent();
             builder.AppendLine("}");
@@ -515,6 +576,16 @@ public sealed class OmniRelayProtobufGenerator
             builder.PopIndent();
             builder.AppendLine("}");
             builder.AppendLine("return value;");
+            builder.PopIndent();
+            builder.AppendLine("}");
+        }
+
+        private static void AppendStreamFailureHelper(IndentedStringBuilder builder)
+        {
+            builder.AppendLine("private static async IAsyncEnumerable<Result<Response<TResponse>>> StreamFailure<TResponse>(Error error)");
+            builder.AppendLine("{");
+            builder.PushIndent();
+            builder.AppendLine("yield return Result.Fail<Response<TResponse>>(error);");
             builder.PopIndent();
             builder.AppendLine("}");
         }

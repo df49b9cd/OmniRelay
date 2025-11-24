@@ -1,5 +1,4 @@
 using OmniRelay.Core;
-using OmniRelay.Dispatcher;
 using OmniRelay.Tests.Protos;
 
 namespace OmniRelay.IntegrationTests.Support;
@@ -38,7 +37,7 @@ internal sealed class GeneratedTestService : TestServiceOmniRelay.ITestService
         for (var index = 0; index < 3; index++)
         {
             var writeResult = await stream.WriteAsync(new StreamResponse { Value = $"{request.Body.Value}#{index}" }, cancellationToken).ConfigureAwait(false);
-            writeResult.ThrowIfFailure();
+            writeResult.ValueOrChecked();
         }
     }
 
@@ -48,7 +47,7 @@ internal sealed class GeneratedTestService : TestServiceOmniRelay.ITestService
         var sum = 0;
         await foreach (var chunkResult in context.ReadAllAsync(cancellationToken).ConfigureAwait(false))
         {
-            var chunk = chunkResult.ValueOrThrow();
+            var chunk = chunkResult.ValueOrChecked();
             _ = int.TryParse(chunk.Value, out var value);
             sum += value;
         }
@@ -61,13 +60,13 @@ internal sealed class GeneratedTestService : TestServiceOmniRelay.ITestService
     {
         DuplexMeta.TrySetResult(context.RequestMeta);
         var initialWrite = await context.WriteAsync(new StreamResponse { Value = "ready" }, cancellationToken).ConfigureAwait(false);
-        initialWrite.ThrowIfFailure();
+        initialWrite.ValueOrChecked();
 
         await foreach (var chunkResult in context.ReadAllAsync(cancellationToken).ConfigureAwait(false))
         {
-            var chunk = chunkResult.ValueOrThrow();
+            var chunk = chunkResult.ValueOrChecked();
             var writeResult = await context.WriteAsync(new StreamResponse { Value = $"echo:{chunk.Value}" }, cancellationToken).ConfigureAwait(false);
-            writeResult.ThrowIfFailure();
+            writeResult.ValueOrChecked();
         }
     }
 

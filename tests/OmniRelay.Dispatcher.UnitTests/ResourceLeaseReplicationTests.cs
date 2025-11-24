@@ -1,61 +1,77 @@
+using AwesomeAssertions;
 using Hugo;
+using static Hugo.Go;
+using Unit = Hugo.Go.Unit;
 using Xunit;
 
 namespace OmniRelay.Dispatcher.UnitTests;
 
 public sealed class ResourceLeaseReplicationTests
 {
-    [Fact]
-    public async Task InMemoryReplicator_SequencesAndDeliversEvents()
+    [Fact(Timeout = TestTimeouts.Default)]
+    public async ValueTask InMemoryReplicator_SequencesAndDeliversEvents()
     {
         var sink = new RecordingSink();
         var replicator = new InMemoryResourceLeaseReplicator([sink]);
 
-        await replicator.PublishAsync(CreateEvent(), CancellationToken.None);
-        await replicator.PublishAsync(CreateEvent(), CancellationToken.None);
+        var first = await replicator.PublishAsync(CreateEvent(), CancellationToken.None);
+        var second = await replicator.PublishAsync(CreateEvent(), CancellationToken.None);
 
-        Assert.Equal([1L, 2L], [.. sink.Events.Select(evt => evt.SequenceNumber)]);
+        first.IsSuccess.Should().BeTrue(first.Error?.ToString());
+        second.IsSuccess.Should().BeTrue(second.Error?.ToString());
+
+        sink.Events.Select(evt => evt.SequenceNumber).Should().Equal(1L, 2L);
     }
 
-    [Fact]
-    public async Task InMemoryReplicator_IgnoresProvidedSequenceAndUsesStartingOffset()
+    [Fact(Timeout = TestTimeouts.Default)]
+    public async ValueTask InMemoryReplicator_IgnoresProvidedSequenceAndUsesStartingOffset()
     {
         var sink = new RecordingSink();
         var replicator = new InMemoryResourceLeaseReplicator([sink], startingSequence: 10);
 
-        await replicator.PublishAsync(CreateEvent(sequence: 42), CancellationToken.None);
+        var result = await replicator.PublishAsync(CreateEvent(sequence: 42), CancellationToken.None);
 
-        Assert.Single(sink.Events);
-        Assert.Equal(11L, sink.Events[0].SequenceNumber);
+        result.IsSuccess.Should().BeTrue(result.Error?.ToString());
+        sink.Events.Should().ContainSingle();
+        sink.Events[0].SequenceNumber.Should().Be(11L);
     }
 
-    [Fact]
-    public async Task CheckpointingSink_DeduplicatesSequences()
+    [Fact(Timeout = TestTimeouts.Default)]
+    public async ValueTask CheckpointingSink_DeduplicatesSequences()
     {
         var sink = new CountingCheckpointSink();
 
-        await sink.ApplyAsync(CreateEvent(sequence: 5), CancellationToken.None);
-        await sink.ApplyAsync(CreateEvent(sequence: 5), CancellationToken.None);
-        await sink.ApplyAsync(CreateEvent(sequence: 6), CancellationToken.None);
+        var first = await sink.ApplyAsync(CreateEvent(sequence: 5), CancellationToken.None);
+        var duplicate = await sink.ApplyAsync(CreateEvent(sequence: 5), CancellationToken.None);
+        var second = await sink.ApplyAsync(CreateEvent(sequence: 6), CancellationToken.None);
 
-        Assert.Equal(new[] { 5L, 6L }, sink.AppliedSequences);
+        first.IsSuccess.Should().BeTrue(first.Error?.ToString());
+        duplicate.IsSuccess.Should().BeTrue(duplicate.Error?.ToString());
+        second.IsSuccess.Should().BeTrue(second.Error?.ToString());
+
+        sink.AppliedSequences.Should().Equal(5L, 6L);
     }
 
-    [Fact]
-    public async Task DeterministicCoordinator_IgnoresDuplicateEffects()
+    [Fact(Timeout = TestTimeouts.Default)]
+    public async ValueTask DeterministicCoordinator_IgnoresDuplicateEffects()
     {
-        var coordinator = new DeterministicResourceLeaseCoordinator(new ResourceLeaseDeterministicOptions
+        var coordinatorResult = DeterministicResourceLeaseCoordinator.Create(new ResourceLeaseDeterministicOptions
         {
             ChangeId = "leases",
             MinVersion = 1,
             MaxVersion = 1,
             StateStore = new InMemoryDeterministicStateStore()
         });
+        coordinatorResult.IsSuccess.Should().BeTrue(coordinatorResult.Error?.ToString());
+        var coordinator = coordinatorResult.Value;
 
         var evt = CreateEvent(sequence: 10);
 
-        await coordinator.RecordAsync(evt, CancellationToken.None);
-        await coordinator.RecordAsync(evt, CancellationToken.None); // duplicate should be ignored without throwing
+        var first = await coordinator.RecordAsync(evt, CancellationToken.None);
+        var duplicate = await coordinator.RecordAsync(evt, CancellationToken.None); // duplicate should be ignored without throwing
+
+        first.IsSuccess.Should().BeTrue(first.Error?.ToString());
+        duplicate.IsSuccess.Should().BeTrue(duplicate.Error?.ToString());
     }
 
     private static ResourceLeaseReplicationEvent CreateEvent(long sequence = 0) =>
@@ -73,10 +89,10 @@ public sealed class ResourceLeaseReplicationTests
     {
         public List<ResourceLeaseReplicationEvent> Events { get; } = [];
 
-        public ValueTask ApplyAsync(ResourceLeaseReplicationEvent replicationEvent, CancellationToken cancellationToken)
+        public ValueTask<Result<Unit>> ApplyAsync(ResourceLeaseReplicationEvent replicationEvent, CancellationToken cancellationToken)
         {
             Events.Add(replicationEvent);
-            return ValueTask.CompletedTask;
+            return ValueTask.FromResult(Ok(Unit.Value));
         }
     }
 
@@ -84,10 +100,10 @@ public sealed class ResourceLeaseReplicationTests
     {
         public List<long> AppliedSequences { get; } = [];
 
-        protected override ValueTask ApplyInternalAsync(ResourceLeaseReplicationEvent replicationEvent, CancellationToken cancellationToken)
+        protected override ValueTask<Result<Unit>> ApplyInternalAsync(ResourceLeaseReplicationEvent replicationEvent, CancellationToken cancellationToken)
         {
             AppliedSequences.Add(replicationEvent.SequenceNumber);
-            return ValueTask.CompletedTask;
+            return ValueTask.FromResult(Ok(Unit.Value));
         }
     }
 }

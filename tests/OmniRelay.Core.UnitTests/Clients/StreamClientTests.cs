@@ -20,7 +20,7 @@ public class StreamClientTests
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
-    public async Task CallAsync_Yields_Decoded_Responses()
+    public async ValueTask CallAsync_Yields_Decoded_Responses()
     {
         var outbound = Substitute.For<IStreamOutbound>();
         var codec = Substitute.For<ICodec<Req, Res>>();
@@ -43,7 +43,7 @@ public class StreamClientTests
             var coll = new List<Response<Res>>();
             await foreach (var res in client.CallAsync(new Request<Req>(meta, new Req { V = 1 }), options, TestContext.Current.CancellationToken))
             {
-                coll.Add(res.ValueOrThrow());
+                coll.Add(res.ValueOrChecked());
             }
             return coll;
         }, TestContext.Current.CancellationToken);
@@ -60,7 +60,7 @@ public class StreamClientTests
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
-    public async Task CallAsync_EncodeFailure_Throws_OmniRelayException()
+    public async ValueTask CallAsync_EncodeFailure_Throws_OmniRelayException()
     {
         var outbound = Substitute.For<IStreamOutbound>();
         var codec = Substitute.For<ICodec<Req, Res>>();
@@ -82,7 +82,7 @@ public class StreamClientTests
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
-    public async Task CallAsync_PipelineFailure_Throws()
+    public async ValueTask CallAsync_PipelineFailure_Throws()
     {
         var outbound = Substitute.For<IStreamOutbound>();
         var codec = Substitute.For<ICodec<Req, Res>>();
@@ -108,7 +108,7 @@ public class StreamClientTests
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
-    public async Task CallAsync_DecodeFailure_CompletesStreamAndThrows()
+    public async ValueTask CallAsync_DecodeFailure_CompletesStreamAndThrows()
     {
         var outbound = Substitute.For<IStreamOutbound>();
         var codec = Substitute.For<ICodec<Req, Res>>();
@@ -142,7 +142,7 @@ public class StreamClientTests
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
-    public async Task CallAsync_SetsEncodingWhenMissing()
+    public async ValueTask CallAsync_SetsEncodingWhenMissing()
     {
         var outbound = Substitute.For<IStreamOutbound>();
         var codec = Substitute.For<ICodec<Req, Res>>();

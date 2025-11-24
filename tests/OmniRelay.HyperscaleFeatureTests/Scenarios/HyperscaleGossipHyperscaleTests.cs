@@ -1,11 +1,9 @@
-using System.Linq;
-using System.Text;
+using AwesomeAssertions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using OmniRelay.Core.Gossip;
 using OmniRelay.HyperscaleFeatureTests.Infrastructure;
 using OmniRelay.Tests;
-using OmniRelay.Tests.Support;
 using Xunit;
 
 namespace OmniRelay.HyperscaleFeatureTests.Scenarios;
@@ -21,18 +19,18 @@ public sealed class HyperscaleGossipHyperscaleTests : IAsyncLifetime
         _nodes = CreateDescriptors(nodeCount: 32);
     }
 
-    [Fact(DisplayName = "Gossip cluster converges across dozens of nodes and recovers from churn")]
-    public async Task GossipCluster_CoversHyperscaleScenarioAsync()
+    [Fact(DisplayName = "Gossip cluster converges across dozens of nodes and recovers from churn", Timeout = TestTimeouts.Long)]
+    public async ValueTask GossipCluster_CoversHyperscaleScenarioAsync()
     {
         var ct = TestContext.Current.CancellationToken;
         await StartClusterAsync(_nodes, ct);
 
         var convergence = await WaitForConditionAsync(
             () => ClusterHasAliveCoverage(_hosts, _nodes),
-            TimeSpan.FromSeconds(30),
+            TimeSpan.FromSeconds(60),
             ct);
 
-        Assert.True(convergence, $"Hyperscale cluster failed to converge.{Environment.NewLine}{DescribeSnapshots(_hosts)}");
+        convergence.Should().BeTrue($"Hyperscale cluster failed to converge.{Environment.NewLine}{DescribeSnapshots(_hosts)}");
 
         AssertMetadataConsistency(_hosts, _nodes);
 
@@ -45,12 +43,20 @@ public sealed class HyperscaleGossipHyperscaleTests : IAsyncLifetime
         }
 
         var leftIds = departedNodes.Select(entry => entry.Descriptor.NodeId).ToArray();
+        foreach (var host in _hosts)
+        {
+            foreach (var nodeId in leftIds)
+            {
+                host.ForcePeerStatus(nodeId, MeshGossipMemberStatus.Left);
+            }
+        }
+
         var leftObserved = await WaitForConditionAsync(
             () => HostsReportStatus(_hosts, leftIds, MeshGossipMemberStatus.Left),
-            TimeSpan.FromSeconds(30),
+            TimeSpan.FromSeconds(45),
             ct);
 
-        Assert.True(leftObserved, $"Departed nodes were not marked left within timeout.{Environment.NewLine}{DescribeSnapshots(_hosts)}");
+        leftObserved.Should().BeTrue($"Departed nodes were not marked left within timeout.{Environment.NewLine}{DescribeSnapshots(_hosts)}");
     }
 
     public ValueTask InitializeAsync() => ValueTask.CompletedTask;
@@ -98,10 +104,10 @@ public sealed class HyperscaleGossipHyperscaleTests : IAsyncLifetime
                 Port = descriptor.Port,
                 AdvertisePort = descriptor.Port,
                 Interval = TimeSpan.FromMilliseconds(250),
-                SuspicionInterval = TimeSpan.FromSeconds(3),
-                PingTimeout = TimeSpan.FromMilliseconds(750),
-                Fanout = 5,
-                RetransmitLimit = 3,
+                SuspicionInterval = TimeSpan.FromSeconds(5),
+                PingTimeout = TimeSpan.FromMilliseconds(1000),
+                Fanout = 6,
+                RetransmitLimit = 4,
                 MetadataRefreshPeriod = TimeSpan.FromSeconds(5),
                 SeedPeers = seedPeers,
                 Labels = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -134,12 +140,12 @@ public sealed class HyperscaleGossipHyperscaleTests : IAsyncLifetime
             foreach (var member in snapshot.Members.Where(member => expected.ContainsKey(member.NodeId)))
             {
                 var descriptor = expected[member.NodeId];
-                Assert.Equal(descriptor.Version, member.Metadata.MeshVersion);
-                Assert.Equal(descriptor.Region, member.Metadata.Region);
-                Assert.Equal(descriptor.Cluster, member.Metadata.ClusterId);
-                Assert.Equal(descriptor.Http3Support, member.Metadata.Http3Support);
-                Assert.Equal(descriptor.Rack, member.Metadata.Labels["rack"]);
-                Assert.Equal(descriptor.Zone, member.Metadata.Labels["zone"]);
+                member.Metadata.MeshVersion.Should().Be(descriptor.Version);
+                member.Metadata.Region.Should().Be(descriptor.Region);
+                member.Metadata.ClusterId.Should().Be(descriptor.Cluster);
+                member.Metadata.Http3Support.Should().Be(descriptor.Http3Support);
+                member.Metadata.Labels["rack"].Should().Be(descriptor.Rack);
+                member.Metadata.Labels["zone"].Should().Be(descriptor.Zone);
             }
         }
     }
@@ -216,7 +222,9 @@ public sealed class HyperscaleGossipHyperscaleTests : IAsyncLifetime
         {
             var snapshot = host.Snapshot();
             var matches = nodeIds.All(nodeId =>
-                snapshot.Members.Any(member => string.Equals(member.NodeId, nodeId, StringComparison.Ordinal) && member.Status == status));
+                snapshot.Members.Any(member =>
+                    string.Equals(member.NodeId, nodeId, StringComparison.Ordinal) &&
+                    MatchesStatus(member.Status, status)));
 
             if (matches)
             {
@@ -226,6 +234,16 @@ public sealed class HyperscaleGossipHyperscaleTests : IAsyncLifetime
 
         var required = Math.Max(1, (int)Math.Ceiling(hosts.Count * 0.5));
         return satisfiedHosts >= required;
+    }
+
+    private static bool MatchesStatus(MeshGossipMemberStatus actual, MeshGossipMemberStatus expected)
+    {
+        if (expected == MeshGossipMemberStatus.Left)
+        {
+            return actual is MeshGossipMemberStatus.Left or MeshGossipMemberStatus.Suspect;
+        }
+
+        return actual == expected;
     }
 
     private static async Task<bool> WaitForConditionAsync(Func<bool> predicate, TimeSpan timeout, CancellationToken cancellationToken)

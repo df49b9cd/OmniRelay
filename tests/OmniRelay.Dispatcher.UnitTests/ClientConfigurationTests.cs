@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using AwesomeAssertions;
 using NSubstitute;
 using OmniRelay.Core.Middleware;
 using OmniRelay.Core.Transport;
@@ -8,39 +9,39 @@ namespace OmniRelay.Dispatcher.UnitTests;
 
 public class ClientConfigurationTests
 {
-    [Fact]
+    [Fact(Timeout = TestTimeouts.Default)]
     public void Service_ReturnsOutboundService()
     {
         var config = CreateConfiguration(out var unaryOutbound);
 
-        Assert.Equal("downstream", config.Service);
-        Assert.Same(unaryOutbound, config.ResolveUnary());
+        config.Service.Should().Be("downstream");
+        config.ResolveUnary().Should().BeSameAs(unaryOutbound);
     }
 
-    [Fact]
+    [Fact(Timeout = TestTimeouts.Default)]
     public void Resolve_WithUnknownKey_ReturnsNull()
     {
         var config = CreateConfiguration(out _);
 
-        Assert.Null(config.ResolveOneway("missing"));
-        Assert.Null(config.ResolveStream("missing"));
-        Assert.Null(config.ResolveClientStream("missing"));
-        Assert.Null(config.ResolveDuplex("missing"));
+        config.ResolveOneway("missing").Should().BeNull();
+        config.ResolveStream("missing").Should().BeNull();
+        config.ResolveClientStream("missing").Should().BeNull();
+        config.ResolveDuplex("missing").Should().BeNull();
     }
 
-    [Fact]
+    [Fact(Timeout = TestTimeouts.Default)]
     public void TryGet_ReturnsFalseWhenOutboundNotFound()
     {
         var config = CreateConfiguration(out _);
 
-        Assert.False(config.TryGetUnary("missing", out _));
-        Assert.False(config.TryGetOneway("missing", out _));
-        Assert.False(config.TryGetStream("missing", out _));
-        Assert.False(config.TryGetClientStream("missing", out _));
-        Assert.False(config.TryGetDuplex("missing", out _));
+        config.TryGetUnary("missing", out _).Should().BeFalse();
+        config.TryGetOneway("missing", out _).Should().BeFalse();
+        config.TryGetStream("missing", out _).Should().BeFalse();
+        config.TryGetClientStream("missing", out _).Should().BeFalse();
+        config.TryGetDuplex("missing", out _).Should().BeFalse();
     }
 
-    [Fact]
+    [Fact(Timeout = TestTimeouts.Default)]
     public void Middleware_CollectionsExposeConfiguredInstances()
     {
         var unaryMiddleware = ImmutableArray.Create(Substitute.For<IUnaryOutboundMiddleware>());
@@ -65,11 +66,11 @@ public class ClientConfigurationTests
             clientStreamMiddleware,
             duplexMiddleware);
 
-        Assert.Same(unaryMiddleware[0], config.UnaryMiddleware[0]);
-        Assert.Same(onewayMiddleware[0], config.OnewayMiddleware[0]);
-        Assert.Same(streamMiddleware[0], config.StreamMiddleware[0]);
-        Assert.Same(clientStreamMiddleware[0], config.ClientStreamMiddleware[0]);
-        Assert.Same(duplexMiddleware[0], config.DuplexMiddleware[0]);
+        config.UnaryMiddleware[0].Should().BeSameAs(unaryMiddleware[0]);
+        config.OnewayMiddleware[0].Should().BeSameAs(onewayMiddleware[0]);
+        config.StreamMiddleware[0].Should().BeSameAs(streamMiddleware[0]);
+        config.ClientStreamMiddleware[0].Should().BeSameAs(clientStreamMiddleware[0]);
+        config.DuplexMiddleware[0].Should().BeSameAs(duplexMiddleware[0]);
     }
 
     private static ClientConfiguration CreateConfiguration(out IUnaryOutbound unaryOutbound)

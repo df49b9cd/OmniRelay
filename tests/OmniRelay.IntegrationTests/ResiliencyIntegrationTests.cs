@@ -6,6 +6,7 @@ using System.Net.Quic;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using AwesomeAssertions;
 using Grpc.Core;
 using Grpc.Net.Client;
 using Hugo.Policies;
@@ -17,10 +18,10 @@ using OmniRelay.Core.Peers;
 using OmniRelay.Dispatcher;
 using OmniRelay.Errors;
 using OmniRelay.Tests.Support;
-using OmniRelay.TestSupport;
 using OmniRelay.Transport.Grpc;
 using OmniRelay.Transport.Http;
 using Xunit;
+using static AwesomeAssertions.FluentActions;
 using static Hugo.Go;
 
 namespace OmniRelay.IntegrationTests;
@@ -28,13 +29,13 @@ namespace OmniRelay.IntegrationTests;
 public class ResiliencyIntegrationTests
 {
     [Fact(Timeout = 60_000)]
-    public async Task HttpInbound_StopAsync_DrainsAndRejectsNewRequests()
+    public async ValueTask HttpInbound_StopAsync_DrainsAndRejectsNewRequests()
     {
         var httpPort = TestPortAllocator.GetRandomPort();
         var httpBase = new Uri($"http://127.0.0.1:{httpPort}/");
 
         var options = new DispatcherOptions("resiliency-http-drain");
-        var httpInbound = new HttpInbound([httpBase.ToString()]);
+        var httpInbound = HttpInbound.TryCreate([httpBase]).ValueOrChecked();
         options.AddLifecycle("resiliency-http-drain-inbound", httpInbound);
 
         var dispatcher = new Dispatcher.Dispatcher(options);
@@ -58,7 +59,7 @@ public class ResiliencyIntegrationTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await dispatcher.StartAsyncChecked(ct);
         await WaitForHttpReadyAsync(httpBase, ct);
 
         using var httpClient = new HttpClient { BaseAddress = httpBase };
@@ -67,25 +68,25 @@ public class ResiliencyIntegrationTests
 
         await startedSignal.Task.WaitAsync(ct);
 
-        var stopTask = dispatcher.StopOrThrowAsync(ct);
+        var stopTask = dispatcher.StopAsyncChecked(ct);
 
         await Task.Delay(100, ct);
 
         using (var rejectedRequest = CreateHttpRequest("resiliency::slow"))
         using (var rejectedResponse = await httpClient.SendAsync(rejectedRequest, ct))
         {
-            Assert.Equal(HttpStatusCode.ServiceUnavailable, rejectedResponse.StatusCode);
+            rejectedResponse.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
             AssertRetryAfter(rejectedResponse.Headers);
             await rejectedResponse.Content.ReadAsByteArrayAsync(ct);
         }
 
-        Assert.False(stopTask.IsCompleted);
+        stopTask.IsCompleted.Should().BeFalse();
 
         releaseSignal.TrySetResult();
 
         using (var response = await inflight)
         {
-            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
             await response.Content.ReadAsByteArrayAsync(ct);
         }
 
@@ -93,13 +94,13 @@ public class ResiliencyIntegrationTests
     }
 
     [Fact(Timeout = 60_000)]
-    public async Task GrpcInbound_StopAsync_DrainsAndRejectsNewCalls()
+    public async ValueTask GrpcInbound_StopAsync_DrainsAndRejectsNewCalls()
     {
         var grpcPort = TestPortAllocator.GetRandomPort();
         var grpcAddress = new Uri($"http://127.0.0.1:{grpcPort}");
 
         var options = new DispatcherOptions("resiliency-grpc-drain");
-        var grpcInbound = new GrpcInbound([grpcAddress.ToString()]);
+        var grpcInbound = GrpcInbound.TryCreate([grpcAddress]).ValueOrChecked();
         options.AddLifecycle("resiliency-grpc-drain-inbound", grpcInbound);
 
         var dispatcher = new Dispatcher.Dispatcher(options);
@@ -117,7 +118,7 @@ public class ResiliencyIntegrationTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await dispatcher.StartOrThrowAsync(ct);
+        await dispatcher.StartAsyncChecked(ct);
         await WaitForGrpcReadyAsync(grpcAddress, ct);
 
         using var channel = GrpcChannel.ForAddress(grpcAddress);
@@ -133,39 +134,39 @@ public class ResiliencyIntegrationTests
 
         await startedSignal.Task.WaitAsync(ct);
 
-        var stopTask = dispatcher.StopOrThrowAsync(ct);
+        var stopTask = dispatcher.StopAsyncChecked(ct);
         await Task.Delay(100, ct);
 
         var rejectedCall = invoker.AsyncUnaryCall(method, null, new CallOptions(), []);
-        var rejection = await Assert.ThrowsAsync<RpcException>(() => rejectedCall.ResponseAsync);
+        var rejection = await Invoking(() => rejectedCall.ResponseAsync).Should().ThrowAsync<RpcException>();
         rejectedCall.Dispose();
-        Assert.Equal(StatusCode.Unavailable, rejection.StatusCode);
-        Assert.Equal("1", rejection.Trailers.GetValue("retry-after"));
+        rejection.Which.StatusCode.Should().Be(StatusCode.Unavailable);
+        rejection.Which.Trailers.GetValue("retry-after").Should().Be("1");
 
-        Assert.False(stopTask.IsCompleted);
+        stopTask.IsCompleted.Should().BeFalse();
 
         releaseSignal.TrySetResult();
 
         var inflightResponse = await inflight.ResponseAsync.WaitAsync(ct);
-        Assert.Empty(inflightResponse);
+        inflightResponse.Should().BeEmpty();
 
         await stopTask;
     }
 
     [Fact(Timeout = 60_000)]
-    public async Task GrpcOutbound_WithMutualTlsRequirement_SurfacesRetryableMetadata()
+    public async ValueTask GrpcOutbound_WithMutualTlsRequirement_SurfacesRetryableMetadata()
     {
         using var certificate = TestCertificateFactory.CreateLoopbackCertificate("CN=omnirelay-resiliency-handshake");
 
         var backendPort = TestPortAllocator.GetRandomPort();
         var backendAddress = new Uri($"https://127.0.0.1:{backendPort}");
         var backendOptions = new DispatcherOptions("resiliency-handshake-backend");
-        var backendInbound = new GrpcInbound([backendAddress.ToString()], serverTlsOptions: new GrpcServerTlsOptions
+        var backendInbound = GrpcInbound.TryCreate([backendAddress], serverTlsOptions: new GrpcServerTlsOptions
         {
             Certificate = certificate,
             ClientCertificateMode = ClientCertificateMode.RequireCertificate,
             ClientCertificateValidation = static (_, _, _) => true
-        });
+        }).ValueOrChecked();
         backendOptions.AddLifecycle("resiliency-handshake-grpc", backendInbound);
 
         var backendDispatcher = new Dispatcher.Dispatcher(backendOptions);
@@ -179,7 +180,7 @@ public class ResiliencyIntegrationTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await backendDispatcher.StartOrThrowAsync(ct);
+        await backendDispatcher.StartAsyncChecked(ct);
         await WaitForGrpcReadyAsync(backendAddress, ct);
 
         var outbound = new GrpcOutbound(
@@ -201,24 +202,24 @@ public class ResiliencyIntegrationTests
                 []);
 
             var result = await client.CallAsync(request, ct);
-            Assert.True(result.IsFailure);
+            result.IsFailure.Should().BeTrue();
 
             var error = result.Error!;
-            Assert.Equal("unavailable", error.Code);
-            Assert.True(error.TryGetMetadata(TransportMetadataKey, out string? transport));
-            Assert.Equal(GrpcTransport, transport);
-            Assert.True(error.TryGetMetadata(RetryableMetadataKey, out bool retryable));
-            Assert.True(retryable);
+            error.Code.Should().Be("unavailable");
+            error.TryGetMetadata(TransportMetadataKey, out string? transport).Should().BeTrue();
+            transport.Should().Be(GrpcTransport);
+            error.TryGetMetadata(RetryableMetadataKey, out bool retryable).Should().BeTrue();
+            retryable.Should().BeTrue();
         }
         finally
         {
             await outbound.StopAsync(CancellationToken.None);
-            await backendDispatcher.StopOrThrowAsync(CancellationToken.None);
+            await backendDispatcher.StopAsyncChecked(CancellationToken.None);
         }
     }
 
     [Http3Fact(Timeout = 90_000)]
-    public async Task GrpcClient_WithHttp3Preferred_FallsBackToHttp2()
+    public async ValueTask GrpcClient_WithHttp3Preferred_FallsBackToHttp2()
     {
         if (!QuicListener.IsSupported)
         {
@@ -231,10 +232,11 @@ public class ResiliencyIntegrationTests
         var address = new Uri($"https://127.0.0.1:{port}");
 
         var backendOptions = new DispatcherOptions("resiliency-h3-backend");
-        var inbound = new GrpcInbound(
-            [address.ToString()],
+        var inbound = GrpcInbound.TryCreate(
+            [address],
             serverTlsOptions: new GrpcServerTlsOptions { Certificate = certificate },
-            serverRuntimeOptions: new GrpcServerRuntimeOptions { EnableHttp3 = false });
+            serverRuntimeOptions: new GrpcServerRuntimeOptions { EnableHttp3 = false })
+            .ValueOrChecked();
         backendOptions.AddLifecycle("resiliency-h3-grpc", inbound);
 
         var protocolCapture = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -273,7 +275,7 @@ public class ResiliencyIntegrationTests
         var client = new UnaryClient<byte[], byte[]>(outbound, codec, []);
 
         var ct = TestContext.Current.CancellationToken;
-        await backendDispatcher.StartOrThrowAsync(ct);
+        await backendDispatcher.StartAsyncChecked(ct);
         await outbound.StartAsync(ct);
         await WaitForGrpcReadyAsync(address, ct);
 
@@ -284,26 +286,26 @@ public class ResiliencyIntegrationTests
                 []);
 
             var result = await client.CallAsync(request, ct);
-            Assert.True(result.IsSuccess);
+            result.IsSuccess.Should().BeTrue();
 
             var observed = await protocolCapture.Task.WaitAsync(ct);
-            Assert.Equal("HTTP/2", observed);
+            observed.Should().Be("HTTP/2");
         }
         finally
         {
             await outbound.StopAsync(CancellationToken.None);
-            await backendDispatcher.StopOrThrowAsync(CancellationToken.None);
+            await backendDispatcher.StopAsyncChecked(CancellationToken.None);
         }
     }
 
     [Fact(Timeout = 60_000)]
-    public async Task DeadlinesAndCancellations_SurfaceStatusesAndRetryHints()
+    public async ValueTask DeadlinesAndCancellations_SurfaceStatusesAndRetryHints()
     {
         var timeoutPort = TestPortAllocator.GetRandomPort();
         var timeoutBase = new Uri($"http://127.0.0.1:{timeoutPort}/");
 
         var timeoutOptions = new DispatcherOptions("resiliency-deadlines");
-        var timeoutInbound = new HttpInbound([timeoutBase.ToString()]);
+        var timeoutInbound = HttpInbound.TryCreate([timeoutBase]).ValueOrChecked();
         timeoutOptions.AddLifecycle("resiliency-deadlines-http", timeoutInbound);
         timeoutOptions.UnaryInboundMiddleware.Add(new DeadlineMiddleware());
 
@@ -321,7 +323,7 @@ public class ResiliencyIntegrationTests
         var cancelAddress = new Uri($"http://127.0.0.1:{cancelPort}");
 
         var cancelOptions = new DispatcherOptions("resiliency-cancel");
-        var cancelInbound = new GrpcInbound([cancelAddress.ToString()]);
+        var cancelInbound = GrpcInbound.TryCreate([cancelAddress]).ValueOrChecked();
         cancelOptions.AddLifecycle("resiliency-cancel-grpc", cancelInbound);
 
         var cancelDispatcher = new Dispatcher.Dispatcher(cancelOptions);
@@ -347,8 +349,8 @@ public class ResiliencyIntegrationTests
         });
 
         var ct = TestContext.Current.CancellationToken;
-        await timeoutDispatcher.StartOrThrowAsync(ct);
-        await cancelDispatcher.StartOrThrowAsync(ct);
+        await timeoutDispatcher.StartAsyncChecked(ct);
+        await cancelDispatcher.StartAsyncChecked(ct);
         await WaitForHttpReadyAsync(timeoutBase, ct);
         await WaitForGrpcReadyAsync(cancelAddress, ct);
 
@@ -358,7 +360,7 @@ public class ResiliencyIntegrationTests
             using (var request = CreateHttpRequest("resiliency::timeout", ttlMs: 50))
             using (var response = await httpClient.SendAsync(request, ct))
             {
-                Assert.Equal(HttpStatusCode.GatewayTimeout, response.StatusCode);
+                response.StatusCode.Should().Be(HttpStatusCode.GatewayTimeout);
                 AssertHeader(response.Headers, HttpTransportHeaders.Status, OmniRelayStatusCode.DeadlineExceeded.ToString());
 
                 var json = await response.Content.ReadAsStringAsync(ct);
@@ -372,7 +374,7 @@ public class ResiliencyIntegrationTests
                     JsonValueKind.String => bool.TryParse(retryElement.GetString(), out var parsed) && parsed,
                     _ => false
                 };
-                Assert.True(retryable);
+                retryable.Should().BeTrue();
             }
 
             using var channel = GrpcChannel.ForAddress(cancelAddress);
@@ -386,18 +388,18 @@ public class ResiliencyIntegrationTests
 
             using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(200));
             var call = invoker.AsyncUnaryCall(method, null, new CallOptions(cancellationToken: cts.Token), []);
-            var rpcException = await Assert.ThrowsAsync<RpcException>(() => call.ResponseAsync);
-            Assert.Equal(StatusCode.Cancelled, rpcException.StatusCode);
+            var rpcException = await Invoking(() => call.ResponseAsync).Should().ThrowAsync<RpcException>();
+            rpcException.Which.StatusCode.Should().Be(StatusCode.Cancelled);
         }
         finally
         {
-            await cancelDispatcher.StopOrThrowAsync(CancellationToken.None);
-            await timeoutDispatcher.StopOrThrowAsync(CancellationToken.None);
+            await cancelDispatcher.StopAsyncChecked(CancellationToken.None);
+            await timeoutDispatcher.StopAsyncChecked(CancellationToken.None);
         }
     }
 
     [Fact(Timeout = 60_000)]
-    public async Task RetryMiddlewareAndCircuitBreaker_RecoverFromPeerFailures()
+    public async ValueTask RetryMiddlewareAndCircuitBreaker_RecoverFromPeerFailures()
     {
         var backendPort = TestPortAllocator.GetRandomPort();
         var backendAddress = new Uri($"http://127.0.0.1:{backendPort}");
@@ -421,7 +423,7 @@ public class ResiliencyIntegrationTests
         var unreachableAddress = new Uri($"http://127.0.0.1:{unreachablePort}");
 
         var clientOptions = new DispatcherOptions("resiliency-peers-client");
-        var httpInbound = new HttpInbound([httpBase.ToString()]);
+        var httpInbound = HttpInbound.TryCreate([httpBase]).ValueOrChecked();
         clientOptions.AddLifecycle("resiliency-peers-http", httpInbound);
 
         var grpcOutbound = new GrpcOutbound(
@@ -449,7 +451,16 @@ public class ResiliencyIntegrationTests
             "resiliency::proxy",
             async (request, token) =>
             {
-                backendClient ??= proxyDispatcher.CreateUnaryClient("resiliency-peers-backend", rawCodec);
+                if (backendClient is null)
+                {
+                    var createResult = proxyDispatcher.CreateUnaryClient("resiliency-peers-backend", rawCodec);
+                    if (createResult.IsFailure)
+                    {
+                        return Err<Response<ReadOnlyMemory<byte>>>(createResult.Error!);
+                    }
+
+                    backendClient = createResult.Value;
+                }
                 var outboundRequest = new Request<byte[]>(
                     new RequestMeta("resiliency-peers-backend", "resiliency-backend::echo", encoding: rawCodec.Encoding, transport: GrpcTransport),
                     request.Body.ToArray());
@@ -465,8 +476,8 @@ public class ResiliencyIntegrationTests
             }));
 
         var ct = TestContext.Current.CancellationToken;
-        await backendDispatcher.StartOrThrowAsync(ct);
-        await proxyDispatcher.StartOrThrowAsync(ct);
+        await backendDispatcher.StartAsyncChecked(ct);
+        await proxyDispatcher.StartAsyncChecked(ct);
         await WaitForGrpcReadyAsync(backendAddress, ct);
         await WaitForHttpReadyAsync(httpBase, ct);
 
@@ -475,25 +486,25 @@ public class ResiliencyIntegrationTests
             using var httpClient = new HttpClient { BaseAddress = httpBase };
             using var request = CreateHttpRequest("resiliency::proxy", payload: "hello"u8.ToArray());
             using var response = await httpClient.SendAsync(request, ct);
-            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
             var bodyBytes = await response.Content.ReadAsByteArrayAsync(ct);
-            Assert.Equal("hello", Encoding.UTF8.GetString(bodyBytes));
+            Encoding.UTF8.GetString(bodyBytes).Should().Be("hello");
 
-            var snapshot = Assert.IsType<GrpcOutboundSnapshot>(grpcOutbound.GetOutboundDiagnostics());
-            Assert.Equal(2, snapshot.PeerSummaries.Count);
+            var snapshot = grpcOutbound.GetOutboundDiagnostics().Should().BeOfType<GrpcOutboundSnapshot>().Subject;
+            snapshot.PeerSummaries.Count.Should().Be(2);
 
             var failingPeer = snapshot.PeerSummaries.Single(summary => summary.Address == unreachableAddress);
-            Assert.True(failingPeer.FailureCount >= 1);
-            Assert.Equal(PeerState.Unavailable, failingPeer.State);
+            failingPeer.FailureCount.Should().BeGreaterThanOrEqualTo(1);
+            failingPeer.State.Should().Be(PeerState.Unavailable);
 
             var healthyPeer = snapshot.PeerSummaries.Single(summary => summary.Address == backendAddress);
-            Assert.True(healthyPeer.SuccessCount >= 1);
-            Assert.Equal(PeerState.Available, healthyPeer.State);
+            healthyPeer.SuccessCount.Should().BeGreaterThanOrEqualTo(1);
+            healthyPeer.State.Should().Be(PeerState.Available);
         }
         finally
         {
-            await proxyDispatcher.StopOrThrowAsync(CancellationToken.None);
-            await backendDispatcher.StopOrThrowAsync(CancellationToken.None);
+            await proxyDispatcher.StopAsyncChecked(CancellationToken.None);
+            await backendDispatcher.StopAsyncChecked(CancellationToken.None);
         }
     }
 
@@ -525,14 +536,14 @@ public class ResiliencyIntegrationTests
 
     private static void AssertRetryAfter(HttpResponseHeaders headers)
     {
-        Assert.True(headers.TryGetValues("Retry-After", out var values));
-        Assert.Contains("1", values);
+        headers.TryGetValues("Retry-After", out var values).Should().BeTrue();
+        values.Should().Contain("1");
     }
 
     private static void AssertHeader(HttpResponseHeaders headers, string name, string expected)
     {
-        Assert.True(headers.TryGetValues(name, out var values));
-        Assert.Contains(expected, values);
+        headers.TryGetValues(name, out var values).Should().BeTrue();
+        values.Should().Contain(expected);
     }
 
     private static async Task WaitForHttpReadyAsync(Uri baseAddress, CancellationToken cancellationToken)
