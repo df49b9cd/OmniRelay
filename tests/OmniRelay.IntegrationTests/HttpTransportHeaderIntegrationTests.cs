@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Mime;
 using System.Text;
 using System.Text.Json;
+using AwesomeAssertions;
 using OmniRelay.Core;
 using OmniRelay.Dispatcher;
 using OmniRelay.Errors;
@@ -77,17 +78,17 @@ public class HttpTransportHeaderIntegrationTests
             using (var jsonContent = new StringContent("{\"message\":\"json\"}", Encoding.UTF8, MediaTypeNames.Application.Json))
             {
                 using var response = await client.PostAsync("/", jsonContent, ct);
-                Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-                Assert.Equal(MediaTypeNames.Application.Json, response.Content.Headers.ContentType?.MediaType);
-                Assert.True(response.Headers.TryGetValues(HttpTransportHeaders.Transport, out var transportValues));
-                Assert.Contains("http", transportValues);
-                Assert.True(response.Headers.TryGetValues(HttpTransportHeaders.Protocol, out var protocolValues));
-                Assert.Contains("HTTP/1.1", protocolValues);
-                Assert.True(response.Headers.TryGetValues(HttpTransportHeaders.Encoding, out var responseEncoding));
-                Assert.Contains(MediaTypeNames.Application.Json, responseEncoding);
+                response.StatusCode.Should().Be(HttpStatusCode.OK);
+                response.Content.Headers.ContentType?.MediaType.Should().Be(MediaTypeNames.Application.Json);
+                response.Headers.TryGetValues(HttpTransportHeaders.Transport, out var transportValues).Should().BeTrue();
+                transportValues.Should().Contain("http");
+                response.Headers.TryGetValues(HttpTransportHeaders.Protocol, out var protocolValues).Should().BeTrue();
+                protocolValues.Should().Contain("HTTP/1.1");
+                response.Headers.TryGetValues(HttpTransportHeaders.Encoding, out var responseEncoding).Should().BeTrue();
+                responseEncoding.Should().Contain(MediaTypeNames.Application.Json);
 
                 var body = await response.Content.ReadAsStringAsync(ct);
-                Assert.Equal("{\"result\":\"json\"}", body);
+                body.Should().Be("{\"result\":\"json\"}");
             }
 
             client.DefaultRequestHeaders.Remove(HttpTransportHeaders.Procedure);
@@ -100,18 +101,18 @@ public class HttpTransportHeaderIntegrationTests
             client.DefaultRequestHeaders.Remove(HttpTransportHeaders.Encoding);
 
             var jsonMeta = await jsonMetaSource.Task.WaitAsync(TimeSpan.FromSeconds(5), ct);
-            Assert.Equal("headers-service", jsonMeta.Service);
-            Assert.Equal("headers::json", jsonMeta.Procedure);
-            Assert.Equal("integration-client", jsonMeta.Caller);
-            Assert.Equal(MediaTypeNames.Application.Json, jsonMeta.Encoding);
-            Assert.Equal("http", jsonMeta.Transport);
-            Assert.Equal("shard-a", jsonMeta.ShardKey);
-            Assert.Equal("route-a", jsonMeta.RoutingKey);
-            Assert.Equal("delegate-a", jsonMeta.RoutingDelegate);
-            Assert.Equal(TimeSpan.FromMilliseconds(250), jsonMeta.TimeToLive);
-            Assert.Equal(deadline, jsonMeta.Deadline?.ToUniversalTime().ToString("O"));
-            Assert.True(jsonMeta.Headers.TryGetValue(HttpTransportHeaders.Protocol, out var jsonProtocol));
-            Assert.Equal("HTTP/1.1", jsonProtocol);
+            jsonMeta.Service.Should().Be("headers-service");
+            jsonMeta.Procedure.Should().Be("headers::json");
+            jsonMeta.Caller.Should().Be("integration-client");
+            jsonMeta.Encoding.Should().Be(MediaTypeNames.Application.Json);
+            jsonMeta.Transport.Should().Be("http");
+            jsonMeta.ShardKey.Should().Be("shard-a");
+            jsonMeta.RoutingKey.Should().Be("route-a");
+            jsonMeta.RoutingDelegate.Should().Be("delegate-a");
+            jsonMeta.TimeToLive.Should().Be(TimeSpan.FromMilliseconds(250));
+            jsonMeta.Deadline?.ToUniversalTime().ToString("O").Should().Be(deadline);
+            jsonMeta.Headers.TryGetValue(HttpTransportHeaders.Protocol, out var jsonProtocol).Should().BeTrue();
+            jsonProtocol.Should().Be("HTTP/1.1");
 
             client.DefaultRequestHeaders.Add(HttpTransportHeaders.Procedure, "headers::protobuf");
             client.DefaultRequestHeaders.Add(HttpTransportHeaders.Encoding, ProtobufContentType);
@@ -121,24 +122,24 @@ public class HttpTransportHeaderIntegrationTests
                 requestContent.Headers.ContentType = new MediaTypeHeaderValue(ProtobufContentType);
 
                 using var response = await client.PostAsync("/", requestContent, ct);
-                Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-                Assert.True(response.Headers.TryGetValues(HttpTransportHeaders.Transport, out var transportValues));
-                Assert.Contains("http", transportValues);
-                Assert.True(response.Headers.TryGetValues(HttpTransportHeaders.Encoding, out var responseEncoding));
-                Assert.Contains(ProtobufNormalizedEncoding, responseEncoding);
-                Assert.Equal(ProtobufContentType, response.Content.Headers.ContentType?.MediaType);
+                response.StatusCode.Should().Be(HttpStatusCode.OK);
+                response.Headers.TryGetValues(HttpTransportHeaders.Transport, out var transportValues).Should().BeTrue();
+                transportValues.Should().Contain("http");
+                response.Headers.TryGetValues(HttpTransportHeaders.Encoding, out var responseEncoding).Should().BeTrue();
+                responseEncoding.Should().Contain(ProtobufNormalizedEncoding);
+                response.Content.Headers.ContentType?.MediaType.Should().Be(ProtobufContentType);
                 var body = await response.Content.ReadAsByteArrayAsync(ct);
-                Assert.Equal(new byte[] { 0x0A, 0x0B, 0x0C }, body);
+                body.Should().Equal(new byte[] { 0x0A, 0x0B, 0x0C });
             }
 
             client.DefaultRequestHeaders.Remove(HttpTransportHeaders.Procedure);
             client.DefaultRequestHeaders.Remove(HttpTransportHeaders.Encoding);
 
             var protoMeta = await protoMetaSource.Task.WaitAsync(TimeSpan.FromSeconds(5), ct);
-            Assert.Equal(ProtobufContentType, protoMeta.Encoding);
-            Assert.Equal("http", protoMeta.Transport);
-            Assert.True(protoMeta.Headers.TryGetValue(HttpTransportHeaders.Protocol, out var protoProtocol));
-            Assert.Equal("HTTP/1.1", protoProtocol);
+            protoMeta.Encoding.Should().Be(ProtobufContentType);
+            protoMeta.Transport.Should().Be("http");
+            protoMeta.Headers.TryGetValue(HttpTransportHeaders.Protocol, out var protoProtocol).Should().BeTrue();
+            protoProtocol.Should().Be("HTTP/1.1");
         }
         finally
         {
@@ -180,24 +181,24 @@ public class HttpTransportHeaderIntegrationTests
 
             using var requestContent = new StringContent("{}", Encoding.UTF8, MediaTypeNames.Application.Json);
             using var response = await client.PostAsync("/", requestContent, ct);
-            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-            Assert.True(response.Headers.TryGetValues(HttpTransportHeaders.Transport, out var transportValues));
-            Assert.Contains("http", transportValues);
-            Assert.True(response.Headers.TryGetValues(HttpTransportHeaders.Protocol, out var protocolValues));
-            Assert.Contains("HTTP/1.1", protocolValues);
-            Assert.True(response.Headers.TryGetValues(HttpTransportHeaders.Status, out var statusValues));
-            Assert.Contains(nameof(OmniRelayStatusCode.InvalidArgument), statusValues);
-            Assert.True(response.Headers.TryGetValues(HttpTransportHeaders.ErrorCode, out var codeValues));
-            Assert.Contains("invalid-argument", codeValues);
-            Assert.True(response.Headers.TryGetValues(HttpTransportHeaders.ErrorMessage, out var messageValues));
-            Assert.Contains("invalid payload", messageValues);
-            Assert.Equal(MediaTypeNames.Application.Json, response.Content.Headers.ContentType?.MediaType);
+            response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+            response.Headers.TryGetValues(HttpTransportHeaders.Transport, out var transportValues).Should().BeTrue();
+            transportValues.Should().Contain("http");
+            response.Headers.TryGetValues(HttpTransportHeaders.Protocol, out var protocolValues).Should().BeTrue();
+            protocolValues.Should().Contain("HTTP/1.1");
+            response.Headers.TryGetValues(HttpTransportHeaders.Status, out var statusValues).Should().BeTrue();
+            statusValues.Should().Contain(nameof(OmniRelayStatusCode.InvalidArgument));
+            response.Headers.TryGetValues(HttpTransportHeaders.ErrorCode, out var codeValues).Should().BeTrue();
+            codeValues.Should().Contain("invalid-argument");
+            response.Headers.TryGetValues(HttpTransportHeaders.ErrorMessage, out var messageValues).Should().BeTrue();
+            messageValues.Should().Contain("invalid payload");
+            response.Content.Headers.ContentType?.MediaType.Should().Be(MediaTypeNames.Application.Json);
 
             var body = await response.Content.ReadAsStringAsync(ct);
             using var json = JsonDocument.Parse(body);
-            Assert.Equal("invalid payload", json.RootElement.GetProperty("message").GetString());
-            Assert.Equal("INVALID_ARGUMENT", json.RootElement.GetProperty("status").GetString());
-            Assert.Equal("invalid-argument", json.RootElement.GetProperty("code").GetString());
+            json.RootElement.GetProperty("message").GetString().Should().Be("invalid payload");
+            json.RootElement.GetProperty("status").GetString().Should().Be("INVALID_ARGUMENT");
+            json.RootElement.GetProperty("code").GetString().Should().Be("invalid-argument");
         }
         finally
         {

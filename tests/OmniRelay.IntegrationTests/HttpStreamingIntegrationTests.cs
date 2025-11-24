@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Mime;
 using System.Text;
+using AwesomeAssertions;
 using OmniRelay.Core;
 using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
@@ -62,10 +63,10 @@ public class HttpStreamingIntegrationTests
             client.DefaultRequestHeaders.Accept.ParseAdd("text/event-stream");
 
             using var response = await client.GetAsync("/", HttpCompletionOption.ResponseHeadersRead, ct);
-            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-            Assert.Equal("text/event-stream", response.Content.Headers.ContentType?.MediaType);
-            Assert.True(response.Headers.TryGetValues("X-Accel-Buffering", out var bufferingValues));
-            Assert.Contains("no", bufferingValues);
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+            response.Content.Headers.ContentType?.MediaType.Should().Be("text/event-stream");
+            response.Headers.TryGetValues("X-Accel-Buffering", out var bufferingValues).Should().BeTrue();
+            bufferingValues.Should().Contain("no");
 
             using var stream = await response.Content.ReadAsStreamAsync(ct);
             using var reader = new StreamReader(stream, Encoding.UTF8);
@@ -85,7 +86,7 @@ public class HttpStreamingIntegrationTests
                 }
             }
 
-            Assert.Equal(new[] { "event-0", "event-1", "event-2" }, events);
+            events.Should().Equal("event-0", "event-1", "event-2");
         }
         finally
         {
@@ -141,7 +142,7 @@ public class HttpStreamingIntegrationTests
             client.DefaultRequestHeaders.Accept.ParseAdd("text/event-stream");
 
             using var response = await client.GetAsync("/", HttpCompletionOption.ResponseHeadersRead, ct);
-            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
 
             using var stream = await response.Content.ReadAsStreamAsync(ct);
             using var reader = new StreamReader(stream, Encoding.UTF8);
@@ -162,11 +163,11 @@ public class HttpStreamingIntegrationTests
                 // Connection was aborted because the payload exceeded the configured limit.
             }
 
-            Assert.NotNull(streamCall);
+            streamCall.Should().NotBeNull();
             await WaitForCompletionAsync(streamCall!, ct);
-            Assert.Equal(StreamCompletionStatus.Faulted, streamCall!.Context.CompletionStatus);
-            Assert.NotNull(streamCall.Context.CompletionError);
-            Assert.Equal(OmniRelayStatusCode.ResourceExhausted, OmniRelayErrorAdapter.ToStatus(streamCall.Context.CompletionError!));
+            streamCall!.Context.CompletionStatus.Should().Be(StreamCompletionStatus.Faulted);
+            streamCall.Context.CompletionError.Should().NotBeNull();
+            OmniRelayErrorAdapter.ToStatus(streamCall.Context.CompletionError!).Should().Be(OmniRelayStatusCode.ResourceExhausted);
         }
         finally
         {

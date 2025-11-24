@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Mime;
+using AwesomeAssertions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -54,14 +55,14 @@ public class HttpDispatcherHostIntegrationTests
 
             using var content = new ByteArrayContent("ping"u8.ToArray());
             using var response = await httpClient.PostAsync("/", content, ct);
-            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
             var body = await response.Content.ReadAsStringAsync(ct);
-            Assert.Equal("integration-http-response", body);
+            body.Should().Be("integration-http-response");
 
-            Assert.True(response.Headers.TryGetValues(HttpTransportHeaders.Encoding, out var encodingValues));
-            Assert.Contains(MediaTypeNames.Text.Plain, encodingValues);
-            Assert.True(response.Headers.TryGetValues(HttpTransportHeaders.Transport, out var transportValues));
-            Assert.Contains("http", transportValues);
+            response.Headers.TryGetValues(HttpTransportHeaders.Encoding, out var encodingValues).Should().BeTrue();
+            encodingValues.Should().Contain(MediaTypeNames.Text.Plain);
+            response.Headers.TryGetValues(HttpTransportHeaders.Transport, out var transportValues).Should().BeTrue();
+            transportValues.Should().Contain("http");
         }
         finally
         {
