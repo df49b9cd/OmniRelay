@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AwesomeAssertions;
 using OmniRelay.Core;
 using OmniRelay.Dispatcher;
 using OmniRelay.IntegrationTests.Support;
@@ -47,8 +48,8 @@ public sealed class MetaHeadersTests(ITestOutputHelper output) : TransportIntegr
         var body = await response.Content.ReadAsByteArrayAsync(ct);
         var payload = JsonSerializer.Deserialize<MetaDiagnosticsPayload>(body);
 
-        Assert.Equal(1500d, payload?.TtlMs ?? double.NaN, precision: 0);
-        Assert.Equal(deadline, payload?.Deadline);
+        (payload?.TtlMs ?? double.NaN).Should().BeApproximately(1500d, 0);
+        payload?.Deadline.Should().Be(deadline);
     }
 }
 

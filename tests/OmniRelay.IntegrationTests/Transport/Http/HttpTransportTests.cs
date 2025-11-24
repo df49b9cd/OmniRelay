@@ -1,11 +1,13 @@
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using AwesomeAssertions;
 using OmniRelay.Core;
 using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
 using OmniRelay.Errors;
 using OmniRelay.IntegrationTests.Support;
+using OmniRelay.TestSupport.Assertions;
 using OmniRelay.Transport.Http;
 using Xunit;
 using static Hugo.Go;
@@ -73,8 +75,8 @@ public sealed class HttpTransportTests(ITestOutputHelper output) : TransportInte
 
         var result = await client.CallAsync(request, ct);
 
-        Assert.True(result.IsSuccess, result.Error?.Message);
-        Assert.Equal("HELLO", result.Value.Body.Message);
+        result.IsSuccess.Should().BeTrue(result.Error?.Message);
+        result.Value.Body.Message.Should().Be("HELLO");
     }
 
     private sealed record EchoRequest(string Message)
@@ -141,8 +143,8 @@ public sealed class HttpTransportTests(ITestOutputHelper output) : TransportInte
 
         var ackResult = await client.CallAsync(request, ct);
 
-        Assert.True(ackResult.IsSuccess, ackResult.Error?.Message);
-        Assert.Equal("ping", await received.Task.WaitAsync(TimeSpan.FromSeconds(2), ct));
+        ackResult.IsSuccess.Should().BeTrue(ackResult.Error?.Message);
+        (await received.Task.WaitAsync(TimeSpan.FromSeconds(2), ct)).Should().Be("ping");
     }
 
     [Fact(Timeout = 30000)]
@@ -196,10 +198,11 @@ public sealed class HttpTransportTests(ITestOutputHelper output) : TransportInte
 
         using var response = await httpClient.GetAsync("/", HttpCompletionOption.ResponseHeadersRead, ct);
 
-        Assert.True(response.IsSuccessStatusCode);
-        Assert.Equal("text/event-stream", response.Content.Headers.ContentType?.MediaType);
-        Assert.True(response.Headers.TryGetValues("X-Accel-Buffering", out var xab) || response.Content.Headers.TryGetValues("X-Accel-Buffering", out xab));
-        Assert.Contains("no", xab);
+        response.IsSuccessStatusCode.Should().BeTrue();
+        response.Content.Headers.ContentType?.MediaType.Should().Be("text/event-stream");
+        var bufferingHeaderFound = response.Headers.TryGetValues("X-Accel-Buffering", out var xab) || response.Content.Headers.TryGetValues("X-Accel-Buffering", out xab);
+        bufferingHeaderFound.Should().BeTrue();
+        xab.Should().Contain("no");
         using var responseStream = await response.Content.ReadAsStreamAsync(ct);
         using var reader = new StreamReader(responseStream, Encoding.UTF8);
 
@@ -219,7 +222,7 @@ public sealed class HttpTransportTests(ITestOutputHelper output) : TransportInte
             }
         }
 
-        Assert.Equal(new[] { "event-0", "event-1", "event-2" }, events);
+        events.Should().Equal("event-0", "event-1", "event-2");
     }
 
     [Fact(Timeout = 30000)]
@@ -269,7 +272,7 @@ public sealed class HttpTransportTests(ITestOutputHelper output) : TransportInte
         httpClient.DefaultRequestHeaders.Accept.ParseAdd("text/event-stream");
 
         using var response = await httpClient.GetAsync("/", HttpCompletionOption.ResponseHeadersRead, ct);
-        Assert.True(response.IsSuccessStatusCode);
+        response.IsSuccessStatusCode.Should().BeTrue();
 
         using var responseStream = await response.Content.ReadAsStreamAsync(ct);
         using var reader = new StreamReader(responseStream, Encoding.UTF8);
@@ -278,9 +281,9 @@ public sealed class HttpTransportTests(ITestOutputHelper output) : TransportInte
         var encodingLine = await reader.ReadLineAsync(ct);
         var blankLine = await reader.ReadLineAsync(ct);
 
-        Assert.Equal("data: AAEC", dataLine);
-        Assert.Equal("encoding: base64", encodingLine);
-        Assert.Equal(string.Empty, blankLine);
+        dataLine.Should().Be("data: AAEC");
+        encodingLine.Should().Be("encoding: base64");
+        blankLine.Should().Be(string.Empty);
     }
 
     [Fact(Timeout = 30000)]
@@ -337,7 +340,7 @@ public sealed class HttpTransportTests(ITestOutputHelper output) : TransportInte
         try
         {
             response = await httpClient.GetAsync("/", HttpCompletionOption.ResponseHeadersRead, ct);
-            Assert.True(response.IsSuccessStatusCode);
+            response.IsSuccessStatusCode.Should().BeTrue();
         }
         catch (HttpRequestException exception) when (IsConnectionReset(exception))
         {
@@ -350,11 +353,11 @@ public sealed class HttpTransportTests(ITestOutputHelper output) : TransportInte
 
         await WaitForCompletionAsync(ct);
 
-        Assert.NotNull(streamCall);
-        Assert.Equal(StreamCompletionStatus.Faulted, streamCall!.Context.CompletionStatus);
+        streamCall.Should().NotBeNull();
+        streamCall!.Context.CompletionStatus.Should().Be(StreamCompletionStatus.Faulted);
         var completionError = streamCall.Context.CompletionError;
-        Assert.NotNull(completionError);
-        Assert.Equal(OmniRelayStatusCode.ResourceExhausted, OmniRelayErrorAdapter.ToStatus(completionError!));
+        completionError.Should().NotBeNull();
+        OmniRelayErrorAdapter.ToStatus(completionError!).Should().Be(OmniRelayStatusCode.ResourceExhausted);
 
         async Task WaitForCompletionAsync(CancellationToken cancellationToken)
         {
@@ -476,7 +479,7 @@ public sealed class HttpTransportTests(ITestOutputHelper output) : TransportInte
             messages.Add(response.ValueOrChecked().Body.Message);
         }
 
-        Assert.Equal(new[] { "hello", "world" }, messages);
+        messages.Should().Equal("hello", "world");
     }
 
     [Fact(Timeout = 30000)]
@@ -531,8 +534,8 @@ public sealed class HttpTransportTests(ITestOutputHelper output) : TransportInte
         await using var session = sessionResult.ValueOrChecked();
 
         await using var enumerator = session.ReadResponsesAsync(ct).GetAsyncEnumerator(ct);
-        Assert.True(await enumerator.MoveNextAsync());
-        Assert.True(enumerator.Current.IsFailure);
-        Assert.Equal(OmniRelayStatusCode.Cancelled, OmniRelayErrorAdapter.ToStatus(enumerator.Current.Error!));
+        (await enumerator.MoveNextAsync()).Should().BeTrue();
+        enumerator.Current.IsFailure.Should().BeTrue();
+        OmniRelayErrorAdapter.ToStatus(enumerator.Current.Error!).Should().Be(OmniRelayStatusCode.Cancelled);
     }
 }

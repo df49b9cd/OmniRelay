@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
+using AwesomeAssertions;
 using OmniRelay.Core;
 using OmniRelay.Dispatcher;
 using OmniRelay.IntegrationTests.Support;
@@ -40,7 +41,7 @@ public sealed class InMemoryThresholdTests(ITestOutputHelper output) : Transport
         using var content = new StringContent(big, Encoding.UTF8, "text/plain");
         using var resp = await httpClient.PostAsync("/", content, ct);
 
-        Assert.Equal(HttpStatusCode.TooManyRequests, resp.StatusCode);
+        resp.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
     }
 
     [Fact(Timeout = 30000)]
@@ -75,7 +76,7 @@ public sealed class InMemoryThresholdTests(ITestOutputHelper output) : Transport
 
         using var resp = await httpClient.PostAsync("/", content, ct);
 
-        Assert.Equal(HttpStatusCode.TooManyRequests, resp.StatusCode);
+        resp.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
     }
 
     [Fact(Timeout = 30000)]
@@ -110,7 +111,7 @@ public sealed class InMemoryThresholdTests(ITestOutputHelper output) : Transport
 
         using var resp = await httpClient.PostAsync("/", content, ct);
 
-        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
     private sealed class NonSeekableReadStream(byte[] buffer) : Stream

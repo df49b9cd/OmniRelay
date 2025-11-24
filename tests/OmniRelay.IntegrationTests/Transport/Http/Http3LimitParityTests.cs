@@ -5,6 +5,7 @@ using System.Net.Security;
 using System.Security.Authentication;
 using System.Security.Cryptography;
 using System.Text.Json;
+using AwesomeAssertions;
 using OmniRelay.Core;
 using OmniRelay.Dispatcher;
 using OmniRelay.Errors;
@@ -63,16 +64,16 @@ public sealed class Http3LimitParityTests(ITestOutputHelper output) : TransportI
 
         using var response = await client.PostAsync("/", content, ct);
 
-        Assert.Equal(HttpStatusCode.TooManyRequests, response.StatusCode);
-        Assert.True(response.Headers.TryGetValues(HttpTransportHeaders.Status, out var statusValues));
-        Assert.Contains(nameof(OmniRelayStatusCode.ResourceExhausted), statusValues);
-        Assert.True(response.Headers.TryGetValues(HttpTransportHeaders.Protocol, out var protocolHeaders));
-        Assert.Contains("HTTP/3", protocolHeaders);
+        response.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+        response.Headers.TryGetValues(HttpTransportHeaders.Status, out var statusValues).Should().BeTrue();
+        statusValues.Should().Contain(nameof(OmniRelayStatusCode.ResourceExhausted));
+        response.Headers.TryGetValues(HttpTransportHeaders.Protocol, out var protocolHeaders).Should().BeTrue();
+        protocolHeaders.Should().Contain("HTTP/3");
 
         var payload = await response.Content.ReadAsStringAsync(ct);
         using var document = JsonDocument.Parse(payload);
-        Assert.Equal("RESOURCE_EXHAUSTED", document.RootElement.GetProperty("status").GetString());
-        Assert.Equal("request body exceeds in-memory decode limit", document.RootElement.GetProperty("message").GetString());
+        document.RootElement.GetProperty("status").GetString().Should().Be("RESOURCE_EXHAUSTED");
+        document.RootElement.GetProperty("message").GetString().Should().Be("request body exceeds in-memory decode limit");
     }
 
     private static SocketsHttpHandler CreateHttp3Handler() => new()

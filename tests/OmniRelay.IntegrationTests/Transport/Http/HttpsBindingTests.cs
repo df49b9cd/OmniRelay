@@ -1,4 +1,5 @@
 using System.Net;
+using AwesomeAssertions;
 using OmniRelay.Core;
 using OmniRelay.Dispatcher;
 using OmniRelay.IntegrationTests.Support;
@@ -42,10 +43,10 @@ public sealed class HttpsBindingTests(ITestOutputHelper output) : TransportInteg
         httpClient.DefaultRequestHeaders.Add(HttpTransportHeaders.Procedure, "ping");
         using var response = await httpClient.PostAsync("/", new ByteArrayContent([]), ct);
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var stopResult = await dispatcher.StopAsync(ct);
-        Assert.True(stopResult.IsSuccess);
+        stopResult.IsSuccess.Should().BeTrue();
     }
 
     [Fact(Timeout = 30000)]
@@ -60,7 +61,7 @@ public sealed class HttpsBindingTests(ITestOutputHelper output) : TransportInteg
         var dispatcher = new OmniRelay.Dispatcher.Dispatcher(options);
 
         var startResult = await dispatcher.StartAsync(TestContext.Current.CancellationToken);
-        Assert.True(startResult.IsFailure);
+        startResult.IsFailure.Should().BeTrue();
     }
 
 }

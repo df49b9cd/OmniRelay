@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AwesomeAssertions;
 using OmniRelay.Core;
 using OmniRelay.Dispatcher;
 using OmniRelay.IntegrationTests.Support;
@@ -39,34 +40,34 @@ public sealed class HttpIntrospectionTests(ITestOutputHelper output) : Transport
 
         using var client = new HttpClient { BaseAddress = baseAddress };
         using var response = await client.GetAsync("omnirelay/introspect", ct);
-        Assert.True(response.IsSuccessStatusCode, $"HTTP {response.StatusCode}");
+        response.IsSuccessStatusCode.Should().BeTrue($"HTTP {response.StatusCode}");
 
         await using var responseStream = await response.Content.ReadAsStreamAsync(ct);
         using var document = await JsonDocument.ParseAsync(responseStream, cancellationToken: ct);
 
         var root = document.RootElement;
-        Assert.Equal("inspect", root.GetProperty("service").GetString());
-        Assert.Equal("Running", root.GetProperty("status").GetString());
+        root.GetProperty("service").GetString().Should().Be("inspect");
+        root.GetProperty("status").GetString().Should().Be("Running");
 
         var procedures = root.GetProperty("procedures");
         var unaryProcedures = procedures.GetProperty("unary").EnumerateArray().ToArray();
-        var procedure = Assert.Single(unaryProcedures, element => element.GetProperty("name").GetString() == "procedures::ping");
-        Assert.Equal("application/json", procedure.GetProperty("encoding").GetString());
-        Assert.Equal(0, procedures.GetProperty("oneway").GetArrayLength());
-        Assert.Equal(0, procedures.GetProperty("stream").GetArrayLength());
-        Assert.Equal(0, procedures.GetProperty("clientStream").GetArrayLength());
-        Assert.Equal(0, procedures.GetProperty("duplex").GetArrayLength());
+        var procedure = unaryProcedures.Should().ContainSingle(element => element.GetProperty("name").GetString() == "procedures::ping").Which;
+        procedure.GetProperty("encoding").GetString().Should().Be("application/json");
+        procedures.GetProperty("oneway").GetArrayLength().Should().Be(0);
+        procedures.GetProperty("stream").GetArrayLength().Should().Be(0);
+        procedures.GetProperty("clientStream").GetArrayLength().Should().Be(0);
+        procedures.GetProperty("duplex").GetArrayLength().Should().Be(0);
 
         var components = root.GetProperty("components").EnumerateArray().ToArray();
-        Assert.Contains(components, component =>
+        components.Should().Contain(component =>
             string.Equals(component.GetProperty("name").GetString(), "http-inbound", StringComparison.OrdinalIgnoreCase) &&
             component.GetProperty("componentType").GetString()!.Contains(nameof(HttpInbound), StringComparison.Ordinal));
 
         var middleware = root.GetProperty("middleware");
-        Assert.True(middleware.TryGetProperty("inboundUnary", out var inboundUnary));
-        Assert.Equal(0, inboundUnary.GetArrayLength());
+        middleware.TryGetProperty("inboundUnary", out var inboundUnary).Should().BeTrue();
+        inboundUnary.GetArrayLength().Should().Be(0);
 
-        Assert.True(middleware.TryGetProperty("outboundUnary", out var outboundUnary));
-        Assert.Equal(0, outboundUnary.GetArrayLength());
+        middleware.TryGetProperty("outboundUnary", out var outboundUnary).Should().BeTrue();
+        outboundUnary.GetArrayLength().Should().Be(0);
     }
 }

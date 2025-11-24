@@ -1,4 +1,5 @@
 using System.Net;
+using AwesomeAssertions;
 using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
 using OmniRelay.Errors;
@@ -34,6 +35,6 @@ public sealed class DuplexBadRequestTests(ITestOutputHelper output) : TransportI
         using var httpClient = new HttpClient { BaseAddress = baseAddress };
         httpClient.DefaultRequestHeaders.Add(HttpTransportHeaders.Procedure, "chat::echo");
         using var response = await httpClient.GetAsync("/", ct);
-        Assert.Equal(HttpStatusCode.NotAcceptable, response.StatusCode);
+        response.StatusCode.Should().Be(HttpStatusCode.NotAcceptable);
     }
 }

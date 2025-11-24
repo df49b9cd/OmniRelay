@@ -1,4 +1,5 @@
 using System.Net;
+using AwesomeAssertions;
 using OmniRelay.Core;
 using OmniRelay.Dispatcher;
 using OmniRelay.IntegrationTests.Support;
@@ -34,6 +35,6 @@ public sealed class HeaderValidationTests(ITestOutputHelper output) : TransportI
         using var content = new ByteArrayContent([]);
         using var response = await httpClient.PostAsync("/", content, ct);
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 }

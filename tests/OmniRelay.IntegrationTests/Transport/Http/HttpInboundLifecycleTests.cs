@@ -3,6 +3,7 @@ using System.Net.Quic;
 using System.Net.Security;
 using System.Security.Authentication;
 using System.Text.Json;
+using AwesomeAssertions;
 using OmniRelay.Core;
 using OmniRelay.Dispatcher;
 using OmniRelay.IntegrationTests.Support;
@@ -59,15 +60,15 @@ public sealed class HttpInboundLifecycleTests(ITestOutputHelper output) : Transp
 
         using var rejectedResponse = await httpClient.PostAsync("/", new ByteArrayContent([]), ct);
 
-        Assert.Equal(HttpStatusCode.ServiceUnavailable, rejectedResponse.StatusCode);
-        Assert.True(rejectedResponse.Headers.TryGetValues("Retry-After", out var retryAfterValues));
-        Assert.Contains("1", retryAfterValues);
-        Assert.False(stopTask.IsCompleted);
+        rejectedResponse.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
+        rejectedResponse.Headers.TryGetValues("Retry-After", out var retryAfterValues).Should().BeTrue();
+        retryAfterValues.Should().Contain("1");
+        stopTask.IsCompleted.Should().BeFalse();
 
         releaseRequest.TrySetResult();
 
         using var response = await inFlightTask;
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
 
         await stopTask;
     }
@@ -115,13 +116,13 @@ public sealed class HttpInboundLifecycleTests(ITestOutputHelper output) : Transp
         await requestStarted.Task.WaitAsync(ct);
 
         var stopTask = dispatcher.StopAsyncChecked(ct);
-        Assert.False(stopTask.IsCompleted);
+        stopTask.IsCompleted.Should().BeFalse();
 
         releaseRequest.TrySetResult();
 
         using (var firstResponse = await inFlightTask)
         {
-            Assert.Equal(HttpStatusCode.OK, firstResponse.StatusCode);
+            firstResponse.StatusCode.Should().Be(HttpStatusCode.OK);
         }
 
         await stopTask;
@@ -131,10 +132,10 @@ public sealed class HttpInboundLifecycleTests(ITestOutputHelper output) : Transp
 
         using (var secondResponse = await httpClient.PostAsync("/", new ByteArrayContent([]), ct))
         {
-            Assert.Equal(HttpStatusCode.OK, secondResponse.StatusCode);
+            secondResponse.StatusCode.Should().Be(HttpStatusCode.OK);
         }
 
-        Assert.Equal(2, Volatile.Read(ref requestCount));
+        Volatile.Read(ref requestCount).Should().Be(2);
 
         await dispatcher.StopAsyncChecked(ct);
     }
@@ -194,17 +195,17 @@ public sealed class HttpInboundLifecycleTests(ITestOutputHelper output) : Transp
 
         using var rejectedResponse = await httpClient.PostAsync("/", new ByteArrayContent([]), ct);
 
-        Assert.Equal(HttpStatusCode.ServiceUnavailable, rejectedResponse.StatusCode);
-        Assert.True(rejectedResponse.Headers.TryGetValues("Retry-After", out var retryAfterValues));
-        Assert.Contains("1", retryAfterValues);
-        Assert.Equal(3, rejectedResponse.Version.Major);
-        Assert.False(stopTask.IsCompleted);
+        rejectedResponse.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
+        rejectedResponse.Headers.TryGetValues("Retry-After", out var retryAfterValues).Should().BeTrue();
+        retryAfterValues.Should().Contain("1");
+        rejectedResponse.Version.Major.Should().Be(3);
+        stopTask.IsCompleted.Should().BeFalse();
 
         releaseRequest.TrySetResult();
 
         using var response = await inFlightTask;
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal(3, response.Version.Major);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.Version.Major.Should().Be(3);
 
         await stopTask;
     }
@@ -264,21 +265,21 @@ public sealed class HttpInboundLifecycleTests(ITestOutputHelper output) : Transp
 
         using var rejectedResponse = await httpClient.PostAsync("/", new ByteArrayContent([]), ct);
 
-        Assert.Equal(HttpStatusCode.ServiceUnavailable, rejectedResponse.StatusCode);
-        Assert.True(rejectedResponse.Headers.TryGetValues("Retry-After", out var retryAfterValues));
-        Assert.Contains("1", retryAfterValues);
-        Assert.Equal(2, rejectedResponse.Version.Major);
-        Assert.True(rejectedResponse.Headers.TryGetValues(HttpTransportHeaders.Protocol, out var protocolValues));
-        Assert.Contains("HTTP/2", protocolValues);
-        Assert.False(stopTask.IsCompleted);
+        rejectedResponse.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
+        rejectedResponse.Headers.TryGetValues("Retry-After", out var retryAfterValues).Should().BeTrue();
+        retryAfterValues.Should().Contain("1");
+        rejectedResponse.Version.Major.Should().Be(2);
+        rejectedResponse.Headers.TryGetValues(HttpTransportHeaders.Protocol, out var protocolValues).Should().BeTrue();
+        protocolValues.Should().Contain("HTTP/2");
+        stopTask.IsCompleted.Should().BeFalse();
 
         releaseRequest.TrySetResult();
 
         using var response = await inFlightTask;
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal(2, response.Version.Major);
-        Assert.True(response.Headers.TryGetValues(HttpTransportHeaders.Protocol, out var inflightProtocolValues));
-        Assert.Contains("HTTP/2", inflightProtocolValues);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.Version.Major.Should().Be(2);
+        response.Headers.TryGetValues(HttpTransportHeaders.Protocol, out var inflightProtocolValues).Should().BeTrue();
+        inflightProtocolValues.Should().Contain("HTTP/2");
 
         await stopTask;
     }
@@ -319,22 +320,22 @@ public sealed class HttpInboundLifecycleTests(ITestOutputHelper output) : Transp
         http3Client.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionExact;
 
         using var introspectResponse = await http3Client.GetAsync("/omnirelay/introspect", ct);
-        Assert.Equal(HttpStatusCode.OK, introspectResponse.StatusCode);
-        Assert.Equal(3, introspectResponse.Version.Major);
+        introspectResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        introspectResponse.Version.Major.Should().Be(3);
         var payload = await introspectResponse.Content.ReadAsStringAsync(ct);
         using (var document = JsonDocument.Parse(payload))
         {
-            Assert.Equal("http3-observability", document.RootElement.GetProperty("service").GetString());
-            Assert.Equal("Running", document.RootElement.GetProperty("status").GetString());
+            document.RootElement.GetProperty("service").GetString().Should().Be("http3-observability");
+            document.RootElement.GetProperty("status").GetString().Should().Be("Running");
         }
 
         using var healthResponse = await http3Client.GetAsync("/healthz", ct);
-        Assert.Equal(HttpStatusCode.OK, healthResponse.StatusCode);
-        Assert.Equal(3, healthResponse.Version.Major);
+        healthResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        healthResponse.Version.Major.Should().Be(3);
 
         using var readyResponse = await http3Client.GetAsync("/readyz", ct);
-        Assert.Equal(HttpStatusCode.OK, readyResponse.StatusCode);
-        Assert.Equal(3, readyResponse.Version.Major);
+        readyResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        readyResponse.Version.Major.Should().Be(3);
 
         using var http11Handler = CreateHttp11Handler();
         using var http11Client = new HttpClient(http11Handler) { BaseAddress = baseAddress };
@@ -342,8 +343,8 @@ public sealed class HttpInboundLifecycleTests(ITestOutputHelper output) : Transp
         http11Client.DefaultRequestVersion = HttpVersion.Version11;
         http11Client.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionExact;
         using var http11Response = await http11Client.GetAsync("/healthz", ct);
-        Assert.Equal(HttpStatusCode.OK, http11Response.StatusCode);
-        Assert.Equal(1, http11Response.Version.Major);
+        http11Response.StatusCode.Should().Be(HttpStatusCode.OK);
+        http11Response.Version.Major.Should().Be(1);
     }
 
     [Fact(Timeout = 30_000)]
@@ -385,14 +386,14 @@ public sealed class HttpInboundLifecycleTests(ITestOutputHelper output) : Transp
 
         using var stopCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
         var stopResult = await dispatcher.StopAsync(stopCts.Token);
-        Assert.True(stopResult.IsSuccess);
+        stopResult.IsSuccess.Should().BeTrue();
 
         releaseRequest.TrySetResult();
 
         try
         {
             using var response = await inFlightTask;
-            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
         }
         catch (HttpRequestException)
         {
@@ -423,10 +424,10 @@ public sealed class HttpInboundLifecycleTests(ITestOutputHelper output) : Transp
         using var httpClient = new HttpClient { BaseAddress = baseAddress };
 
         using var healthResponse = await httpClient.GetAsync("/healthz", ct);
-        Assert.Equal(HttpStatusCode.OK, healthResponse.StatusCode);
+        healthResponse.StatusCode.Should().Be(HttpStatusCode.OK);
 
         using var readinessResponse = await httpClient.GetAsync("/readyz", ct);
-        Assert.Equal(HttpStatusCode.OK, readinessResponse.StatusCode);
+        readinessResponse.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var slowStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -450,11 +451,11 @@ public sealed class HttpInboundLifecycleTests(ITestOutputHelper output) : Transp
         var stopTask = dispatcher.StopAsyncChecked(ct);
 
         using var drainingReadiness = await httpClient.GetAsync("/readyz", ct);
-        Assert.Equal(HttpStatusCode.ServiceUnavailable, drainingReadiness.StatusCode);
+        drainingReadiness.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
 
         release.TrySetResult();
         using var slowResponse = await slowTask;
-        Assert.Equal(HttpStatusCode.OK, slowResponse.StatusCode);
+        slowResponse.StatusCode.Should().Be(HttpStatusCode.OK);
 
         await stopTask;
     }
@@ -482,15 +483,15 @@ public sealed class HttpInboundLifecycleTests(ITestOutputHelper output) : Transp
         using var httpClient = new HttpClient { BaseAddress = baseAddress };
         using var response = await httpClient.GetAsync("/omnirelay/introspect", ct);
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
         var payload = await response.Content.ReadAsStringAsync(ct);
         using var document = JsonDocument.Parse(payload);
         var root = document.RootElement;
 
-        Assert.Equal("introspect", root.GetProperty("service").GetString());
+        root.GetProperty("service").GetString().Should().Be("introspect");
 
         var unaryProcedures = root.GetProperty("procedures").GetProperty("unary");
-        Assert.Contains(unaryProcedures.EnumerateArray(), element => string.Equals(element.GetProperty("name").GetString(), "service::ping", StringComparison.Ordinal));
+        unaryProcedures.EnumerateArray().Should().Contain(element => string.Equals(element.GetProperty("name").GetString(), "service::ping", StringComparison.Ordinal));
     }
 
     private static SocketsHttpHandler CreateHttp3Handler()

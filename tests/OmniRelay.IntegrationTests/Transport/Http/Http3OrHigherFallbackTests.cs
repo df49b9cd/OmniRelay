@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Quic;
 using System.Net.Security;
 using System.Security.Authentication;
+using AwesomeAssertions;
 using OmniRelay.Core;
 using OmniRelay.Dispatcher;
 using OmniRelay.IntegrationTests.Support;
@@ -52,8 +53,8 @@ public sealed class Http3OrHigherFallbackTests(ITestOutputHelper output) : Trans
 
         using var response = await client.PostAsync("/", new ByteArrayContent([]), ct);
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal(3, response.Version.Major);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.Version.Major.Should().Be(3);
     }
 
     [Http3Fact(Timeout = 45_000)]
@@ -94,8 +95,8 @@ public sealed class Http3OrHigherFallbackTests(ITestOutputHelper output) : Trans
 
         using var response = await client.PostAsync("/", new ByteArrayContent([]), ct);
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal(2, response.Version.Major);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.Version.Major.Should().Be(2);
     }
 
     private static SslClientAuthenticationOptions CreateSslOptions()

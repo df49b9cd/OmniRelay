@@ -1,4 +1,5 @@
 using System.Net;
+using AwesomeAssertions;
 using OmniRelay.Core;
 using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
@@ -39,6 +40,6 @@ public sealed class SseBehaviorTests(ITestOutputHelper output) : TransportIntegr
         httpClient.DefaultRequestHeaders.Add(HttpTransportHeaders.Procedure, "stream::events");
         using var response = await httpClient.GetAsync("/", ct);
 
-        Assert.Equal(HttpStatusCode.NotAcceptable, response.StatusCode);
+        response.StatusCode.Should().Be(HttpStatusCode.NotAcceptable);
     }
 }

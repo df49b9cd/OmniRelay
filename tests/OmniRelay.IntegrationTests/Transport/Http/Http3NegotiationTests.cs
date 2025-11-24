@@ -3,6 +3,7 @@ using System.Net.Quic;
 using System.Net.Security;
 using System.Security.Authentication;
 using System.Security.Cryptography;
+using AwesomeAssertions;
 using OmniRelay.Core;
 using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
@@ -54,8 +55,8 @@ public sealed class Http3NegotiationTests(ITestOutputHelper output) : TransportI
 
         using var response = await client.PostAsync("/", new ByteArrayContent([]), ct);
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal(3, response.Version.Major);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.Version.Major.Should().Be(3);
     }
 
     [Http3Fact(Timeout = 45_000)]
@@ -106,8 +107,8 @@ public sealed class Http3NegotiationTests(ITestOutputHelper output) : TransportI
         client.DefaultRequestHeaders.Accept.ParseAdd("text/event-stream");
 
         using var response = await client.GetAsync("/", HttpCompletionOption.ResponseHeadersRead, ct);
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal(3, response.Version.Major);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.Version.Major.Should().Be(3);
 
         await using var stream = await response.Content.ReadAsStreamAsync(ct);
         using var reader = new StreamReader(stream);
@@ -136,12 +137,12 @@ public sealed class Http3NegotiationTests(ITestOutputHelper output) : TransportI
             }
         }
 
-        Assert.NotNull(dataLine);
-        Assert.Equal("base64", encodingLine);
+        dataLine.Should().NotBeNull();
+        encodingLine.Should().Be("base64");
 
         var decoded = Convert.FromBase64String(dataLine!);
-        Assert.Equal(payload.Length, decoded.Length);
-        Assert.True(decoded.AsSpan().SequenceEqual(payload));
+        decoded.Length.Should().Be(payload.Length);
+        decoded.AsSpan().SequenceEqual(payload).Should().BeTrue();
     }
 
     [Http3Fact(Timeout = 45000)]
@@ -182,8 +183,8 @@ public sealed class Http3NegotiationTests(ITestOutputHelper output) : TransportI
 
         using var response = await client.PostAsync("/", new ByteArrayContent([]), ct);
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal(1, response.Version.Major);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.Version.Major.Should().Be(1);
     }
 
     [Http3Fact(Timeout = 45000)]
@@ -224,8 +225,8 @@ public sealed class Http3NegotiationTests(ITestOutputHelper output) : TransportI
 
         using var response = await client.PostAsync("/", new ByteArrayContent([]), ct);
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal(2, response.Version.Major);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.Version.Major.Should().Be(2);
     }
 
     private static SocketsHttpHandler CreateHttp3Handler() => new()
