@@ -1,3 +1,4 @@
+using AwesomeAssertions;
 using Hugo;
 using OmniRelay.Core;
 using OmniRelay.Core.Transport;
@@ -17,8 +18,8 @@ public class DispatcherClientExtensionsTests
 
         var result = dispatcher.CreateUnaryClient("remote", codec);
 
-        Assert.True(result.IsFailure);
-        Assert.Equal("dispatcher.outbound.not_found", result.Error?.Code);
+        result.IsFailure.Should().BeTrue();
+        result.Error?.Code.Should().Be("dispatcher.outbound.not_found");
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
@@ -34,10 +35,10 @@ public class DispatcherClientExtensionsTests
 
         var clientResult = dispatcher.CreateUnaryClient<int, int>("remote-service", "math::add");
 
-        Assert.True(clientResult.IsSuccess);
+        clientResult.IsSuccess.Should().BeTrue();
         var client = clientResult.Value;
 
-        Assert.NotNull(client);
+        client.Should().NotBeNull();
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
@@ -48,8 +49,8 @@ public class DispatcherClientExtensionsTests
 
         var result = dispatcher.CreateStreamClient("remote", codec);
 
-        Assert.True(result.IsFailure);
-        Assert.Equal("dispatcher.outbound.not_found", result.Error?.Code);
+        result.IsFailure.Should().BeTrue();
+        result.Error?.Code.Should().Be("dispatcher.outbound.not_found");
     }
 
     private sealed class PassthroughCodec : ICodec<int, int>

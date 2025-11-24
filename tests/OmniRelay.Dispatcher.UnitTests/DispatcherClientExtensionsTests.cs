@@ -1,3 +1,4 @@
+using AwesomeAssertions;
 using Hugo;
 using NSubstitute;
 using OmniRelay.Core.Clients;
@@ -16,11 +17,11 @@ public class DispatcherClientExtensionsTests
 
         var clientResult = dispatcher.CreateUnaryClient("downstream", codec);
 
-        Assert.True(clientResult.IsSuccess);
+        clientResult.IsSuccess.Should().BeTrue();
         var client = clientResult.Value;
 
-        Assert.IsType<UnaryClient<string, string>>(client);
-        Assert.False(unaryOutbound.ReceivedCalls().Any());
+        client.Should().BeOfType<UnaryClient<string, string>>();
+        unaryOutbound.ReceivedCalls().Should().BeEmpty();
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
@@ -32,10 +33,10 @@ public class DispatcherClientExtensionsTests
 
         var clientResult = dispatcher.CreateUnaryClient<string, string>("downstream", "echo");
 
-        Assert.True(clientResult.IsSuccess);
+        clientResult.IsSuccess.Should().BeTrue();
         var client = clientResult.Value;
 
-        Assert.IsType<UnaryClient<string, string>>(client);
+        client.Should().BeOfType<UnaryClient<string, string>>();
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
@@ -45,8 +46,8 @@ public class DispatcherClientExtensionsTests
 
         var result = dispatcher.CreateDuplexStreamClient<string, string>("remote", new TestHelpers.TestCodec<string, string>());
 
-        Assert.True(result.IsFailure);
-        Assert.Equal("dispatcher.outbound.not_found", result.Error?.Code);
+        result.IsFailure.Should().BeTrue();
+        result.Error?.Code.Should().Be("dispatcher.outbound.not_found");
     }
 
     private static Dispatcher CreateDispatcher(out IUnaryOutbound unaryOutbound)
