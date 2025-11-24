@@ -1,3 +1,4 @@
+using AwesomeAssertions;
 using Hugo;
 using NSubstitute;
 using OmniRelay.Core;
@@ -22,8 +23,8 @@ public class DispatcherTests
 
         var result = dispatcher.Register(spec);
 
-        Assert.True(result.IsFailure);
-        Assert.Equal(OmniRelayStatusCode.InvalidArgument, OmniRelayErrorAdapter.ToStatus(result.Error!));
+        result.IsFailure.Should().BeTrue();
+        OmniRelayErrorAdapter.ToStatus(result.Error!).Should().Be(OmniRelayStatusCode.InvalidArgument);
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
@@ -48,8 +49,8 @@ public class DispatcherTests
         var ct = TestContext.Current.CancellationToken;
         var result = await dispatcher.InvokeUnaryAsync("echo", TestHelpers.CreateRequest(), ct);
 
-        Assert.True(result.IsSuccess);
-        Assert.Equal(new[] { "global", "local", "handler" }, invocations);
+        result.IsSuccess.Should().BeTrue();
+        invocations.Should().Equal("global", "local", "handler");
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
@@ -59,8 +60,8 @@ public class DispatcherTests
 
         var result = dispatcher.ClientConfig("remote");
 
-        Assert.True(result.IsFailure);
-        Assert.Equal(OmniRelayStatusCode.NotFound, OmniRelayErrorAdapter.ToStatus(result.Error!));
+        result.IsFailure.Should().BeTrue();
+        OmniRelayErrorAdapter.ToStatus(result.Error!).Should().Be(OmniRelayStatusCode.NotFound);
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
@@ -69,8 +70,8 @@ public class DispatcherTests
         var dispatcher = new Dispatcher(new DispatcherOptions("svc"));
         var config = dispatcher.ClientConfigChecked("svc");
 
-        Assert.Equal("svc", config.Service);
-        Assert.Empty(config.Unary);
+        config.Service.Should().Be("svc");
+        config.Unary.Should().BeEmpty();
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
@@ -84,8 +85,8 @@ public class DispatcherTests
             builder.AddAlias("alias");
         }).ValueOrChecked();
 
-        Assert.True(dispatcher.TryGetProcedure("alias", ProcedureKind.Unary, out var spec));
-        Assert.Equal("primary", spec.Name);
+        dispatcher.TryGetProcedure("alias", ProcedureKind.Unary, out var spec).Should().BeTrue();
+        spec.Name.Should().Be("primary");
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
@@ -96,17 +97,17 @@ public class DispatcherTests
         options.AddLifecycle("component", lifecycle);
 
         var dispatcher = new Dispatcher(options);
-        Assert.Same(dispatcher, TestHelpers.RecordingLifecycle.BoundDispatcher);
-        Assert.Contains("bind", lifecycle.Events);
+        TestHelpers.RecordingLifecycle.BoundDispatcher.Should().BeSameAs(dispatcher);
+        lifecycle.Events.Should().Contain("bind");
 
         var ct = TestContext.Current.CancellationToken;
         await dispatcher.StartAsyncChecked(ct);
-        Assert.Equal(DispatcherStatus.Running, dispatcher.Status);
+        dispatcher.Status.Should().Be(DispatcherStatus.Running);
 
         await dispatcher.StopAsyncChecked(ct);
-        Assert.Equal(DispatcherStatus.Stopped, dispatcher.Status);
-        Assert.Contains("start", lifecycle.Events);
-        Assert.Contains("stop", lifecycle.Events);
+        dispatcher.Status.Should().Be(DispatcherStatus.Stopped);
+        lifecycle.Events.Should().Contain("start");
+        lifecycle.Events.Should().Contain("stop");
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
@@ -121,11 +122,11 @@ public class DispatcherTests
 
         var snapshot = dispatcher.Introspect();
 
-        Assert.Equal("svc", snapshot.Service);
-        Assert.Equal(dispatcher.Status, snapshot.Status);
-        Assert.Single(snapshot.Procedures.Unary);
-        Assert.Single(snapshot.Middleware.InboundUnary);
-        Assert.Single(snapshot.Outbounds);
+        snapshot.Service.Should().Be("svc");
+        snapshot.Status.Should().Be(dispatcher.Status);
+        snapshot.Procedures.Unary.Should().HaveCount(1);
+        snapshot.Middleware.InboundUnary.Should().HaveCount(1);
+        snapshot.Outbounds.Should().HaveCount(1);
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
@@ -135,8 +136,8 @@ public class DispatcherTests
         var ct = TestContext.Current.CancellationToken;
         var result = await dispatcher.InvokeUnaryAsync("missing", TestHelpers.CreateRequest(), ct);
 
-        Assert.True(result.IsFailure);
-        Assert.Equal(OmniRelayStatusCode.Unimplemented, OmniRelayErrorAdapter.ToStatus(result.Error!));
+        result.IsFailure.Should().BeTrue();
+        OmniRelayErrorAdapter.ToStatus(result.Error!).Should().Be(OmniRelayStatusCode.Unimplemented);
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
@@ -159,7 +160,7 @@ public class DispatcherTests
         var ct = TestContext.Current.CancellationToken;
         var result = await dispatcher.InvokeClientStreamAsync("collect", new RequestMeta(), ct);
 
-        Assert.True(result.IsSuccess);
+        result.IsSuccess.Should().BeTrue();
         await result.Value.DisposeAsync();
     }
 
@@ -173,10 +174,10 @@ public class DispatcherTests
         var dispatcher = new Dispatcher(options);
 
         var startResult = await dispatcher.StartAsync(TestContext.Current.CancellationToken);
-        Assert.True(startResult.IsFailure);
-        Assert.Contains("start failure", startResult.Error!.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("stop", first.Events);
-        Assert.Equal(DispatcherStatus.Stopped, dispatcher.Status);
+        startResult.IsFailure.Should().BeTrue();
+        startResult.Error!.Message.Should().Contain("start failure", StringComparison.OrdinalIgnoreCase);
+        first.Events.Should().Contain("stop");
+        dispatcher.Status.Should().Be(DispatcherStatus.Stopped);
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
@@ -187,11 +188,11 @@ public class DispatcherTests
         var dispatcher = new Dispatcher(options);
 
         var startResult = await dispatcher.StartAsync(TestContext.Current.CancellationToken);
-        Assert.True(startResult.IsSuccess);
+        startResult.IsSuccess.Should().BeTrue();
 
         var stopResult = await dispatcher.StopAsync(TestContext.Current.CancellationToken);
-        Assert.True(stopResult.IsFailure);
-        Assert.Equal(DispatcherStatus.Running, dispatcher.Status);
+        stopResult.IsFailure.Should().BeTrue();
+        dispatcher.Status.Should().Be(DispatcherStatus.Running);
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
@@ -207,14 +208,14 @@ public class DispatcherTests
         await lifecycle.Started;
 
         var prematureStop = await dispatcher.StopAsync(TestContext.Current.CancellationToken);
-        Assert.True(prematureStop.IsFailure);
+        prematureStop.IsFailure.Should().BeTrue();
 
         lifecycle.Release();
         var startResult = await startTask;
-        Assert.True(startResult.IsSuccess);
+        startResult.IsSuccess.Should().BeTrue();
 
         var finalStop = await dispatcher.StopAsync(TestContext.Current.CancellationToken);
-        Assert.True(finalStop.IsSuccess);
+        finalStop.IsSuccess.Should().BeTrue();
     }
 
     private sealed class RecordingUnaryMiddleware(string name, List<string> sink) : IUnaryInboundMiddleware

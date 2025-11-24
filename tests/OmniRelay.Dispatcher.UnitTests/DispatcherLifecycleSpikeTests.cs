@@ -1,3 +1,4 @@
+using AwesomeAssertions;
 using Hugo;
 using Xunit;
 using static Hugo.Go;
@@ -30,11 +31,11 @@ public class DispatcherLifecycleSpikeTests
         };
 
         var result = await DispatcherLifecycleSpike.RunAsync(startSteps, stopSteps, CancellationToken.None);
-        Assert.True(result.IsSuccess, result.Error?.Message);
+        result.IsSuccess.Should().BeTrue(result.Error?.Message);
 
         var (started, stopped) = result.Value;
-        Assert.Contains("start:0", started);
-        Assert.Contains("start:1", started);
-        Assert.Equal(["stop:0", "stop:1"], stopped);
+        started.Should().Contain("start:0");
+        started.Should().Contain("start:1");
+        stopped.Should().Equal("stop:0", "stop:1");
     }
 }
