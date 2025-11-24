@@ -30,7 +30,7 @@ public sealed class LkgCache
 
             var envelope = new LkgEnvelope(version, epoch, payload.ToArray(), resumeToken.ToArray());
 
-            await using var stream = new FileStream(
+            var stream = new FileStream(
                 _path,
                 FileMode.Create,
                 FileAccess.Write,
@@ -38,8 +38,16 @@ public sealed class LkgCache
                 16_384,
                 FileOptions.Asynchronous | FileOptions.WriteThrough);
 
-            await JsonSerializer.SerializeAsync(stream, envelope, LkgCacheJsonContext.Default.LkgEnvelope, ct).ConfigureAwait(false);
-            await stream.FlushAsync(ct).ConfigureAwait(false);
+            try
+            {
+                await JsonSerializer.SerializeAsync(stream, envelope, LkgCacheJsonContext.Default.LkgEnvelope, ct).ConfigureAwait(false);
+                await stream.FlushAsync(ct).ConfigureAwait(false);
+            }
+            finally
+            {
+                await stream.DisposeAsync().ConfigureAwait(false);
+            }
+
             return Unit.Value;
         }, cancellationToken: cancellationToken);
     }
@@ -53,7 +61,7 @@ public sealed class LkgCache
                 return null;
             }
 
-            await using var stream = new FileStream(
+            var stream = new FileStream(
                 _path,
                 FileMode.Open,
                 FileAccess.Read,
@@ -61,13 +69,20 @@ public sealed class LkgCache
                 16_384,
                 FileOptions.Asynchronous | FileOptions.SequentialScan);
 
-            var envelope = await JsonSerializer.DeserializeAsync(stream, LkgCacheJsonContext.Default.LkgEnvelope, ct).ConfigureAwait(false);
-            if (envelope is null)
+            try
             {
-                return null;
-            }
+                var envelope = await JsonSerializer.DeserializeAsync(stream, LkgCacheJsonContext.Default.LkgEnvelope, ct).ConfigureAwait(false);
+                if (envelope is null)
+                {
+                    return null;
+                }
 
-            return new LkgSnapshot(envelope.Version, envelope.Epoch, envelope.Payload, envelope.ResumeToken);
+                return new LkgSnapshot(envelope.Version, envelope.Epoch, envelope.Payload, envelope.ResumeToken);
+            }
+            finally
+            {
+                await stream.DisposeAsync().ConfigureAwait(false);
+            }
         }, cancellationToken: cancellationToken);
     }
 }

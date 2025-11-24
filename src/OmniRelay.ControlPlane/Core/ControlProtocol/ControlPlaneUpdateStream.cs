@@ -19,7 +19,7 @@ public interface IControlPlaneUpdateSource
     ValueTask<Result<ControlPlaneSubscription>> SubscribeAsync(CancellationToken cancellationToken = default);
 }
 
-internal sealed class ControlPlaneUpdateStream : IControlPlaneUpdatePublisher, IControlPlaneUpdateSource, IDisposable
+internal sealed partial class ControlPlaneUpdateStream : IControlPlaneUpdatePublisher, IControlPlaneUpdateSource, IDisposable
 {
     private readonly ConcurrentDictionary<long, Channel<ControlPlaneUpdate>> _subscribers = new();
     private readonly ILogger<ControlPlaneUpdateStream> _logger;
@@ -77,7 +77,7 @@ internal sealed class ControlPlaneUpdateStream : IControlPlaneUpdatePublisher, I
         {
             if (!channel.Writer.TryWrite(update))
             {
-                _logger.LogWarning("Control-plane update dropped for subscriber {SubscriberId} (channel full).", id);
+                ControlPlaneUpdateStreamLog.SubscriptionDropped(_logger, id);
             }
         }
 
@@ -104,6 +104,12 @@ internal sealed class ControlPlaneUpdateStream : IControlPlaneUpdatePublisher, I
         {
             Remove(id);
         }
+    }
+
+    private static partial class ControlPlaneUpdateStreamLog
+    {
+        [LoggerMessage(EventId = 1, Level = LogLevel.Warning, Message = "Control-plane update dropped for subscriber {SubscriberId} (channel full).")]
+        public static partial void SubscriptionDropped(ILogger logger, long subscriberId);
     }
 }
 

@@ -1,5 +1,4 @@
 using System.Collections.Immutable;
-using System.Linq;
 using Google.Protobuf;
 using Grpc.Core;
 using Hugo;
@@ -70,19 +69,34 @@ public sealed class ControlPlaneWatchService : ControlPlaneWatch.ControlPlaneWat
             return;
         }
 
-        await using var subscription = subscriptionResult.Value;
-
-        await foreach (var update in subscription.Reader.ReadAllAsync(context.CancellationToken))
+        var subscription = subscriptionResult.Value;
+        try
         {
-            if (!CapabilitiesSatisfied(request.Capabilities, update.RequiredCapabilities))
+            var enumerator = subscription.Reader.ReadAllAsync(context.CancellationToken).GetAsyncEnumerator();
+            try
             {
-                var error = ControlProtocolErrors.MissingRequiredCapabilities(update.RequiredCapabilities, request.Capabilities);
-                await responseStream.WriteAsync(CreateErrorResponse(error, _options.UnsupportedCapabilityBackoff)).ConfigureAwait(false);
-                return;
-            }
+                while (await enumerator.MoveNextAsync().ConfigureAwait(false))
+                {
+                    var update = enumerator.Current;
+                    if (!CapabilitiesSatisfied(request.Capabilities, update.RequiredCapabilities))
+                    {
+                        var error = ControlProtocolErrors.MissingRequiredCapabilities(update.RequiredCapabilities, request.Capabilities);
+                        await responseStream.WriteAsync(CreateErrorResponse(error, _options.UnsupportedCapabilityBackoff)).ConfigureAwait(false);
+                        return;
+                    }
 
-            var response = BuildWatchResponse(update, request.NodeId, update.FullSnapshot, _options.DefaultBackoff);
-            await responseStream.WriteAsync(response).ConfigureAwait(false);
+                    var response = BuildWatchResponse(update, request.NodeId, update.FullSnapshot, _options.DefaultBackoff);
+                    await responseStream.WriteAsync(response).ConfigureAwait(false);
+                }
+            }
+            finally
+            {
+                await enumerator.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            await subscription.DisposeAsync().ConfigureAwait(false);
         }
     }
 
@@ -166,7 +180,7 @@ public sealed class ControlPlaneWatchService : ControlPlaneWatch.ControlPlaneWat
         return resumeToken.Epoch != current.Epoch;
     }
 
-    private ControlWatchResponse BuildWatchResponse(
+    private static ControlWatchResponse BuildWatchResponse(
         ControlPlaneUpdate update,
         string? nodeId,
         bool fullSnapshot,
@@ -186,7 +200,7 @@ public sealed class ControlPlaneWatchService : ControlPlaneWatch.ControlPlaneWat
         return response;
     }
 
-    private ControlWatchResponse CreateErrorResponse(Error error, TimeSpan backoff)
+    private static ControlWatchResponse CreateErrorResponse(Error error, TimeSpan backoff)
     {
         var response = new ControlWatchResponse
         {

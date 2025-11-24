@@ -98,7 +98,7 @@ public sealed class CertificateAuthorityService : CertificateAuthority.Certifica
         {
             if (!string.IsNullOrWhiteSpace(_options.RootPfxPath) && File.Exists(_options.RootPfxPath))
             {
-                var persisted = new X509Certificate2(_options.RootPfxPath, _options.RootPfxPassword, X509KeyStorageFlags.Exportable);
+                var persisted = X509CertificateLoader.LoadPkcs12FromFile(_options.RootPfxPath, _options.RootPfxPassword, X509KeyStorageFlags.Exportable);
                 var persistedBundle = ExportPem(persisted);
                 return Ok(new CaMaterial(persisted, persistedBundle));
             }

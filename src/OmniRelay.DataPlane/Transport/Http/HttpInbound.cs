@@ -1,4 +1,3 @@
-using System;
 using System.Buffers;
 using System.Diagnostics;
 using System.Globalization;
@@ -9,7 +8,6 @@ using System.Security.Authentication;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Threading.Channels;
 using Hugo;
 using Hugo.TaskQueues;
 using Microsoft.AspNetCore.Builder;
@@ -1464,9 +1462,9 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
                     Name = "http-duplex-request-pump"
                 };
 
-                await using var frameQueue = new TaskQueue<Func<CancellationToken, ValueTask<Result<Unit>>>>(queueOptions, TimeProvider.System, (_, _) => ValueTask.CompletedTask);
-                await using var safeQueue = new SafeTaskQueueWrapper<Func<CancellationToken, ValueTask<Result<Unit>>>>(frameQueue, ownsQueue: false);
-                await using var adapter = TaskQueueChannelAdapter<Func<CancellationToken, ValueTask<Result<Unit>>>>.Create(frameQueue, concurrency: 1, ownsQueue: false);
+                var frameQueue = new TaskQueue<Func<CancellationToken, ValueTask<Result<Unit>>>>(queueOptions, TimeProvider.System, (_, _) => ValueTask.CompletedTask);
+                var safeQueue = new SafeTaskQueueWrapper<Func<CancellationToken, ValueTask<Result<Unit>>>>(frameQueue, ownsQueue: false);
+                var adapter = TaskQueueChannelAdapter<Func<CancellationToken, ValueTask<Result<Unit>>>>.Create(frameQueue, concurrency: 1, ownsQueue: false);
                 var pumpTask = RunFramePumpAsync(adapter, safeQueue, cancellationToken);
 
                 var receivePump = new WaitGroup();
@@ -1554,6 +1552,9 @@ public sealed partial class HttpInbound : ILifecycle, IDispatcherAware, INodeDra
                 {
                     await receivePump.WaitAsync(CancellationToken.None).ConfigureAwait(false);
                     await pumpTask.ConfigureAwait(false);
+                    await adapter.DisposeAsync().ConfigureAwait(false);
+                    await safeQueue.DisposeAsync().ConfigureAwait(false);
+                    await frameQueue.DisposeAsync().ConfigureAwait(false);
                 }
 
                 Func<CancellationToken, ValueTask<Result<Unit>>> BuildFrameWork(

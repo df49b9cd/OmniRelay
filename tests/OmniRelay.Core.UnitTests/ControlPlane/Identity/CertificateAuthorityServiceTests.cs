@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -22,7 +23,8 @@ public sealed class CertificateAuthorityServiceTests
         Assert.NotNull(response);
         Assert.False(string.IsNullOrWhiteSpace(response.ExpiresAt));
 
-        var leaf = new X509Certificate2(response.Certificate.ToByteArray());
+        var pem = PemEncoding.Write("CERTIFICATE", response.Certificate.ToByteArray());
+        var leaf = X509Certificate2.CreateFromPem(pem);
         Assert.Contains("agent-1", leaf.Subject, StringComparison.OrdinalIgnoreCase);
 
         var trust = response.TrustBundle.ToByteArray();
