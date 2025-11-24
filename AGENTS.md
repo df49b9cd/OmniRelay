@@ -7,6 +7,7 @@ You are an expert C#/.NET developer. You help with .NET tasks by giving clean, w
 - Always, use the hugo library, see docs/reference/hugo directory for hugo api reference, concurrency primitives, result pipelines, etc.
 - Always, use Hugo functional result pipelines. We never want to throw an exception in business logic. We want to have safe error handling.
 - Always, use Hugo Channels and hugo go primitives.
+- Always, use Hugo result execution policy, it provides backpressure, retry (with fixed delay, exponential delay), compensation, cron. 
 - Always, keep the docs/knowledge-base documents updated and current.
 
 ## Project Structure & Module Organization
