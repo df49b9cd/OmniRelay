@@ -1,0 +1,63 @@
+using Hugo;
+using Microsoft.Extensions.DependencyInjection;
+using OmniRelay.Dispatcher.Config;
+using OmniRelay.Dispatcher.Config.Models;
+using OmniRelay.TestSupport.Assertions;
+using Xunit;
+using static Hugo.Go;
+
+namespace OmniRelay.Dispatcher.UnitTests;
+
+public class DispatcherConfigMapperTests
+{
+    [Fact(Timeout = TestTimeouts.Default)]
+    public void CreateDispatcher_WithInvalidMode_ReturnsFailure()
+    {
+        var services = new ServiceCollection().BuildServiceProvider();
+        var registry = new DispatcherComponentRegistry();
+
+        var config = new DispatcherConfig
+        {
+            Service = "svc",
+            Mode = "BogusMode",
+            Inbounds = new InboundsConfig(),
+            Outbounds = new OutboundsConfig(),
+            Middleware = new MiddlewareConfig(),
+            Encodings = new EncodingConfig()
+        };
+
+        var result = DispatcherConfigMapper.CreateDispatcher(services, registry, config, configureOptions: null);
+
+        result.IsFailure.ShouldBeTrue();
+        result.Error!.Code.ShouldBe("dispatcher.config.mode_invalid");
+        result.Error.Metadata["mode"].ShouldBe("BogusMode");
+    }
+
+    [Fact(Timeout = TestTimeouts.Default)]
+    public void CreateDispatcher_WithInvalidHttpOutboundUrl_ReturnsFailureWithServiceMetadata()
+    {
+        var services = new ServiceCollection().BuildServiceProvider();
+        var registry = new DispatcherComponentRegistry();
+
+        var outbound = new OutboundTarget { Url = "not-a-uri" };
+        var serviceOutbounds = new ServiceOutboundsConfig();
+        serviceOutbounds.Http.Unary.Add(outbound);
+
+        var outbounds = new OutboundsConfig { ["svc"] = serviceOutbounds };
+
+        var config = new DispatcherConfig
+        {
+            Service = "svc",
+            Inbounds = new InboundsConfig(),
+            Outbounds = outbounds,
+            Middleware = new MiddlewareConfig(),
+            Encodings = new EncodingConfig()
+        };
+
+        var result = DispatcherConfigMapper.CreateDispatcher(services, registry, config, configureOptions: null);
+
+        result.IsFailure.ShouldBeTrue();
+        result.Error!.Metadata.TryGetValue("service", out var serviceName).ShouldBeTrue();
+        serviceName.ShouldBe("svc");
+    }
+}
