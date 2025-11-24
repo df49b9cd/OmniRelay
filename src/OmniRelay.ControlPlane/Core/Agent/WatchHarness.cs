@@ -1,6 +1,10 @@
+using System;
 using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
 using Google.Protobuf;
 using Hugo;
+using Hugo.TaskQueues;
 using Hugo.Policies;
 using Microsoft.Extensions.Logging;
 using OmniRelay.ControlPlane.ControlProtocol;
@@ -13,7 +17,7 @@ namespace OmniRelay.ControlPlane.Agent;
 /// <summary>
 /// Shared bootstrap/watch harness: load LKG, validate, apply, and resume watches with backoff.
 /// </summary>
-public sealed class WatchHarness
+public sealed class WatchHarness : IAsyncDisposable
 {
     private static readonly Error PayloadInvalidError = Error.From("Control payload failed validation.", "control.payload.invalid");
 
@@ -24,6 +28,11 @@ public sealed class WatchHarness
     private readonly TelemetryForwarder _telemetry;
     private readonly ILogger<WatchHarness> _logger;
     private readonly ResultExecutionPolicy _watchPolicy;
+    private TaskQueue<Func<CancellationToken, ValueTask<Result<Unit>>>>? _applyQueue;
+    private SafeTaskQueueWrapper<Func<CancellationToken, ValueTask<Result<Unit>>>>? _applySafeQueue;
+    private TaskQueueChannelAdapter<Func<CancellationToken, ValueTask<Result<Unit>>>>? _applyAdapter;
+    private TaskQueueOptions? _applyQueueOptions;
+    private Task? _applyPump;
 
     private byte[]? _resumeToken;
 
@@ -49,39 +58,94 @@ public sealed class WatchHarness
                 TimeSpan.FromSeconds(30)));
     }
 
+    public async ValueTask DisposeAsync()
+    {
+        if (_applyAdapter is not null)
+        {
+            await _applyAdapter.DisposeAsync().ConfigureAwait(false);
+            _applyAdapter = null;
+        }
+
+        if (_applySafeQueue is not null)
+        {
+            await _applySafeQueue.DisposeAsync().ConfigureAwait(false);
+            _applySafeQueue = null;
+        }
+
+        _applyQueue = null;
+        _applyQueueOptions = null;
+    }
+
     public async ValueTask<Result<Unit>> RunAsync(ControlWatchRequest request, CancellationToken cancellationToken)
     {
-        var bootstrap = await BootstrapFromLkgAsync(cancellationToken).ConfigureAwait(false);
-        if (bootstrap.IsFailure)
+        _applyQueueOptions = CreateApplyQueueOptions();
+        _applyQueue = new TaskQueue<Func<CancellationToken, ValueTask<Result<Unit>>>>(_applyQueueOptions, TimeProvider.System, (_, _) => ValueTask.CompletedTask);
+        _applySafeQueue = new SafeTaskQueueWrapper<Func<CancellationToken, ValueTask<Result<Unit>>>>(_applyQueue, ownsQueue: true);
+        _applyAdapter = TaskQueueChannelAdapter<Func<CancellationToken, ValueTask<Result<Unit>>>>.Create(_applyQueue, concurrency: 1, ownsQueue: false);
+        _applyPump = RunApplyPumpAsync(cancellationToken);
+
+        try
         {
-            return bootstrap.CastFailure<Unit>();
-        }
+            var bootstrap = await BootstrapFromLkgAsync(cancellationToken).ConfigureAwait(false);
+            if (bootstrap.IsFailure)
+            {
+                return bootstrap.CastFailure<Unit>();
+            }
 
-        while (!cancellationToken.IsCancellationRequested)
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                var attempt = await Result.RetryWithPolicyAsync<Unit>(
+                    async (_, ct) => await RunWatchLoopAsync(request, ct).ConfigureAwait(false),
+                    _watchPolicy,
+                    TimeProvider.System,
+                    cancellationToken).ConfigureAwait(false);
+
+                if (attempt.IsSuccess)
+                {
+                    return attempt;
+                }
+
+                if (attempt.IsFailure && cancellationToken.IsCancellationRequested)
+                {
+                    return Ok(Unit.Value);
+                }
+
+                if (attempt.IsFailure)
+                {
+                    AgentLog.ControlWatchFailed(_logger, attempt.Error?.Cause ?? new InvalidOperationException(attempt.Error?.Message ?? "control watch failed"));
+                }
+            }
+
+            return Ok(Unit.Value);
+        }
+        finally
         {
-            var attempt = await Result.RetryWithPolicyAsync<Unit>(
-                async (_, ct) => await RunWatchLoopAsync(request, ct).ConfigureAwait(false),
-                _watchPolicy,
-                TimeProvider.System,
-                cancellationToken).ConfigureAwait(false);
-
-            if (attempt.IsSuccess)
+            if (_applyAdapter is not null)
             {
-                return attempt;
+                await _applyAdapter.DisposeAsync().ConfigureAwait(false);
+                _applyAdapter = null;
             }
 
-            if (attempt.IsFailure && cancellationToken.IsCancellationRequested)
+            if (_applyPump is not null)
             {
-                return Ok(Unit.Value);
+                try
+                {
+                    await _applyPump.ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                }
             }
 
-            if (attempt.IsFailure)
+            if (_applySafeQueue is not null)
             {
-                AgentLog.ControlWatchFailed(_logger, attempt.Error?.Cause ?? new InvalidOperationException(attempt.Error?.Message ?? "control watch failed"));
+                await _applySafeQueue.DisposeAsync().ConfigureAwait(false);
+                _applySafeQueue = null;
             }
+
+            _applyQueue = null;
+            _applyQueueOptions = null;
         }
-
-        return Ok(Unit.Value);
     }
 
     private async ValueTask<Result<Unit>> BootstrapFromLkgAsync(CancellationToken cancellationToken)
@@ -125,10 +189,23 @@ public sealed class WatchHarness
 
                 AgentLog.ControlWatchResume(_logger, update.ResumeToken?.Version ?? update.Version, update.ResumeToken?.Epoch ?? 0);
 
-                var applyResult = await ProcessUpdateAsync(update, cancellationToken).ConfigureAwait(false);
-                if (applyResult.IsFailure)
+                var work = BuildApplyWork(update);
+
+                if (_applySafeQueue is not null)
                 {
-                    return applyResult;
+                    var enqueue = await _applySafeQueue.EnqueueAsync(work, cancellationToken).ConfigureAwait(false);
+                    if (enqueue.IsFailure)
+                    {
+                        return enqueue.CastFailure<Unit>();
+                    }
+                }
+                else
+                {
+                    var applyResult = await work(cancellationToken).ConfigureAwait(false);
+                    if (applyResult.IsFailure)
+                    {
+                        return applyResult;
+                    }
                 }
 
             }
@@ -199,5 +276,82 @@ public sealed class WatchHarness
         _telemetry.RecordSnapshot(update.Version);
         AgentLog.ControlUpdateApplied(_logger, update.Version);
         return Ok(Unit.Value);
+    }
+
+    private Func<CancellationToken, ValueTask<Result<Unit>>> BuildApplyWork(ControlWatchResponse update)
+    {
+        return async ct =>
+        {
+            try
+            {
+                return await ProcessUpdateAsync(update, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException oce) when (oce.CancellationToken == ct)
+            {
+                return Err<Unit>(Error.Canceled(token: oce.CancellationToken));
+            }
+            catch (Exception ex)
+            {
+                AgentLog.ControlWatchFailed(_logger, ex);
+                return Err<Unit>(Error.FromException(ex));
+            }
+        };
+    }
+
+    private static TaskQueueOptions CreateApplyQueueOptions() =>
+        new()
+        {
+            Capacity = 64,
+            LeaseDuration = TimeSpan.FromSeconds(30),
+            HeartbeatInterval = TimeSpan.FromSeconds(5),
+            LeaseSweepInterval = TimeSpan.FromSeconds(10),
+            RequeueDelay = TimeSpan.FromMilliseconds(200),
+            MaxDeliveryAttempts = 5,
+            Name = "control-watch-apply"
+        };
+
+    private async Task RunApplyPumpAsync(CancellationToken cancellationToken)
+    {
+        if (_applyAdapter is null || _applySafeQueue is null || _applyQueueOptions is null)
+        {
+            return;
+        }
+
+        var maxAttempts = _applyQueueOptions.MaxDeliveryAttempts;
+
+        await foreach (var lease in _applyAdapter.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+        {
+            var safeLease = _applySafeQueue.Wrap(lease);
+            Result<Unit> result;
+            try
+            {
+                result = await lease.Value(cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException oce) when (oce.CancellationToken == cancellationToken || cancellationToken.IsCancellationRequested)
+            {
+                result = Err<Unit>(Error.Canceled(token: oce.CancellationToken));
+            }
+            catch (Exception ex)
+            {
+                result = Err<Unit>(Error.FromException(ex));
+            }
+
+            if (result.IsSuccess)
+            {
+                var complete = await safeLease.CompleteAsync(cancellationToken).ConfigureAwait(false);
+                if (complete.IsFailure)
+                {
+                    AgentLog.ControlWatchFailed(_logger, complete.Error?.Cause ?? new InvalidOperationException(complete.Error?.Message ?? "control apply completion failed"));
+                }
+                continue;
+            }
+
+            var requeue = lease.Attempt < maxAttempts && result.Error?.Code != ErrorCodes.Canceled;
+            var failed = await safeLease.FailAsync(result.Error!, requeue, cancellationToken).ConfigureAwait(false);
+            if (failed.IsFailure)
+            {
+                AgentLog.ControlWatchFailed(_logger, failed.Error?.Cause ?? new InvalidOperationException(failed.Error?.Message ?? "control apply fail handling failed"));
+            }
+        }
     }
 }
