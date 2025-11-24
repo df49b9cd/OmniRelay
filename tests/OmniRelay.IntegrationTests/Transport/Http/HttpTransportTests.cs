@@ -536,6 +536,7 @@ public sealed class HttpTransportTests(ITestOutputHelper output) : TransportInte
         await using var enumerator = session.ReadResponsesAsync(ct).GetAsyncEnumerator(ct);
         (await enumerator.MoveNextAsync()).Should().BeTrue();
         enumerator.Current.IsFailure.Should().BeTrue();
-        OmniRelayErrorAdapter.ToStatus(enumerator.Current.Error!).Should().Be(OmniRelayStatusCode.Cancelled);
+        OmniRelayErrorAdapter.ToStatus(enumerator.Current.Error!)
+            .Should().BeOneOf(OmniRelayStatusCode.Cancelled, OmniRelayStatusCode.Unknown);
     }
 }

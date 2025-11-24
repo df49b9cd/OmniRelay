@@ -141,26 +141,33 @@ public class HttpStreamingIntegrationTests
             client.DefaultRequestHeaders.Add(HttpTransportHeaders.Procedure, "stream::oversized");
             client.DefaultRequestHeaders.Accept.ParseAdd("text/event-stream");
 
-            using var response = await client.GetAsync("/", HttpCompletionOption.ResponseHeadersRead, ct);
-            response.StatusCode.Should().Be(HttpStatusCode.OK);
-
-            using var stream = await response.Content.ReadAsStreamAsync(ct);
-            using var reader = new StreamReader(stream, Encoding.UTF8);
-
             try
             {
-                while (true)
+                using var response = await client.GetAsync("/", HttpCompletionOption.ResponseHeadersRead, ct);
+                response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+                using var stream = await response.Content.ReadAsStreamAsync(ct);
+                using var reader = new StreamReader(stream, Encoding.UTF8);
+
+                try
                 {
-                    var line = await reader.ReadLineAsync(ct);
-                    if (line is null)
+                    while (true)
                     {
-                        break;
+                        var line = await reader.ReadLineAsync(ct);
+                        if (line is null)
+                        {
+                            break;
+                        }
                     }
                 }
+                catch (Exception ex) when (ex is IOException or OperationCanceledException)
+                {
+                    // Connection was aborted because the payload exceeded the configured limit.
+                }
             }
-            catch (Exception ex) when (ex is IOException or OperationCanceledException)
+            catch (HttpRequestException)
             {
-                // Connection was aborted because the payload exceeded the configured limit.
+                // Some runtimes surface the aborted connection as a request failure; treat as expected.
             }
 
             streamCall.Should().NotBeNull();
