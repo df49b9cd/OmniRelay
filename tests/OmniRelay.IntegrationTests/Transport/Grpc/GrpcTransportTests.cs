@@ -293,14 +293,15 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
         await Task.Delay(100, ct);
 
         var rejectedCall = invoker.AsyncUnaryCall(method, null, new CallOptions(), []);
-        var rejection = await Assert.ThrowsAsync<RpcException>(() => rejectedCall.ResponseAsync);
-        Assert.Equal(StatusCode.Unavailable, rejection.StatusCode);
-        Assert.Equal("1", rejection.Trailers.GetValue("retry-after"));
-        Assert.False(stopTask.IsCompleted);
+        var rejection = await FluentActions.Awaiting(() => rejectedCall.ResponseAsync)
+            .Should().ThrowAsync<RpcException>();
+        rejection.Which.StatusCode.Should().Be(StatusCode.Unavailable);
+        rejection.Which.Trailers.GetValue("retry-after").Should().Be("1");
+        stopTask.IsCompleted.Should().BeFalse();
 
         releaseRequest.TrySetResult();
         var response = await inFlightCall.ResponseAsync.WaitAsync(ct);
-        Assert.Empty(response);
+        response.Should().BeEmpty();
 
         await stopTask;
     }
@@ -345,7 +346,7 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
         var stopTask = dispatcher.StopAsyncChecked(stopCts.Token);
 
         await stopTask;
-        Assert.False(releaseRequest.Task.IsCompleted);
+        releaseRequest.Task.IsCompleted.Should().BeFalse();
         releaseRequest.TrySetResult();
 
         try
@@ -400,7 +401,7 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
                 transport: TransportName);
             var request = new Request<ReadOnlyMemory<byte>>(requestMeta, ReadOnlyMemory<byte>.Empty);
             var response = await outbound.CallAsync(request, ct);
-            Assert.True(response.IsSuccess, response.Error?.Message);
+            response.IsSuccess.Should().BeTrue(response.Error?.Message);
         }
         finally
         {
@@ -441,7 +442,7 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
         var healthClient = new Health.HealthClient(channel);
 
         var healthy = await healthClient.CheckAsync(new HealthCheckRequest(), cancellationToken: ct).ResponseAsync.WaitAsync(ct);
-        Assert.Equal(HealthCheckResponse.Types.ServingStatus.Serving, healthy.Status);
+        healthy.Status.Should().Be(HealthCheckResponse.Types.ServingStatus.Serving);
 
         var method = new Method<byte[], byte[]>(MethodType.Unary, "health", "slow", GrpcMarshallerCache.ByteMarshaller, GrpcMarshallerCache.ByteMarshaller);
         var invoker = channel.CreateCallInvoker();
@@ -452,7 +453,7 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
         var stopTask = dispatcher.StopAsyncChecked(ct);
 
         var draining = await healthClient.CheckAsync(new HealthCheckRequest(), cancellationToken: ct).ResponseAsync.WaitAsync(ct);
-        Assert.Equal(HealthCheckResponse.Types.ServingStatus.NotServing, draining.Status);
+        draining.Status.Should().Be(HealthCheckResponse.Types.ServingStatus.NotServing);
 
         releaseRequest.TrySetResult();
         await inFlightCall.ResponseAsync.WaitAsync(ct);
@@ -541,18 +542,19 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
         var enumerator = client.CallAsync(request, new StreamCallOptions(StreamDirection.Server), ct)
             .GetAsyncEnumerator(ct);
 
-        Assert.True(await enumerator.MoveNextAsync());
-        Assert.Equal("first", enumerator.Current.ValueOrChecked().Body.Message);
+        (await enumerator.MoveNextAsync()).Should().BeTrue();
+        enumerator.Current.ValueOrChecked().Body.Message.Should().Be("first");
 
-        var exception = await Assert.ThrowsAsync<OmniRelayException>(async () =>
-        {
-            await enumerator.MoveNextAsync();
-        });
+        var exception = await FluentActions.Awaiting(async () =>
+            {
+                await enumerator.MoveNextAsync();
+            })
+            .Should().ThrowAsync<OmniRelayException>();
 
         await enumerator.DisposeAsync();
 
-        Assert.Equal(OmniRelayStatusCode.Internal, exception.StatusCode);
-        Assert.Contains("stream failure", exception.Message, StringComparison.OrdinalIgnoreCase);
+        exception.Which.StatusCode.Should().Be(OmniRelayStatusCode.Internal);
+        exception.Which.Message.Should().Contain("stream failure", StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact(Timeout = 30_000)]
@@ -607,25 +609,25 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
                     encoding: "application/json",
                     transport: "grpc");
                 var requestPayload = codec.EncodeRequest(new EchoRequest($"call-{i}"), meta);
-                Assert.True(requestPayload.IsSuccess);
+                requestPayload.IsSuccess.Should().BeTrue();
                 var request = new Request<ReadOnlyMemory<byte>>(meta, requestPayload.Value);
 
                 var responseResult = await outbound.CallAsync(request, ct);
-                Assert.True(responseResult.IsSuccess, responseResult.Error?.Message);
+                responseResult.IsSuccess.Should().BeTrue(responseResult.Error?.Message);
 
                 var decode = codec.DecodeResponse(responseResult.Value.Body, responseResult.Value.Meta);
-                Assert.True(decode.IsSuccess, decode.Error?.Message);
-                Assert.Equal($"call-{i}", decode.Value.Message);
+                decode.IsSuccess.Should().BeTrue(decode.Error?.Message);
+                decode.Value.Message.Should().Be($"call-{i}");
             }
 
-            var snapshot = Assert.IsType<GrpcOutboundSnapshot>(outbound.GetOutboundDiagnostics());
-            Assert.Equal(2, snapshot.PeerSummaries.Count);
-            Assert.All(snapshot.PeerSummaries, peer =>
+            var snapshot = outbound.GetOutboundDiagnostics().Should().BeOfType<GrpcOutboundSnapshot>().Which;
+            snapshot.PeerSummaries.Should().HaveCount(2);
+            snapshot.PeerSummaries.Should().AllSatisfy(peer =>
             {
-                Assert.True(peer.LastSuccess.HasValue);
-                Assert.True(peer.SuccessCount > 0);
-                Assert.NotNull(peer.AverageLatencyMs);
-                Assert.NotNull(peer.P50LatencyMs);
+                peer.LastSuccess.HasValue.Should().BeTrue();
+                peer.SuccessCount.Should().BeGreaterThan(0);
+                peer.AverageLatencyMs.Should().NotBeNull();
+                peer.P50LatencyMs.Should().NotBeNull();
             });
         }
         finally
@@ -695,11 +697,11 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
                 encoding: "application/json",
                 transport: "grpc");
             var failingPayload = codec.EncodeRequest(new EchoRequest("first"), failingMeta);
-            Assert.True(failingPayload.IsSuccess);
+            failingPayload.IsSuccess.Should().BeTrue();
             var failingRequest = new Request<ReadOnlyMemory<byte>>(failingMeta, failingPayload.Value);
 
             var failureResult = await outbound.CallAsync(failingRequest, ct);
-            Assert.True(failureResult.IsFailure);
+            failureResult.IsFailure.Should().BeTrue();
 
             var successMeta = new RequestMeta(
                 service: "echo",
@@ -707,7 +709,7 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
                 encoding: "application/json",
                 transport: "grpc");
             var successPayload = codec.EncodeRequest(new EchoRequest("second"), successMeta);
-            Assert.True(successPayload.IsSuccess);
+            successPayload.IsSuccess.Should().BeTrue();
             var successRequest = new Request<ReadOnlyMemory<byte>>(successMeta, successPayload.Value);
 
             var attempts = 0;
@@ -725,19 +727,19 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
             }
             while (attempts < 3);
 
-            Assert.True(successResult.IsSuccess, successResult.Error?.Message ?? "Unable to reach healthy gRPC peer after retries");
+            successResult.IsSuccess.Should().BeTrue(successResult.Error?.Message ?? "Unable to reach healthy gRPC peer after retries");
 
             var decode = codec.DecodeResponse(successResult.Value.Body, successResult.Value.Meta);
-            Assert.True(decode.IsSuccess, decode.Error?.Message);
-            Assert.Equal("second", decode.Value.Message);
+            decode.IsSuccess.Should().BeTrue(decode.Error?.Message);
+            decode.Value.Message.Should().Be("second");
 
-            var snapshot = Assert.IsType<GrpcOutboundSnapshot>(outbound.GetOutboundDiagnostics());
-            Assert.Equal(2, snapshot.PeerSummaries.Count);
-            var failingPeerSummary = Assert.Single(snapshot.PeerSummaries, peer => peer.Address == failingAddress);
-            Assert.True(failingPeerSummary.LastFailure.HasValue);
-            Assert.True(failingPeerSummary.FailureCount > 0);
-            var healthyPeerSummary = Assert.Single(snapshot.PeerSummaries, peer => peer.Address == healthyAddress);
-            Assert.True(healthyPeerSummary.LastSuccess.HasValue);
+            var snapshot = outbound.GetOutboundDiagnostics().Should().BeOfType<GrpcOutboundSnapshot>().Which;
+            snapshot.PeerSummaries.Should().HaveCount(2);
+            var failingPeerSummary = snapshot.PeerSummaries.Single(peer => peer.Address == failingAddress);
+            failingPeerSummary.LastFailure.HasValue.Should().BeTrue();
+            failingPeerSummary.FailureCount.Should().BeGreaterThan(0);
+            var healthyPeerSummary = snapshot.PeerSummaries.Single(peer => peer.Address == healthyAddress);
+            healthyPeerSummary.LastSuccess.HasValue.Should().BeTrue();
         }
         finally
         {
@@ -797,13 +799,14 @@ public partial class GrpcTransportTests(ITestOutputHelper output) : TransportInt
             transport: TransportName);
         var request = new Request<byte[]>(requestMeta, []);
 
-        var exception = await Assert.ThrowsAsync<OmniRelayException>(async () =>
-        {
-            await using var enumerator = client.CallAsync(request, new StreamCallOptions(StreamDirection.Server), ct).GetAsyncEnumerator(ct);
-            await enumerator.MoveNextAsync();
-        });
+        var exception = await FluentActions.Awaiting(async () =>
+            {
+                await using var enumerator = client.CallAsync(request, new StreamCallOptions(StreamDirection.Server), ct).GetAsyncEnumerator(ct);
+                await enumerator.MoveNextAsync();
+            })
+            .Should().ThrowAsync<OmniRelayException>();
 
-        Assert.Equal(OmniRelayStatusCode.ResourceExhausted, exception.StatusCode);
+        exception.Which.StatusCode.Should().Be(OmniRelayStatusCode.ResourceExhausted);
     }
 
     [Fact(Timeout = 30_000)]
