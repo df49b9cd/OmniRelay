@@ -176,38 +176,43 @@ public sealed class WatchHarness : IAsyncDisposable
     {
         try
         {
-            await foreach (var update in _client.WatchAsync(BuildRequest(template), cancellationToken).ConfigureAwait(false))
-            {
-                if (update.Error is not null && !string.IsNullOrWhiteSpace(update.Error.Code))
+            var stream = Result.MapStreamAsync(
+                _client.WatchAsync(BuildRequest(template), cancellationToken),
+                (update, _) =>
                 {
-                    AgentLog.ControlWatchError(_logger, update.Error.Code, update.Error.Message);
-                    return Err<Unit>(Error.From(update.Error.Message ?? "control watch error", update.Error.Code));
-                }
-
-                AgentLog.ControlWatchResume(_logger, update.ResumeToken?.Version ?? update.Version, update.ResumeToken?.Epoch ?? 0);
-
-                var work = BuildApplyWork(update);
-
-                if (_applySafeQueue is not null)
-                {
-                    var enqueue = await _applySafeQueue.EnqueueAsync(work, cancellationToken).ConfigureAwait(false);
-                    if (enqueue.IsFailure)
+                    if (update.Error is not null && !string.IsNullOrWhiteSpace(update.Error.Code))
                     {
-                        return enqueue.CastFailure<Unit>();
+                        AgentLog.ControlWatchError(_logger, update.Error.Code, update.Error.Message);
+                        return ValueTask.FromResult<Result<ControlWatchResponse>>(Err<ControlWatchResponse>(Error.From(update.Error.Message ?? "control watch error", update.Error.Code)));
                     }
-                }
-                else
+
+                    AgentLog.ControlWatchResume(_logger, update.ResumeToken?.Version ?? update.Version, update.ResumeToken?.Epoch ?? 0);
+                    return ValueTask.FromResult<Result<ControlWatchResponse>>(Ok(update));
+                },
+                cancellationToken);
+
+            var forEach = await Result.ForEachLinkedCancellationAsync(
+                stream,
+                async (updateResult, ct) =>
                 {
-                    var applyResult = await work(cancellationToken).ConfigureAwait(false);
-                    if (applyResult.IsFailure)
+                    if (updateResult.IsFailure)
                     {
-                        return applyResult;
+                        return updateResult.CastFailure<Unit>();
                     }
-                }
 
-            }
+                    var work = BuildApplyWork(updateResult.Value);
 
-            return Ok(Unit.Value);
+                    if (_applySafeQueue is not null)
+                    {
+                        var enqueue = await _applySafeQueue.EnqueueAsync(work, ct).ConfigureAwait(false);
+                        return enqueue.IsFailure ? enqueue.CastFailure<Unit>() : Ok(Unit.Value);
+                    }
+
+                    return await work(ct).ConfigureAwait(false);
+                },
+                cancellationToken).ConfigureAwait(false);
+
+            return forEach;
         }
         catch (OperationCanceledException oce) when (oce.CancellationToken == cancellationToken)
         {

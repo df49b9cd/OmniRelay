@@ -12,7 +12,11 @@ Adopt Hugo per-item cancellation/tap helpers (`TapSuccessEachAsync`, `TapFailure
 - Tests verify cancellation stops per-item processing promptly and no unobserved tasks remain.
 
 ## Status
-Planned
+Done
+
+## Completion Notes
+- Gossip send pump now streams task queue leases through `Result.ForEachLinkedCancellationAsync`, keeping per-item cancellation and failure handling aligned with Hugo semantics.
+- Control watch loop uses `Result.MapStreamAsync` + `ForEachLinkedCancellationAsync`, logging/tapping per update without raw `await foreach`; apply enqueue/execute paths return aggregated results.
 
 ## SLOs & CI gates
 - No increase in per-item overhead; verify via unit benchmarks if available.
