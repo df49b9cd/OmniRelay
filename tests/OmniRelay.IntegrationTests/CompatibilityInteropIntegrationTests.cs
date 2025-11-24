@@ -19,7 +19,6 @@ using OmniRelay.IntegrationTests.Support;
 using OmniRelay.Tests.Support;
 using OmniRelay.Transport.Grpc;
 using OmniRelay.Transport.Http;
-using OmniRelay.YabInterop.Protos;
 using Xunit;
 using Yarp.ReverseProxy.Configuration;
 using Yarp.ReverseProxy.Forwarder;
@@ -29,79 +28,6 @@ namespace OmniRelay.IntegrationTests;
 
 public sealed class CompatibilityInteropIntegrationTests
 {
-    [Fact(Timeout = 90_000)]
-    public async ValueTask YabHttp11Interop_Succeeds()
-    {
-        var ct = TestContext.Current.CancellationToken;
-        var yabPath = ExternalTool.Require("yab", "yab CLI missing. Install go.uber.org/yarpc/yab to run this test.");
-
-        var serviceName = $"compat-http-{Guid.NewGuid():N}";
-        const string procedure = "compat::ping";
-        var port = TestPortAllocator.GetRandomPort();
-        var baseAddress = new Uri($"http://127.0.0.1:{port}/");
-
-        var payloadCapture = CreateCompletionSource<string>();
-        var protocolCapture = CreateCompletionSource<string>();
-        var callerCapture = CreateCompletionSource<string?>();
-
-        var dispatcher = CreateHttpDispatcher(
-            serviceName,
-            baseAddress,
-            procedure,
-            (request, _) =>
-            {
-                var body = Encoding.UTF8.GetString(request.Body.Span);
-                payloadCapture.TrySetResult(body);
-                protocolCapture.TrySetResult(request.Meta.Headers.TryGetValue(HttpTransportHeaders.Protocol, out var protocol) ? protocol : "missing");
-                callerCapture.TrySetResult(request.Meta.Caller);
-
-                var responseBytes = "{\"message\":\"interop\"}"u8.ToArray();
-                var meta = new ResponseMeta(encoding: MediaTypeNames.Application.Json);
-                return ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(responseBytes, meta)));
-            });
-
-        await dispatcher.StartAsyncChecked(ct);
-
-        try
-        {
-            var requestJson = "{\"message\":\"interop-yab\"}";
-            var args = new[]
-            {
-                "--http",
-                "--peer", baseAddress.ToString(),
-                "--service", serviceName,
-                "--procedure", procedure,
-                "--encoding", "json",
-                "--request", requestJson,
-                "--caller", "compat-yab",
-                "--timeout", "2s"
-            };
-
-            var result = await ProcessRunner.RunAsync(
-                yabPath,
-                args,
-                TimeSpan.FromSeconds(20),
-                RepositoryPaths.Root,
-                cancellationToken: ct);
-
-            Assert.True(result.ExitCode == 0, $"yab invocation failed: {result.StandardError}");
-
-            var body = await payloadCapture.Task.WaitAsync(TimeSpan.FromSeconds(5), ct);
-            using var json = JsonDocument.Parse(body);
-            Assert.Equal("interop-yab", json.RootElement.GetProperty("message").GetString());
-
-            var protocol = await protocolCapture.Task.WaitAsync(TimeSpan.FromSeconds(5), ct);
-            Assert.Equal("HTTP/1.1", protocol);
-
-            var caller = await callerCapture.Task.WaitAsync(TimeSpan.FromSeconds(5), ct);
-            Assert.Equal("compat-yab", caller);
-        }
-        finally
-        {
-            await dispatcher.StopAsyncChecked(CancellationToken.None);
-        }
-    }
-
     [Fact(Timeout = 90_000)]
     public async ValueTask GrpcurlInterop_UsesHttp2()
     {

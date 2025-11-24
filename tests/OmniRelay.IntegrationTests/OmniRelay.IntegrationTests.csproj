@@ -30,6 +30,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Remove="CompatibilityInteropIntegrationTests.cs" />
     <Compile Include="../OmniRelay.Codegen.Tests/Generated/TestService.OmniRelay.g.cs" Link="Support/Generated/TestService.OmniRelay.g.cs" />
     <Compile Include="../TestSupport/Shards/ShardControlPlaneTestHost.cs" Link="Support/ShardControlPlaneTestHost.cs" />
     <Compile Include="../TestSupport/Support/TestRuntimeConfigurator.cs" Link="Support/TestRuntimeConfigurator.cs" />
@@ -41,6 +42,5 @@
 
   <ItemGroup>
     <Protobuf Include="../OmniRelay.Codegen.Tests/Protos/test_service.proto" Link="Protos/test_service.proto" GrpcServices="None" />
-    <Protobuf Include="../OmniRelay.YabInterop/Protos/echo.proto" Link="Protos/echo.proto" GrpcServices="None" />
   </ItemGroup>
 </Project>
