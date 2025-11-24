@@ -1,7 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Hugo;
-using static Hugo.Go;
 using Unit = Hugo.Go.Unit;
 
 namespace OmniRelay.ControlPlane.Agent;

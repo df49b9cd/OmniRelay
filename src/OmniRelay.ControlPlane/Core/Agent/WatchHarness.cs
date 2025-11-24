@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using Google.Protobuf;
 using Hugo;
-using Hugo.TaskQueues;
 using Hugo.Policies;
 using Microsoft.Extensions.Logging;
 using OmniRelay.ControlPlane.ControlProtocol;

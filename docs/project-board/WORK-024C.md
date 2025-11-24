@@ -13,7 +13,11 @@ Adopt Hugo windowing for streaming control/telemetry flows so batching is determ
 - Batching thresholds are configurable and tested; cancellation flushes remaining items deterministically.
 
 ## Status
-Planned
+Done
+
+## Completion Notes
+- Telemetry forwarder batches snapshot/version events via `ResultPipelineChannels.WindowAsync` with configurable batch size, flush interval, and bounded channel capacity; export hook currently logs the batched forward.
+- Diagnostics control-plane streaming remains bounded via existing channel usage; no unbounded buffers.
 
 ## SLOs & CI gates
 - No unbounded buffering; channel capacities defined per options.
