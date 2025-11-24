@@ -1,3 +1,4 @@
+using AwesomeAssertions;
 using Hugo;
 using OmniRelay.Dispatcher.Grpc;
 using static Hugo.Go;
@@ -17,11 +18,11 @@ public sealed class GrpcResourceLeaseReplicatorTests
 
         var result = await replicator.PublishAsync(CreateEvent(), TestContext.Current.CancellationToken);
 
-        Assert.True(result.IsSuccess, result.Error?.ToString());
-        Assert.Single(client.Requests);
-        Assert.Equal(1, client.Requests[0].SequenceNumber);
-        Assert.Single(sink.Events);
-        Assert.Equal(1, sink.Events[0].SequenceNumber);
+        result.IsSuccess.Should().BeTrue(result.Error?.ToString());
+        client.Requests.Should().ContainSingle();
+        client.Requests[0].SequenceNumber.Should().Be(1);
+        sink.Events.Should().ContainSingle();
+        sink.Events[0].SequenceNumber.Should().Be(1);
     }
 
     private static ResourceLeaseReplicationEvent CreateEvent() =>

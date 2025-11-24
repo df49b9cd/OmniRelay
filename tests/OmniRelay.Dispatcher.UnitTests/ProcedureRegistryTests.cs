@@ -1,6 +1,8 @@
+using AwesomeAssertions;
 using OmniRelay.Core;
 using OmniRelay.Core.Transport;
 using Xunit;
+using static AwesomeAssertions.FluentActions;
 using static Hugo.Go;
 
 namespace OmniRelay.Dispatcher.UnitTests;
@@ -18,8 +20,8 @@ public class ProcedureRegistryTests
 
         registry.Register(spec);
 
-        Assert.True(registry.TryGet("svc", "alias", ProcedureKind.Unary, out var resolved));
-        Assert.Same(spec, resolved);
+        registry.TryGet("svc", "alias", ProcedureKind.Unary, out var resolved).Should().BeTrue();
+        resolved.Should().BeSameAs(spec);
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
@@ -31,7 +33,8 @@ public class ProcedureRegistryTests
 
         registry.Register(first);
 
-        Assert.Throws<InvalidOperationException>(() => registry.Register(second));
+        Invoking(() => registry.Register(second))
+            .Should().Throw<InvalidOperationException>();
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
@@ -40,7 +43,8 @@ public class ProcedureRegistryTests
         var registry = new ProcedureRegistry();
         var spec = new UnaryProcedureSpec("svc", "name", UnaryHandler, aliases: ["dup", "dup"]);
 
-        Assert.Throws<InvalidOperationException>(() => registry.Register(spec));
+        Invoking(() => registry.Register(spec))
+            .Should().Throw<InvalidOperationException>();
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
@@ -50,8 +54,9 @@ public class ProcedureRegistryTests
 
         registry.Register(new UnaryProcedureSpec("svc", "first", UnaryHandler, aliases: ["foo*"]));
 
-        Assert.Throws<InvalidOperationException>(() =>
-            registry.Register(new UnaryProcedureSpec("svc", "second", UnaryHandler, aliases: ["foo*"])));
+        Invoking(() =>
+                registry.Register(new UnaryProcedureSpec("svc", "second", UnaryHandler, aliases: ["foo*"])))
+            .Should().Throw<InvalidOperationException>();
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
@@ -65,8 +70,8 @@ public class ProcedureRegistryTests
         registry.Register(general);
         registry.Register(specific);
 
-        Assert.True(registry.TryGet("svc", "foo.bar", ProcedureKind.Unary, out var resolved));
-        Assert.Same(specific, resolved);
+        registry.TryGet("svc", "foo.bar", ProcedureKind.Unary, out var resolved).Should().BeTrue();
+        resolved.Should().BeSameAs(specific);
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
@@ -77,8 +82,8 @@ public class ProcedureRegistryTests
 
         registry.Register(spec);
 
-        Assert.True(registry.TryGet("svc", "alias", ProcedureKind.Unary, out var resolved));
-        Assert.Same(spec, resolved);
+        registry.TryGet("svc", "alias", ProcedureKind.Unary, out var resolved).Should().BeTrue();
+        resolved.Should().BeSameAs(spec);
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
@@ -92,7 +97,7 @@ public class ProcedureRegistryTests
         registry.Register(first);
         registry.Register(second);
 
-        Assert.True(registry.TryGet("svc", "fooxbar", ProcedureKind.Unary, out var resolved));
-        Assert.Same(first, resolved);
+        registry.TryGet("svc", "fooxbar", ProcedureKind.Unary, out var resolved).Should().BeTrue();
+        resolved.Should().BeSameAs(first);
     }
 }

@@ -1,3 +1,4 @@
+using AwesomeAssertions;
 using Hugo;
 using static Hugo.Go;
 using Unit = Hugo.Go.Unit;
@@ -16,10 +17,10 @@ public sealed class ResourceLeaseReplicationTests
         var first = await replicator.PublishAsync(CreateEvent(), CancellationToken.None);
         var second = await replicator.PublishAsync(CreateEvent(), CancellationToken.None);
 
-        Assert.True(first.IsSuccess, first.Error?.ToString());
-        Assert.True(second.IsSuccess, second.Error?.ToString());
+        first.IsSuccess.Should().BeTrue(first.Error?.ToString());
+        second.IsSuccess.Should().BeTrue(second.Error?.ToString());
 
-        Assert.Equal([1L, 2L], [.. sink.Events.Select(evt => evt.SequenceNumber)]);
+        sink.Events.Select(evt => evt.SequenceNumber).Should().Equal(1L, 2L);
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
@@ -30,9 +31,9 @@ public sealed class ResourceLeaseReplicationTests
 
         var result = await replicator.PublishAsync(CreateEvent(sequence: 42), CancellationToken.None);
 
-        Assert.True(result.IsSuccess, result.Error?.ToString());
-        Assert.Single(sink.Events);
-        Assert.Equal(11L, sink.Events[0].SequenceNumber);
+        result.IsSuccess.Should().BeTrue(result.Error?.ToString());
+        sink.Events.Should().ContainSingle();
+        sink.Events[0].SequenceNumber.Should().Be(11L);
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
@@ -44,11 +45,11 @@ public sealed class ResourceLeaseReplicationTests
         var duplicate = await sink.ApplyAsync(CreateEvent(sequence: 5), CancellationToken.None);
         var second = await sink.ApplyAsync(CreateEvent(sequence: 6), CancellationToken.None);
 
-        Assert.True(first.IsSuccess, first.Error?.ToString());
-        Assert.True(duplicate.IsSuccess, duplicate.Error?.ToString());
-        Assert.True(second.IsSuccess, second.Error?.ToString());
+        first.IsSuccess.Should().BeTrue(first.Error?.ToString());
+        duplicate.IsSuccess.Should().BeTrue(duplicate.Error?.ToString());
+        second.IsSuccess.Should().BeTrue(second.Error?.ToString());
 
-        Assert.Equal(new[] { 5L, 6L }, sink.AppliedSequences);
+        sink.AppliedSequences.Should().Equal(5L, 6L);
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
@@ -61,7 +62,7 @@ public sealed class ResourceLeaseReplicationTests
             MaxVersion = 1,
             StateStore = new InMemoryDeterministicStateStore()
         });
-        Assert.True(coordinatorResult.IsSuccess, coordinatorResult.Error?.ToString());
+        coordinatorResult.IsSuccess.Should().BeTrue(coordinatorResult.Error?.ToString());
         var coordinator = coordinatorResult.Value;
 
         var evt = CreateEvent(sequence: 10);
@@ -69,8 +70,8 @@ public sealed class ResourceLeaseReplicationTests
         var first = await coordinator.RecordAsync(evt, CancellationToken.None);
         var duplicate = await coordinator.RecordAsync(evt, CancellationToken.None); // duplicate should be ignored without throwing
 
-        Assert.True(first.IsSuccess, first.Error?.ToString());
-        Assert.True(duplicate.IsSuccess, duplicate.Error?.ToString());
+        first.IsSuccess.Should().BeTrue(first.Error?.ToString());
+        duplicate.IsSuccess.Should().BeTrue(duplicate.Error?.ToString());
     }
 
     private static ResourceLeaseReplicationEvent CreateEvent(long sequence = 0) =>

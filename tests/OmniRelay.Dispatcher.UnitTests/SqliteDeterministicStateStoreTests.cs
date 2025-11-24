@@ -1,3 +1,4 @@
+using AwesomeAssertions;
 using Hugo;
 using Microsoft.Data.Sqlite;
 using Xunit;
@@ -11,15 +12,15 @@ public sealed class SqliteDeterministicStateStoreTests
     {
         using var temp = new TempFile();
         var storeResult = SqliteDeterministicStateStore.Create($"Data Source={temp.Path}");
-        Assert.True(storeResult.IsSuccess, storeResult.Error?.ToString());
+        storeResult.IsSuccess.Should().BeTrue(storeResult.Error?.ToString());
         var store = storeResult.Value;
         var record = new DeterministicRecord("kind", 1, [1, 2], DateTimeOffset.UtcNow);
 
-        Assert.True(store.TryAdd("key", record));
-        Assert.False(store.TryAdd("key", record));
+        store.TryAdd("key", record).Should().BeTrue();
+        store.TryAdd("key", record).Should().BeFalse();
 
-        Assert.True(store.TryGet("key", out var fetched));
-        Assert.Equal(record.Kind, fetched.Kind);
+        store.TryGet("key", out var fetched).Should().BeTrue();
+        fetched.Kind.Should().Be(record.Kind);
     }
 
     private sealed class TempFile : IDisposable

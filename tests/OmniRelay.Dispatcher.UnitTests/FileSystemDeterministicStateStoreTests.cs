@@ -1,3 +1,4 @@
+using AwesomeAssertions;
 using Hugo;
 using Xunit;
 
@@ -10,7 +11,7 @@ public sealed class FileSystemDeterministicStateStoreTests
     {
         using var temp = new TempDirectory();
         var storeResult = FileSystemDeterministicStateStore.Create(temp.Path);
-        Assert.True(storeResult.IsSuccess, storeResult.Error?.ToString());
+        storeResult.IsSuccess.Should().BeTrue(storeResult.Error?.ToString());
         var store = storeResult.Value;
 
         var record1 = new DeterministicRecord("kind", 1, [1], DateTimeOffset.UtcNow);
@@ -19,8 +20,8 @@ public sealed class FileSystemDeterministicStateStoreTests
         var record2 = new DeterministicRecord("kind", 2, [2], DateTimeOffset.UtcNow.AddMinutes(1));
         store.Set("key", record2);
 
-        Assert.True(store.TryGet("key", out var fetched));
-        Assert.Equal(2, fetched.Version);
+        store.TryGet("key", out var fetched).Should().BeTrue();
+        fetched.Version.Should().Be(2);
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
@@ -28,12 +29,12 @@ public sealed class FileSystemDeterministicStateStoreTests
     {
         using var temp = new TempDirectory();
         var storeResult = FileSystemDeterministicStateStore.Create(temp.Path);
-        Assert.True(storeResult.IsSuccess, storeResult.Error?.ToString());
+        storeResult.IsSuccess.Should().BeTrue(storeResult.Error?.ToString());
         var store = storeResult.Value;
         var record = new DeterministicRecord("kind", 1, [1], DateTimeOffset.UtcNow);
 
-        Assert.True(store.TryAdd("key", record));
-        Assert.False(store.TryAdd("key", record));
+        store.TryAdd("key", record).Should().BeTrue();
+        store.TryAdd("key", record).Should().BeFalse();
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
@@ -41,7 +42,7 @@ public sealed class FileSystemDeterministicStateStoreTests
     {
         using var temp = new TempDirectory();
         var storeResult = FileSystemDeterministicStateStore.Create(temp.Path);
-        Assert.True(storeResult.IsSuccess, storeResult.Error?.ToString());
+        storeResult.IsSuccess.Should().BeTrue(storeResult.Error?.ToString());
         var store = storeResult.Value;
 
         var longKey = new string('k', 2_048);
@@ -50,8 +51,8 @@ public sealed class FileSystemDeterministicStateStoreTests
 
         store.Set(longKey, record);
 
-        Assert.True(store.TryGet(longKey, out var fetched));
-        Assert.Equal(payload, fetched.Payload.ToArray());
+        store.TryGet(longKey, out var fetched).Should().BeTrue();
+        fetched.Payload.ToArray().Should().Equal(payload);
     }
 
     private sealed class TempDirectory : IDisposable

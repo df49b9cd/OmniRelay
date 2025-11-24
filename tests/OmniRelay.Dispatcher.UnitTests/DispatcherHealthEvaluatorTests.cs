@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using AwesomeAssertions;
 using NSubstitute;
 using OmniRelay.Core.Transport;
 using OmniRelay.Transport.Grpc;
@@ -15,33 +16,33 @@ public class DispatcherHealthEvaluatorTests
 
         var result = DispatcherHealthEvaluator.Evaluate(dispatcher);
 
-        Assert.False(result.IsReady);
-        Assert.Contains("dispatcher-status:Created", result.Issues);
+        result.IsReady.Should().BeFalse();
+        result.Issues.Should().Contain("dispatcher-status:Created");
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
     public async ValueTask Evaluate_WithGrpcOutboundReportsIssues()
     {
         var initial = await EvaluateAsync(CreateSnapshot(isStarted: false, peers: []));
-        Assert.Contains("grpc:remote:unary:default:not-started", initial.Issues);
+        initial.Issues.Should().Contain("grpc:remote:unary:default:not-started");
 
         var noPeers = await EvaluateAsync(CreateSnapshot(isStarted: true, peers: []));
-        Assert.Contains("grpc:remote:unary:default:no-peers", noPeers.Issues);
+        noPeers.Issues.Should().Contain("grpc:remote:unary:default:no-peers");
 
         var noAvailable = await EvaluateAsync(CreateSnapshot(
             isStarted: true,
             peers: [new Uri("http://localhost")],
             summaries: [new GrpcPeerSummary(new Uri("http://localhost"), Core.Peers.PeerState.Unavailable, 0, null, null, 0, 0, null, null, null, null)
             ]));
-        Assert.Contains("grpc:remote:unary:default:no-available-peers", noAvailable.Issues);
+        noAvailable.Issues.Should().Contain("grpc:remote:unary:default:no-available-peers");
 
         var healthy = await EvaluateAsync(CreateSnapshot(
             isStarted: true,
             peers: [new Uri("http://localhost")],
             summaries: [new GrpcPeerSummary(new Uri("http://localhost"), Core.Peers.PeerState.Available, 0, null, null, 0, 0, null, null, null, null)
             ]));
-        Assert.True(healthy.IsReady);
-        Assert.Empty(healthy.Issues);
+        healthy.IsReady.Should().BeTrue();
+        healthy.Issues.Should().BeEmpty();
     }
 
     private static async Task<DispatcherReadinessResult> EvaluateAsync(GrpcOutboundSnapshot snapshot)

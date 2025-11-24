@@ -1,3 +1,4 @@
+using AwesomeAssertions;
 using NSubstitute;
 using OmniRelay.Core;
 using OmniRelay.Core.Middleware;
@@ -21,14 +22,14 @@ public class ProcedureBuildersTests
             .AddAliases(["alias-two", "alias-three"]);
 
         var specResult = builder.Build("svc", "proc");
-        specResult.IsSuccess.ShouldBeTrue();
+        specResult.IsSuccess.Should().BeTrue();
         var spec = specResult.Value;
 
-        Assert.Equal("svc", spec.Service);
-        Assert.Equal("proc", spec.Name);
-        Assert.Equal("json", spec.Encoding);
-        Assert.Contains(middleware, spec.Middleware);
-        Assert.Equal(new[] { "alias-one", "alias-two", "alias-three" }, spec.Aliases);
+        spec.Service.Should().Be("svc");
+        spec.Name.Should().Be("proc");
+        spec.Encoding.Should().Be("json");
+        spec.Middleware.Should().Contain(middleware);
+        spec.Aliases.Should().Equal("alias-one", "alias-two", "alias-three");
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
@@ -37,7 +38,7 @@ public class ProcedureBuildersTests
         var builder = new OnewayProcedureBuilder();
 
         var result = builder.Build("svc", "name");
-        result.IsFailure.ShouldBeTrue();
+        result.IsFailure.Should().BeTrue();
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
@@ -49,8 +50,8 @@ public class ProcedureBuildersTests
             .Handle((_, _, _) => ValueTask.FromResult(Ok<IStreamCall>(new TestHelpers.DummyStreamCall())))
             .WithMetadata(metadata)
             .Build("svc", "stream");
-        specResult.IsSuccess.ShouldBeTrue();
-        Assert.Equal(metadata, specResult.Value.Metadata);
+        specResult.IsSuccess.Should().BeTrue();
+        specResult.Value.Metadata.Should().Be(metadata);
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
@@ -62,8 +63,8 @@ public class ProcedureBuildersTests
             .Handle((_, _) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty))))
             .WithMetadata(metadata)
             .Build("svc", "client");
-        specResult.IsSuccess.ShouldBeTrue();
-        Assert.Equal(metadata, specResult.Value.Metadata);
+        specResult.IsSuccess.Should().BeTrue();
+        specResult.Value.Metadata.Should().Be(metadata);
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
@@ -77,7 +78,7 @@ public class ProcedureBuildersTests
             .Handle((_, _) => ValueTask.FromResult(Ok<IDuplexStreamCall>(new TestHelpers.DummyDuplexStreamCall())))
             .WithMetadata(metadata)
             .Build("svc", "duplex");
-        specResult.IsSuccess.ShouldBeTrue();
-        Assert.Equal(metadata, specResult.Value.Metadata);
+        specResult.IsSuccess.Should().BeTrue();
+        specResult.Value.Metadata.Should().Be(metadata);
     }
 }

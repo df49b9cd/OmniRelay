@@ -1,3 +1,4 @@
+using AwesomeAssertions;
 using NSubstitute;
 using OmniRelay.Core.Transport;
 using Xunit;
@@ -15,7 +16,7 @@ public class DispatcherShadowingExtensionsTests
         var dispatcher = new Dispatcher(options);
         var outbound = dispatcher.ClientConfigChecked("downstream").ResolveUnary();
 
-        Assert.IsType<TeeUnaryOutbound>(outbound);
+        outbound.Should().BeOfType<TeeUnaryOutbound>();
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
@@ -27,6 +28,6 @@ public class DispatcherShadowingExtensionsTests
         var dispatcher = new Dispatcher(options);
         var outbound = dispatcher.ClientConfigChecked("downstream").ResolveOneway("shadow");
 
-        Assert.IsType<TeeOnewayOutbound>(outbound);
+        outbound.Should().BeOfType<TeeOnewayOutbound>();
     }
 }

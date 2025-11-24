@@ -1,4 +1,5 @@
 using System.Threading.RateLimiting;
+using AwesomeAssertions;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 using OmniRelay.ControlPlane.Throttling;
@@ -37,34 +38,34 @@ public sealed class ResourceLeaseBackpressureListenerTests
         var listener = new RateLimitingBackpressureListener(gate, logger);
         var meta = new RequestMeta(service: "svc", transport: "http");
 
-        Assert.Same(normal, gate.SelectLimiter(meta));
+        gate.SelectLimiter(meta).Should().BeSameAs(normal);
 
         await listener.OnBackpressureChanged(ActiveSignal(), CancellationToken.None);
-        Assert.Same(throttled, gate.SelectLimiter(meta));
+        gate.SelectLimiter(meta).Should().BeSameAs(throttled);
 
         await listener.OnBackpressureChanged(ClearedSignal(), CancellationToken.None);
-        Assert.Same(normal, gate.SelectLimiter(meta));
+        gate.SelectLimiter(meta).Should().BeSameAs(normal);
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
     public async ValueTask DiagnosticsListener_StoresLatestAndStreams()
     {
         var listener = new ResourceLeaseBackpressureDiagnosticsListener(historyCapacity: 4);
-        Assert.Null(listener.Latest);
+        listener.Latest.Should().BeNull();
 
         var signal = ActiveSignal(pending: 42);
         await listener.OnBackpressureChanged(signal, CancellationToken.None);
 
-        Assert.Equal(signal, listener.Latest);
+        listener.Latest.Should().Be(signal);
 
         var read = await listener.Updates.ReadAsync(CancellationToken.None);
-        Assert.Equal(signal, read);
+        read.Should().Be(signal);
 
         var cleared = ClearedSignal();
         await listener.OnBackpressureChanged(cleared, CancellationToken.None);
-        Assert.Equal(cleared, listener.Latest);
+        listener.Latest.Should().Be(cleared);
 
-        Assert.True(listener.Updates.TryRead(out var clearedRead));
-        Assert.Equal(cleared, clearedRead);
+        listener.Updates.TryRead(out var clearedRead).Should().BeTrue();
+        clearedRead.Should().Be(cleared);
     }
 }

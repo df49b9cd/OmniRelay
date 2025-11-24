@@ -1,3 +1,4 @@
+using AwesomeAssertions;
 using OmniRelay.Core.Transport;
 using Xunit;
 
@@ -9,24 +10,24 @@ public class StreamingIntrospectionMetadataTests
     public void StreamChannelMetadata_DefaultsMatchExpected()
     {
         var response = StreamChannelMetadata.DefaultResponse;
-        Assert.Equal(StreamDirection.Server, response.Direction);
-        Assert.Null(response.Capacity);
-        Assert.True(response.TracksMessageCount);
+        response.Direction.Should().Be(StreamDirection.Server);
+        response.Capacity.Should().BeNull();
+        response.TracksMessageCount.Should().BeTrue();
 
         var request = StreamChannelMetadata.DefaultRequest;
-        Assert.Equal(StreamDirection.Client, request.Direction);
-        Assert.False(request.TracksMessageCount);
+        request.Direction.Should().Be(StreamDirection.Client);
+        request.TracksMessageCount.Should().BeFalse();
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
     public void AggregateDefaults_ComposeChannelMetadata()
     {
-        Assert.Equal(StreamChannelMetadata.DefaultResponse, StreamIntrospectionMetadata.Default.ResponseChannel);
-        Assert.Equal(StreamChannelMetadata.DefaultRequest, ClientStreamIntrospectionMetadata.Default.RequestChannel);
-        Assert.True(ClientStreamIntrospectionMetadata.Default.AggregatesUnaryResponse);
+        StreamIntrospectionMetadata.Default.ResponseChannel.Should().Be(StreamChannelMetadata.DefaultResponse);
+        ClientStreamIntrospectionMetadata.Default.RequestChannel.Should().Be(StreamChannelMetadata.DefaultRequest);
+        ClientStreamIntrospectionMetadata.Default.AggregatesUnaryResponse.Should().BeTrue();
 
         var duplex = DuplexIntrospectionMetadata.Default;
-        Assert.Equal(StreamChannelMetadata.DefaultRequest, duplex.RequestChannel);
-        Assert.Equal(StreamChannelMetadata.DefaultResponse, duplex.ResponseChannel);
+        duplex.RequestChannel.Should().Be(StreamChannelMetadata.DefaultRequest);
+        duplex.ResponseChannel.Should().Be(StreamChannelMetadata.DefaultResponse);
     }
 }

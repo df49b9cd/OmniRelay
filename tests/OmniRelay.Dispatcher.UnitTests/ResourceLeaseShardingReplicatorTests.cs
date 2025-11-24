@@ -1,3 +1,4 @@
+using AwesomeAssertions;
 using Hugo;
 using NSubstitute;
 using static Hugo.Go;
@@ -32,7 +33,7 @@ public sealed class ResourceLeaseShardingReplicatorTests
 
         var result = await replicator.PublishAsync(evt, CancellationToken.None);
 
-        Assert.True(result.IsSuccess, result.Error?.ToString());
+        result.IsSuccess.Should().BeTrue(result.Error?.ToString());
         await inner.Received(1).PublishAsync(
             Arg.Is<ResourceLeaseReplicationEvent>(e => HasShard(e, "users")),
             CancellationToken.None);
@@ -53,7 +54,7 @@ public sealed class ResourceLeaseShardingReplicatorTests
 
         var result = await composite.PublishAsync(evt, CancellationToken.None);
 
-        Assert.True(result.IsSuccess, result.Error?.ToString());
+        result.IsSuccess.Should().BeTrue(result.Error?.ToString());
         await first.Received(1).PublishAsync(evt, CancellationToken.None);
         await second.Received(1).PublishAsync(evt, CancellationToken.None);
     }

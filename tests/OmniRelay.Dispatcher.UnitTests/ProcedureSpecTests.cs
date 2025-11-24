@@ -1,6 +1,8 @@
+using AwesomeAssertions;
 using OmniRelay.Core;
 using OmniRelay.Core.Middleware;
 using Xunit;
+using static AwesomeAssertions.FluentActions;
 using static Hugo.Go;
 
 namespace OmniRelay.Dispatcher.UnitTests;
@@ -15,7 +17,7 @@ public class ProcedureSpecTests
             "proc",
             (_, _) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty))));
 
-        Assert.Equal("svc::proc", spec.FullName);
+        spec.FullName.Should().Be("svc::proc");
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
@@ -23,11 +25,12 @@ public class ProcedureSpecTests
     {
         var middleware = Array.Empty<IUnaryInboundMiddleware>();
 
-        Assert.Throws<ArgumentException>(() =>
-            new UnaryProcedureSpec(
-                "svc",
-                "proc",
-                (_, _) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty))),
-                aliases: ["valid", "  "]));
+        Invoking(() =>
+                new UnaryProcedureSpec(
+                    "svc",
+                    "proc",
+                    (_, _) => ValueTask.FromResult(Ok(Response<ReadOnlyMemory<byte>>.Create(ReadOnlyMemory<byte>.Empty))),
+                    aliases: ["valid", "  "]))
+            .Should().Throw<ArgumentException>();
     }
 }

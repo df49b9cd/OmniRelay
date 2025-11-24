@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AwesomeAssertions;
 using Hugo;
 using Microsoft.Data.Sqlite;
 using static Hugo.Go;
@@ -21,21 +22,21 @@ public sealed class SqliteResourceLeaseReplicatorTests
         var cancellationToken = TestContext.Current.CancellationToken;
         var result = await replicator.PublishAsync(evt, cancellationToken);
 
-        Assert.True(result.IsSuccess, result.Error?.ToString());
+        result.IsSuccess.Should().BeTrue(result.Error?.ToString());
 
-        Assert.Single(sink.Events);
-        Assert.Equal(1, sink.Events[0].SequenceNumber);
+        sink.Events.Should().ContainSingle();
+        sink.Events[0].SequenceNumber.Should().Be(1);
 
         await using var connection = new SqliteConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
         command.CommandText = "SELECT event_json FROM ResourceLeaseReplicationEvents LIMIT 1;";
         var json = (string?)await command.ExecuteScalarAsync(cancellationToken);
-        Assert.NotNull(json);
+        json.Should().NotBeNull();
 
         var stored = JsonSerializer.Deserialize(json!, ResourceLeaseJsonContext.Default.ResourceLeaseReplicationEvent);
-        Assert.NotNull(stored);
-        Assert.Equal(sink.Events[0].SequenceNumber, stored!.SequenceNumber);
+        stored.Should().NotBeNull();
+        stored!.SequenceNumber.Should().Be(sink.Events[0].SequenceNumber);
     }
 
     private static ResourceLeaseReplicationEvent CreateEvent() =>
