@@ -1,6 +1,8 @@
 using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
+using Hugo;
 using OmniRelay.Core;
+using static Hugo.Go;
 
 namespace OmniRelay.Dispatcher;
 
@@ -15,36 +17,47 @@ public sealed class CodecRegistry
     private readonly Lock _gate = new();
     private readonly string _localService;
 
-    internal CodecRegistry(string localService, IEnumerable<ProcedureCodecRegistration> registrations)
+    private CodecRegistry(string localService)
+    {
+        _localService = localService;
+    }
+
+    internal static Result<CodecRegistry> Create(string localService, IEnumerable<ProcedureCodecRegistration> registrations)
     {
         if (string.IsNullOrWhiteSpace(localService))
         {
-            throw new ArgumentException("Local service name cannot be null or whitespace.", nameof(localService));
+            return Err<CodecRegistry>(CodecRegistryErrors.LocalServiceRequired());
         }
 
-        _localService = localService;
-
+        var registry = new CodecRegistry(localService);
         foreach (var registration in registrations)
         {
-            RegisterInternal(
+            var service = registry.ResolveService(registration.Scope, registration.Service);
+            var descriptor = CreateDescriptor(registration);
+            var addResult = registry.RegisterInternal(
                 registration.Scope,
-                ResolveService(registration.Scope, registration.Service),
+                service,
                 registration.Procedure,
                 registration.Kind,
-                CreateDescriptor(registration),
+                descriptor,
                 registration.Aliases);
+
+            if (addResult.IsFailure)
+            {
+                return Err<CodecRegistry>(DispatcherErrors.CodecRegistrationFailed(addResult.Error!));
+            }
         }
+
+        return Ok(registry);
     }
 
-    internal CodecRegistry(string localService)
-        : this(localService, [])
-    {
-    }
+    internal static Result<CodecRegistry> Create(string localService)
+        => Create(localService, Array.Empty<ProcedureCodecRegistration>());
 
     /// <summary>
     /// Registers a codec for an inbound procedure on the local service.
     /// </summary>
-    public void RegisterInbound<TRequest, TResponse>(
+    public Result<Unit> RegisterInbound<TRequest, TResponse>(
         string procedure,
         ProcedureKind kind,
         ICodec<TRequest, TResponse> codec,
@@ -59,7 +72,7 @@ public sealed class CodecRegistry
     /// <summary>
     /// Registers a codec for an outbound procedure on the specified remote service.
     /// </summary>
-    public void RegisterOutbound<TRequest, TResponse>(
+    public Result<Unit> RegisterOutbound<TRequest, TResponse>(
         string service,
         string procedure,
         ProcedureKind kind,
@@ -68,10 +81,10 @@ public sealed class CodecRegistry
     {
         if (string.IsNullOrWhiteSpace(service))
         {
-            throw new ArgumentException("Service identifier cannot be null or whitespace.", nameof(service));
+            return Err<Unit>(CodecRegistryErrors.ServiceRequired());
         }
 
-        Register(
+        return Register(
             ProcedureCodecScope.Outbound,
             service,
             procedure,
@@ -150,7 +163,7 @@ public sealed class CodecRegistry
         }
     }
 
-    private void Register<TRequest, TResponse>(
+    private Result<Unit> Register<TRequest, TResponse>(
         ProcedureCodecScope scope,
         string service,
         string procedure,
@@ -160,7 +173,7 @@ public sealed class CodecRegistry
     {
         ArgumentNullException.ThrowIfNull(codec);
 
-        RegisterInternal(
+        return RegisterInternal(
             scope,
             service,
             procedure,
@@ -169,7 +182,7 @@ public sealed class CodecRegistry
             aliases);
     }
 
-    private void RegisterInternal(
+    private Result<Unit> RegisterInternal(
         ProcedureCodecScope scope,
         string service,
         string procedure,
@@ -177,7 +190,7 @@ public sealed class CodecRegistry
         ProcedureCodecDescriptor descriptor,
         ImmutableArray<string> aliases) => RegisterInternal(scope, service, procedure, kind, descriptor, (IEnumerable<string>)aliases);
 
-    private void RegisterInternal(
+    private Result<Unit> RegisterInternal(
         ProcedureCodecScope scope,
         string service,
         string procedure,
@@ -187,12 +200,12 @@ public sealed class CodecRegistry
     {
         if (string.IsNullOrWhiteSpace(service))
         {
-            throw new ArgumentException("Service identifier cannot be null or whitespace.", nameof(service));
+            return Err<Unit>(CodecRegistryErrors.ServiceRequired());
         }
 
         if (string.IsNullOrWhiteSpace(procedure))
         {
-            throw new ArgumentException("Procedure name cannot be null or whitespace.", nameof(procedure));
+            return Err<Unit>(CodecRegistryErrors.ProcedureRequired());
         }
 
         lock (_gate)
@@ -202,12 +215,14 @@ public sealed class CodecRegistry
                 var key = new ProcedureCodecKey(scope, service, name, kind);
                 if (_codecs.ContainsKey(key))
                 {
-                    throw new InvalidOperationException($"Codec for {scope} procedure '{service}::{name}' ({kind}) is already registered.");
+                    return Err<Unit>(CodecRegistryErrors.Duplicate(scope.ToString(), service, name, kind));
                 }
 
                 _codecs[key] = descriptor;
             }
         }
+
+        return Ok(Unit.Value);
     }
 
     private static ProcedureCodecDescriptor CreateDescriptor(ProcedureCodecRegistration registration) =>
@@ -217,7 +232,7 @@ public sealed class CodecRegistry
         scope switch
         {
             ProcedureCodecScope.Inbound => _localService,
-            _ => service ?? throw new InvalidOperationException("Outbound codec registrations must specify a service name.")
+            _ => service ?? string.Empty
         };
 
     private static IEnumerable<string> EnumerateNames(string procedure, IEnumerable<string>? aliases)

@@ -44,10 +44,14 @@ internal static partial class DispatcherConfigMapper
         return ParseMode(config.Mode)
             .Then(mode =>
             {
-                var options = new DispatcherOptions(config.Service)
+                var optionsResult = DispatcherOptions.Create(config.Service);
+                if (optionsResult.IsFailure)
                 {
-                    Mode = mode
-                };
+                    return Err<global::OmniRelay.Dispatcher.Dispatcher>(optionsResult.Error!);
+                }
+
+                var options = optionsResult.Value;
+                options.Mode = mode;
 
                 var interceptorAliases = services.GetService<IGrpcInterceptorAliasRegistry>() ?? CreateDefaultAliasRegistry();
 
@@ -56,7 +60,7 @@ internal static partial class DispatcherConfigMapper
                     .Then(_ => ApplyMiddleware(services, registry, config.Middleware, options))
                     .Then(_ => ApplyEncodings(config.Encodings, registry, options))
                     .Then(_ => ConfigureOptions(configureOptions, services, options))
-                    .Map(_ => new global::OmniRelay.Dispatcher.Dispatcher(options));
+                    .Then(_ => global::OmniRelay.Dispatcher.Dispatcher.Create(options));
             })
             .OnFailure(error => Err<global::OmniRelay.Dispatcher.Dispatcher>(error.WithMetadata("service", config.Service)));
     }
@@ -109,7 +113,11 @@ internal static partial class DispatcherConfigMapper
 
             var inbound = inboundResult.Value;
 
-            options.AddLifecycle(name, inbound);
+            var addResult = options.AddLifecycleSafe(name, inbound);
+            if (addResult.IsFailure)
+            {
+                return addResult;
+            }
         }
 
         for (var i = 0; i < inbounds.Grpc.Count; i++)
@@ -142,7 +150,11 @@ internal static partial class DispatcherConfigMapper
 
             var inbound = inboundResult.Value;
 
-            options.AddLifecycle(name, inbound);
+            var addResult = options.AddLifecycleSafe(name, inbound);
+            if (addResult.IsFailure)
+            {
+                return addResult;
+            }
         }
 
         return Ok(Unit.Value);

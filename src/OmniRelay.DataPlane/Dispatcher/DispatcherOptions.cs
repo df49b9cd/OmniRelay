@@ -1,10 +1,12 @@
 using System.Collections.Immutable;
+using Hugo;
 using Hugo.Policies;
 using OmniRelay.Core;
 using OmniRelay.Core.Middleware;
 using OmniRelay.Core.Transport;
 using OmniRelay.Transport.Grpc.Interceptors;
 using OmniRelay.Transport.Http.Middleware;
+using static Hugo.Go;
 
 namespace OmniRelay.Dispatcher;
 
@@ -31,6 +33,21 @@ public sealed class DispatcherOptions
         }
 
         ServiceName = serviceName;
+    }
+
+    private DispatcherOptions(string serviceName, bool _)
+    {
+        ServiceName = serviceName;
+    }
+
+    public static Result<DispatcherOptions> Create(string serviceName)
+    {
+        if (string.IsNullOrWhiteSpace(serviceName))
+        {
+            return Err<DispatcherOptions>(DispatcherErrors.ServiceNameRequired());
+        }
+
+        return Ok(new DispatcherOptions(serviceName, true));
     }
 
     /// <summary>Indicates the deployment mode for capability reporting.</summary>
@@ -90,6 +107,22 @@ public sealed class DispatcherOptions
         {
             _uniqueComponents.Add(component);
         }
+    }
+
+    internal Result<Unit> AddLifecycleSafe(string name, ILifecycle lifecycle, IEnumerable<string>? dependencies = null)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return Err<Unit>(DispatcherErrors.LifecycleNameRequired());
+        }
+
+        if (lifecycle is null)
+        {
+            return Err<Unit>(Error.From("Lifecycle component is required.", "dispatcher.config.lifecycle_required"));
+        }
+
+        AddLifecycle(name, lifecycle, dependencies);
+        return Ok(Unit.Value);
     }
 
     /// <summary>Binds a unary outbound under the given service and key.</summary>

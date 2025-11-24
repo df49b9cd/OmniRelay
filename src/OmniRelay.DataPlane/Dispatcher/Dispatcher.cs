@@ -51,6 +51,11 @@ public sealed class Dispatcher
     /// Creates a dispatcher for a specific service using the provided options.
     /// </summary>
     public Dispatcher(DispatcherOptions options)
+        : this(options, CreateCodecRegistry(options))
+    {
+    }
+
+    private Dispatcher(DispatcherOptions options, CodecRegistry codecs)
     {
         ArgumentNullException.ThrowIfNull(options);
 
@@ -75,7 +80,7 @@ public sealed class Dispatcher
         _outboundStreamMiddleware = [.. options.StreamOutboundMiddleware];
         _outboundClientStreamMiddleware = [.. options.ClientStreamOutboundMiddleware];
         _outboundDuplexMiddleware = [.. options.DuplexOutboundMiddleware];
-        Codecs = new CodecRegistry(ServiceName, options.CodecRegistrations);
+        Codecs = codecs;
         Mode = options.Mode;
         Capabilities = BuildCapabilities(options.Mode);
 
@@ -93,6 +98,36 @@ public sealed class Dispatcher
         _grpcClientInterceptorRegistry = options.GrpcInterceptors.BuildClientRegistry();
         _grpcServerInterceptorRegistry = options.GrpcInterceptors.BuildServerRegistry();
         AttachTransportExtensions();
+    }
+
+    /// <summary>
+    /// Creates a dispatcher and returns a Result instead of throwing for validation failures.
+    /// </summary>
+    public static Result<Dispatcher> Create(DispatcherOptions options)
+    {
+        if (options is null)
+        {
+            return Err<Dispatcher>(DispatcherErrors.ServiceNameRequired());
+        }
+
+        var codecs = CodecRegistry.Create(options.ServiceName, options.CodecRegistrations);
+        if (codecs.IsFailure)
+        {
+            return Err<Dispatcher>(DispatcherErrors.CodecRegistrationFailed(codecs.Error!));
+        }
+
+        return Ok(new Dispatcher(options, codecs.Value));
+    }
+
+    private static CodecRegistry CreateCodecRegistry(DispatcherOptions options)
+    {
+        var codecResult = CodecRegistry.Create(options.ServiceName, options.CodecRegistrations);
+        if (codecResult.IsFailure)
+        {
+            throw OmniRelayErrors.FromError(codecResult.Error!, transport: "dispatcher");
+        }
+
+        return codecResult.Value;
     }
 
     /// <summary>Gets the service name this dispatcher serves.</summary>
