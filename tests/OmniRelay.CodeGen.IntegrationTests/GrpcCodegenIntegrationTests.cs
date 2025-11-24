@@ -48,7 +48,7 @@ public class GrpcCodegenIntegrationTests
 
             var call = invoker.AsyncUnaryCall(method, null, new CallOptions(metadata, cancellationToken: ct), []);
             var response = await call.ResponseAsync.WaitAsync(ct);
-            Assert.NotNull(response);
+            response.ShouldNotBeNull();
         }
         finally
         {
