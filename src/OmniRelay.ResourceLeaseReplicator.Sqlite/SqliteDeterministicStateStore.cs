@@ -1,6 +1,7 @@
 using System.Globalization;
 using Hugo;
 using Microsoft.Data.Sqlite;
+using static Hugo.Go;
 
 namespace OmniRelay.Dispatcher;
 
@@ -14,15 +15,38 @@ public sealed class SqliteDeterministicStateStore : IDeterministicStateStore
     private readonly object _initializationLock = new();
     private bool _initialized;
 
-    public SqliteDeterministicStateStore(string connectionString, string tableName = "DeterministicStateStore")
+    private SqliteDeterministicStateStore(string connectionString, string tableName = "DeterministicStateStore")
+    {
+        _connectionString = connectionString;
+        _tableName = tableName;
+    }
+
+    public static Result<SqliteDeterministicStateStore> Create(string connectionString, string tableName = "DeterministicStateStore")
     {
         if (string.IsNullOrWhiteSpace(connectionString))
         {
-            throw new ArgumentException("Connection string is required.", nameof(connectionString));
+            return Err<SqliteDeterministicStateStore>(ResourceLeaseDeterministicErrors.StateStoreRequired()
+                .WithMetadata("store", "sqlite")
+                .WithMetadata("reason", "connection_string_missing"));
         }
 
-        _connectionString = connectionString;
-        _tableName = tableName;
+        if (string.IsNullOrWhiteSpace(tableName))
+        {
+            return Err<SqliteDeterministicStateStore>(Error.From(
+                "Table name is required for SQLite deterministic state store.",
+                "resourcelease.deterministic.table_required"));
+        }
+
+        try
+        {
+            return Ok(new SqliteDeterministicStateStore(connectionString, tableName));
+        }
+        catch (Exception ex)
+        {
+            return Err<SqliteDeterministicStateStore>(Error.FromException(ex)
+                .WithMetadata("store", "sqlite")
+                .WithMetadata("table", tableName));
+        }
     }
 
     public bool TryGet(string key, out DeterministicRecord record)

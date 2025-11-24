@@ -27,7 +27,7 @@ var componentResult = ResourceLeaseDispatcherComponent.Create(dispatcher, new Re
     Replicator = replicator,
     DeterministicOptions = new ResourceLeaseDeterministicOptions
     {
-        StateStore = FileSystemDeterministicStateStore.Create("/var/lib/omnirelay/lease-effects").Value
+        StateStore = SqliteDeterministicStateStore.Create("Data Source=/var/lib/omnirelay/lease-effects.db").Value
     }
 });
 

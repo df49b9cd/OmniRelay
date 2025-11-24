@@ -118,3 +118,4 @@ Downstream replication/deterministic components continue to return structured `E
 | `resourcelease.deterministic.root_required` | Root path missing/whitespace for file-system state store | `FileSystemDeterministicStateStore.Create` |
 | `resourcelease.dispatcher.dispatcher_required` | Dispatcher instance missing | `ResourceLeaseDispatcherComponent.Create` |
 | `resourcelease.dispatcher.options_required` | Dispatcher options missing | `ResourceLeaseDispatcherComponent.Create` |
+| `resourcelease.deterministic.table_required` | Table name missing/whitespace for SQLite deterministic store | `SqliteDeterministicStateStore.Create` |

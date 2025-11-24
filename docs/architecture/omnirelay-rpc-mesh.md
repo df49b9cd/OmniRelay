@@ -249,6 +249,7 @@ Tracking these TODO items will take the existing ResourceLease + health + replic
 1. **Current adapters**
    - `SqliteDeterministicStateStore` (in `OmniRelay.ResourceLeaseReplicator.Sqlite`) persists deterministic records in a local SQLite database. Use it in tandem with the SQLite replicator or whenever each node needs a self-contained deterministic gate. Configure WAL mode and take filesystem snapshots for backups.
    - `FileSystemDeterministicStateStore` (in `OmniRelay.ResourceLeaseReplicator.ObjectStorage`) writes JSON blobs per effect id. Use it for development, air-gapped deployments, or as a base class for S3/Azure blob adapters (simply override the file operations with bucket operations).
+   - Prefer the Result-based factories: `SqliteDeterministicStateStore.Create(connectionString, tableName)` and `FileSystemDeterministicStateStore.Create(rootDirectory)` so host wiring surfaces validation errors without throwing during startup.
 2. **Extending to cloud services**
    - **Cosmos DB**: implement `IDeterministicStateStore` using `Container.UpsertItemAsync` and conditional `PatchItemAsync` for `TryAdd`. Store `DeterministicRecord` payloads in base64 and index by `key`. Use TTL policies for old records.
    - **Redis**: back records with hashes where field names are `key` and values are the serialized record. Use Lua scripts that perform `EXISTS` checks + `SET` atomically to implement `TryAdd`.

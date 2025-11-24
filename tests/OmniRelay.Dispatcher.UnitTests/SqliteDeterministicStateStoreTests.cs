@@ -10,7 +10,9 @@ public sealed class SqliteDeterministicStateStoreTests
     public void TryAdd_OnlySucceedsForFirstWriter()
     {
         using var temp = new TempFile();
-        var store = new SqliteDeterministicStateStore($"Data Source={temp.Path}");
+        var storeResult = SqliteDeterministicStateStore.Create($"Data Source={temp.Path}");
+        Assert.True(storeResult.IsSuccess, storeResult.Error?.ToString());
+        var store = storeResult.Value;
         var record = new DeterministicRecord("kind", 1, [1, 2], DateTimeOffset.UtcNow);
 
         Assert.True(store.TryAdd("key", record));

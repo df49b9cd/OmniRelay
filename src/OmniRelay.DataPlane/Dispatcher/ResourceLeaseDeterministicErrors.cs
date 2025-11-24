@@ -3,7 +3,7 @@ using Hugo;
 namespace OmniRelay.Dispatcher;
 
 /// <summary>Shared error codes for deterministic coordinator/state-store wiring.</summary>
-internal static class ResourceLeaseDeterministicErrors
+public static class ResourceLeaseDeterministicErrors
 {
     private const string OptionsRequiredCode = "resourcelease.deterministic.options_required";
     private const string StateStoreRequiredCode = "resourcelease.deterministic.state_store_required";
