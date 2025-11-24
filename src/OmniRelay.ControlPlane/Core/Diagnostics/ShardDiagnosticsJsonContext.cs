@@ -18,4 +18,5 @@ namespace OmniRelay.Core.Diagnostics;
 [JsonSerializable(typeof(ShardSimulationAssignment))]
 [JsonSerializable(typeof(ShardSimulationChange))]
 [JsonSerializable(typeof(NodeDrainCommand))]
+[JsonSerializable(typeof(ShardDiagnosticsError))]
 public sealed partial class ShardDiagnosticsJsonContext : JsonSerializerContext;

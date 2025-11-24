@@ -1,3 +1,6 @@
+using Hugo;
+using static Hugo.Go;
+
 namespace OmniRelay.Core.Shards.Hashing;
 
 /// <summary>Prefers nodes that share the shard's locality hint (zone or region) before falling back to global rendezvous hashing.</summary>
@@ -5,30 +8,40 @@ public sealed class LocalityAwareShardHashStrategy : IShardHashStrategy
 {
     public string Id => ShardHashStrategyIds.LocalityAware;
 
-    public ShardHashPlan Compute(ShardHashRequest request)
+    public Result<ShardHashPlan> Compute(ShardHashRequest request)
     {
-        ArgumentNullException.ThrowIfNull(request);
-        if (request.Nodes.Count == 0)
+        var validated = ShardHashRequestValidator.Validate(request, Id);
+        if (validated.IsFailure)
         {
-            throw new ArgumentException("At least one node is required to compute shard assignments.", nameof(request));
+            return Err<ShardHashPlan>(validated.Error);
         }
 
         var assignments = new List<ShardAssignment>(request.Shards.Count);
         foreach (var shard in request.Shards)
         {
             var candidates = FilterCandidates(request.Nodes, shard);
-            var owner = RendezvousShardHashStrategy.SelectOwner(request.Namespace, shard, candidates);
+            if (candidates.Count == 0)
+            {
+                return Err<ShardHashPlan>(ShardHashingErrors.NoEligibleNodes(Id));
+            }
+
+            var ownerResult = RendezvousShardHashStrategy.SelectOwner(Id, request.Namespace, shard, candidates);
+            if (ownerResult.IsFailure)
+            {
+                return Err<ShardHashPlan>(ownerResult.Error);
+            }
+
             assignments.Add(new ShardAssignment
             {
                 Namespace = request.Namespace,
                 ShardId = shard.ShardId,
-                OwnerNodeId = owner,
+                OwnerNodeId = ownerResult.Value,
                 Capacity = shard.Capacity,
                 LocalityHint = shard.LocalityHint
             });
         }
 
-        return new ShardHashPlan(request.Namespace, Id, assignments, DateTimeOffset.UtcNow);
+        return Ok(new ShardHashPlan(request.Namespace, Id, assignments, DateTimeOffset.UtcNow));
     }
 
     private static IReadOnlyList<ShardNodeDescriptor> FilterCandidates(IReadOnlyList<ShardNodeDescriptor> nodes, ShardDefinition shard)

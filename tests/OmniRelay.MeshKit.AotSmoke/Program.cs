@@ -35,7 +35,8 @@ static async Task WarmUpAsync(IServiceProvider services)
 {
     var shardService = services.GetRequiredService<ShardControlPlaneService>();
     var filter = new ShardFilter(namespaceId: "default", ownerNodeId: null, searchShardId: null, statuses: Array.Empty<ShardStatus>());
-    _ = await shardService.ListAsync(filter, cursorToken: null, pageSize: 10, CancellationToken.None).ConfigureAwait(false);
+    _ = (await shardService.ListAsync(filter, cursorToken: null, pageSize: 10, CancellationToken.None).ConfigureAwait(false))
+        .ValueOrThrow();
 
     var simulationRequest = new ShardSimulationRequest
     {
@@ -47,7 +48,8 @@ static async Task WarmUpAsync(IServiceProvider services)
         }
     };
 
-    _ = await shardService.SimulateAsync(simulationRequest, CancellationToken.None).ConfigureAwait(false);
+    _ = (await shardService.SimulateAsync(simulationRequest, CancellationToken.None).ConfigureAwait(false))
+        .ValueOrThrow();
 
     var leadership = services.GetRequiredService<LeadershipCoordinator>();
     await leadership.StartAsync().ConfigureAwait(false);

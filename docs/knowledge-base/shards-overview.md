@@ -6,7 +6,7 @@
 - **Filtering & Paging**: `ShardQueryCursor` encodes `namespace|shard` as Base64, `ShardQueryOptions` caps page size at 500, and `ShardFilter` applies namespace/owner/status/search constraints plus cursor rehydration.
 
 ## Control Plane & APIs
-- **ShardControlPlaneService** wires repositories + hashing: `ListAsync` validates cursors and emits `ShardListResponse`; `DiffAsync` bounds replay windows; `WatchAsync` yields filtered diffs for SSE/gRPC streams; `SimulateAsync` validates node payloads, resolves a hash strategy (default rendezvous), and produces assignments/change lists with timestamps via `TimeProvider`.
+- **ShardControlPlaneService** wires repositories + hashing via Hugo result pipelines: `ListAsync`/`DiffAsync`/`SimulateAsync` now return `Result<T>` instead of throwing, `WatchAsync` streams `Result<ShardRecordDiff>`, and hashing validation failures surface as `shards.hashing.*`/`shards.control.*` codes that map to HTTP 4xx / gRPC `InvalidArgument`/`NotFound`.
 - **HTTP diagnostics**: `ShardDiagnosticsEndpointExtensions` register `/control/shards`, `/control/shards/diff`, `/control/shards/watch` (SSE, resume tokens), and `/control/shards/simulate`, enforcing `mesh.read`/`mesh.operate` scopes and serializing through `ShardDiagnosticsJsonContext`.
 - **gRPC service**: `ShardControlGrpcService` mirrors HTTP features, mapping domain summaries/history/assignments to `OmniRelay.Mesh.Control.V1` types, handling resume tokens, and throwing `PermissionDenied` if the `x-mesh-scope` header lacks the required claims.
 

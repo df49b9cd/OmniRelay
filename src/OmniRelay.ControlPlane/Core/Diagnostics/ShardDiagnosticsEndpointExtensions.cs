@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using Hugo;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -84,25 +85,23 @@ public static class ShardDiagnosticsEndpointExtensions
             ? cursorValues.ToString()
             : null;
 
-        try
+        var responseResult = await service.ListAsync(filter, cursor, pageSize, context.RequestAborted).ConfigureAwait(false);
+        if (responseResult.IsFailure)
         {
-            var response = await service.ListAsync(filter, cursor, pageSize, context.RequestAborted).ConfigureAwait(false);
-            context.Response.Headers.ETag = $@"W/""shards-{response.Version}""";
-            context.Response.Headers["x-omnirelay-shards-version"] = response.Version.ToString(CultureInfo.InvariantCulture);
-            context.Response.ContentType = "application/json";
-            await JsonSerializer.SerializeAsync(
-                    context.Response.Body,
-                    response,
-                    ShardDiagnosticsJsonContext.Default.ShardListResponse,
-                    context.RequestAborted)
-                .ConfigureAwait(false);
+            await WriteErrorAsync(context, responseResult.Error!).ConfigureAwait(false);
+            return;
         }
-        catch (ArgumentException ex)
-        {
-            await Results.BadRequest(new { error = ex.Message })
-                .ExecuteAsync(context)
-                .ConfigureAwait(false);
-        }
+
+        var response = responseResult.Value;
+        context.Response.Headers.ETag = $@"W/""shards-{response.Version}""";
+        context.Response.Headers["x-omnirelay-shards-version"] = response.Version.ToString(CultureInfo.InvariantCulture);
+        context.Response.ContentType = "application/json";
+        await JsonSerializer.SerializeAsync(
+                context.Response.Body,
+                response,
+                ShardDiagnosticsJsonContext.Default.ShardListResponse,
+                context.RequestAborted)
+            .ConfigureAwait(false);
     }
 
     private static async Task DiffShardsAsync(HttpContext context)
@@ -139,10 +138,16 @@ public static class ShardDiagnosticsEndpointExtensions
         }
 
         var response = await service.DiffAsync(fromVersion, toVersion, filter, context.RequestAborted).ConfigureAwait(false);
+        if (response.IsFailure)
+        {
+            await WriteErrorAsync(context, response.Error!).ConfigureAwait(false);
+            return;
+        }
+
         context.Response.ContentType = "application/json";
         await JsonSerializer.SerializeAsync(
                 context.Response.Body,
-                response,
+                response.Value,
                 ShardDiagnosticsJsonContext.Default.ShardDiffResponse,
                 context.RequestAborted)
             .ConfigureAwait(false);
@@ -177,28 +182,29 @@ public static class ShardDiagnosticsEndpointExtensions
         context.Response.Headers["Content-Type"] = "text/event-stream";
         await context.Response.WriteAsync("retry: 2000\n\n", context.RequestAborted).ConfigureAwait(false);
 
-        try
+        await foreach (var diffResult in service.WatchAsync(resumeToken, filter, context.RequestAborted).ConfigureAwait(false))
         {
-            await foreach (var diff in service.WatchAsync(resumeToken, filter, context.RequestAborted).ConfigureAwait(false))
+            if (diffResult.IsFailure)
             {
-                if (diff.Current is null)
-                {
-                    continue;
-                }
-
-                var current = ShardControlPlaneMapper.ToSummary(diff.Current);
-                var previous = diff.Previous is null ? null : ShardControlPlaneMapper.ToSummary(diff.Previous);
-                var entry = new ShardDiffEntry(diff.Position, current, previous, diff.History);
-
-                var payload = JsonSerializer.Serialize(entry, ShardDiagnosticsJsonContext.Default.ShardDiffEntry);
-                await context.Response.WriteAsync($"id: {diff.Position}\n", context.RequestAborted).ConfigureAwait(false);
-                await context.Response.WriteAsync("event: shard.diff\n", context.RequestAborted).ConfigureAwait(false);
-                await context.Response.WriteAsync($"data: {payload}\n\n", context.RequestAborted).ConfigureAwait(false);
-                await context.Response.Body.FlushAsync(context.RequestAborted).ConfigureAwait(false);
+                await WriteSseErrorAsync(context, diffResult.Error!, context.RequestAborted).ConfigureAwait(false);
+                break;
             }
-        }
-        catch (OperationCanceledException)
-        {
+
+            var diff = diffResult.Value;
+            if (diff.Current is null)
+            {
+                continue;
+            }
+
+            var current = ShardControlPlaneMapper.ToSummary(diff.Current);
+            var previous = diff.Previous is null ? null : ShardControlPlaneMapper.ToSummary(diff.Previous);
+            var entry = new ShardDiffEntry(diff.Position, current, previous, diff.History);
+
+            var payload = JsonSerializer.Serialize(entry, ShardDiagnosticsJsonContext.Default.ShardDiffEntry);
+            await context.Response.WriteAsync($"id: {diff.Position}\n", context.RequestAborted).ConfigureAwait(false);
+            await context.Response.WriteAsync("event: shard.diff\n", context.RequestAborted).ConfigureAwait(false);
+            await context.Response.WriteAsync($"data: {payload}\n\n", context.RequestAborted).ConfigureAwait(false);
+            await context.Response.Body.FlushAsync(context.RequestAborted).ConfigureAwait(false);
         }
     }
 
@@ -221,27 +227,20 @@ public static class ShardDiagnosticsEndpointExtensions
             return;
         }
 
-        try
+        var response = await service.SimulateAsync(request, context.RequestAborted).ConfigureAwait(false);
+        if (response.IsFailure)
         {
-            var response = await service.SimulateAsync(request, context.RequestAborted).ConfigureAwait(false);
-            context.Response.ContentType = "application/json";
-            await JsonSerializer.SerializeAsync(
-                    context.Response.Body,
-                    response,
-                    ShardDiagnosticsJsonContext.Default.ShardSimulationResponse,
-                    context.RequestAborted)
-                .ConfigureAwait(false);
+            await WriteErrorAsync(context, response.Error!).ConfigureAwait(false);
+            return;
         }
-        catch (ArgumentException ex)
-        {
-            await Results.BadRequest(new { error = ex.Message }).ExecuteAsync(context).ConfigureAwait(false);
-        }
-        catch (InvalidOperationException ex)
-        {
-            await Results.Problem(ex.Message, statusCode: StatusCodes.Status404NotFound)
-                .ExecuteAsync(context)
-                .ConfigureAwait(false);
-        }
+
+        context.Response.ContentType = "application/json";
+        await JsonSerializer.SerializeAsync(
+                context.Response.Body,
+                response.Value,
+                ShardDiagnosticsJsonContext.Default.ShardSimulationResponse,
+                context.RequestAborted)
+            .ConfigureAwait(false);
     }
 
     private static bool TryParseLongQuery(HttpRequest request, string key, out long? value, out IResult? error)
@@ -293,6 +292,56 @@ public static class ShardDiagnosticsEndpointExtensions
 
         filter = new ShardFilter(namespaceFilter, ownerFilter, searchFilter, statuses);
         return true;
+    }
+
+    private static async Task WriteErrorAsync(HttpContext context, Error error)
+    {
+        var status = MapStatus(error);
+        var problem = Results.Problem(
+            title: "Shard control-plane error",
+            detail: error.Message,
+            statusCode: status,
+            extensions: new Dictionary<string, object?>
+            {
+                ["code"] = error.Code,
+                ["metadata"] = error.Metadata
+            });
+
+        await problem.ExecuteAsync(context).ConfigureAwait(false);
+    }
+
+    private static async Task WriteSseErrorAsync(HttpContext context, Error error, CancellationToken cancellationToken)
+    {
+        var envelope = new ShardDiagnosticsError(error.Code, error.Message, error.Metadata);
+        var payload = JsonSerializer.Serialize(envelope, ShardDiagnosticsJsonContext.Default.ShardDiagnosticsError);
+        await context.Response.WriteAsync("event: shard.error\n", cancellationToken).ConfigureAwait(false);
+        await context.Response.WriteAsync($"data: {payload}\n\n", cancellationToken).ConfigureAwait(false);
+        await context.Response.Body.FlushAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private static int MapStatus(Error error)
+    {
+        if (error.Code is not null &&
+            error.Code.Contains("canceled", StringComparison.OrdinalIgnoreCase))
+        {
+            return 499;
+        }
+
+        return error.Code switch
+        {
+            "shards.control.cursor.invalid" => StatusCodes.Status400BadRequest,
+            "shards.control.filter.required" => StatusCodes.Status400BadRequest,
+            "shards.control.namespace.required" => StatusCodes.Status400BadRequest,
+            "shards.control.nodes.required" => StatusCodes.Status400BadRequest,
+            "shards.control.node_id.invalid" => StatusCodes.Status400BadRequest,
+            "shards.hashing.namespace_required" => StatusCodes.Status400BadRequest,
+            "shards.hashing.nodes_required" => StatusCodes.Status400BadRequest,
+            "shards.hashing.node_id_invalid" => StatusCodes.Status400BadRequest,
+            "shards.hashing.strategy.unknown" => StatusCodes.Status400BadRequest,
+            "shards.hashing.shards_missing" => StatusCodes.Status400BadRequest,
+            "shards.control.namespace.missing" => StatusCodes.Status404NotFound,
+            _ => StatusCodes.Status500InternalServerError
+        };
     }
 
     private static bool HasRequiredScope(HttpContext context, params string[] requiredScopes)

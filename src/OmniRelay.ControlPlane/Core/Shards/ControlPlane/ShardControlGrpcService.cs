@@ -1,5 +1,6 @@
 using Google.Protobuf.WellKnownTypes;
 using Grpc.Core;
+using Hugo;
 using Microsoft.Extensions.Logging;
 using MeshControl = OmniRelay.Mesh.Control.V1;
 
@@ -27,12 +28,17 @@ public sealed class ShardControlGrpcService : MeshControl.ShardControlService.Sh
         EnsureAuthorized(context, MeshReadScope, MeshOperateScope);
         var filter = CreateFilter(request.Namespace, request.OwnerNodeId, request.Statuses, request.Search);
         var response = await _service.ListAsync(filter, request.Cursor, request.PageSize, context.CancellationToken).ConfigureAwait(false);
+        if (response.IsFailure)
+        {
+            throw MapError(response.Error!);
+        }
+
         var proto = new MeshControl.ShardListResponse
         {
-            Version = response.Version,
-            NextCursor = response.NextCursor ?? string.Empty
+            Version = response.Value.Version,
+            NextCursor = response.Value.NextCursor ?? string.Empty
         };
-        proto.Shards.AddRange(response.Items.Select(MapSummary));
+        proto.Shards.AddRange(response.Value.Items.Select(MapSummary));
         return proto;
     }
 
@@ -44,16 +50,15 @@ public sealed class ShardControlGrpcService : MeshControl.ShardControlService.Sh
         EnsureAuthorized(context, MeshReadScope, MeshOperateScope);
         var filter = CreateFilter(request.Namespace, request.OwnerNodeId, request.Statuses, request.Search);
         long? resumeToken = request.ResumeToken <= 0 ? null : request.ResumeToken;
-        try
+        await foreach (var diff in _service.WatchAsync(resumeToken, filter, context.CancellationToken).ConfigureAwait(false))
         {
-            await foreach (var diff in _service.WatchAsync(resumeToken, filter, context.CancellationToken).ConfigureAwait(false))
+            if (diff.IsFailure)
             {
-                var notification = MapDiff(diff);
-                await responseStream.WriteAsync(notification).ConfigureAwait(false);
+                throw MapError(diff.Error!);
             }
-        }
-        catch (OperationCanceledException)
-        {
+
+            var notification = MapDiff(diff.Value);
+            await responseStream.WriteAsync(notification).ConfigureAwait(false);
         }
     }
 
@@ -66,12 +71,16 @@ public sealed class ShardControlGrpcService : MeshControl.ShardControlService.Sh
             request.ToToken <= 0 ? null : request.ToToken,
             filter,
             context.CancellationToken).ConfigureAwait(false);
+        if (response.IsFailure)
+        {
+            throw MapError(response.Error!);
+        }
 
         var proto = new MeshControl.ShardDiffResponse
         {
-            LastPosition = response.LastPosition ?? 0
+            LastPosition = response.Value.LastPosition ?? 0
         };
-        proto.Diffs.AddRange(response.Items.Select(entry => new MeshControl.ShardDiffNotification
+        proto.Diffs.AddRange(response.Value.Items.Select(entry => new MeshControl.ShardDiffNotification
         {
             Position = entry.Position,
             Current = MapSummary(entry.Current),
@@ -96,15 +105,19 @@ public sealed class ShardControlGrpcService : MeshControl.ShardControlService.Sh
             Nodes = nodes
         };
         var result = await _service.SimulateAsync(simulationRequest, context.CancellationToken).ConfigureAwait(false);
+        if (result.IsFailure)
+        {
+            throw MapError(result.Error!);
+        }
 
         var response = new MeshControl.ShardSimulationResponse
         {
-            Namespace = result.Namespace,
-            StrategyId = result.StrategyId,
-            GeneratedAt = Timestamp.FromDateTimeOffset(result.GeneratedAt)
+            Namespace = result.Value.Namespace,
+            StrategyId = result.Value.StrategyId,
+            GeneratedAt = Timestamp.FromDateTimeOffset(result.Value.GeneratedAt)
         };
-        response.Assignments.AddRange(result.Assignments.Select(MapAssignment));
-        response.Changes.AddRange(result.Changes.Select(MapChange));
+        response.Assignments.AddRange(result.Value.Assignments.Select(MapAssignment));
+        response.Changes.AddRange(result.Value.Changes.Select(MapChange));
         return response;
     }
 
@@ -218,6 +231,33 @@ public sealed class ShardControlGrpcService : MeshControl.ShardControlService.Sh
             MeshControl.ShardStatus.Disabled => ShardStatus.Disabled,
             _ => ShardStatus.Active
         };
+    }
+
+    private static RpcException MapError(Error error)
+    {
+        var statusCode = error.Code switch
+        {
+            "shards.control.cursor.invalid" => StatusCode.InvalidArgument,
+            "shards.control.filter.required" => StatusCode.InvalidArgument,
+            "shards.control.namespace.required" => StatusCode.InvalidArgument,
+            "shards.control.nodes.required" => StatusCode.InvalidArgument,
+            "shards.control.node_id.invalid" => StatusCode.InvalidArgument,
+            "shards.hashing.namespace_required" => StatusCode.InvalidArgument,
+            "shards.hashing.nodes_required" => StatusCode.InvalidArgument,
+            "shards.hashing.node_id_invalid" => StatusCode.InvalidArgument,
+            "shards.hashing.strategy.unknown" => StatusCode.InvalidArgument,
+            "shards.hashing.shards_missing" => StatusCode.InvalidArgument,
+            "shards.control.namespace.missing" => StatusCode.NotFound,
+            _ when error.Code is not null && error.Code.Contains("canceled", StringComparison.OrdinalIgnoreCase) => StatusCode.Cancelled,
+            _ => StatusCode.Unknown
+        };
+
+        var status = new Status(statusCode, error.Message ?? "Shard control-plane error");
+        var metadata = new Metadata
+        {
+            { "error-code", error.Code ?? string.Empty }
+        };
+        return new RpcException(status, metadata);
     }
 
     private static MeshControl.ShardDiffNotification MapDiff(ShardRecordDiff diff)

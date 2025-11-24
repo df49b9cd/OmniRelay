@@ -1,3 +1,6 @@
+using Hugo;
+using static Hugo.Go;
+
 namespace OmniRelay.Core.Shards.Hashing;
 
 /// <summary>Consistent hashing ring strategy that places shards on a sorted hash ring.</summary>
@@ -7,20 +10,26 @@ public sealed class RingShardHashStrategy : IShardHashStrategy
 
     public string Id => ShardHashStrategyIds.ConsistentRing;
 
-    public ShardHashPlan Compute(ShardHashRequest request)
+    public Result<ShardHashPlan> Compute(ShardHashRequest request)
     {
-        ArgumentNullException.ThrowIfNull(request);
-        if (request.Nodes.Count == 0)
+        var validated = ShardHashRequestValidator.Validate(request, Id);
+        if (validated.IsFailure)
         {
-            throw new ArgumentException("At least one node is required to compute shard assignments.", nameof(request));
+            return Err<ShardHashPlan>(validated.Error);
         }
 
         if (request.Shards.Count == 0)
         {
-            return new ShardHashPlan(request.Namespace, Id, Array.Empty<ShardAssignment>(), DateTimeOffset.UtcNow);
+            return Ok(new ShardHashPlan(request.Namespace, Id, Array.Empty<ShardAssignment>(), DateTimeOffset.UtcNow));
         }
 
-        var ring = BuildRing(request.Nodes);
+        var ringResult = BuildRing(request.Nodes);
+        if (ringResult.IsFailure)
+        {
+            return Err<ShardHashPlan>(ringResult.Error);
+        }
+
+        var ring = ringResult.Value;
         var assignments = new List<ShardAssignment>(request.Shards.Count);
         foreach (var shard in request.Shards)
         {
@@ -36,7 +45,7 @@ public sealed class RingShardHashStrategy : IShardHashStrategy
             });
         }
 
-        return new ShardHashPlan(request.Namespace, Id, assignments, DateTimeOffset.UtcNow);
+        return Ok(new ShardHashPlan(request.Namespace, Id, assignments, DateTimeOffset.UtcNow));
     }
 
     private static string LocateNode(List<RingPoint> ring, ulong hash)
@@ -54,14 +63,14 @@ public sealed class RingShardHashStrategy : IShardHashStrategy
         return ring[index].NodeId;
     }
 
-    private static List<RingPoint> BuildRing(IReadOnlyList<ShardNodeDescriptor> nodes)
+    private Result<List<RingPoint>> BuildRing(IReadOnlyList<ShardNodeDescriptor> nodes)
     {
-        var ring = new List<RingPoint>();
+        var ring = new List<RingPoint>(nodes.Count * 2);
         foreach (var node in nodes)
         {
             if (string.IsNullOrWhiteSpace(node.NodeId))
             {
-                continue;
+                return Err<List<RingPoint>>(ShardHashingErrors.NodeIdInvalid(Id));
             }
 
             var replicas = Math.Max(1, (int)Math.Round(node.Weight * VirtualNodesPerWeight, MidpointRounding.AwayFromZero));
@@ -72,8 +81,13 @@ public sealed class RingShardHashStrategy : IShardHashStrategy
             }
         }
 
+        if (ring.Count == 0)
+        {
+            return Err<List<RingPoint>>(ShardHashingErrors.NoEligibleNodes(Id));
+        }
+
         ring.Sort(RingPointComparer.Instance);
-        return ring;
+        return Ok(ring);
     }
 
     private readonly record struct RingPoint(ulong Hash, string NodeId);

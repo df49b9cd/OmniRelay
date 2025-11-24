@@ -1,3 +1,6 @@
+using Hugo;
+using static Hugo.Go;
+
 namespace OmniRelay.Core.Shards.Hashing;
 
 /// <summary>Rendezvous (highest random weight) hashing strategy.</summary>
@@ -5,32 +8,41 @@ public sealed class RendezvousShardHashStrategy : IShardHashStrategy
 {
     public string Id => ShardHashStrategyIds.Rendezvous;
 
-    public ShardHashPlan Compute(ShardHashRequest request)
+    public Result<ShardHashPlan> Compute(ShardHashRequest request)
     {
-        ArgumentNullException.ThrowIfNull(request);
-        if (request.Nodes.Count == 0)
+        var validated = ShardHashRequestValidator.Validate(request, Id);
+        if (validated.IsFailure)
         {
-            throw new ArgumentException("At least one node is required to compute shard assignments.", nameof(request));
+            return Err<ShardHashPlan>(validated.Error);
         }
 
         var assignments = new List<ShardAssignment>(request.Shards.Count);
         foreach (var shard in request.Shards)
         {
-            var owner = SelectOwner(request.Namespace, shard, request.Nodes);
+            var ownerResult = SelectOwner(Id, request.Namespace, shard, request.Nodes);
+            if (ownerResult.IsFailure)
+            {
+                return Err<ShardHashPlan>(ownerResult.Error);
+            }
+
             assignments.Add(new ShardAssignment
             {
                 Namespace = request.Namespace,
                 ShardId = shard.ShardId,
-                OwnerNodeId = owner,
+                OwnerNodeId = ownerResult.Value,
                 Capacity = shard.Capacity,
                 LocalityHint = shard.LocalityHint
             });
         }
 
-        return new ShardHashPlan(request.Namespace, Id, assignments, DateTimeOffset.UtcNow);
+        return Ok(new ShardHashPlan(request.Namespace, Id, assignments, DateTimeOffset.UtcNow));
     }
 
-    internal static string SelectOwner(string @namespace, ShardDefinition shard, IReadOnlyList<ShardNodeDescriptor> nodes)
+    internal static Result<string> SelectOwner(
+        string strategyId,
+        string @namespace,
+        ShardDefinition shard,
+        IReadOnlyList<ShardNodeDescriptor> nodes)
     {
         string? owner = null;
         double bestScore = double.NegativeInfinity;
@@ -38,7 +50,7 @@ public sealed class RendezvousShardHashStrategy : IShardHashStrategy
         {
             if (string.IsNullOrWhiteSpace(node.NodeId))
             {
-                continue;
+                return Err<string>(ShardHashingErrors.NodeIdInvalid(strategyId));
             }
 
             var hash = ShardHashingPrimitives.Hash($"{@namespace}/{shard.ShardId}::{node.NodeId}");
@@ -60,9 +72,9 @@ public sealed class RendezvousShardHashStrategy : IShardHashStrategy
 
         if (owner is null)
         {
-            throw new InvalidOperationException("No eligible nodes found for shard hashing.");
+            return Err<string>(ShardHashingErrors.NoEligibleNodes(strategyId));
         }
 
-        return owner;
+        return Ok(owner);
     }
 }

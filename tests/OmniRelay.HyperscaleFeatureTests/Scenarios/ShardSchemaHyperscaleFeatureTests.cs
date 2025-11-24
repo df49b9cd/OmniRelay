@@ -48,7 +48,8 @@ public sealed class ShardSchemaHyperscaleFeatureTests : IAsyncLifetime
                 Shards = CreateShards(512)
             });
 
-            await PersistPlanAsync(plan, ct);
+            plan.IsSuccess.ShouldBeTrue();
+            await PersistPlanAsync(plan.Value, ct);
         }
 
         var rollingNodes = initialNodes
@@ -65,7 +66,8 @@ public sealed class ShardSchemaHyperscaleFeatureTests : IAsyncLifetime
                 Shards = CreateShards(512, localityHint: ns.Contains("control", StringComparison.OrdinalIgnoreCase) ? "iad" : "phx")
             });
 
-            await PersistPlanAsync(plan, ct);
+            plan.IsSuccess.ShouldBeTrue();
+            await PersistPlanAsync(plan.Value, ct);
         }
 
         var records = await _repository.ListAsync(cancellationToken: ct);
@@ -90,7 +92,8 @@ public sealed class ShardSchemaHyperscaleFeatureTests : IAsyncLifetime
             Shards = CreateShards(256)
         });
 
-        await PersistPlanAsync(seedPlan, ct);
+        seedPlan.IsSuccess.ShouldBeTrue();
+        await PersistPlanAsync(seedPlan.Value, ct);
 
         var attempts = 0;
         var conflicts = 0;

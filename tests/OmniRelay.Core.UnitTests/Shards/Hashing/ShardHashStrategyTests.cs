@@ -13,10 +13,12 @@ public sealed class ShardHashStrategyTests
         var request = CreateRequest("mesh.control", shardCount: 32);
 
         var first = strategy.Compute(request);
+        first.IsSuccess.ShouldBeTrue();
         var second = strategy.Compute(request);
+        second.IsSuccess.ShouldBeTrue();
 
-        var mapA = first.Assignments.ToDictionary(x => x.ShardId, x => x.OwnerNodeId, StringComparer.OrdinalIgnoreCase);
-        var mapB = second.Assignments.ToDictionary(x => x.ShardId, x => x.OwnerNodeId, StringComparer.OrdinalIgnoreCase);
+        var mapA = first.Value.Assignments.ToDictionary(x => x.ShardId, x => x.OwnerNodeId, StringComparer.OrdinalIgnoreCase);
+        var mapB = second.Value.Assignments.ToDictionary(x => x.ShardId, x => x.OwnerNodeId, StringComparer.OrdinalIgnoreCase);
 
         mapA.Count.ShouldBe(mapB.Count);
         foreach (var shard in mapA.Keys)
@@ -44,11 +46,12 @@ public sealed class ShardHashStrategyTests
         };
 
         var plan = strategy.Compute(request);
-        var perNode = plan.Assignments.GroupBy(a => a.OwnerNodeId)
+        plan.IsSuccess.ShouldBeTrue();
+        var perNode = plan.Value.Assignments.GroupBy(a => a.OwnerNodeId)
             .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
 
         ((double)perNode["node-b"]).ShouldBeGreaterThan((double)perNode["node-a"]);
-        ((double)perNode["node-b"]).ShouldBeGreaterThan(plan.Assignments.Count * 0.65);
+        ((double)perNode["node-b"]).ShouldBeGreaterThan(plan.Value.Assignments.Count * 0.65);
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
@@ -76,7 +79,8 @@ public sealed class ShardHashStrategyTests
         };
 
         var plan = strategy.Compute(request);
-        var map = plan.Assignments.ToDictionary(a => a.ShardId, a => a.OwnerNodeId, StringComparer.OrdinalIgnoreCase);
+        plan.IsSuccess.ShouldBeTrue();
+        var map = plan.Value.Assignments.ToDictionary(a => a.ShardId, a => a.OwnerNodeId, StringComparer.OrdinalIgnoreCase);
 
         map["iad-1-01"].ShouldBe("iad-zone-1");
         map["phx-0"].ShouldBe("phx-zone-1");
@@ -93,7 +97,9 @@ public sealed class ShardHashStrategyTests
         registry.RegisteredStrategyIds.ShouldContain(ShardHashStrategyIds.LocalityAware);
 
         var request = CreateRequest("mesh.registry", shardCount: 8);
-        registry.Compute(ShardHashStrategyIds.Rendezvous, request).Assignments.ShouldNotBeEmpty();
+        var plan = registry.Compute(ShardHashStrategyIds.Rendezvous, request);
+        plan.IsSuccess.ShouldBeTrue();
+        plan.Value.Assignments.ShouldNotBeEmpty();
     }
 
     private static ShardHashRequest CreateRequest(string @namespace, int shardCount)

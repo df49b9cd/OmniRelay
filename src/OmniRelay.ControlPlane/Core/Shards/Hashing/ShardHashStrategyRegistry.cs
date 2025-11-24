@@ -1,5 +1,8 @@
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
+using Hugo;
+using static Hugo.Go;
+using Unit = Hugo.Go.Unit;
 
 namespace OmniRelay.Core.Shards.Hashing;
 
@@ -11,9 +14,9 @@ public sealed class ShardHashStrategyRegistry
 
     public ShardHashStrategyRegistry(IEnumerable<IShardHashStrategy>? strategies = null)
     {
-        Register(new RingShardHashStrategy());
-        Register(new RendezvousShardHashStrategy());
-        Register(new LocalityAwareShardHashStrategy());
+        _ = Register(new RingShardHashStrategy(), overwrite: true);
+        _ = Register(new RendezvousShardHashStrategy(), overwrite: true);
+        _ = Register(new LocalityAwareShardHashStrategy(), overwrite: true);
 
         if (strategies is null)
         {
@@ -22,24 +25,32 @@ public sealed class ShardHashStrategyRegistry
 
         foreach (var strategy in strategies)
         {
-            Register(strategy, overwrite: true);
+            _ = Register(strategy, overwrite: true);
         }
     }
 
-    public void Register(IShardHashStrategy strategy, bool overwrite = false)
+    public Result<Unit> Register(IShardHashStrategy strategy, bool overwrite = false)
     {
-        ArgumentNullException.ThrowIfNull(strategy);
+        if (strategy is null)
+        {
+            return Err<Unit>(ShardHashingErrors.StrategyRequired());
+        }
+
+        if (string.IsNullOrWhiteSpace(strategy.Id))
+        {
+            return Err<Unit>(ShardHashingErrors.UnknownStrategy(strategy.Id));
+        }
+
         var addResult = _strategies.TryAdd(strategy.Id, strategy);
         if (!addResult && overwrite)
         {
             _strategies[strategy.Id] = strategy;
-            return;
+            return Ok(Unit.Value);
         }
 
-        if (!addResult)
-        {
-            throw new InvalidOperationException($"Shard hash strategy '{strategy.Id}' is already registered.");
-        }
+        return addResult
+            ? Ok(Unit.Value)
+            : Err<Unit>(ShardHashingErrors.DuplicateStrategy(strategy.Id));
     }
 
     public bool TryGet(string strategyId, [NotNullWhen(true)] out IShardHashStrategy? strategy)
@@ -53,20 +64,25 @@ public sealed class ShardHashStrategyRegistry
         return _strategies.TryGetValue(strategyId, out strategy);
     }
 
-    public IShardHashStrategy Resolve(string strategyId)
+    public Result<IShardHashStrategy> Resolve(string strategyId)
     {
         if (!TryGet(strategyId, out var strategy))
         {
-            throw new InvalidOperationException($"Unknown shard hash strategy '{strategyId}'.");
+            return Err<IShardHashStrategy>(ShardHashingErrors.UnknownStrategy(strategyId));
         }
 
-        return strategy;
+        return Ok(strategy);
     }
 
-    public ShardHashPlan Compute(string strategyId, ShardHashRequest request)
+    public Result<ShardHashPlan> Compute(string strategyId, ShardHashRequest request)
     {
         var strategy = Resolve(strategyId);
-        return strategy.Compute(request);
+        if (strategy.IsFailure)
+        {
+            return Err<ShardHashPlan>(strategy.Error);
+        }
+
+        return strategy.Value.Compute(request);
     }
 
     public IEnumerable<string> RegisteredStrategyIds => _strategies.Keys;
