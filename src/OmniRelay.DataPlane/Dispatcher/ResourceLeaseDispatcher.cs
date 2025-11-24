@@ -122,14 +122,17 @@ public sealed class ResourceLeaseDispatcherComponent : IAsyncDisposable
 
         if (request.Payload is null)
         {
-            return Err<ResourceLeaseEnqueueResponse>(Error.From(
-                "resource lease payload is required",
-                "error.resourcelease.payload_missing",
-                cause: null!,
-                metadata: (IReadOnlyDictionary<string, object?>?)null));
+            return Err<ResourceLeaseEnqueueResponse>(ResourceLeaseErrors.PayloadRequired());
         }
 
-        var workItem = ResourceLeaseWorkItem.FromPayload(request.Payload);
+        var workItemResult = ResourceLeaseWorkItem.FromPayload(request.Payload);
+        if (workItemResult.IsFailure)
+        {
+            return Err<ResourceLeaseEnqueueResponse>(workItemResult.Error);
+        }
+
+        var workItem = workItemResult.Value;
+
         var enqueue = await _safeQueue.EnqueueAsync(workItem, context.CancellationToken).ConfigureAwait(false);
         if (enqueue.IsFailure)
         {
@@ -368,9 +371,22 @@ public sealed class ResourceLeaseDispatcherComponent : IAsyncDisposable
             return Ok(new ResourceLeaseRestoreResponse(0));
         }
 
-        var pending = request.Items
-            .Select(item => item.ToPending())
-            .ToList();
+        var pending = new List<TaskQueuePendingItem<ResourceLeaseWorkItem>>(request.Items.Count);
+        foreach (var item in request.Items)
+        {
+            if (item is null)
+            {
+                return Err<ResourceLeaseRestoreResponse>(ResourceLeaseErrors.PendingItemRequired());
+            }
+
+            var pendingResult = item.ToPending();
+            if (pendingResult.IsFailure)
+            {
+                return Err<ResourceLeaseRestoreResponse>(pendingResult.Error!);
+            }
+
+            pending.Add(pendingResult.Value);
+        }
 
         await _queue.RestorePendingItemsAsync(pending, context.CancellationToken).ConfigureAwait(false);
         var restoreMetadata = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -869,18 +885,25 @@ public sealed record ResourceLeasePendingItemDto(
             handle);
     }
 
-    public TaskQueuePendingItem<ResourceLeaseWorkItem> ToPending()
+    public Result<TaskQueuePendingItem<ResourceLeaseWorkItem>> ToPending()
     {
-        var workItem = ResourceLeaseWorkItem.FromPayload(Payload);
+        var workItemResult = ResourceLeaseWorkItem.FromPayload(Payload);
+        if (workItemResult.IsFailure)
+        {
+            return Err<TaskQueuePendingItem<ResourceLeaseWorkItem>>(workItemResult.Error!);
+        }
+
+        var workItem = workItemResult.Value;
         var lastToken = LastOwnershipToken?.ToToken();
         var error = LastError?.ToError() ?? Error.Unspecified("restored pending item");
-        return new TaskQueuePendingItem<ResourceLeaseWorkItem>(
+
+        return Ok(new TaskQueuePendingItem<ResourceLeaseWorkItem>(
             workItem,
             Attempt,
             EnqueuedAt,
             error,
             SequenceId,
-            lastToken);
+            lastToken));
     }
 }
 
@@ -920,28 +943,37 @@ public sealed record ResourceLeaseWorkItem(
     ImmutableDictionary<string, string> Attributes,
     string? RequestId)
 {
-    public static ResourceLeaseWorkItem FromPayload(ResourceLeaseItemPayload payload)
+    public static ResourceLeaseWorkItem FromPayloadOrThrow(ResourceLeaseItemPayload? payload)
     {
-        ArgumentNullException.ThrowIfNull(payload);
+        var result = FromPayload(payload);
+        return result.IsSuccess ? result.Value : throw new ResultException(result.Error!);
+    }
+
+    public static Result<ResourceLeaseWorkItem> FromPayload(ResourceLeaseItemPayload? payload)
+    {
+        if (payload is null)
+        {
+            return Err<ResourceLeaseWorkItem>(ResourceLeaseErrors.PayloadRequired());
+        }
 
         if (string.IsNullOrWhiteSpace(payload.ResourceType))
         {
-            throw new ArgumentException("ResourceType is required.", nameof(payload));
+            return Err<ResourceLeaseWorkItem>(ResourceLeaseErrors.ResourceTypeRequired());
         }
 
         if (string.IsNullOrWhiteSpace(payload.ResourceId))
         {
-            throw new ArgumentException("ResourceId is required.", nameof(payload));
+            return Err<ResourceLeaseWorkItem>(ResourceLeaseErrors.ResourceIdRequired());
         }
 
         if (string.IsNullOrWhiteSpace(payload.PartitionKey))
         {
-            throw new ArgumentException("PartitionKey is required.", nameof(payload));
+            return Err<ResourceLeaseWorkItem>(ResourceLeaseErrors.PartitionKeyRequired());
         }
 
         if (string.IsNullOrWhiteSpace(payload.PayloadEncoding))
         {
-            throw new ArgumentException("Payload encoding is required.", nameof(payload));
+            return Err<ResourceLeaseWorkItem>(ResourceLeaseErrors.EncodingRequired());
         }
 
         var attributes = payload.Attributes is null
@@ -950,14 +982,14 @@ public sealed record ResourceLeaseWorkItem(
 
         var body = payload.Body ?? [];
 
-        return new ResourceLeaseWorkItem(
+        return Ok(new ResourceLeaseWorkItem(
             payload.ResourceType,
             payload.ResourceId,
             payload.PartitionKey,
             payload.PayloadEncoding,
             body,
             attributes,
-            payload.RequestId);
+            payload.RequestId));
     }
 
     public ResourceLeaseItemPayload ToPayload()
