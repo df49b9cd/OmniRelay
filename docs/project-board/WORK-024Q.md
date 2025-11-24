@@ -58,7 +58,14 @@ await adapter.Reader
 - Metrics/logging emit counts for ack/fail/poison and attempts.
 
 ## Status
-Planned
+Done
+
+## Completion Notes
+- Gossip outbound fan-out now runs on SafeTaskQueue + TaskQueueChannelAdapter in `MeshGossipHost`.
+- Control watch apply path enqueues updates onto a SafeTaskQueue pump in `WatchHarness`.
+- Leadership scope evaluations run through SafeTaskQueue in `LeadershipCoordinator`.
+- Data-plane HTTP duplex request pump uses SafeTaskQueue/adapter to bound and structure frame handling in `HttpInbound`.
+- Transport health watch moved to Result/Go delay helper to stay exception-free and pipeline-friendly.
 
 ## SLOs & CI gates
 - Maintain or improve pump p99 latency; no unbounded buffering.
