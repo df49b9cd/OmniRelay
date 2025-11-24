@@ -4,6 +4,7 @@ using System.Net.Quic;
 using System.Security.Authentication;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using AwesomeAssertions;
 using Microsoft.AspNetCore.Builder;
 using OmniRelay.Core;
 using OmniRelay.Dispatcher;
@@ -84,7 +85,7 @@ public class GeneratedClientHttp3Tests
             {
                 return;
             }
-            Assert.True(result.IsSuccess, result.Error?.ToString());
+            result.IsSuccess.Should().BeTrue(result.Error?.ToString());
         }
         finally
         {
@@ -92,13 +93,13 @@ public class GeneratedClientHttp3Tests
             await dispatcher.StopAsyncChecked(ct);
         }
 
-        Assert.True(TryDequeueWithWait(observed, out var protocol), "No protocol captured.");
+        TryDequeueWithWait(observed, out var protocol).Should().BeTrue("No protocol captured.");
         if (protocol.StartsWith("HTTP/3", StringComparison.OrdinalIgnoreCase))
         {
             throw new XunitException("Grpc.Net.Client negotiated HTTP/3; update GeneratedClientHttp3Tests expectations.");
         }
 
-        Assert.StartsWith("HTTP/2", protocol, StringComparison.Ordinal);
+        protocol.Should().StartWithEquivalentOf("HTTP/2");
     }
 
     [Http3Fact(Timeout = 45_000)]
@@ -173,7 +174,7 @@ public class GeneratedClientHttp3Tests
             {
                 return;
             }
-            Assert.True(result.IsSuccess, result.Error?.ToString());
+            result.IsSuccess.Should().BeTrue(result.Error?.ToString());
         }
         finally
         {
@@ -181,13 +182,13 @@ public class GeneratedClientHttp3Tests
             await dispatcher.StopAsyncChecked(ct);
         }
 
-        Assert.True(TryDequeueWithWait(observed, out var protocol), "No protocol captured.");
+        TryDequeueWithWait(observed, out var protocol).Should().BeTrue("No protocol captured.");
         if (protocol.StartsWith("HTTP/3", StringComparison.OrdinalIgnoreCase))
         {
             throw new XunitException("Grpc.Net.Client negotiated HTTP/3; update GeneratedClientHttp3Tests expectations.");
         }
 
-        Assert.StartsWith("HTTP/2", protocol, StringComparison.Ordinal);
+        protocol.Should().StartWithEquivalentOf("HTTP/2");
     }
 
     private sealed class Impl : TestServiceOmniRelay.ITestService
