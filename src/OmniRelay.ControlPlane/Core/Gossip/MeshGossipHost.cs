@@ -447,8 +447,22 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
             try
             {
                 var start = Stopwatch.GetTimestamp();
-                var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
-                response.EnsureSuccessStatusCode();
+                var sendResult = await Result.RetryWithPolicyAsync<Unit>(
+                    async (_, ct) =>
+                    {
+                        var response = await _httpClient.SendAsync(request, ct).ConfigureAwait(false);
+                        response.EnsureSuccessStatusCode();
+                        return Ok(Unit.Value);
+                    },
+                    _gossipSendPolicy,
+                    _timeProvider,
+                    cancellationToken).ConfigureAwait(false);
+
+                if (sendResult.IsFailure)
+                {
+                    MeshGossipHostLog.GossipRoundFailed(_logger, sendResult.Error?.Cause ?? new InvalidOperationException(sendResult.Error?.Message ?? "shuffle send failed"));
+                    continue;
+                }
 
                 var responseEnvelope = await response.Content.ReadFromJsonAsync(MeshGossipJsonSerializerContext.Default.MeshGossipEnvelope, cancellationToken).ConfigureAwait(false);
                 if (responseEnvelope is not null)
