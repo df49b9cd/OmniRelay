@@ -52,6 +52,9 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
     private Task? _gossipLoop;
     private Task? _sweepLoop;
     private Task? _shuffleLoop;
+    private SafeTaskQueue<Func<CancellationToken, ValueTask<Result<Unit>>>>? _sendQueue;
+    private TaskQueueChannelAdapter<Func<CancellationToken, ValueTask<Result<Unit>>>>? _sendAdapter;
+    private Task? _sendPump;
     private long _sequence;
     private bool _disposed;
     private static readonly Action<ILogger, string, int, int, Exception?> GossipListeningLog =
@@ -119,6 +122,18 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
         }
 
         _httpClient = CreateHttpClient();
+
+        _sendQueue = SafeTaskQueue<Func<CancellationToken, ValueTask<Result<Unit>>>>.Create(new SafeTaskQueueOptions
+        {
+            MaxRetries = 5,
+            PoisonQueueName = "mesh-gossip-poison"
+        });
+        _sendAdapter = TaskQueueChannelAdapter<Func<CancellationToken, ValueTask<Result<Unit>>>>.Create(
+            _sendQueue,
+            concurrency: Math.Max(1, _options.MaxOutboundPerRound),
+            ownsQueue: false);
+        _sendPump = RunSendPumpAsync(_sendAdapter, _sendQueue, token);
+
         _app = BuildListener();
         _serverTask = _app.RunAsync(token);
         _gossipLoop = RunGossipLoopAsync(token);
@@ -180,8 +195,41 @@ public sealed partial class MeshGossipHost : IMeshGossipAgent, IDisposable
 
         _httpClient?.Dispose();
         _httpClient = null;
+        if (_sendQueue is not null)
+        {
+            await _sendQueue.DisposeAsync().ConfigureAwait(false);
+            _sendQueue = null;
+        }
         _cts.Dispose();
         _cts = null;
+    }
+
+    private async Task RunSendPumpAsync(
+        TaskQueueChannelAdapter<Func<CancellationToken, ValueTask<Result<Unit>>>> adapter,
+        SafeTaskQueue<Func<CancellationToken, ValueTask<Result<Unit>>>> queue,
+        CancellationToken cancellationToken)
+    {
+        await adapter.Reader
+            .ReadAllAsync(cancellationToken)
+            .Select(static work => Go.Ok(work))
+            .ForEachLinkedCancellationAsync(async (workResult, ct) =>
+            {
+                if (workResult.IsFailure)
+                {
+                    return workResult.CastFailure<Unit>();
+                }
+
+                var lease = workResult.Value;
+                var outcome = await lease(ct).ConfigureAwait(false);
+                if (outcome.IsSuccess)
+                {
+                    await queue.AckAsync(workResult, ct).ConfigureAwait(false);
+                    return Ok(Unit.Value);
+                }
+
+                await queue.FailAsync(workResult, outcome.Error!, requeue: true, ct).ConfigureAwait(false);
+                return outcome.CastFailure<Unit>();
+            }, cancellationToken).ConfigureAwait(false);
     }
 
     private HttpClient CreateHttpClient()
