@@ -14,7 +14,11 @@ Align list-based orchestration steps with streaming continuations using Hugo `Re
 - Tests cover partial failure (one leg fails, others succeed) and ensure compensations/cleanups run.
 
 ## Status
-Planned
+Done
+
+## Completion Notes
+- Dispatcher lifecycle fan-out now runs start steps through `ResultPipeline.FanOutAsync` with ordered readiness merged via channels, eliminating raw ErrGroup usage.
+- Gossip/data-plane batch/merge already use pipeline-aware window/for-each; no remaining Task.WhenAll/WhenAny in targeted paths.
 
 ## SLOs & CI gates
 - Maintain current dispatcher p99 for fan-out scenarios; document changes.
