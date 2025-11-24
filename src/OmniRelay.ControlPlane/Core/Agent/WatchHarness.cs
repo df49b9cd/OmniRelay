@@ -49,7 +49,7 @@ public sealed class WatchHarness : IAsyncDisposable
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _watchPolicy = ResultExecutionPolicy.None.WithRetry(
             ResultRetryPolicy.Exponential(
-                maxAttempts: int.MaxValue,
+                maxAttempts: 10,
                 TimeSpan.FromSeconds(1),
                 2.0,
                 TimeSpan.FromSeconds(30)));

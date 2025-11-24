@@ -14,7 +14,12 @@ Standardize retries/backoff on Hugo `Result.RetryWithPolicyAsync` + `ResultExecu
 - Configurable policies injected via DI; tests can override with deterministic time providers.
 
 ## Status
-Planned
+Done
+
+## Completion Notes
+- Control watch reconnects now run under a bounded exponential retry policy (10 attempts, 1s→30s) via `Result.RetryWithPolicyAsync` in `WatchHarness`.
+- Leadership lease acquire/renew already wired to `ResultExecutionPolicy` with exponential retry (3 attempts) in `LeadershipCoordinator`.
+- Gossip send paths (shuffle/heartbeat and outbound rounds) execute under `_gossipSendPolicy` using `Result.RetryWithPolicyAsync` and SafeTaskQueue delivery, aligning with Hugo policies.
 
 ## SLOs & CI gates
 - No increase in p99 for control watch resume or leadership renew paths (compare to pre-change baseline).
