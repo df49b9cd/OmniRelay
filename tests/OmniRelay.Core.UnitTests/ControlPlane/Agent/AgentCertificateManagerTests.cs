@@ -3,7 +3,7 @@ using System.Security.Cryptography.X509Certificates;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
-using OmniRelay.Identity;
+using OmniRelay.Plugins.Internal.Identity;
 using OmniRelay.Protos.Ca;
 using Xunit;
 

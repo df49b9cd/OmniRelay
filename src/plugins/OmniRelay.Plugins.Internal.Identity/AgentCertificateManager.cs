@@ -3,11 +3,10 @@ using System.Security.Cryptography.X509Certificates;
 using Hugo;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using OmniRelay.Identity;
 using OmniRelay.Protos.Ca;
 using static Hugo.Go;
 
-namespace OmniRelay.Identity;
+namespace OmniRelay.Plugins.Internal.Identity;
 
 /// <summary>
 /// Issues and renews the local agent certificate by talking to the in-process CA.
