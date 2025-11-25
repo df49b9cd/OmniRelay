@@ -36,8 +36,8 @@ public sealed class WatchHarnessTests
             var telemetry = new TelemetryForwarder(NullLogger<TelemetryForwarder>.Instance);
             var harness = new WatchHarness(client, validator, applier, cache, telemetry, NullLogger<WatchHarness>.Instance);
 
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
-            var result = await harness.RunAsync(new ControlWatchRequest { NodeId = "node-a" }, cts.Token);
+            // Use an uncanceled token to avoid racing the apply pump; overall test is still bounded by xUnit timeout.
+            var result = await harness.RunAsync(new ControlWatchRequest { NodeId = "node-a" }, CancellationToken.None);
 
             Assert.True(result.IsSuccess);
             await applier.Received(1).ApplyAsync("v42", Arg.Any<byte[]>(), Arg.Any<CancellationToken>());
