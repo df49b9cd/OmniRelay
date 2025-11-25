@@ -6,6 +6,7 @@ using OmniRelay.ControlPlane.Bootstrap;
 using OmniRelay.ControlPlane.ControlProtocol;
 using OmniRelay.Core.Leadership;
 using OmniRelay.Diagnostics;
+using OmniRelay.ControlPlane.Identity;
 
 var builder = WebApplication.CreateSlimBuilder(args);
 
@@ -57,6 +58,7 @@ builder.WebHost.ConfigureKestrel(options =>
 
 builder.Services.AddControlProtocol();
 builder.Services.AddLeadershipCoordinator();
+builder.Services.AddCertificateAuthority(builder.Configuration.GetSection("CertificateAuthority"));
 builder.Services.AddGrpc();
 builder.Services.AddOmniRelayDiagnosticsRuntime();
 

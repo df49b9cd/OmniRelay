@@ -1288,6 +1288,20 @@ internal static partial class ProgramMeshModule
         else
         {
             Console.WriteLine(json);
+            Console.WriteLine();
+            Console.WriteLine($"identity: {response.Identity} ({response.Role}@{response.ClusterId})");
+            if (response.IssuedAt != DateTimeOffset.MinValue)
+            {
+                Console.WriteLine($"issued:      {response.IssuedAt:u}");
+            }
+            if (response.RenewAfter != DateTimeOffset.MinValue)
+            {
+                Console.WriteLine($"renew after: {response.RenewAfter:u}");
+            }
+            if (response.ExpiresAt != DateTimeOffset.MinValue)
+            {
+                Console.WriteLine($"expires:     {response.ExpiresAt:u}");
+            }
         }
 
         return 0;
