@@ -1,4 +1,5 @@
 using Hugo;
+using Microsoft.Extensions.Options;
 using OmniRelay.Core.Transport;
 using OmniRelay.Protos.Control;
 
@@ -8,13 +9,15 @@ namespace OmniRelay.ControlPlane.Agent;
 public sealed class MeshAgent : ILifecycle, IDisposable
 {
     private readonly WatchHarness _harness;
+    private readonly MeshAgentOptions _options;
     private readonly Microsoft.Extensions.Logging.ILogger<MeshAgent> _logger;
     private CancellationTokenSource? _cts;
     private Task? _watchTask;
 
-    public MeshAgent(WatchHarness harness, Microsoft.Extensions.Logging.ILogger<MeshAgent> logger)
+    public MeshAgent(WatchHarness harness, IOptions<MeshAgentOptions> options, Microsoft.Extensions.Logging.ILogger<MeshAgent> logger)
     {
         _harness = harness ?? throw new ArgumentNullException(nameof(harness));
+        _options = (options ?? throw new ArgumentNullException(nameof(options))).Value;
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -26,15 +29,19 @@ public sealed class MeshAgent : ILifecycle, IDisposable
         }
 
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var nodeId = string.IsNullOrWhiteSpace(_options.ControlDomain)
+            ? _options.NodeId
+            : $"{_options.ControlDomain}:{_options.NodeId}";
+
         var request = new ControlWatchRequest
         {
-            NodeId = Environment.MachineName,
+            NodeId = nodeId,
             Capabilities = new CapabilitySet
             {
-                Items = { "core/v1", "dsl/v1" },
                 BuildEpoch = typeof(MeshAgent).Assembly.GetName().Version?.ToString() ?? "unknown"
             }
         };
+        request.Capabilities.Items.AddRange(_options.Capabilities);
         _watchTask = Go.Run(async token =>
         {
             var result = await _harness.RunAsync(request, token).ConfigureAwait(false);

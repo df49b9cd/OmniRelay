@@ -23,6 +23,7 @@
   - Error responses now echo `required_capabilities` derived from the rejection metadata so agents can surface missing flags without guessing.
 - Client (WatchHarness in `src/OmniRelay.ControlPlane/Core/Agent`):
   - Applies LKG cache on startup and reuses persisted `resume_token`.
+  - LKG cache now carries hash + HMAC signature; corrupt/unsigned caches are ignored and control watch proceeds.
   - On errors, logs and respects server-provided backoff (if present) or falls back to exponential 1 s → 2 s … capped at 30 s.
   - Saves version/epoch/payload/resume_token after each successful apply using `LkgCache.SaveAsync`.
 
@@ -42,3 +43,4 @@
 - Backoff: start 1 s, double to max 30 s; server hint overrides.
 - Payload: currently empty placeholder; wiring supports binary bundles (routes/policies/extensions) once produced.
 - Security: run over mTLS; opaque resume token is echoed; sanitize before logging if it contains user data.
+- Identity: agent renews its certificate via the CA gRPC service before `renew_after` (80% of lifetime by default) and writes the refreshed PFX + trust bundle to disk.

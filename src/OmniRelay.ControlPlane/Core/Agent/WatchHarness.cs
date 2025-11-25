@@ -130,16 +130,16 @@ public sealed class WatchHarness : IAsyncDisposable
                 _applyAdapter = null;
             }
 
-                if (_applyPump is not null)
+            if (_applyPump is not null)
+            {
+                try
                 {
-                    try
-                    {
-                        await _applyPump.ConfigureAwait(false);
-                    }
-                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                    {
-                    }
+                    await _applyPump.ConfigureAwait(false);
                 }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                }
+            }
 
             if (_applySafeQueue is not null)
             {
@@ -157,7 +157,8 @@ public sealed class WatchHarness : IAsyncDisposable
         var lkgResult = await _cache.TryLoadAsync(cancellationToken).ConfigureAwait(false);
         if (lkgResult.IsFailure)
         {
-            return lkgResult.CastFailure<Unit>();
+            AgentLog.LkgRejected(_logger, lkgResult.Error?.Code ?? "unknown");
+            return Ok(Unit.Value);
         }
 
         if (lkgResult.Value is null)

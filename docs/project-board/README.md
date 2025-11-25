@@ -38,7 +38,7 @@ Status legend: Open / In design / In progress / Needs re-scope / Done. Epics are
 | --- | --- | --- | --- |
 | WORK-006 | Control protocol (xDS-like) & capability negotiation | Done | Versioned protobufs, deltas/snapshots, epochs, capability flags; served by `OmniRelay.ControlPlane` and consumed by agents/edge. Backoff hints honored by agents; capability errors surface required flags/remediation. |
 | WORK-007 | Identity/CA service & cert rotation | Done | CSR ingestion, issuance with renewal hints, trust bundles, SPIFFE-compatible SAN/identity validation, root reload/rotation. |
-| WORK-008 | Local agent with LKG cache & telemetry forwarder | Needs re-scope | Subscribe to control domain, cache LKG, renew certs, never elect leaders. |
+| WORK-008 | Local agent with LKG cache & telemetry forwarder | Done | Agent subscribes to control domain, caches signed LKG, renews certs, forwards telemetry, and never elects leaders. |
 | WORK-009 | Bootstrap/watch harness & validation | Needs re-scope | Shared startup harness, config validators, resume/backoff semantics. |
 
 ### L2 – Extensions & Rollout
