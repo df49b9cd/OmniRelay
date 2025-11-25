@@ -12,5 +12,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../OmniRelay.Diagnostics.Alerting/OmniRelay.Diagnostics.Alerting.csproj" />
+    <ProjectReference Include="../../abstractions/OmniRelay.Alerting.Abstractions/OmniRelay.Alerting.Abstractions.csproj" />
   </ItemGroup>
 </Project>

@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
-using OmniRelay.ControlPlane.Identity;
+using OmniRelay.Identity;
 using OmniRelay.Protos.Ca;
 using OmniRelay.TestSupport.Assertions;
 using Xunit;

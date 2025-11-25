@@ -4,7 +4,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using OmniRelay.ControlPlane.ControlProtocol;
-using OmniRelay.ControlPlane.Identity;
+using OmniRelay.Identity;
 using OmniRelay.Core.Leadership;
 
 namespace OmniRelay.ControlPlane.Agent;

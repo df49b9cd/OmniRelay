@@ -1,6 +1,6 @@
 using System.Security.Cryptography.X509Certificates;
 
-namespace OmniRelay.ControlPlane.Security;
+namespace OmniRelay.Identity;
 
 /// <summary>
 /// Describes the source for control-plane TLS material (file path or inline data) plus policy hooks.

@@ -6,6 +6,7 @@ using System.Text.Json.Serialization;
 using Hugo;
 using Unit = Hugo.Go.Unit;
 using static Hugo.Go;
+using OmniRelay.Identity;
 
 namespace OmniRelay.ControlPlane.Agent;
 

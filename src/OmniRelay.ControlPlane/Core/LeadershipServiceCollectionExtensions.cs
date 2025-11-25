@@ -3,7 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
-using OmniRelay.ControlPlane.Identity;
+using OmniRelay.Identity;
 
 namespace OmniRelay.Core.Leadership;
 

@@ -1,6 +1,6 @@
 using Hugo;
 using Microsoft.AspNetCore.Http;
-using OmniRelay.Security.Authorization;
+using OmniRelay.Authorization;
 
 namespace OmniRelay.Plugins.Internal.Authorization;
 

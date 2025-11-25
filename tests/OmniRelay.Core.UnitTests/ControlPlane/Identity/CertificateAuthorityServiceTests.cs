@@ -6,7 +6,7 @@ using System.Security.Cryptography.X509Certificates;
 using Grpc.Core;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using OmniRelay.ControlPlane.Identity;
+using OmniRelay.Identity;
 using OmniRelay.Core.UnitTests.ControlPlane.ControlProtocol;
 using OmniRelay.Protos.Ca;
 using Xunit;

@@ -1,7 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
 using OmniRelay.ControlPlane.Bootstrap;
-using OmniRelay.ControlPlane.Security;
-using OmniRelay.Security.Authorization;
+using OmniRelay.Identity;
+using OmniRelay.Transport.Security;
+using OmniRelay.Authorization;
 
 namespace OmniRelay.Plugins.Internal.Authorization;
 

@@ -3,7 +3,7 @@ using Grpc.Net.Client;
 using Microsoft.Extensions.Logging;
 using OmniRelay.Protos.Ca;
 
-namespace OmniRelay.ControlPlane.Identity;
+namespace OmniRelay.Identity;
 
 /// <summary>Lightweight client for the in-process certificate authority.</summary>
 public sealed class CertificateAuthorityClient : ICertificateAuthorityClient

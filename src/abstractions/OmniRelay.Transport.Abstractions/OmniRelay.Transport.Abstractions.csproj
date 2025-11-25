@@ -7,8 +7,8 @@
     <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
     <EnableAotAnalyzer>true</EnableAotAnalyzer>
     <EnableSingleFileAnalyzer>true</EnableSingleFileAnalyzer>
-    <AssemblyName>OmniRelay.Security.Abstractions</AssemblyName>
-    <RootNamespace>OmniRelay.Security</RootNamespace>
+    <AssemblyName>OmniRelay.Transport.Abstractions</AssemblyName>
+    <RootNamespace>OmniRelay.Transport</RootNamespace>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
   <ItemGroup>

@@ -1,6 +1,6 @@
 using System.Collections.Immutable;
 
-namespace OmniRelay.Security.Authorization;
+namespace OmniRelay.Authorization;
 
 /// <summary>Represents a set of role/cluster/principal requirements.</summary>
 public sealed class MeshAuthorizationPolicy

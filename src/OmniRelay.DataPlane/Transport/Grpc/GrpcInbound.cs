@@ -15,7 +15,7 @@ using OmniRelay.ControlPlane.Upgrade;
 using OmniRelay.Core.Transport;
 using OmniRelay.Dispatcher;
 using OmniRelay.Errors;
-using OmniRelay.Security.Authorization;
+using OmniRelay.Authorization;
 using OmniRelay.Transport.Grpc.Interceptors;
 using OmniRelay.Transport.Http;
 using OmniRelay.Transport.Security;

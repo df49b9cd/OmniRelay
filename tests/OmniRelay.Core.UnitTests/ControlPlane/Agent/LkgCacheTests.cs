@@ -1,5 +1,6 @@
 using System.Text.Json;
 using OmniRelay.ControlPlane.Agent;
+using OmniRelay.Identity;
 using Xunit;
 
 namespace OmniRelay.Core.UnitTests.ControlPlane.Agent;

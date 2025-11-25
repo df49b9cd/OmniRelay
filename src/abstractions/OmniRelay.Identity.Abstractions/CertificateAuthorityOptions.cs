@@ -1,4 +1,4 @@
-namespace OmniRelay.ControlPlane.Identity;
+namespace OmniRelay.Identity;
 
 public sealed class CertificateAuthorityOptions
 {

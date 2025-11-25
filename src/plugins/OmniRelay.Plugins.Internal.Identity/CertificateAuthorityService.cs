@@ -8,7 +8,7 @@ using Microsoft.Extensions.Options;
 using OmniRelay.Protos.Ca;
 using static Hugo.Go;
 
-namespace OmniRelay.ControlPlane.Identity;
+namespace OmniRelay.Identity;
 
 /// <summary>In-process CA service for MeshKit agents (WORK-007): issues short-lived leaf certs and exposes the trust bundle.</summary>
 public sealed partial class CertificateAuthorityService : CertificateAuthority.CertificateAuthorityBase, IDisposable

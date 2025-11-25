@@ -13,6 +13,6 @@
   <ItemGroup>
     <ProjectReference Include="../../OmniRelay.Protos/OmniRelay.Protos.csproj" />
     <ProjectReference Include="../../OmniRelay.DataPlane/OmniRelay.DataPlane.csproj" />
-    <ProjectReference Include="../../OmniRelay.ControlPlane.Abstractions/OmniRelay.ControlPlane.Abstractions.csproj" />
+    <ProjectReference Include="../../abstractions/OmniRelay.Identity.Abstractions/OmniRelay.Identity.Abstractions.csproj" />
   </ItemGroup>
 </Project>

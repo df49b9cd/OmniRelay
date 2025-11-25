@@ -22,5 +22,6 @@
   <ItemGroup>
     <ProjectReference Include="../../OmniRelay.DataPlane/OmniRelay.DataPlane.csproj" />
     <ProjectReference Include="../../OmniRelay.Codecs/OmniRelay.Codecs.csproj" />
+    <ProjectReference Include="../../abstractions/OmniRelay.Transport.Abstractions/OmniRelay.Transport.Abstractions.csproj" />
   </ItemGroup>
 </Project>

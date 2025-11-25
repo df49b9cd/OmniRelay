@@ -2,6 +2,7 @@ using Hugo;
 using Microsoft.Extensions.Options;
 using OmniRelay.Core.Transport;
 using OmniRelay.Protos.Control;
+using OmniRelay.Identity;
 
 namespace OmniRelay.ControlPlane.Agent;
 

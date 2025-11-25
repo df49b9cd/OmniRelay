@@ -1,4 +1,4 @@
-namespace OmniRelay.ControlPlane.Agent;
+namespace OmniRelay.Identity;
 
 /// <summary>Configures the MeshAgent control-plane client (watch, LKG cache, certificates).</summary>
 public sealed class MeshAgentOptions

@@ -3,11 +3,11 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Hugo;
 using Microsoft.Extensions.Logging;
-using OmniRelay.ControlPlane.Security;
+using OmniRelay.Identity;
 using OmniRelay.Security.Secrets;
 using static Hugo.Go;
 
-namespace OmniRelay.ControlPlane.Security;
+namespace OmniRelay.Identity;
 
 public sealed class TransportTlsManager : IDisposable
 {

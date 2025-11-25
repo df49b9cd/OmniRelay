@@ -1,6 +1,6 @@
 using Hugo;
 
-namespace OmniRelay.Security.Authorization;
+namespace OmniRelay.Authorization;
 
 /// <summary>Represents the outcome of mesh authorization evaluation.</summary>
 public readonly record struct MeshAuthorizationDecision(bool IsAllowed, string? Reason)

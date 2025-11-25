@@ -127,6 +127,7 @@ Purpose: enumerate every OmniRelay surface that should remain provider-agnostic 
   - Control plane: bootstrap API, registry/topology compiler, policy compiler, snapshot publisher, certificate/identity services, health aggregation.
   - Data plane: transport gateways (HTTP/3, gRPC), authN/Z middleware, routing executor, retry/backpressure, caching, telemetry emitters, replication sinks.
   - Plugin plane: provider packages (`OmniRelay.Plugins.*`) that implement canonical interfaces; loaded into either control or data plane per the boundary table above.
+  - Abstractions: provides abstractions.
 
 - **Runtime components (control plane)**
   - Bootstrap service (`BootstrapServer`) issues workload identities and seeds config.

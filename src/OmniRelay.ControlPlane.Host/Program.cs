@@ -6,7 +6,7 @@ using OmniRelay.ControlPlane.Bootstrap;
 using OmniRelay.ControlPlane.ControlProtocol;
 using OmniRelay.Core.Leadership;
 using OmniRelay.Diagnostics;
-using OmniRelay.ControlPlane.Identity;
+using OmniRelay.Identity;
 
 var builder = WebApplication.CreateSlimBuilder(args);
 

@@ -1,8 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using OmniRelay.ControlPlane.Bootstrap;
-using OmniRelay.ControlPlane.Identity;
-using OmniRelay.ControlPlane.Agent;
-using OmniRelay.ControlPlane.Security;
+using OmniRelay.Identity;
 
 namespace OmniRelay.Plugins.Internal.Identity;
 

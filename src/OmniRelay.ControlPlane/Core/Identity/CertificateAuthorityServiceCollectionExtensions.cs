@@ -4,6 +4,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 
+using OmniRelay.Identity;
+
 namespace OmniRelay.ControlPlane.Identity;
 
 /// <summary>DI helpers for the in-process certificate authority.</summary>

@@ -1,6 +1,6 @@
 using OmniRelay.Protos.Ca;
 
-namespace OmniRelay.ControlPlane.Identity;
+namespace OmniRelay.Identity;
 
 /// <summary>Client abstraction for the in-process certificate authority (WORK-007).</summary>
 public interface ICertificateAuthorityClient

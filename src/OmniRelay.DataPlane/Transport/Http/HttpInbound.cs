@@ -30,7 +30,7 @@ using OmniRelay.Core.Transport;
 using OmniRelay.Diagnostics;
 using OmniRelay.Dispatcher;
 using OmniRelay.Errors;
-using OmniRelay.Security.Authorization;
+using OmniRelay.Authorization;
 using OmniRelay.Transport.Security;
 using static Hugo.Go;
 

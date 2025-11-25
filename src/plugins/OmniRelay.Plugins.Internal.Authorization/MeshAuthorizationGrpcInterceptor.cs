@@ -1,7 +1,7 @@
 using Grpc.Core;
 using Grpc.Core.Interceptors;
 using Hugo;
-using OmniRelay.Security.Authorization;
+using OmniRelay.Authorization;
 using static Hugo.Go;
 
 namespace OmniRelay.Plugins.Internal.Authorization;

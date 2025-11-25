@@ -14,5 +14,6 @@
     <ProjectReference Include="../../OmniRelay.ResourceLeaseReplicator.Sqlite/OmniRelay.ResourceLeaseReplicator.Sqlite.csproj" />
     <ProjectReference Include="../../OmniRelay.ResourceLeaseReplicator.ObjectStorage/OmniRelay.ResourceLeaseReplicator.ObjectStorage.csproj" />
     <ProjectReference Include="../../OmniRelay.ResourceLeaseReplicator.Grpc/OmniRelay.ResourceLeaseReplicator.Grpc.csproj" />
+    <ProjectReference Include="../../abstractions/OmniRelay.Replication.Abstractions/OmniRelay.Replication.Abstractions.csproj" />
   </ItemGroup>
 </Project>
