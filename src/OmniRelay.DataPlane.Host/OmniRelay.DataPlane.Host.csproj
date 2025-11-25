@@ -25,6 +25,8 @@
   <ItemGroup>
     <ProjectReference Include="..\OmniRelay.DataPlane\OmniRelay.DataPlane.csproj" />
     <ProjectReference Include="..\OmniRelay.Transport.Host\OmniRelay.Transport.Host.csproj" />
+    <ProjectReference Include="..\plugins\OmniRelay.Plugins.Internal.Transport\OmniRelay.Plugins.Internal.Transport.csproj" />
+    <ProjectReference Include="..\plugins\OmniRelay.Plugins.Internal.Observability\OmniRelay.Plugins.Internal.Observability.csproj" />
   </ItemGroup>
 
 </Project>

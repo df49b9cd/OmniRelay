@@ -1,5 +1,8 @@
+using System.Security.Cryptography.X509Certificates;
+
 namespace OmniRelay.ControlPlane.Bootstrap;
 
+/// <summary>Simple identity provider that serves a static certificate bundle from memory (used for tests/dev).</summary>
 public sealed class FileBootstrapIdentityProvider : IWorkloadIdentityProvider
 {
     private readonly byte[] _certificateData;
@@ -17,30 +20,21 @@ public sealed class FileBootstrapIdentityProvider : IWorkloadIdentityProvider
 
     public ValueTask<WorkloadCertificateBundle> IssueAsync(WorkloadIdentityRequest request, CancellationToken cancellationToken = default)
     {
-        var bundle = CreateBundle(request);
-        return ValueTask.FromResult(bundle);
+        var now = _timeProvider.GetUtcNow();
+        return ValueTask.FromResult(new WorkloadCertificateBundle
+        {
+            Identity = request.IdentityHint ?? "file-bootstrap",
+            Provider = "file",
+            CertificateData = _certificateData,
+            CertificatePassword = _certificatePassword,
+            TrustBundleData = _trustBundle,
+            IssuedAt = now,
+            RenewAfter = now + TimeSpan.FromMinutes(15),
+            ExpiresAt = now + TimeSpan.FromHours(1)
+        });
     }
 
     public ValueTask<WorkloadCertificateBundle> RenewAsync(WorkloadIdentityRequest request, CancellationToken cancellationToken = default) => IssueAsync(request, cancellationToken);
 
     public ValueTask RevokeAsync(string identity, string? reason = null, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
-
-    private WorkloadCertificateBundle CreateBundle(WorkloadIdentityRequest request)
-    {
-        var now = _timeProvider.GetUtcNow();
-        var nodeId = string.IsNullOrWhiteSpace(request.NodeId) ? Guid.NewGuid().ToString("N") : request.NodeId;
-        var identity = request.IdentityHint ?? $"file:{nodeId}";
-        return new WorkloadCertificateBundle
-        {
-            Identity = identity,
-            Provider = "file",
-            CertificateData = (byte[])_certificateData.Clone(),
-            CertificatePassword = _certificatePassword,
-            TrustBundleData = _trustBundle,
-            Metadata = request.Metadata,
-            IssuedAt = now,
-            RenewAfter = now,
-            ExpiresAt = now
-        };
-    }
 }

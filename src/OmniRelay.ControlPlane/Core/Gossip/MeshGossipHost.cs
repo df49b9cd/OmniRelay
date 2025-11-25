@@ -20,6 +20,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using OmniRelay.ControlPlane.Primitives;
 using OmniRelay.ControlPlane.Security;
+using OmniRelay.ControlPlane.Security;
 using OmniRelay.Diagnostics;
 using OmniRelay.Security.Secrets;
 using static Hugo.Go;

@@ -1,6 +1,10 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Configuration;
+using OmniRelay.DataPlane.Host;
+using OmniRelay.Plugins.Internal.Observability;
+using OmniRelay.Plugins.Internal.Transport;
 using OmniRelay.Transport.Host;
 
 var builder = Host.CreateApplicationBuilder(args);
@@ -17,6 +21,21 @@ builder.Services.AddLogging(logging =>
 
 // Register the data-plane host services.
 builder.Services.AddDataPlaneHost();
+
+// Register built-in transport plugins (HTTP/3 + gRPC) via plugin package for swap-ready architecture.
+var transportConfig = builder.Configuration.GetSection("Transports").Get<TransportHostConfig>() ?? new TransportHostConfig();
+builder.Services.AddInternalTransportPlugins(options =>
+{
+    options.HttpUrls.AddRange(transportConfig.HttpUrls);
+    options.GrpcUrls.AddRange(transportConfig.GrpcUrls);
+    options.HttpRuntime = transportConfig.HttpRuntime;
+    options.HttpTls = transportConfig.HttpTls;
+    options.GrpcRuntime = transportConfig.GrpcRuntime;
+    options.GrpcTls = transportConfig.GrpcTls;
+});
+
+// Register observability defaults via plugin (Prometheus + tracing enabled by default).
+builder.Services.AddInternalObservabilityPlugins();
 
 var app = builder.Build();
 
