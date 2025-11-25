@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using Grpc.Core;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -18,7 +19,7 @@ public sealed class ControlPlaneWatchServiceTests
             "v1",
             1,
             "demo"u8.ToArray(),
-            new[] { "core/v1" },
+            ["core/v1"],
             true,
             ReadOnlyMemory<byte>.Empty), TestContext.Current.CancellationToken);
 
@@ -35,9 +36,9 @@ public sealed class ControlPlaneWatchServiceTests
             NodeId = request.NodeId
         }, new TestServerCallContext(CancellationToken.None));
 
-        Assert.Equal("v1", response.Version);
-        Assert.Equal(1, response.Epoch);
-        Assert.Contains("core/v1", response.RequiredCapabilities);
+        response.Version.ShouldBe("v1");
+        response.Epoch.ShouldBe(1);
+        response.RequiredCapabilities.ShouldContain("core/v1");
     }
 
     [Fact(Timeout = TestTimeouts.Default)]
@@ -60,6 +61,75 @@ public sealed class ControlPlaneWatchServiceTests
                 Capabilities = request.Capabilities,
                 NodeId = request.NodeId
             }, new TestServerCallContext(CancellationToken.None)));
+    }
+
+    [Fact(Timeout = TestTimeouts.Default)]
+    public async Task Watch_ReturnsError_WhenMissingRequiredCapabilities()
+    {
+        var options = Options.Create(new ControlProtocolOptions
+        {
+            UnsupportedCapabilityBackoff = TimeSpan.FromSeconds(7)
+        });
+        var updateStream = new ControlPlaneUpdateStream(options, NullLogger<ControlPlaneUpdateStream>.Instance);
+        await updateStream.PublishAsync(new ControlPlaneUpdate(
+            "v2",
+            2,
+            "demo"u8.ToArray(),
+            ["dsl/v1"],
+            true,
+            ReadOnlyMemory<byte>.Empty), TestContext.Current.CancellationToken);
+
+        var service = new ControlPlaneWatchService(updateStream, options, NullLogger<ControlPlaneWatchService>.Instance);
+        var writer = new RecordingStreamWriter<ControlWatchResponse>();
+
+        await service.Watch(new ControlWatchRequest
+        {
+            NodeId = "node-a",
+            Capabilities = new CapabilitySet { Items = { "core/v1" } }
+        }, writer, new TestServerCallContext(CancellationToken.None));
+
+        writer.Messages.ShouldHaveSingleItem();
+        var response = writer.Messages[0];
+        response.Error.ShouldNotBeNull();
+        response.Error.Code.ShouldBe(ControlProtocolErrors.UnsupportedCapabilityCode);
+        response.Backoff.Millis.ShouldBe(7000);
+        response.RequiredCapabilities.ShouldContain("dsl/v1");
+    }
+
+    [Fact(Timeout = TestTimeouts.Default)]
+    public async Task Watch_SetsFullSnapshot_WhenResumeTokenMismatch()
+    {
+        var options = Options.Create(new ControlProtocolOptions());
+        var updateStream = new ControlPlaneUpdateStream(options, NullLogger<ControlPlaneUpdateStream>.Instance);
+        await updateStream.PublishAsync(new ControlPlaneUpdate(
+            "v3",
+            3,
+            "demo"u8.ToArray(),
+            ["core/v1"],
+            true,
+            ReadOnlyMemory<byte>.Empty), TestContext.Current.CancellationToken);
+
+        var service = new ControlPlaneWatchService(updateStream, options, NullLogger<ControlPlaneWatchService>.Instance);
+        var writer = new RecordingStreamWriter<ControlWatchResponse>();
+        using var cts = new CancellationTokenSource();
+        var context = new TestServerCallContext(cts.Token);
+        var watchTask = service.Watch(new ControlWatchRequest
+        {
+            NodeId = "node-a",
+            Capabilities = new CapabilitySet { Items = { "core/v1" } },
+            ResumeToken = new WatchResumeToken { Version = "old", Epoch = 1 }
+        }, writer, context);
+
+        await writer.WaitForFirstAsync(TimeSpan.FromSeconds(1));
+        cts.Cancel();
+        await watchTask;
+
+        writer.Messages.ShouldHaveSingleItem();
+
+        var response = writer.Messages[0];
+        response.FullSnapshot.ShouldBeTrue();
+        response.Version.ShouldBe("v3");
+        response.Epoch.ShouldBe(3);
     }
 }
 
@@ -85,4 +155,31 @@ internal sealed class TestServerCallContext : ServerCallContext
 
     protected override ContextPropagationToken CreatePropagationTokenCore(ContextPropagationOptions? options) => throw new NotImplementedException();
     protected override Task WriteResponseHeadersAsyncCore(Metadata responseHeaders) => Task.CompletedTask;
+}
+
+internal sealed class RecordingStreamWriter<T> : IServerStreamWriter<T>
+{
+    private readonly List<T> _messages = new();
+    private readonly TaskCompletionSource _firstWrite = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public IReadOnlyList<T> Messages => _messages;
+
+    public WriteOptions? WriteOptions { get; set; }
+
+    public Task WriteAsync(T message)
+    {
+        _messages.Add(message);
+        _firstWrite.TrySetResult();
+        return Task.CompletedTask;
+    }
+
+    public Task WaitForFirstAsync(TimeSpan? timeout = null)
+    {
+        if (timeout is null)
+        {
+            return _firstWrite.Task;
+        }
+
+        return _firstWrite.Task.WaitAsync(timeout.Value);
+    }
 }

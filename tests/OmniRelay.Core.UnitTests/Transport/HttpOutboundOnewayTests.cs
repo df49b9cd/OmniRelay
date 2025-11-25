@@ -32,7 +32,7 @@ public sealed class HttpOutboundOnewayTests
         await Task.WhenAll(calls);
 
         var failures = calls.Count(t => t.Result.IsFailure);
-        Assert.True(failures > 0, "Expected backpressure failures when queue is saturated.");
+        failures.ShouldBeGreaterThan(0, because: "Expected backpressure failures when queue is saturated.");
 
         blocker.TrySetResult();
         await outbound.StopAsync(cts.Token);
@@ -49,8 +49,7 @@ public sealed class HttpOutboundOnewayTests
         var request = new Request<ReadOnlyMemory<byte>>(meta, "ok"u8.ToArray());
 
         var result = await ((IOnewayOutbound)outbound).CallAsync(request, CancellationToken.None);
-
-        Assert.True(result.IsSuccess, result.Error?.ToString());
+        result.IsSuccess.ShouldBeTrue();
         await outbound.StopAsync(TestContext.Current.CancellationToken);
     }
 

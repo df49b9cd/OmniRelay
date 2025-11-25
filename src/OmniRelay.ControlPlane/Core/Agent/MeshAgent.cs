@@ -1,3 +1,4 @@
+using Hugo;
 using OmniRelay.Core.Transport;
 using OmniRelay.Protos.Control;
 
@@ -34,14 +35,14 @@ public sealed class MeshAgent : ILifecycle, IDisposable
                 BuildEpoch = typeof(MeshAgent).Assembly.GetName().Version?.ToString() ?? "unknown"
             }
         };
-        _watchTask = Task.Run(async () =>
+        _watchTask = Go.Run(async token =>
         {
-            var result = await _harness.RunAsync(request, _cts.Token).ConfigureAwait(false);
+            var result = await _harness.RunAsync(request, token).ConfigureAwait(false);
             if (result.IsFailure)
             {
                 AgentLog.ControlWatchFailed(_logger, result.Error?.Cause ?? new InvalidOperationException(result.Error?.Message ?? "control watch failed"));
             }
-        }, _cts.Token);
+        }, cancellationToken: _cts.Token).AsTask();
     }
 
     public async ValueTask StopAsync(CancellationToken cancellationToken = default)

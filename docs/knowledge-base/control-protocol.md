@@ -20,15 +20,16 @@
   - Publishes updates from `ControlPlaneUpdateStream` (implementations can push via `IControlPlaneUpdatePublisher`).
   - Generates resume tokens `{ version, epoch, opaque=node_id|resume_opaque }` and returns a full snapshot when the resume token does not match the current version/epoch.
   - Emits default backoff hints from options (1 s by default).
+  - Error responses now echo `required_capabilities` derived from the rejection metadata so agents can surface missing flags without guessing.
 - Client (WatchHarness in `src/OmniRelay.ControlPlane/Core/Agent`):
   - Applies LKG cache on startup and reuses persisted `resume_token`.
-  - On errors, logs and respects server-provided backoff, doubling up to 30 s with an upper cap.
+  - On errors, logs and respects server-provided backoff (if present) or falls back to exponential 1 s → 2 s … capped at 30 s.
   - Saves version/epoch/payload/resume_token after each successful apply using `LkgCache.SaveAsync`.
 
 ## Capability negotiation (006C)
 - Client advertises `CapabilitySet` (`items` + `build_epoch`).
 - Server checks against its supported set (`core/v1`, `dsl/v1`); if unsupported, sends an error response with remediation text.
-- Responses include `required_capabilities` so clients can detect when they are missing a feature and fall back to LKG.
+- Responses include `required_capabilities` so clients can detect when they are missing a feature and fall back to LKG; capability errors include remediation guidance.
 
 ## Errors & observability (006D)
 - Error model: `ControlError { code, message, remediation }` embedded in watch responses; typical codes: `control.unsupported_capability`, `control.invalid_resume_token` (reserved), `control.payload.invalid` (client-side validation).

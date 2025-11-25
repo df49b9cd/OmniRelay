@@ -161,7 +161,7 @@ public sealed class GrpcOutbound : IUnaryOutbound, IOnewayOutbound, IStreamOutbo
         GrpcTelemetryOptions? telemetryOptions = null,
         IReadOnlyDictionary<Uri, bool>? endpointHttp3Support = null) =>
         TryCreate(
-            new[] { address },
+            [address],
             remoteService,
             channelOptions,
             clientTlsOptions,

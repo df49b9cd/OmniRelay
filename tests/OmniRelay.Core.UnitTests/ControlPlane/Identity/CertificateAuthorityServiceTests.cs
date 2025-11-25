@@ -20,14 +20,14 @@ public sealed class CertificateAuthorityServiceTests
 
         var response = await service.SubmitCsr(new CsrRequest { NodeId = "agent-1" }, new TestServerCallContext(CancellationToken.None));
 
-        Assert.NotNull(response);
-        Assert.False(string.IsNullOrWhiteSpace(response.ExpiresAt));
+        response.ShouldNotBeNull();
+        response.ExpiresAt.ShouldNotBeNullOrWhiteSpace();
 
         var pem = PemEncoding.Write("CERTIFICATE", response.Certificate.ToByteArray());
         var leaf = X509Certificate2.CreateFromPem(pem);
-        Assert.Contains("agent-1", leaf.Subject, StringComparison.OrdinalIgnoreCase);
+        leaf.Subject.ShouldContain("agent-1", Case.Insensitive);
 
         var trust = response.TrustBundle.ToByteArray();
-        Assert.NotEmpty(trust);
+        trust.ShouldNotBeEmpty();
     }
 }

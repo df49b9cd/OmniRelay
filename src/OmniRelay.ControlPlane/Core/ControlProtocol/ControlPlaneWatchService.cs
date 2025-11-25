@@ -96,6 +96,10 @@ public sealed class ControlPlaneWatchService : ControlPlaneWatch.ControlPlaneWat
                     await responseStream.WriteAsync(response).ConfigureAwait(false);
                 }
             }
+            catch (OperationCanceledException) when (context.CancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
             finally
             {
                 await enumerator.DisposeAsync().ConfigureAwait(false);
@@ -220,6 +224,18 @@ public sealed class ControlPlaneWatchService : ControlPlaneWatch.ControlPlaneWat
             Backoff = new ControlBackoff { Millis = (long)backoff.TotalMilliseconds }
         };
 
+        var required = TryParseCapabilities(error, "required");
+        if (required.Length > 0)
+        {
+            response.RequiredCapabilities.AddRange(required);
+        }
+
+        var unsupported = TryParseCapabilities(error, "unsupported");
+        if (unsupported.Length > 0)
+        {
+            response.RequiredCapabilities.AddRange(unsupported);
+        }
+
         return response;
     }
 
@@ -233,6 +249,21 @@ public sealed class ControlPlaneWatchService : ControlPlaneWatch.ControlPlaneWat
         return error.Metadata.TryGetValue(key, out var value) && value is not null
             ? value.ToString()
             : null;
+    }
+
+    private static string[] TryParseCapabilities(Error error, string key)
+    {
+        if (error.Metadata is null || error.Metadata.Count == 0)
+        {
+            return Array.Empty<string>();
+        }
+
+        if (error.Metadata.TryGetValue(key, out var value) && value is string text && !string.IsNullOrWhiteSpace(text))
+        {
+            return text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        }
+
+        return Array.Empty<string>();
     }
 
     private static RpcException ToRpcException(Error error)

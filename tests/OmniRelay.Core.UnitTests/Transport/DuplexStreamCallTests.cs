@@ -80,7 +80,7 @@ public class DuplexStreamCallTests
             await call.RequestWriter.WaitToWriteAsync(cts.Token));
 
         var dequeued = await call.RequestReader.ReadAsync(TestContext.Current.CancellationToken);
-        dequeued.ToArray().ShouldBe(new byte[] { 1 });
+        dequeued.ToArray().ShouldBe([1]);
 
         var waitOk = await call.RequestWriter.WaitToWriteAsync(TestContext.Current.CancellationToken);
         waitOk.ShouldBeTrue();

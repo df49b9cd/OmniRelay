@@ -8,6 +8,7 @@ using OmniRelay.ControlPlane.Agent;
 using OmniRelay.ControlPlane.ControlProtocol;
 using OmniRelay.Protos.Control;
 using Xunit;
+using Microsoft.AspNetCore.Routing;
 
 namespace OmniRelay.Core.UnitTests.ControlPlane.Agent;
 
@@ -30,7 +31,7 @@ public sealed class WatchHarnessTests
             };
 
         // Slow the stream very slightly so the apply pump processes before the assertion.
-        var client = new FakeWatchClient(new[] { response }, delayBetween: TimeSpan.FromMilliseconds(5));
+        var client = new FakeWatchClient([response], delayBetween: TimeSpan.FromMilliseconds(5));
             var validator = Substitute.For<IControlPlaneConfigValidator>();
             validator.Validate(Arg.Any<byte[]>(), out Arg.Any<string?>()).Returns(callInfo => { callInfo[1] = null; return true; });
             var applier = Substitute.For<IControlPlaneConfigApplier>();
@@ -41,14 +42,14 @@ public sealed class WatchHarnessTests
             // Use an uncanceled token to avoid racing the apply pump; overall test is still bounded by xUnit timeout.
             var result = await harness.RunAsync(new ControlWatchRequest { NodeId = "node-a" }, CancellationToken.None);
 
-            Assert.True(result.IsSuccess);
+            result.IsSuccess.ShouldBeTrue();
             await applier.Received(1).ApplyAsync("v42", Arg.Any<byte[]>(), Arg.Any<CancellationToken>());
 
             var lkg = await cache.TryLoadAsync(TestContext.Current.CancellationToken);
-            Assert.True(lkg.IsSuccess);
-            Assert.NotNull(lkg.Value);
-            Assert.Equal("v42", lkg.Value!.Version);
-            Assert.Equal(7, lkg.Value.Epoch);
+            lkg.IsSuccess.ShouldBeTrue();
+            lkg.Value.ShouldNotBeNull();
+            lkg.Value!.Version.ShouldBe("v42");
+            lkg.Value.Epoch.ShouldBe(7);
         }
         finally
         {
@@ -57,6 +58,18 @@ public sealed class WatchHarnessTests
                 File.Delete(tempPath);
             }
         }
+    }
+
+    [Theory]
+    [InlineData(0, 0, 1000)]
+    [InlineData(3, 0, 8000)]
+    [InlineData(5, 0, 30000)]
+    [InlineData(2, 5000, 5000)]
+    [InlineData(4, 40000, 30000)]
+    public void ComputeBackoff_UsesServerHintOrExponential(int attempt, long serverBackoffMillis, int expectedMillis)
+    {
+        var backoff = WatchHarness.ComputeBackoff(attempt, serverBackoffMillis);
+        ((int)backoff.TotalMilliseconds).ShouldBe(expectedMillis);
     }
 }
 

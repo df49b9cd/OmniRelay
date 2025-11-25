@@ -20,7 +20,8 @@ internal static class ControlProtocolErrors
             $"Capabilities not supported: {missing}",
             UnsupportedCapabilityCode)
             .WithMetadata("unsupported", missing)
-            .WithMetadata("advertised", advertised);
+            .WithMetadata("advertised", advertised)
+            .WithMetadata("remediation", "Drop unsupported capabilities or upgrade the control-plane to match the advertised set.");
     }
 
     internal static Error MissingRequiredCapabilities(IEnumerable<string> required, CapabilitySet? provided)
@@ -34,7 +35,8 @@ internal static class ControlProtocolErrors
             $"Client missing required capabilities: {missing}",
             UnsupportedCapabilityCode)
             .WithMetadata("required", missing)
-            .WithMetadata("advertised", advertised);
+            .WithMetadata("advertised", advertised)
+            .WithMetadata("remediation", "Upgrade the agent to support the required capabilities or request a down-leveled payload.");
     }
 
     internal static Error InvalidResumeToken(WatchResumeToken token, ControlPlaneUpdate current)

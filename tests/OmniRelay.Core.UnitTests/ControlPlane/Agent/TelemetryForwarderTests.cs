@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Threading.Channels;
+using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using OmniRelay.ControlPlane.Agent;
 using Xunit;
@@ -31,8 +32,8 @@ public sealed class TelemetryForwarderTests
 
         await Task.Delay(100, TestContext.Current.CancellationToken); // allow pump to process
 
-        Assert.Single(batches);
-        Assert.Equal(new[] { "v1", "v2", "v3" }, batches[0]);
+        batches.ShouldHaveSingleItem();
+        batches.First().Should().BeEquivalentTo(["v1", "v2", "v3"]);
     }
 
     [Fact]
@@ -56,7 +57,8 @@ public sealed class TelemetryForwarderTests
 
         await Task.Delay(250, TestContext.Current.CancellationToken);
 
-        Assert.Single(batches);
-        Assert.Equal(new[] { "v1", "v2" }, batches[0]);
+
+        batches.ShouldHaveSingleItem();
+        batches.First().Should().BeEquivalentTo(["v1", "v2"]);
     }
 }

@@ -49,7 +49,7 @@ public sealed class ShardControlPlaneServiceTests
         };
 
         var strategy = new TestStrategy("fanout-test", plannedAssignments);
-        var registry = new ShardHashStrategyRegistry(new[] { strategy });
+        var registry = new ShardHashStrategyRegistry([strategy]);
         var repository = new FakeShardRepository(records);
         var service = new ShardControlPlaneService(repository, registry, TimeProvider.System, NullLogger<ShardControlPlaneService>.Instance);
 
@@ -57,18 +57,18 @@ public sealed class ShardControlPlaneServiceTests
         {
             Namespace = "ns",
             StrategyId = strategy.Id,
-            Nodes = new[] { new ShardSimulationNode("node-a", 1, null, null) }
+            Nodes = [new ShardSimulationNode("node-a", 1, null, null)]
         };
 
         var result = await service.SimulateAsync(request, CancellationToken.None);
-
-        Assert.True(result.IsSuccess);
-        Assert.Equal(2, result.Value.Assignments.Count);
-        var change = Assert.Single(result.Value.Changes);
-        Assert.Equal("shard-a", change.ShardId);
-        Assert.Equal("node-a", change.CurrentOwner);
-        Assert.Equal("node-c", change.ProposedOwner);
-        Assert.True(change.ChangesOwner);
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.Assignments.Count.ShouldBe(2);
+        result.Value.Changes.ShouldHaveSingleItem();
+        var change = result.Value.Changes[0];
+        change.ShardId.ShouldBe("shard-a");
+        change.CurrentOwner.ShouldBe("node-a");
+        change.ProposedOwner.ShouldBe("node-c");
+        change.ChangesOwner.ShouldBeTrue();
     }
 
     [Fact]
@@ -107,7 +107,7 @@ public sealed class ShardControlPlaneServiceTests
         };
 
         var strategy = new TestStrategy("fanout-fail", plannedAssignments);
-        var registry = new ShardHashStrategyRegistry(new[] { strategy });
+        var registry = new ShardHashStrategyRegistry([strategy]);
         var repository = new FakeShardRepository(records);
         var service = new ShardControlPlaneService(repository, registry, TimeProvider.System, NullLogger<ShardControlPlaneService>.Instance);
 
@@ -115,13 +115,12 @@ public sealed class ShardControlPlaneServiceTests
         {
             Namespace = "ns",
             StrategyId = strategy.Id,
-            Nodes = new[] { new ShardSimulationNode("node-a", 1, null, null) }
+            Nodes = [new ShardSimulationNode("node-a", 1, null, null)]
         };
 
         var result = await service.SimulateAsync(request, CancellationToken.None);
-
-        Assert.True(result.IsFailure, $"Expected failure but got success. Error={result.Error}");
-        Assert.Equal("shards.control.assignment.failed", result.Error?.Code);
+        result.IsFailure.ShouldBeTrue();
+        result.Error!.Code.ShouldBe("shards.control.assignment.failed");
     }
 
     [Fact]
@@ -149,7 +148,7 @@ public sealed class ShardControlPlaneServiceTests
         };
 
         var strategy = new TestStrategy("fanout-missing", plannedAssignments);
-        var registry = new ShardHashStrategyRegistry(new[] { strategy });
+        var registry = new ShardHashStrategyRegistry([strategy]);
         var repository = new FakeShardRepository(records);
         var service = new ShardControlPlaneService(repository, registry, TimeProvider.System, NullLogger<ShardControlPlaneService>.Instance);
 
@@ -157,13 +156,12 @@ public sealed class ShardControlPlaneServiceTests
         {
             Namespace = "ns",
             StrategyId = strategy.Id,
-            Nodes = new[] { new ShardSimulationNode("node-a", 1, null, null) }
+            Nodes = [new ShardSimulationNode("node-a", 1, null, null)]
         };
 
         var result = await service.SimulateAsync(request, CancellationToken.None);
-
-        Assert.True(result.IsFailure, $"Expected failure but got success. Error={result.Error}");
-        Assert.Equal("shards.control.assignment.missing", result.Error?.Code);
+        result.IsFailure.ShouldBeTrue();
+        result.Error!.Code.ShouldBe("shards.control.assignment.missing");
     }
 
     [Fact]
@@ -192,9 +190,8 @@ public sealed class ShardControlPlaneServiceTests
         var filter = new ShardFilter("ns", null, null, null);
 
         var result = await service.CollectWatchAsync(null, filter, CancellationToken.None);
-
-        Assert.True(result.IsFailure, $"Expected aggregated failure but got success. Error={result.Error}");
-        Assert.Equal("shards.control.stream.failure", result.Error?.Code);
+        result.IsFailure.ShouldBeTrue();
+        result.Error!.Code.ShouldBe("shards.control.stream.failure");
     }
 
     private sealed class FakeShardRepository : IShardRepository
