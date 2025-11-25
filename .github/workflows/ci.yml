@@ -77,8 +77,6 @@ jobs:
         include:
           - os: windows-latest
             rid: win-x64
-          - os: windows-latest
-            rid: win-arm64
     concurrency:
       group: ${{ github.workflow }}-${{ github.ref }}-${{ matrix.os }}-${{ matrix.rid }}
     steps:
